@@ -1,1 +1,2 @@
 This repository contains different versions of the PALM src, an LES model designed for meteorological applications, adapted for the indoor environment
+The PALM source code adapted here will be used to simulate the indoor airflow inside a restaurant setting, track the evolution of aerosol in such settings with multiple occupants seated in different layouts and quantify airborne transmission in social settings.
