@@ -6,16 +6,16 @@
 !
 !-- grid parameters
 !-------------------------------------------------------------------------------
-    nx                         = 39, ! Number of gridboxes in x-direction (nx+1)
-    ny                         = 39, ! Number of gridboxes in y-direction (ny+1)
-    nz                         = 40, ! Number of gridboxes in z-direction (nz)
+    nx                         = 768, ! Number of gridboxes in x-direction (nx+1)
+    ny                         = 1152, ! Number of gridboxes in y-direction (ny+1)
+    nz                         = 320, ! Number of gridboxes in z-direction (nz)
 
-    dx                         = 50.0, ! Size of single gridbox in x-direction
-    dy                         = 50.0, ! Size of single gridbox in y-direction
-    dz                         = 50.0, ! Size of single gridbox in z-direction
+    dx                         = 0.00924, ! Size of single gridbox in x-direction
+    dy                         = 0.00924, ! Size of single gridbox in y-direction
+    dz                         = 0.00969, ! Size of single gridbox in z-direction
 
-    dz_stretch_level           = 1225.0, ! Height (in m) where stretching starts
-    dz_stretch_factor          = 1.08,   ! dz(k+1) = dz(k) * dz_stretch_factor
+    dz_stretch_level           = 0.0, ! Height (in m) where stretching starts
+    dz_stretch_factor          = 0.0,   ! dz(k+1) = dz(k) * dz_stretch_factor
 !
 !-- initialization
 !-------------------------------------------------------------------------------
