@@ -13,8 +13,58 @@
 ! You should have received a copy of the GNU General Public License along with PALM. If not, see
 ! <http://www.gnu.org/licenses/>.
 !
-! Copyright 1997-2021 Leibniz Universitaet Hannover
+! Copyright 1997-2020 Leibniz Universitaet Hannover
 !--------------------------------------------------------------------------------------------------!
+!
+! Current revisions:
+! -----------------
+!
+!
+! Former revisions:
+! -----------------
+! $Id: gust_mod.f90 4768 2020-11-02 19:11:23Z suehring $
+! Enable 3D data output also with 64-bit precision
+!
+! 4646 2020-08-24 16:02:40Z raasch
+! file re-formatted to follow the PALM coding standard
+!
+! 4535 2020-05-15 12:07:23Z raasch
+! bugfix for restart data format query
+!
+! 4517 2020-05-03 14:29:30Z raasch
+! added restart with MPI-IO for reading local arrays
+!
+! 4495 2020-04-13 20:11:20Z raasch
+! restart data handling with MPI-IO added
+!
+! 4360 2020-01-07 11:25:50Z suehring
+! CASE statement for dummy variable u2_av in gust_rrd_local changed to avoid unintended
+! interdependencies with user-defined variables
+!
+! 3837 2019-03-28 16:55:58Z knoop
+! unused variable for file index removed from rrd-subroutines parameter list
+!
+! 3725 2019-02-07 10:11:02Z raasch
+! dummy statement modified to avoid compiler warnings about unused variables
+!
+! 3685 2019-01-21 01:02:11Z knoop
+! Some interface calls moved to module_interface + cleanup
+!
+! 3665 2019-01-10 08:28:24Z raasch
+! dummy statements added to avoid compiler warnings about unused variables
+!
+! 3655 2019-01-07 16:51:22Z knoop
+! Bugfix: domain bounds of local_pf corrected
+!
+!
+! Interfaces concerning data output updated
+!
+!
+! renamed gust_par to gust_parameters
+!
+!
+! Initial interface definition
+!
 !
 ! Description:
 ! ------------
@@ -28,18 +78,12 @@
         ONLY:  restart_data_format_output
 
     USE indices,                                                                                   &
-        ONLY:  nxl,                                                                                &
-               nxlg,                                                                               &
-               nxr,                                                                                &
-               nxrg,                                                                               &
-               nys,                                                                                &
-               nysg,                                                                               &
-               nyn,                                                                                &
-               nyng,                                                                               &
-               nzb,                                                                                &
-               nzt
+        ONLY:  nxl, nxlg, nxr, nxrg, nys, nysg, nyn, nyng, nzb, nzt
 
     USE kinds
+
+!    USE restart_data_mpi_io_mod,                                                                   &
+!        ONLY:
 
     IMPLICIT NONE
 
@@ -168,46 +212,36 @@
 ! ------------
 !> Parin for &gust_parameters for gust module
 !--------------------------------------------------------------------------------------------------!
- SUBROUTINE gust_parin
-
-    IMPLICIT NONE
-
-    CHARACTER(LEN=100)  ::  line  !< dummy string that contains the current line of the parameter
-                                  !< file
-
-    INTEGER(iwp)  ::  io_status   !< status after reading the namelist file
-
-    LOGICAL ::  switch_off_module = .FALSE.  !< local namelist parameter to switch off the module
-                                             !< although the respective module namelist appears in
-                                             !< the namelist file
+    SUBROUTINE gust_parin
 
 
-    NAMELIST /gust_parameters/  switch_off_module
+       IMPLICIT NONE
 
+       CHARACTER (LEN=80)  ::  line  !< dummy string that contains the current line of the parameter file
+
+       NAMELIST /gust_parameters/                                                                  &
+          gust_module_enabled
+
+       line = ' '
 !
-!-- Move to the beginning of the namelist file and try to find and read the namelist.
-    REWIND( 11 )
-    READ( 11, gust_parameters, IOSTAT=io_status )
-
+!--    Try to find gust module package
+       REWIND ( 11 )
+       line = ' '
+       DO   WHILE ( INDEX( line, '&gust_parameters' ) == 0 )
+          READ ( 11, '(A)', END=10 )  line
+       ENDDO
+       BACKSPACE ( 11 )
 !
-!-- Action depending on the READ status
-    IF ( io_status == 0 )  THEN
+!--    Read user-defined namelist
+       READ ( 11, gust_parameters )
 !
-!--    gust_parameters namelist was found and read correctly. Set flag that indicates that the gust
-!--    module is switched on.
-       IF ( .NOT. switch_off_module )  gust_module_enabled = .TRUE.
+!--    Set flag that indicates that the gust module is switched on
+       gust_module_enabled = .TRUE.
 
-    ELSEIF ( io_status > 0 )  THEN
-!
-!--    gust_parameters namelist was found, but contained errors. Print an error message including
-!--    the line that caused the problem.
-       BACKSPACE( 11 )
-       READ( 11 , '(A)') line
-       CALL parin_fail_message( 'gust_parameters', line )
+10     CONTINUE
 
-    ENDIF
 
- END SUBROUTINE gust_parin
+    END SUBROUTINE gust_parin
 
 
 !--------------------------------------------------------------------------------------------------!
@@ -215,11 +249,13 @@
 ! ------------
 !> Check parameters routine for gust module
 !--------------------------------------------------------------------------------------------------!
- SUBROUTINE gust_check_parameters
+    SUBROUTINE gust_check_parameters
 
-    IMPLICIT NONE
 
- END SUBROUTINE gust_check_parameters
+       IMPLICIT NONE
+
+
+    END SUBROUTINE gust_check_parameters
 
 
 !--------------------------------------------------------------------------------------------------!
@@ -227,40 +263,41 @@
 ! ------------
 !> Check data output of profiles for gust module
 !--------------------------------------------------------------------------------------------------!
- SUBROUTINE gust_check_data_output_pr( variable, var_count, unit, dopr_unit )
+    SUBROUTINE gust_check_data_output_pr( variable, var_count, unit, dopr_unit )
 
-    IMPLICIT NONE
 
-    CHARACTER(LEN=*) ::  dopr_unit !< local value of dopr_unit
-    CHARACTER(LEN=*) ::  unit      !<
-    CHARACTER(LEN=*) ::  variable  !<
+       IMPLICIT NONE
 
-    INTEGER(iwp) ::  var_count      !<
+       CHARACTER (LEN=*) ::  dopr_unit !< local value of dopr_unit
+       CHARACTER (LEN=*) ::  unit      !<
+       CHARACTER (LEN=*) ::  variable  !<
+
+       INTEGER(iwp) ::  var_count      !<
 
 !
-!-- Next line is just to avoid compiler warnings about unused variables. You may remove it.
-    IF ( dummy_logical )  idum = LEN( unit ) + LEN( variable ) + LEN( dopr_unit ) + var_count
+!--    Next line is just to avoid compiler warnings about unused variables. You may remove it.
+       IF ( dummy_logical )  idum = LEN( unit ) + LEN( variable ) + LEN( dopr_unit ) + var_count
 
- END SUBROUTINE gust_check_data_output_pr
-
+    END SUBROUTINE gust_check_data_output_pr
 
 !--------------------------------------------------------------------------------------------------!
 ! Description:
 ! ------------
 !> Check data output for gust module
 !--------------------------------------------------------------------------------------------------!
- SUBROUTINE gust_check_data_output( var, unit )
+    SUBROUTINE gust_check_data_output( var, unit )
 
-    IMPLICIT NONE
 
-    CHARACTER(LEN=*) ::  unit  !<
-    CHARACTER(LEN=*) ::  var   !<
+       IMPLICIT NONE
+
+       CHARACTER (LEN=*) ::  unit  !<
+       CHARACTER (LEN=*) ::  var   !<
 
 !
-!-- Next line is just to avoid compiler warnings about unused variables. You may remove it.
-    IF ( dummy_logical )  idum = LEN( var ) + LEN( unit )
+!--    Next line is just to avoid compiler warnings about unused variables. You may remove it.
+       IF ( dummy_logical )  idum = LEN( var ) + LEN( unit )
 
- END SUBROUTINE gust_check_data_output
+    END SUBROUTINE gust_check_data_output
 
 
 !--------------------------------------------------------------------------------------------------!
@@ -268,11 +305,13 @@
 ! ------------
 !> Allocate gust module arrays and define pointers
 !--------------------------------------------------------------------------------------------------!
- SUBROUTINE gust_init_arrays
+    SUBROUTINE gust_init_arrays
 
-    IMPLICIT NONE
 
- END SUBROUTINE gust_init_arrays
+       IMPLICIT NONE
+
+
+    END SUBROUTINE gust_init_arrays
 
 
 !--------------------------------------------------------------------------------------------------!
@@ -280,11 +319,13 @@
 ! ------------
 !> Initialization of the gust module
 !--------------------------------------------------------------------------------------------------!
- SUBROUTINE gust_init
+    SUBROUTINE gust_init
 
-    IMPLICIT NONE
 
- END SUBROUTINE gust_init
+       IMPLICIT NONE
+
+
+    END SUBROUTINE gust_init
 
 
 !--------------------------------------------------------------------------------------------------!
@@ -294,23 +335,23 @@
 !> Subroutine defining appropriate grid for netcdf variables.
 !> It is called out from subroutine netcdf.
 !--------------------------------------------------------------------------------------------------!
- SUBROUTINE gust_define_netcdf_grid( var, found, grid_x, grid_y, grid_z )
+    SUBROUTINE gust_define_netcdf_grid( var, found, grid_x, grid_y, grid_z )
 
-    IMPLICIT NONE
 
-    CHARACTER(LEN=*), INTENT(IN) ::  grid_x      !<
-    CHARACTER(LEN=*), INTENT(IN) ::  grid_y      !<
-    CHARACTER(LEN=*), INTENT(IN) ::  grid_z      !<
-    CHARACTER(LEN=*), INTENT(IN) ::  var         !<
+       IMPLICIT NONE
 
-    LOGICAL, INTENT(IN)           ::  found       !<
+       CHARACTER (LEN=*), INTENT(IN) ::  grid_x      !<
+       CHARACTER (LEN=*), INTENT(IN) ::  grid_y      !<
+       CHARACTER (LEN=*), INTENT(IN) ::  grid_z      !<
+       CHARACTER (LEN=*), INTENT(IN) ::  var         !<
 
+       LOGICAL, INTENT(IN)           ::  found       !<
 
 !
-!-- Next line is just to avoid compiler warnings about unused variables. You may remove it.
-    IF ( found )  idum = LEN( var ) + LEN( grid_x ) + LEN( grid_y ) + LEN( grid_z )
+!--    Next line is just to avoid compiler warnings about unused variables. You may remove it.
+       IF ( found )  idum = LEN( var ) + LEN( grid_x ) + LEN( grid_y ) + LEN( grid_z )
 
- END SUBROUTINE gust_define_netcdf_grid
+    END SUBROUTINE gust_define_netcdf_grid
 
 
 !--------------------------------------------------------------------------------------------------!
@@ -318,18 +359,18 @@
 ! ------------
 !> Header output for gust module
 !--------------------------------------------------------------------------------------------------!
- SUBROUTINE gust_header ( io )
+    SUBROUTINE gust_header ( io )
 
-    IMPLICIT NONE
 
-    INTEGER(iwp), INTENT(IN) ::  io  !< Unit of the output file
+       IMPLICIT NONE
 
+       INTEGER(iwp), INTENT(IN) ::  io  !< Unit of the output file
 
 !
-!-- Next line is just to avoid compiler warnings about unused variables. You may remove it.
-    IF ( dummy_logical )  idum = io
+!--    Next line is just to avoid compiler warnings about unused variables. You may remove it.
+       IF ( dummy_logical )  idum = io
 
- END SUBROUTINE gust_header
+    END SUBROUTINE gust_header
 
 
 !--------------------------------------------------------------------------------------------------!
@@ -337,17 +378,18 @@
 ! ------------
 !> Call for all grid points
 !--------------------------------------------------------------------------------------------------!
- SUBROUTINE gust_actions( location )
+    SUBROUTINE gust_actions( location )
 
-    IMPLICIT NONE
 
-    CHARACTER(LEN=*) ::  location !<
+       IMPLICIT NONE
+
+       CHARACTER (LEN=*) ::  location !<
 
 !
-!-- Next line is just to avoid compiler warnings about unused variables. You may remove it.
-    IF ( dummy_logical )  idum = LEN( location )
+!--    Next line is just to avoid compiler warnings about unused variables. You may remove it.
+       IF ( dummy_logical )  idum = LEN( location )
 
- END SUBROUTINE gust_actions
+    END SUBROUTINE gust_actions
 
 
 !--------------------------------------------------------------------------------------------------!
@@ -355,20 +397,21 @@
 ! ------------
 !> Call for grid point i,j
 !--------------------------------------------------------------------------------------------------!
- SUBROUTINE gust_actions_ij( i, j, location )
+    SUBROUTINE gust_actions_ij( i, j, location )
 
-    IMPLICIT NONE
 
-    CHARACTER(LEN=*) ::  location
+       IMPLICIT NONE
 
-    INTEGER(iwp) ::  i
-    INTEGER(iwp) ::  j
+       CHARACTER (LEN=*) ::  location
+
+       INTEGER(iwp) ::  i
+       INTEGER(iwp) ::  j
 
 !
-!-- Next line is just to avoid compiler warnings about unused variables. You may remove it.
-    IF ( dummy_logical )  idum = i + j + LEN( location )
+!--    Next line is just to avoid compiler warnings about unused variables. You may remove it.
+       IF ( dummy_logical )  idum = i + j + LEN( location )
 
- END SUBROUTINE gust_actions_ij
+    END SUBROUTINE gust_actions_ij
 
 
 !--------------------------------------------------------------------------------------------------!
@@ -376,13 +419,13 @@
 ! ------------
 !> Call for all grid points
 !--------------------------------------------------------------------------------------------------!
- SUBROUTINE gust_prognostic_equations()
+    SUBROUTINE gust_prognostic_equations()
 
 !
-!-- Next line is just to avoid compiler warnings about unused variables. You may remove it.
-    IF ( dummy_logical )  idum = 1
+!--    Next line is just to avoid compiler warnings about unused variables. You may remove it.
+       IF ( dummy_logical )  idum = 1
 
- END SUBROUTINE gust_prognostic_equations
+    END SUBROUTINE gust_prognostic_equations
 
 
 !--------------------------------------------------------------------------------------------------!
@@ -390,18 +433,19 @@
 ! ------------
 !> Call for grid point i,j
 !--------------------------------------------------------------------------------------------------!
- SUBROUTINE gust_prognostic_equations_ij( i, j, i_omp_start, tn )
+    SUBROUTINE gust_prognostic_equations_ij( i, j, i_omp_start, tn )
 
-    INTEGER(iwp), INTENT(IN) ::  i            !< grid index in x-direction
-    INTEGER(iwp), INTENT(IN) ::  i_omp_start  !< first loop index of i-loop in prognostic_equations
-    INTEGER(iwp), INTENT(IN) ::  j            !< grid index in y-direction
-    INTEGER(iwp), INTENT(IN) ::  tn           !< task number of openmp task
+
+       INTEGER(iwp), INTENT(IN) ::  i            !< grid index in x-direction
+       INTEGER(iwp), INTENT(IN) ::  i_omp_start  !< first loop index of i-loop in prognostic_equations
+       INTEGER(iwp), INTENT(IN) ::  j            !< grid index in y-direction
+       INTEGER(iwp), INTENT(IN) ::  tn           !< task number of openmp task
 
 !
-!-- Next line is just to avoid compiler warnings about unused variables. You may remove it.
-    IF ( dummy_logical )  idum = i + j + i_omp_start + tn
+!--    Next line is just to avoid compiler warnings about unused variables. You may remove it.
+       IF ( dummy_logical )  idum = i + j + i_omp_start + tn
 
- END SUBROUTINE gust_prognostic_equations_ij
+    END SUBROUTINE gust_prognostic_equations_ij
 
 
 !--------------------------------------------------------------------------------------------------!
@@ -409,18 +453,18 @@
 ! ------------
 !> Swapping of timelevels
 !--------------------------------------------------------------------------------------------------!
- SUBROUTINE gust_swap_timelevel ( mod_count )
+    SUBROUTINE gust_swap_timelevel ( mod_count )
 
-    IMPLICIT NONE
 
-    INTEGER, INTENT(IN) ::  mod_count
+       IMPLICIT NONE
 
+       INTEGER, INTENT(IN) ::  mod_count
 
 !
-!-- Next line is just to avoid compiler warnings about unused variables. You may remove it.
-    IF ( dummy_logical )  idum = mod_count
+!--    Next line is just to avoid compiler warnings about unused variables. You may remove it.
+       IF ( dummy_logical )  idum = mod_count
 
- END SUBROUTINE gust_swap_timelevel
+    END SUBROUTINE gust_swap_timelevel
 
 
 !--------------------------------------------------------------------------------------------------!
@@ -429,19 +473,19 @@
 ! ------------
 !> Subroutine for averaging 3D data
 !--------------------------------------------------------------------------------------------------!
- SUBROUTINE gust_3d_data_averaging( mode, variable )
+    SUBROUTINE gust_3d_data_averaging( mode, variable )
 
-    IMPLICIT NONE
 
-    CHARACTER(LEN=*) ::  mode    !<
-    CHARACTER(LEN=*) ::  variable !<
+       IMPLICIT NONE
+
+       CHARACTER (LEN=*) ::  mode    !<
+       CHARACTER (LEN=*) ::  variable !<
 
 !
-!-- Next line is just to avoid compiler warnings about unused variables. You may remove it.
-    IF ( dummy_logical )  idum = LEN( mode ) + LEN( variable )
+!--    Next line is just to avoid compiler warnings about unused variables. You may remove it.
+       IF ( dummy_logical )  idum = LEN( mode ) + LEN( variable )
 
- END SUBROUTINE gust_3d_data_averaging
-
+    END SUBROUTINE gust_3d_data_averaging
 
 !--------------------------------------------------------------------------------------------------!
 !
@@ -449,31 +493,35 @@
 ! ------------
 !> Subroutine defining 2D output variables
 !--------------------------------------------------------------------------------------------------!
- SUBROUTINE gust_data_output_2d( av, variable, found, grid, mode, local_pf, two_d, nzb_do, nzt_do )
+    SUBROUTINE gust_data_output_2d( av, variable, found, grid, mode, local_pf, two_d, nzb_do,      &
+                                    nzt_do, fill_value )
 
-    IMPLICIT NONE
 
-    CHARACTER(LEN=*), INTENT(INOUT) ::  grid       !< name of vertical grid
-    CHARACTER(LEN=*), INTENT(IN)    ::  mode       !< either 'xy', 'xz' or 'yz'
-    CHARACTER(LEN=*), INTENT(IN)    ::  variable   !< name of variable
+       IMPLICIT NONE
 
-    INTEGER(iwp), INTENT(IN) ::  av        !< flag for (non-)average output
-    INTEGER(iwp), INTENT(IN) ::  nzb_do    !< vertical output index (bottom)
-    INTEGER(iwp), INTENT(IN) ::  nzt_do    !< vertical output index (top)
+       CHARACTER (LEN=*), INTENT(INOUT) ::  grid       !< name of vertical grid
+       CHARACTER (LEN=*), INTENT(IN)    ::  mode       !< either 'xy', 'xz' or 'yz'
+       CHARACTER (LEN=*), INTENT(IN)    ::  variable   !< name of variable
 
-    LOGICAL, INTENT(INOUT) ::  found   !< flag if output variable is found
-    LOGICAL, INTENT(INOUT) ::  two_d !< flag parameter that indicates 2D variables (horizontal cross sections)
+       INTEGER(iwp), INTENT(IN) ::  av        !< flag for (non-)average output
+       INTEGER(iwp), INTENT(IN) ::  nzb_do    !< vertical output index (bottom)
+       INTEGER(iwp), INTENT(IN) ::  nzt_do    !< vertical output index (top)
 
-    REAL(wp), DIMENSION(nxl:nxr,nys:nyn,nzb_do:nzt_do), INTENT(INOUT) ::  local_pf !< local
-                                                                                   !< array to which output data is resorted to
+       LOGICAL, INTENT(INOUT) ::  found   !< flag if output variable is found
+       LOGICAL, INTENT(INOUT) ::  two_d !< flag parameter that indicates 2D variables (horizontal cross sections)
+
+       REAL(wp), INTENT(IN) ::  fill_value !< value for the _FillValue attribute
+
+       REAL(wp), DIMENSION(nxl:nxr,nys:nyn,nzb_do:nzt_do), INTENT(INOUT) ::  local_pf !< local
+                                                                                      !< array to which output data is resorted to
 
 !
-!-- Next line is just to avoid compiler warnings about unused variables. You may remove it.
-    IF ( found .AND. two_d )  THEN
-       idum = av + LEN( variable ) + LEN( grid // mode ) + local_pf(nxl,nys,nzb_do)
-    ENDIF
+!--    Next line is just to avoid compiler warnings about unused variables. You may remove it.
+       IF ( found .AND. two_d )  THEN
+          idum = av + LEN( variable ) + LEN( grid // mode ) + local_pf(nxl,nys,nzb_do) + fill_value
+       ENDIF
 
- END SUBROUTINE gust_data_output_2d
+    END SUBROUTINE gust_data_output_2d
 
 
 !--------------------------------------------------------------------------------------------------!
@@ -482,26 +530,29 @@
 ! ------------
 !> Subroutine defining 3D output variables
 !--------------------------------------------------------------------------------------------------!
- SUBROUTINE gust_data_output_3d( av, variable, found, local_pf, nzb_do, nzt_do )
+    SUBROUTINE gust_data_output_3d( av, variable, found, local_pf, fill_value, nzb_do, nzt_do )
 
-    IMPLICIT NONE
 
-    CHARACTER(LEN=*), INTENT(IN) ::  variable   !< name of variable
+       IMPLICIT NONE
 
-    INTEGER(iwp), INTENT(IN) ::  av        !< flag for (non-)average output
-    INTEGER(iwp), INTENT(IN) ::  nzb_do    !< lower limit of the data output (usually 0)
-    INTEGER(iwp), INTENT(IN) ::  nzt_do    !< vertical upper limit of the data output (usually nz_do3d)
+       CHARACTER (LEN=*), INTENT(IN) ::  variable   !< name of variable
 
-    LOGICAL, INTENT(INOUT) ::  found     !< flag if output variable is found
+       INTEGER(iwp), INTENT(IN) ::  av        !< flag for (non-)average output
+       INTEGER(iwp), INTENT(IN) ::  nzb_do    !< lower limit of the data output (usually 0)
+       INTEGER(iwp), INTENT(IN) ::  nzt_do    !< vertical upper limit of the data output (usually nz_do3d)
 
-    REAL(wp), DIMENSION(nxl:nxr,nys:nyn,nzb_do:nzt_do), INTENT(INOUT) ::  local_pf   !< local
-                                                                                     !< array to which output data is resorted to
+       LOGICAL, INTENT(INOUT) ::  found     !< flag if output variable is found
+
+       REAL(wp), INTENT(IN) ::  fill_value !< value for the _FillValue attribute
+
+       REAL(wp), DIMENSION(nxl:nxr,nys:nyn,nzb_do:nzt_do), INTENT(INOUT) ::  local_pf   !< local
+                                                                                        !< array to which output data is resorted to
 
 !
-!-- Next line is just to avoid compiler warnings about unused variables. You may remove it.
-    IF ( found )  idum = av + LEN( variable ) + local_pf(nxl,nys,nzb_do)
+!--    Next line is just to avoid compiler warnings about unused variables. You may remove it.
+       IF ( found )  idum = av + LEN( variable ) + fill_value + local_pf(nxl,nys,nzb_do)
 
- END SUBROUTINE gust_data_output_3d
+    END SUBROUTINE gust_data_output_3d
 
 
 !--------------------------------------------------------------------------------------------------!
@@ -509,21 +560,22 @@
 ! ------------
 !> This routine computes profile and timeseries data for the gust module.
 !--------------------------------------------------------------------------------------------------!
- SUBROUTINE gust_statistics( mode, sr, tn, dots_max )
+    SUBROUTINE gust_statistics( mode, sr, tn, dots_max )
 
-    IMPLICIT NONE
 
-    CHARACTER(LEN=*) ::  mode  !<
+       IMPLICIT NONE
 
-    INTEGER(iwp) ::  dots_max   !<
-    INTEGER(iwp) ::  sr         !<
-    INTEGER(iwp) ::  tn         !<
+       CHARACTER (LEN=*) ::  mode  !<
+
+       INTEGER(iwp) ::  dots_max   !<
+       INTEGER(iwp) ::  sr         !<
+       INTEGER(iwp) ::  tn         !<
 
 !
-!-- Next line is just to avoid compiler warnings about unused variables. You may remove it.
-    IF ( dummy_logical )  idum = dots_max + sr + tn + LEN( mode )
+!--    Next line is just to avoid compiler warnings about unused variables. You may remove it.
+       IF ( dummy_logical )  idum = dots_max + sr + tn + LEN( mode )
 
- END SUBROUTINE gust_statistics
+    END SUBROUTINE gust_statistics
 
 
 !--------------------------------------------------------------------------------------------------!
@@ -531,31 +583,34 @@
 ! ------------
 !> Read module-specific global restart data (Fortran binary format).
 !--------------------------------------------------------------------------------------------------!
- SUBROUTINE gust_rrd_global_ftn( found )
-
-    USE control_parameters,                                                                     &
-        ONLY:  length,                                                                          &
-               restart_string
-
-    IMPLICIT NONE
-
-    LOGICAL, INTENT(OUT)  ::  found
+    SUBROUTINE gust_rrd_global_ftn( found )
 
 
-    found = .TRUE.
+       USE control_parameters,                                                                     &
+           ONLY: length, restart_string
 
 
-    SELECT CASE ( restart_string(1:length) )
+       IMPLICIT NONE
 
-       CASE ( 'global_paramter' )
-!          READ ( 13 )  global_parameter
+       LOGICAL, INTENT(OUT)  ::  found
 
-       CASE DEFAULT
-          found = .FALSE.
 
-    END SELECT
+       found = .TRUE.
 
- END SUBROUTINE gust_rrd_global_ftn
+
+       SELECT CASE ( restart_string(1:length) )
+
+          CASE ( 'global_paramter' )
+!             READ ( 13 )  global_parameter
+
+          CASE DEFAULT
+
+             found = .FALSE.
+
+       END SELECT
+
+
+    END SUBROUTINE gust_rrd_global_ftn
 
 
 !--------------------------------------------------------------------------------------------------!
@@ -563,12 +618,13 @@
 ! ------------
 !> Read module-specific global restart data (MPI-IO).
 !--------------------------------------------------------------------------------------------------!
- SUBROUTINE gust_rrd_global_mpi
+    SUBROUTINE gust_rrd_global_mpi
 
-!    CALL rrd_mpi_io( 'global_parameter', global_parameter )
-!          READ ( 13 )  global_parameter
 
- END SUBROUTINE gust_rrd_global_mpi
+!       CALL rrd_mpi_io( 'global_parameter', global_parameter )
+!             READ ( 13 )  global_parameter
+
+    END SUBROUTINE gust_rrd_global_mpi
 
 
 !--------------------------------------------------------------------------------------------------!
@@ -576,69 +632,72 @@
 ! ------------
 !> Read module-specific local restart data arrays (Fortran binary format).
 !--------------------------------------------------------------------------------------------------!
- SUBROUTINE gust_rrd_local_ftn( k, nxlf, nxlc, nxl_on_file, nxrf, nxrc, nxr_on_file, nynf, nync,   &
-                                nyn_on_file, nysf, nysc, nys_on_file, tmp_2d, tmp_3d, found )
-
-    USE control_parameters
-
-    USE indices
-
-    USE kinds
-
-    USE pegrid
+    SUBROUTINE gust_rrd_local_ftn( k, nxlf, nxlc, nxl_on_file, nxrf, nxrc, nxr_on_file, nynf, nync,&
+                                   nyn_on_file, nysf, nysc, nys_on_file, tmp_2d, tmp_3d, found )
 
 
-    IMPLICIT NONE
+       USE control_parameters
 
-    INTEGER(iwp) ::  k               !<
-    INTEGER(iwp) ::  nxlc            !<
-    INTEGER(iwp) ::  nxlf            !<
-    INTEGER(iwp) ::  nxl_on_file     !<
-    INTEGER(iwp) ::  nxrc            !<
-    INTEGER(iwp) ::  nxrf            !<
-    INTEGER(iwp) ::  nxr_on_file     !<
-    INTEGER(iwp) ::  nync            !<
-    INTEGER(iwp) ::  nynf            !<
-    INTEGER(iwp) ::  nyn_on_file     !<
-    INTEGER(iwp) ::  nysc            !<
-    INTEGER(iwp) ::  nysf            !<
-    INTEGER(iwp) ::  nys_on_file     !<
+       USE indices
 
-    LOGICAL, INTENT(OUT)  ::  found
+       USE kinds
 
-    REAL(wp), DIMENSION(nys_on_file-nbgp:nyn_on_file+nbgp,nxl_on_file-nbgp:nxr_on_file+nbgp) :: tmp_2d   !<
-    REAL(wp), DIMENSION(nzb:nzt+1,nys_on_file-nbgp:nyn_on_file+nbgp,nxl_on_file-nbgp:nxr_on_file+nbgp) :: tmp_3d   !<
+       USE pegrid
 
 
-!
-!-- Next lines are just to avoid compiler warnings about unused variables in case of empty user
-!-- interface routine. You may remove them.
-    IF ( dummy_logical )  THEN
-       idum = k + nxlc + nxlf + nxrc + nxrf + nync + nynf + nysc + nysf +                          &
-              tmp_2d(nys_on_file,nxl_on_file) + tmp_3d(nzb,nys_on_file,nxl_on_file)
-    ENDIF
+       IMPLICIT NONE
+
+       INTEGER(iwp) ::  k               !<
+       INTEGER(iwp) ::  nxlc            !<
+       INTEGER(iwp) ::  nxlf            !<
+       INTEGER(iwp) ::  nxl_on_file     !<
+       INTEGER(iwp) ::  nxrc            !<
+       INTEGER(iwp) ::  nxrf            !<
+       INTEGER(iwp) ::  nxr_on_file     !<
+       INTEGER(iwp) ::  nync            !<
+       INTEGER(iwp) ::  nynf            !<
+       INTEGER(iwp) ::  nyn_on_file     !<
+       INTEGER(iwp) ::  nysc            !<
+       INTEGER(iwp) ::  nysf            !<
+       INTEGER(iwp) ::  nys_on_file     !<
+
+       LOGICAL, INTENT(OUT)  ::  found
+
+       REAL(wp), DIMENSION(nys_on_file-nbgp:nyn_on_file+nbgp,nxl_on_file-nbgp:nxr_on_file+nbgp) :: tmp_2d   !<
+       REAL(wp), DIMENSION(nzb:nzt+1,nys_on_file-nbgp:nyn_on_file+nbgp,nxl_on_file-nbgp:nxr_on_file+nbgp) :: tmp_3d   !<
+
 
 !
-!-- Here the reading of user-defined restart data follows:
-!-- Sample for user-defined output
-    found = .TRUE.
+!--    Next lins are just to avoid compiler warnings about unused variables in case of empty user interface routine.
+!--    You may remove them.
+       IF ( dummy_logical )  THEN
+          idum = k + nxlc + nxlf + nxrc + nxrf + nync + nynf + nysc + nysf +                       &
+                 tmp_2d(nys_on_file,nxl_on_file) + tmp_3d(nzb,nys_on_file,nxl_on_file)
+       ENDIF
 
-    SELECT CASE ( restart_string(1:length) )
-
-       CASE ( '.......' )
-!          IF ( .NOT. ALLOCATED( u2_av ) ) THEN
-!               ALLOCATE( u2_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-!          ENDIF
-!          IF ( k == 1 )  READ ( 13 )  tmp_3d
-!             u2_av(:,nysc-nbgp:nync+nbgp,nxlc-nbgp:nxrc+nbgp) =         &
-!                tmp_3d(:,nysf-nbgp:nynf+nbgp,nxlf-nbgp:nxrf+nbgp)
 !
-       CASE DEFAULT
-          found = .FALSE.
+!--    Here the reading of user-defined restart data follows:
+!--    Sample for user-defined output
+       found = .TRUE.
 
-       END SELECT
+       SELECT CASE ( restart_string(1:length) )
 
- END SUBROUTINE gust_rrd_local_ftn
+          CASE ( '.......' )
+!             IF ( .NOT. ALLOCATED( u2_av ) ) THEN
+!                  ALLOCATE( u2_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
+!             ENDIF
+!             IF ( k == 1 )  READ ( 13 )  tmp_3d
+!                u2_av(:,nysc-nbgp:nync+nbgp,nxlc-nbgp:nxrc+nbgp) =         &
+!                   tmp_3d(:,nysf-nbgp:nynf+nbgp,nxlf-nbgp:nxrf+nbgp)
+!
+          CASE DEFAULT
+
+             found = .FALSE.
+
+          END SELECT
+
+
+    END SUBROUTINE gust_rrd_local_ftn
 
 
 !--------------------------------------------------------------------------------------------------!
@@ -646,43 +705,12 @@
 ! ------------
 !> Read module-specific local restart data arrays (MPI-IO).
 !--------------------------------------------------------------------------------------------------!
- SUBROUTINE gust_rrd_local_mpi
-
-!    CALL rrd_mpi_io( 'local_array', local_array )
-
- END SUBROUTINE gust_rrd_local_mpi
+    SUBROUTINE gust_rrd_local_mpi
 
 
-!--------------------------------------------------------------------------------------------------!
-! Description:
-! ------------
-!> This routine writes the respective restart data for the gust module.
-!--------------------------------------------------------------------------------------------------!
- SUBROUTINE gust_wrd_global
+!       CALL rrd_mpi_io( 'local_array', local_array )
 
-    IMPLICIT NONE
-
-
-    IF ( TRIM( restart_data_format_output ) == 'fortran_binary' )  THEN
-
-!       CALL wrd_write_string( 'global_parameter' )
-!       WRITE ( 14 )  global_parameter
-
-!       IF ( ALLOCATED( inflow_damping_factor ) )  THEN
-!          CALL wrd_write_string( 'inflow_damping_factor' )
-!          WRITE ( 14 )  inflow_damping_factor
-!       ENDIF
-
-    ELSEIF ( restart_data_format_output(1:3) == 'mpi' )  THEN
-
-!       CALL wrd_mpi_io( 'global_parameter', global_parameter )
-!       IF ( ALLOCATED( inflow_damping_factor ) )  THEN
-!          CALL wrd_mpi_io_global_array( 'inflow_damping_factor', inflow_damping_factor )
-!       ENDIF
-
-    ENDIF
-
- END SUBROUTINE gust_wrd_global
+    END SUBROUTINE gust_rrd_local_mpi
 
 
 !--------------------------------------------------------------------------------------------------!
@@ -690,24 +718,60 @@
 ! ------------
 !> This routine writes the respective restart data for the gust module.
 !--------------------------------------------------------------------------------------------------!
- SUBROUTINE gust_wrd_local
-
-    IMPLICIT NONE
+    SUBROUTINE gust_wrd_global
 
 
-    IF ( TRIM( restart_data_format_output ) == 'fortran_binary' )  THEN
+       IMPLICIT NONE
 
-!       IF ( ALLOCATED( u2_av ) )  THEN
-!          CALL wrd_write_string( 'u2_av' )
-!          WRITE ( 14 )  u2_av
-!       ENDIF
 
-    ELSEIF ( restart_data_format_output(1:3) == 'mpi' )  THEN
+       IF ( TRIM( restart_data_format_output ) == 'fortran_binary' )  THEN
 
-!       IF ( ALLOCATED( u2_av ) )  CALL wrd_mpi_io( 'u2_av', u2_av )
+!          CALL wrd_write_string( 'global_parameter' )
+!          WRITE ( 14 )  global_parameter
 
-    ENDIF
+!          IF ( ALLOCATED( inflow_damping_factor ) )  THEN
+!             CALL wrd_write_string( 'inflow_damping_factor' )
+!             WRITE ( 14 )  inflow_damping_factor
+!          ENDIF
 
- END SUBROUTINE gust_wrd_local
+       ELSEIF ( restart_data_format_output(1:3) == 'mpi' )  THEN
+
+!          CALL wrd_mpi_io( 'global_parameter', global_parameter )
+!          IF ( ALLOCATED( inflow_damping_factor ) )  THEN
+!             CALL wrd_mpi_io_global_array( 'inflow_damping_factor', inflow_damping_factor )
+!          ENDIF
+
+       ENDIF
+
+    END SUBROUTINE gust_wrd_global
+
+
+!--------------------------------------------------------------------------------------------------!
+! Description:
+! ------------
+!> This routine writes the respective restart data for the gust module.
+!--------------------------------------------------------------------------------------------------!
+    SUBROUTINE gust_wrd_local
+
+
+       IMPLICIT NONE
+
+
+       IF ( TRIM( restart_data_format_output ) == 'fortran_binary' )  THEN
+
+!          IF ( ALLOCATED( u2_av ) )  THEN
+!             CALL wrd_write_string( 'u2_av' )
+!             WRITE ( 14 )  u2_av
+!          ENDIF
+
+       ELSEIF ( restart_data_format_output(1:3) == 'mpi' )  THEN
+
+!          IF ( ALLOCATED( u2_av ) )  CALL wrd_mpi_io( 'u2_av', u2_av )
+
+       ENDIF
+
+    END SUBROUTINE gust_wrd_local
+
+
 
  END MODULE gust_mod

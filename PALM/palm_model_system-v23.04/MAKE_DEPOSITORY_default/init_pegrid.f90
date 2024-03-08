@@ -13,6 +13,68 @@
 ! You should have received a copy of the GNU General Public License along with PALM. If not, see
 ! <http://www.gnu.org/licenses/>.
 !
+! Current revisions:
+! ------------------
+!
+!
+! Former revisions:
+! -----------------
+! $Id: init_pegrid.f90 4648 2020-08-25 07:52:08Z raasch $
+! file re-formatted to follow the PALM coding standard
+!
+! 4564 2020-06-12 14:03:36Z raasch
+! Vertical nesting method of Huq et al. (2019) removed
+!
+! 4461 2020-03-12 16:51:59Z raasch
+! communicator configurations for four virtual pe grids defined
+!
+! 4444 2020-03-05 15:59:50Z raasch
+! bugfix: cpp-directives for serial mode added
+!
+! 4360 2020-01-07 11:25:50Z suehring
+! changed message PA0467
+!
+! 4264 2019-10-15 16:00:23Z scharf
+! corrected error message string
+!
+! 4241 2019-09-27 06:32:47Z raasch
+! Check added to ensure that subdomain grid has at least the size as given by the number of ghost
+! points
+!
+! 4182 2019-08-22 15:20:23Z scharf
+! Corrected "Former revisions" section
+!
+! 4045 2019-06-21 10:58:47Z raasch
+! bugfix: kind attribute added to nint function to allow for large integers which may appear in case
+!         of default recycling width and small grid spacings
+!
+! 3999 2019-05-23 16:09:37Z suehring
+! Spend 3 ghost points also in case of pw-scheme when nesting is applied
+!
+! 3897 2019-04-15 11:51:14Z suehring
+! Minor revision of multigrid check; give warning instead of an abort.
+!
+! 3890 2019-04-12 15:59:20Z suehring
+! Check if grid coarsening is possible on subdomain, in order to avoid that multigrid approach
+! effectively reduces to a Gauss-Seidel scheme.
+!
+! 3885 2019-04-11 11:29:34Z kanani
+! Changes related to global restructuring of location messages and introduction of additional debug
+! messages
+!
+! 3884 2019-04-10 13:31:55Z Giersch
+! id_recycling is only calculated in case of tubulent inflow
+!
+! 3761 2019-02-25 15:31:42Z raasch
+! unused variable removed
+!
+! 3655 2019-01-07 16:51:22Z knoop
+! variables documented
+!
+! Revision 1.1  1997/07/24 11:15:09  raasch
+! Initial revision
+!
+!
 ! Description:
 ! ------------
 !> Determination of the virtual processor topology (if not prescribed by the user) and computation
@@ -21,88 +83,31 @@
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE init_pegrid
 
-#if defined( __parallel )
-    USE MPI
-#endif
 
     USE control_parameters,                                                                        &
-        ONLY:  bc_dirichlet_l,                                                                     &
-               bc_dirichlet_n,                                                                     &
-               bc_dirichlet_r,                                                                     &
-               bc_dirichlet_s,                                                                     &
-               bc_lr,                                                                              &
-               bc_ns,                                                                              &
-               bc_radiation_l,                                                                     &
-               bc_radiation_n,                                                                     &
-               bc_radiation_r,                                                                     &
-               bc_radiation_s,                                                                     &
-               grid_level,                                                                         &
-               grid_level_count,                                                                   &
-               maximum_grid_level,                                                                 &
-               message_string,                                                                     &
-               mg_switch_to_pe0_level,                                                             &
-               pe_grid_prescribed,                                                                 &
-               psolver,                                                                            &
-               serial_run
+        ONLY:  bc_dirichlet_l, bc_dirichlet_n, bc_dirichlet_r, bc_dirichlet_s, bc_lr, bc_ns,       &
+               bc_radiation_l, bc_radiation_n, bc_radiation_r, bc_radiation_s, grid_level,         &
+               grid_level_count, maximum_grid_level, message_string, mg_switch_to_pe0_level, psolver
+
 
 #if defined( __parallel )
     USE control_parameters,                                                                        &
-        ONLY:  gathered_size,                                                                      &
-               momentum_advec,                                                                     &
-               outflow_source_plane,                                                               &
-               scalar_advec,                                                                       &
-               subdomain_size,                                                                     &
-               syn_turb_gen,                                                                       &
-               turbulent_inflow,                                                                   &
-               turbulent_outflow,                                                                  &
-               use_sm_for_poisfft,                                                                 &
-               y_shift
+        ONLY:  coupling_mode, coupling_topology, gathered_size, momentum_advec,                    &
+               outflow_source_plane, recycling_width, scalar_advec, subdomain_size,                &
+               turbulent_inflow, turbulent_outflow, y_shift
 
     USE grid_variables,                                                                            &
         ONLY:  dx
 #endif
 
     USE indices,                                                                                   &
-        ONLY:  nnx,                                                                                &
-               nny,                                                                                &
-               nnz,                                                                                &
-               nx,                                                                                 &
-               nxl,                                                                                &
-               nxl_mg,                                                                             &
-               nxlu,                                                                               &
-               nxr,                                                                                &
-               nxr_mg,                                                                             &
-               ny,                                                                                 &
-               nyn,                                                                                &
-               nyn_mg,                                                                             &
-               nys,                                                                                &
-               nys_mg,                                                                             &
-               nysv,                                                                               &
-               nz,                                                                                 &
-               nzb,                                                                                &
-               nzt,                                                                                &
-               nzt_mg,                                                                             &
-               topo_flags_1,                                                                       &
-               topo_flags_2,                                                                       &
-               topo_flags_3,                                                                       &
-               topo_flags_4,                                                                       &
-               topo_flags_5,                                                                       &
-               topo_flags_6,                                                                       &
-               topo_flags_7,                                                                       &
-               topo_flags_8,                                                                       &
-               topo_flags_9,                                                                       &
-               topo_flags_10
+        ONLY:  nnx, nny, nnz, nx, nxl, nxl_mg, nxlu, nxr, nxr_mg, ny, nyn, nyn_mg, nys, nys_mg,    &
+               nysv, nz, nzb, nzt, nzt_mg, wall_flags_1, wall_flags_2, wall_flags_3, wall_flags_4, &
+               wall_flags_5, wall_flags_6, wall_flags_7, wall_flags_8, wall_flags_9, wall_flags_10
 
 #if defined( __parallel )
     USE indices,                                                                                   &
-        ONLY:  mg_loc_ind,                                                                         &
-               nbgp,                                                                               &
-               nnx_pe,                                                                             &
-               nny_pe,                                                                             &
-               nxl_pe,                                                                             &
-               nxr_pe,                                                                             &
-               nyn_pe,                                                                             &
-               nys_pe
+        ONLY:  mg_loc_ind, nbgp, nx_a, nx_o, ny_a, ny_o
 #endif
 
     USE kinds
@@ -113,78 +118,29 @@
     USE pmc_interface,                                                                             &
         ONLY:  nested_run
 
+    USE spectra_mod,                                                                               &
+        ONLY:  calculate_spectra
+
     USE synthetic_turbulence_generator_mod,                                                        &
-        ONLY:  id_stg_left,                                                                        &
-               id_stg_north,                                                                       &
-               id_stg_right,                                                                       &
-               id_stg_south
+        ONLY:  id_stg_left, id_stg_north, id_stg_right, id_stg_south, use_syn_turb_gen
 #endif
 
-    USE turbulent_inflow_mod,                                                                      &
-        ONLY:  turbulent_inflow_method
-
-    USE transpose_mod,                                                                             &
-        ONLY:  nnx_x_max,                                                                          &
-               nxl_y,                                                                              &
-               nxl_z,                                                                              &
-               nxr_x_max,                                                                          &
-               nxr_y,                                                                              &
-               nxr_z,                                                                              &
-               nx_y_max,                                                                           &
-               nyn_x,                                                                              &
-               nyn_x_max,                                                                          &
-               nyn_z,                                                                              &
-               nys_x,                                                                              &
-               nys_z,                                                                              &
-               ny_z_max,                                                                           &
-               nzb_x,                                                                              &
-               nzb_y,                                                                              &
-               nzt_x,                                                                              &
-               nzt_y,                                                                              &
-               nzt_y_max,                                                                          &
-               nz_x_max
+    USE transpose_indices,                                                                         &
+        ONLY:  nxl_y, nxl_z, nxr_y, nxr_z, nyn_x, nyn_z, nys_x, nys_z, nzb_x, nzb_y, nzt_x, nzt_y
 
 #if defined( __parallel )
-    USE transpose_mod,                                                                             &
-        ONLY:  nnx_y_max,                                                                          &
-               nny_yd_max,                                                                         &
-               nny_z_max,                                                                          &
-               nnz_x_max,                                                                          &
-               nnz_yd_max,                                                                         &
-               nnz_z_max,                                                                          &
-               nxl_y_pe,                                                                           &
-               nxl_yd,                                                                             &
-               nxr_y_max,                                                                          &
-               nxr_y_pe,                                                                           &
-               nxr_yd,                                                                             &
-               nyn_yd_max,                                                                         &
-               nyn_z_max,                                                                          &
-               nyn_z_pe,                                                                           &
-               nys_z_pe,                                                                           &
-               nzb_x_pe,                                                                           &
-               nzb_yd,                                                                             &
-               nzb_yd_pe,                                                                          &
-               nzt_x_max,                                                                          &
-               nzt_x_pe,                                                                           &
-               nzt_yd,                                                                             &
-               nzt_yd_max,                                                                         &
-               nzt_yd_pe,                                                                          &
-               nz_yd_max
-
-    USE sm_poisfft_mod,                                                                            &
-        ONLY:  sm_poisfft
+    USE transpose_indices,                                                                         &
+        ONLY:  nxl_yd, nxr_yd, nzb_yd, nzt_yd
 #endif
 
     IMPLICIT NONE
 
-#if defined( __parallel )
-    CHARACTER(LEN=7) ::  myid_char_prel = ''  !< preliminary processor id number
-#endif
-
     INTEGER(iwp) ::  i                        !< running index over number of processors or number of multigrid level
 #if defined( __parallel )
+    INTEGER(iwp) ::  id_inflow_l              !< ID indicating processors located at the left inflow boundary
     INTEGER(iwp) ::  id_outflow_l             !< local value of id_outflow
     INTEGER(iwp) ::  id_outflow_source_l      !< local value of id_outflow_source
+    INTEGER(iwp) ::  id_recycling_l           !< ID indicating processors located at the recycling plane
     INTEGER(iwp) ::  id_stg_left_l            !< left lateral boundary local core id in case of turbulence generator
     INTEGER(iwp) ::  id_stg_north_l           !< north lateral boundary local core id in case of turbulence generator
     INTEGER(iwp) ::  id_stg_right_l           !< right lateral boundary local core id in case of turbulence generator
@@ -218,12 +174,16 @@
 
 #if defined( __parallel )
     INTEGER(iwp), DIMENSION(:), ALLOCATABLE ::  ind_all !< dummy array containing index bounds on subdomain, used for gathering
-    INTEGER(iwp), DIMENSION(2) ::  npe_xy = 1     !< number of processors along x-y dimension
-    INTEGER(iwp)               ::  lcoord(2)      !< PE coordinates of left neighbor along x and y
-    INTEGER(iwp)               ::  rcoord(2)      !< PE coordinates of right neighbor along x and y
-    INTEGER(iwp)               ::  irest_x        !< remaining grid points along x in case of non-uniform subdomains
-    INTEGER(iwp)               ::  irest_y        !< remaining grid points along y in case of non-uniform subdomains
+    INTEGER(iwp), DIMENSION(:), ALLOCATABLE ::  nxlf    !< lower index bound allong x-direction for every PE
+    INTEGER(iwp), DIMENSION(:), ALLOCATABLE ::  nxrf    !< upper index bound allong x-direction for every PE
+    INTEGER(iwp), DIMENSION(:), ALLOCATABLE ::  nynf    !< lower index bound allong y-direction for every PE
+    INTEGER(iwp), DIMENSION(:), ALLOCATABLE ::  nysf    !< lower index bound allong y-direction for every PE
+
+    INTEGER(iwp), DIMENSION(2) ::  pdims_remote         !< number of PEs used for coupled model (only in atmospher-ocean coupling)
+    INTEGER(iwp)               ::  lcoord(2)            !< PE coordinates of left neighbor along x and y
+    INTEGER(iwp)               ::  rcoord(2)            !< PE coordinates of right neighbor along x and y
 #endif
+
 !
 !-- Get the number of OpenMP threads
     !$OMP PARALLEL
@@ -239,43 +199,16 @@
 !-- Determine the processor topology or check it, if prescribed by the user
     IF ( npex == -1  .AND.  npey == -1 )  THEN
 
-       IF ( psolver /= 'poisfft_sm' )  THEN
 !
-!--       Automatic determination of the topology.
-          numproc_sqr = SQRT( REAL( numprocs, KIND=wp ) )
-          npex        = MAX( numproc_sqr , 1 )
-          DO  WHILE ( MOD( numprocs , npex ) /= 0 )
-             npex = npex - 1
-          ENDDO
-          npey = numprocs / npex
-!
-!--       Set internal flag that shared memory Poisson-FFT-solver is not used.
-          CALL sm_poisfft%sm_init_pegrid_poisfft( .FALSE. )
-       ELSE
-!
-!--       Topology is defined by the shared memory Poisson-FFT-solver.
-!--       First check requirements. Further requirements will be checked in sm_init_pegrid_poisfft.
-          IF ( numprocs < 4 )  THEN
-             message_string = 'psolver = "poisfft_sm" does not work for less than 4 PEs'
-             CALL message( 'init_pegrid', 'PAC0231', 1, 2, 0, 6, 0 )
-          ENDIF
-
-!
-!--       Set internal flags that shared memory Poisson-FFT-solver used.
-          CALL sm_poisfft%sm_init_pegrid_poisfft( .TRUE. )
-          use_sm_for_poisfft = .TRUE.
-       ENDIF
+!--    Automatic determination of the topology
+       numproc_sqr = SQRT( REAL( numprocs, KIND=wp ) )
+       pdims(1)    = MAX( numproc_sqr , 1 )
+       DO  WHILE ( MOD( numprocs , pdims(1) ) /= 0 )
+          pdims(1) = pdims(1) - 1
+       ENDDO
+       pdims(2) = numprocs / pdims(1)
 
     ELSEIF ( npex /= -1  .AND.  npey /= -1 )  THEN
-
-       IF ( psolver == 'poisfft_sm' )  THEN
-          message_string = 'psolver = "poisfft_sm" does not allow setting of npex and/or npey'
-          CALL message( 'init_pegrid', 'PAC0232', 1, 2, 0, 6, 0 )
-       ELSE
-!
-!--       Set internal flag that shared memory Poisson-FFT-solver is not used.
-          CALL sm_poisfft%sm_init_pegrid_poisfft( .FALSE. )
-       ENDIF
 
 !
 !--    Prescribed by user. Number of processors on the prescribed topology must be equal to the
@@ -284,27 +217,28 @@
           WRITE( message_string, * ) 'number of PEs of the prescribed ', 'topology (', npex*npey,  &
                                      ') does not match & the number of ',                          &
                                      'PEs available to the job (', numprocs, ')'
-          CALL message( 'init_pegrid', 'PAC0233', 1, 2, 0, 6, 0 )
+          CALL message( 'init_pegrid', 'PA0221', 1, 2, 0, 6, 0 )
        ENDIF
-       pe_grid_prescribed = .TRUE.
+       pdims(1) = npex
+       pdims(2) = npey
 
     ELSE
 !
 !--    If the processor topology is prescribed by the user, the number of
 !--    PEs must be given in both directions
-       message_string = 'both values of "npex" and "npey" must be given in the namelist ' //       &
-                        'parameter file'
-       CALL message( 'init_pegrid', 'PAC0234', 1, 2, 0, 6, 0 )
+       message_string = 'if the processor topology is prescribed by th' //                         &
+                        'e user & both values of "npex" and "npey" must be given' //               &
+                        ' in the &NAMELIST-parameter file'
+       CALL message( 'init_pegrid', 'PA0222', 1, 2, 0, 6, 0 )
 
     ENDIF
+
 !
 !-- Create four default MPI communicators for the 2d virtual PE grid. One of them will be used as
 !-- the main communicator for this run, while others might be used for specific quantities like
 !-- aerosol, chemical species, or passive scalars), if their horizontal boundary conditions shall
 !-- be different from those of the other quantities (e.g. non-cyclic conditions for aerosols, and
 !-- cyclic conditions for all others).
-    npe_xy(1) = npex
-    npe_xy(2) = npey
     DO  i = 1, 4
 
        IF ( i == 1 )  cyclic = (/  .TRUE., .TRUE.  /)   ! cyclic along x and y
@@ -312,7 +246,7 @@
        IF ( i == 3 )  cyclic = (/ .FALSE., .TRUE.  /)   ! cyllic along y
        IF ( i == 4 )  cyclic = (/ .FALSE., .FALSE. /)   ! non-cyclic
 
-       CALL MPI_CART_CREATE( comm_palm, ndim, npe_xy, cyclic, reorder,                             &
+       CALL MPI_CART_CREATE( comm_palm, ndim, pdims, cyclic, reorder,                              &
                              communicator_configurations(i)%mpi_communicator, ierr )
 
        CALL MPI_CART_SHIFT( communicator_configurations(i)%mpi_communicator, 0, 1,                 &
@@ -345,22 +279,11 @@
     pnorth = communicator_configurations(i)%pnorth
 
 !
-!-- Set rank and coordinates of the main communicator.
-    myid_char_prel = myid_char
+!-- Set rank and coordinates of the main communicator
     CALL MPI_COMM_RANK( comm2d, myid, ierr )
-    WRITE( myid_char, '(''_'',I6.6)' )  myid
+    WRITE (myid_char,'(''_'',I6.6)')  myid
 
     CALL MPI_CART_COORDS( comm2d, myid, ndim, pcoord, ierr )
-
-!
-!-- Check, for security reasons, if the PE-id has changed between the preliminary communicator
-!-- comm_palm (see main routine palm) and the final communicator comm2d. This should not happen (see
-!-- respective comments in main routine).
-    IF ( myid_char /= myid_char_prel )  THEN
-       message_string = 'mismatch in PE-id: preliminary is "' // myid_char_prel //                 &
-                        '"&comm2d-ID is "' // myid_char // '"'
-       CALL message( 'init_pegrid', 'PAC0235', 0, 1, myid, 6, 0 )
-    ENDIF
 
 !
 !-- In case of cyclic boundary conditions, a y-shift at the boundaries in x-direction can be
@@ -376,7 +299,7 @@
        IF ( bc_lr == 'cyclic' ) THEN
           IF ( TRIM( psolver ) /= 'multigrid' .AND.  TRIM( psolver ) /= 'multigrid_noopt')  THEN
              message_string = 'y_shift /= 0 requires a multigrid pressure solver '
-             CALL message( 'init_pegrid', 'PAC0236', 1, 2, 0, 6, 0 )
+             CALL message( 'check_parameters', 'PA0468', 1, 2, 0, 6, 0 )
           ENDIF
 
           CALL MPI_CART_COORDS( comm2d, pright, ndim, rcoord, ierr )
@@ -395,31 +318,24 @@
 !--       neighbor's y-coordinate exceeds the grid-boundary, it will be relocated to the opposite
 !--       part of the grid cyclicly.
           IF ( rcoord(1) < pcoord(1) )  THEN
-             rcoord(2) = MODULO( rcoord(2) + y_shift, npey )
+             rcoord(2) = MODULO( rcoord(2) + y_shift, pdims(2) )
              CALL MPI_CART_RANK( comm2d, rcoord, pright, ierr )
           ENDIF
 
           IF ( lcoord(1) > pcoord(1) )  THEN
-             lcoord(2) = MODULO( lcoord(2) - y_shift, npey )
+             lcoord(2) = MODULO( lcoord(2) - y_shift, pdims(2) )
              CALL MPI_CART_RANK( comm2d, lcoord, pleft, ierr )
           ENDIF
 
        ELSE
 !
-!--       y-shift for non-cyclic boundary conditions is only possible for turbulent inflow using
-!--       the recycling method.
-          IF ( .NOT. turbulent_inflow  .OR.  TRIM( turbulent_inflow_method ) == 'read_from_file' ) &
-          THEN
+!--       y-shift for non-cyclic boundary conditions is only implemented
+!--       for the turbulence recycling method in inflow_turbulence.f90
+          IF ( .NOT. turbulent_inflow )  THEN
              message_string = 'y_shift /= 0 is only allowed for cyclic ' //                        &
                               'boundary conditions in both directions '  //                        &
-                              '&or with turbulent_inflow_method = "recycle_...".'
-             CALL message( 'init_pegrid', 'PAC0237', 1, 2, 0, 6, 0 )
-          ENDIF
-!
-!--       y-shift requires uniform subdomains along y.
-          IF ( MOD( ny+1, npey ) /= 0 )  THEN
-             message_string = 'y_shift requires that subdomains are uniform along y-direction'
-             CALL message( 'init_pegrid', 'PAC0238', 1, 2, 0, 6, 0 )
+                              'or with turbulent_inflow == .TRUE.'
+             CALL message( 'check_parameters', 'PA0467', 1, 2, 0, 6, 0 )
           ENDIF
        ENDIF
     ENDIF
@@ -437,94 +353,55 @@
     remain_dims(2) = .TRUE.
     CALL MPI_CART_SUB( comm2d, remain_dims, comm1dy, ierr )
     CALL MPI_COMM_RANK( comm1dy, myidy, ierr )
-!
-!-- Compare, if the virtual shared memory solver layout fits the virtual PE grid.
-!-- The PE rank of a shared memory block must fit myidy, the node rank of the shared memory block
-!-- must fit myidx.
-    IF ( psolver == 'poisfft_sm' )  CALL sm_poisfft%sm_check_layout
 
-!
-!-- Check if subdomains are uniform or non-uniform.
-    CALL check_subdomain_uniformity
-
-!
-!-- The multigrid solver doesn't allow non-uniform subdomains, because then subdomains would have
-!-- different numbers of coarsening levels.
-    IF ( non_uniform_subdomain  .AND.  psolver(1:9) == 'multigrid' )  THEN
-       message_string = 'multigrid-solver does not allow to use non-uniform subdomains'
-       CALL message( 'init_pegrid', 'PAC0239', 1, 2, 0, 6, 0 )
-    ENDIF
 
 !
 !-- Calculate array bounds along x-direction for every PE.
-    ALLOCATE( nnx_pe(0:npex-1), nny_pe(0:npey-1), nxl_pe(0:npex-1),                    &
-              nxr_pe(0:npex-1), nyn_pe(0:npey-1), nys_pe(0:npey-1) )
+    ALLOCATE( nxlf(0:pdims(1)-1), nxrf(0:pdims(1)-1), nynf(0:pdims(2)-1), nysf(0:pdims(2)-1) )
+
+    IF ( MOD( nx+1 , pdims(1) ) /= 0 )  THEN
+       WRITE( message_string, * ) 'x-direction: gridpoint number (' ,nx+1, ') ',                   &
+                                  'is not an& integral multiple of the number',                    &
+                                  ' of processors (', pdims(1), ')'
+       CALL message( 'init_pegrid', 'PA0225', 1, 2, 0, 6, 0 )
+    ELSE
+       nnx  = ( nx + 1 ) / pdims(1)
+    ENDIF
 
 !
-!-- Compute the local index bounds (nxl, nyr, nys, nyn) on each of the subdomains.
-!-- Start with array bounds along x. Begin with calculating the minimum grid point
-!-- number and the possible rest.
-    nnx     = ( nx + 1 ) / npex
-    irest_x = MOD( nx+1, npex )
-!
-!-- Left and right array bounds on each PE.
-    DO  i = 0, npex-1
-       IF ( i < irest_x )  THEN
-!
-!--       PEs with low id will get one additional grid point (nnx+1), i.e. the surplus points
-!--       irest_x will be distributed among these PEs.
-          nxl_pe(i) = i         * ( nnx + 1 )
-          nxr_pe(i) = ( i + 1 ) * ( nnx + 1 ) - 1
-       ELSE
-!
-!--       The remaining PEs with higher id get nnx points. Be aware of the larger size
-!--       of the low id subdomains when calculating the left index bound.
-          nxl_pe(i) = irest_x * ( nnx + 1 ) + ( i - irest_x ) * nnx
-          nxr_pe(i) = nxl_pe(i) + nnx - 1
-       ENDIF
-!
-!--    Grid points along x.
-       nnx_pe(i) = nxr_pe(i) - nxl_pe(i) + 1
+!-- Left and right array bounds, number of gridpoints
+    DO  i = 0, pdims(1)-1
+       nxlf(i)   = i * nnx
+       nxrf(i)   = ( i + 1 ) * nnx - 1
     ENDDO
 
 !
-!-- Now calculate array bounds in y-direction. Begin with calculating the minimum grid point
-!-- number and the possible rest.
-    nny     = ( ny + 1 ) / npey
-    irest_y = MOD( ny+1, npey )
+!-- Calculate array bounds in y-direction for every PE.
+    IF ( MOD( ny+1 , pdims(2) ) /= 0 )  THEN
+       WRITE( message_string, * ) 'y-direction: gridpoint number (', ny+1, ') ',                   &
+                                  'is not an& integral multiple of the number',                    &
+                                  ' of processors (', pdims(2), ')'
+       CALL message( 'init_pegrid', 'PA0227', 1, 2, 0, 6, 0 )
+    ELSE
+       nny  = ( ny + 1 ) / pdims(2)
+    ENDIF
+
 !
-!-- South and north array bounds on each PE.
-    DO  j = 0, npey-1
-       IF ( j < irest_y )  THEN
-!
-!--       PEs with low id will get one additional grid point (nny+1), i.e. the surplus points
-!--       irest_y will be distributed among these PEs.
-          nys_pe(j) = j         * ( nny + 1 )
-          nyn_pe(j) = ( j + 1 ) * ( nny + 1 ) - 1
-       ELSE
-!
-!--       The remaining PEs with higher id get nny points. Be aware of the larger size
-!--       of the low id subdomains when calculating the left index bound.
-          nys_pe(j) = irest_y * ( nny + 1 ) + ( j - irest_y ) * nny
-          nyn_pe(j) = nys_pe(j) + nny - 1
-       ENDIF
-!
-!--    Grid points along y.
-       nny_pe(j) = nyn_pe(j) - nys_pe(j) + 1
+!-- South and north array bounds
+    DO  j = 0, pdims(2)-1
+       nysf(j)   = j * nny
+       nynf(j)   = ( j + 1 ) * nny - 1
     ENDDO
 
 !
-!-- Local array bounds and grid points on this PE.
-    nxl = nxl_pe(pcoord(1))
-    nxr = nxr_pe(pcoord(1))
-    nys = nys_pe(pcoord(2))
-    nyn = nyn_pe(pcoord(2))
+!-- Local array bounds of the respective PEs
+    nxl = nxlf(pcoord(1))
+    nxr = nxrf(pcoord(1))
+    nys = nysf(pcoord(2))
+    nyn = nynf(pcoord(2))
     nzb = 0
     nzt = nz
     nnz = nz
-
-    nnx = nxr-nxl+1
-    nny = nyn-nys+1
 
 !
 !-- Set switches to define if the PE is situated at the border of the virtual processor grid
@@ -535,13 +412,143 @@
 
 !
 !-- Calculate array bounds and gridpoint numbers for the transposed arrays (needed in the pressure
-!-- solver and partly for spectra calculation).
-    CALL setup_transpose_indices
+!-- solver)
+!-- For the transposed arrays, cyclic boundaries as well as top and bottom boundaries are omitted,
+!-- because they are obstructive to the transposition
 
 !
-!-- Collect index bounds from other PEs (to be written to Fortran I/O restart file later).
-!-- Note: Information in n.._pe arrays above is given for virtual PE grid coordinates, not for
-!--       the linear (COMM_WORLD) communicator. Therefore, data is gathered again here.
+!-- 1. transposition  z --> x
+!-- This transposition is not neccessary in case of a 1d-decomposition along x
+    IF ( psolver == 'poisfft'  .OR.  calculate_spectra )  THEN
+
+       IF ( pdims(2) /= 1 )  THEN
+          IF ( MOD( nz , pdims(1) ) /= 0 )  THEN
+             WRITE( message_string, * ) 'transposition z --> x:& ',                                &
+                                        'nz=', nz, ' is not an integral multiple ',                &
+                                        'of pdims(1)=', pdims(1)
+             CALL message( 'init_pegrid', 'PA0230', 1, 2, 0, 6, 0 )
+          ENDIF
+       ENDIF
+
+       nys_x = nys
+       nyn_x = nyn
+       nny_x = nny
+       nnz_x = nz / pdims(1)
+       nzb_x = 1 + myidx * nnz_x
+       nzt_x = ( myidx + 1 ) * nnz_x
+       sendrecvcount_zx = nnx * nny * nnz_x
+
+    ENDIF
+
+
+    IF ( psolver == 'poisfft' )  THEN
+!
+!--    2. transposition  x --> y
+       IF ( MOD( nx+1 , pdims(2) ) /= 0 )  THEN
+          WRITE( message_string, * ) 'transposition x --> y:& ',                                   &
+                                     'nx+1=', nx+1, ' is not an integral ',                        &
+                                     'multiple of pdims(2)=', pdims(2)
+          CALL message( 'init_pegrid', 'PA0231', 1, 2, 0, 6, 0 )
+       ENDIF
+
+       nnz_y = nnz_x
+       nzb_y = nzb_x
+       nzt_y = nzt_x
+       nnx_y = (nx+1) / pdims(2)
+       nxl_y = myidy * nnx_y
+       nxr_y = ( myidy + 1 ) * nnx_y - 1
+       sendrecvcount_xy = nnx_y * nny_x * nnz_y
+!
+!--    3. transposition  y --> z
+!--    (ELSE:  x --> y  in case of 1D-decomposition along x)
+       nxl_z = nxl_y
+       nxr_z = nxr_y
+       nny_z = (ny+1) / pdims(1)
+       nys_z = myidx * nny_z
+       nyn_z = ( myidx + 1 ) * nny_z - 1
+       sendrecvcount_yz = nnx_y * nny_z * nnz_y
+
+       IF ( pdims(2) /= 1 )  THEN
+!
+!--       y --> z
+!--       This transposition is not neccessary in case of a 1d-decomposition
+!--       along x, except that the uptream-spline method is switched on
+          IF ( MOD( ny+1 , pdims(1) ) /= 0 )  THEN
+             WRITE( message_string, * ) 'transposition y --> z:& ',                                &
+                                        'ny+1=', ny+1, ' is not an integral ',                     &
+                                        'multiple of pdims(1)=', pdims(1)
+             CALL message( 'init_pegrid', 'PA0232', 1, 2, 0, 6, 0 )
+          ENDIF
+
+       ELSE
+!
+!--       x --> y
+!--       This condition must be fulfilled for a 1D-decomposition along x
+          IF ( MOD( ny+1 , pdims(1) ) /= 0 )  THEN
+             WRITE( message_string, * ) 'transposition x --> y:& ',                                &
+                                        'ny+1=', ny+1, ' is not an integral ',                     &
+                                        'multiple of pdims(1)=', pdims(1)
+             CALL message( 'init_pegrid', 'PA0233', 1, 2, 0, 6, 0 )
+          ENDIF
+
+       ENDIF
+
+    ENDIF
+
+!
+!-- Indices for direct transpositions z --> y (used for calculating spectra)
+    IF ( calculate_spectra )  THEN
+       IF ( MOD( nz, pdims(2) ) /= 0 )  THEN
+          WRITE( message_string, * ) 'direct transposition z --> y (needed ',                      &
+                                     'for spectra):& nz=', nz, ' is not an ',                      &
+                                     'integral multiple of pdims(2)=', pdims(2)
+          CALL message( 'init_pegrid', 'PA0234', 1, 2, 0, 6, 0 )
+       ELSE
+          nxl_yd = nxl
+          nxr_yd = nxr
+          nzb_yd = 1 + myidy * ( nz / pdims(2) )
+          nzt_yd = ( myidy + 1 ) * ( nz / pdims(2) )
+          sendrecvcount_zyd = nnx * nny * ( nz / pdims(2) )
+       ENDIF
+    ENDIF
+
+    IF ( psolver == 'poisfft'  .OR.  calculate_spectra )  THEN
+!
+!--    Indices for direct transpositions y --> x
+!--    (they are only possible in case of a 1d-decomposition along x)
+       IF ( pdims(2) == 1 )  THEN
+          nny_x = nny / pdims(1)
+          nys_x = myid * nny_x
+          nyn_x = ( myid + 1 ) * nny_x - 1
+          nzb_x = 1
+          nzt_x = nz
+          sendrecvcount_xy = nnx * nny_x * nz
+       ENDIF
+
+    ENDIF
+
+    IF ( psolver == 'poisfft' )  THEN
+!
+!--    Indices for direct transpositions x --> y
+!--    (they are only possible in case of a 1d-decomposition along y)
+       IF ( pdims(1) == 1 )  THEN
+          nnx_y = nnx / pdims(2)
+          nxl_y = myid * nnx_y
+          nxr_y = ( myid + 1 ) * nnx_y - 1
+          nzb_y = 1
+          nzt_y = nz
+          sendrecvcount_xy = nnx_y * nny * nz
+       ENDIF
+
+    ENDIF
+
+!
+!-- Arrays for storing the array bounds are needed any more
+    DEALLOCATE( nxlf , nxrf , nynf , nysf )
+
+
+!
+!-- Collect index bounds from other PEs (to be written to restart file later)
     ALLOCATE( hor_index_bounds(4,0:numprocs-1) )
 
     IF ( myid == 0 )  THEN
@@ -569,9 +576,41 @@
 
     ENDIF
 
+
+#if defined( __print )
+!
+!-- Control output
+    IF ( myid == 0 )  THEN
+       PRINT*, '*** processor topology ***'
+       PRINT*, ' '
+       PRINT*, 'myid   pcoord    left right  south north  idx idy   nxl: nxr','   nys: nyn'
+       PRINT*, '------------------------------------------------------------','-----------'
+       WRITE (*,1000)  0, pcoord(1), pcoord(2), pleft, pright, psouth, pnorth, myidx, myidy, nxl,  &
+                       nxr, nys, nyn
+1000   FORMAT (I4,2X,'(',I3,',',I3,')',3X,I4,2X,I4,3X,I4,2X,I4,2X,I3,1X,I3,2(2X,I4,':',I4))
+
+!
+!--    Receive data from the other PEs
+       DO  i = 1,numprocs-1
+          CALL MPI_RECV( ibuf, 12, MPI_INTEGER, i, MPI_ANY_TAG, comm2d, status, ierr )
+          WRITE (*,1000)  i, ( ibuf(j) , j = 1,12 )
+       ENDDO
+    ELSE
+
+!
+!--    Send data to PE0
+       ibuf(1) = pcoord(1); ibuf(2) = pcoord(2); ibuf(3) = pleft
+       ibuf(4) = pright; ibuf(5) = psouth; ibuf(6) = pnorth; ibuf(7) = myidx
+       ibuf(8) = myidy; ibuf(9) = nxl; ibuf(10) = nxr; ibuf(11) = nys
+       ibuf(12) = nyn
+       CALL MPI_SEND( ibuf, 12, MPI_INTEGER, 0, myid, comm2d, ierr )
+    ENDIF
+#endif
+
 !
 !-- Determine the number of ghost point layers
-    IF ( scalar_advec == 'ws-scheme'  .OR.  momentum_advec == 'ws-scheme'  .OR.  nested_run )  THEN
+    IF ( scalar_advec   == 'ws-scheme'  .OR.                                                       &
+         momentum_advec == 'ws-scheme'  .OR.  nested_run )  THEN
        nbgp = 3
     ELSE
        nbgp = 1
@@ -583,12 +622,12 @@
     IF ( nnx < nbgp )  THEN
        WRITE( message_string, * ) 'number of subdomain grid points along x (', nnx, ') is smaller',&
                                   'than the number of ghost points (', nbgp, ')'
-       CALL message( 'init_pegrid', 'PAC0240', 1, 2, 0, 6, 0 )
+       CALL message( 'init_pegrid', 'PA0682', 1, 2, 0, 6, 0 )
     ENDIF
     IF ( nny < nbgp )  THEN
        WRITE( message_string, * ) 'number of subdomain grid points along y (', nny, ') is smaller',&
                                   'than the number of ghost points (', nbgp, ')'
-       CALL message( 'init_pegrid', 'PAC0240', 1, 2, 0, 6, 0 )
+       CALL message( 'init_pegrid', 'PA0683', 1, 2, 0, 6, 0 )
     ENDIF
 
 !
@@ -599,15 +638,95 @@
     CALL MPI_TYPE_VECTOR( ngp_xy, 1, nzt-nzb+2, MPI_REAL, type_xy, ierr )
     CALL MPI_TYPE_COMMIT( type_xy, ierr )
 
-    serial_run = .FALSE.
-#else
+    IF ( TRIM( coupling_mode ) /= 'uncoupled' )  THEN
 
 !
-!-- Else branch contains settings for serial run.
-    serial_run = .TRUE.
-    pe_grid_prescribed = .FALSE.
-    npex = 1
-    npey = 1
+!--    Pass the number of grid points of the atmosphere model to
+!--    the ocean model and vice versa
+       IF ( coupling_mode == 'atmosphere_to_ocean' )  THEN
+
+          nx_a = nx
+          ny_a = ny
+
+          IF ( myid == 0 )  THEN
+
+             CALL MPI_SEND( nx_a, 1, MPI_INTEGER, numprocs, 1, comm_inter, ierr )
+             CALL MPI_SEND( ny_a, 1, MPI_INTEGER, numprocs, 2, comm_inter,  ierr )
+             CALL MPI_SEND( pdims, 2, MPI_INTEGER, numprocs, 3, comm_inter, ierr )
+             CALL MPI_RECV( nx_o, 1, MPI_INTEGER, numprocs, 4, comm_inter, status, ierr )
+             CALL MPI_RECV( ny_o, 1, MPI_INTEGER, numprocs, 5, comm_inter, status, ierr )
+             CALL MPI_RECV( pdims_remote, 2, MPI_INTEGER, numprocs, 6, comm_inter, status, ierr )
+          ENDIF
+
+          CALL MPI_BCAST( nx_o, 1, MPI_INTEGER, 0, comm2d, ierr )
+          CALL MPI_BCAST( ny_o, 1, MPI_INTEGER, 0, comm2d, ierr )
+          CALL MPI_BCAST( pdims_remote, 2, MPI_INTEGER, 0, comm2d, ierr )
+
+       ELSEIF ( coupling_mode == 'ocean_to_atmosphere' )  THEN
+
+          nx_o = nx
+          ny_o = ny
+
+          IF ( myid == 0 )  THEN
+
+             CALL MPI_RECV( nx_a, 1, MPI_INTEGER, 0, 1, comm_inter, status, ierr )
+             CALL MPI_RECV( ny_a, 1, MPI_INTEGER, 0, 2, comm_inter, status, ierr )
+             CALL MPI_RECV( pdims_remote, 2, MPI_INTEGER, 0, 3, comm_inter, status, ierr )
+             CALL MPI_SEND( nx_o, 1, MPI_INTEGER, 0, 4, comm_inter, ierr )
+             CALL MPI_SEND( ny_o, 1, MPI_INTEGER, 0, 5, comm_inter, ierr )
+             CALL MPI_SEND( pdims, 2, MPI_INTEGER, 0, 6, comm_inter, ierr )
+          ENDIF
+
+          CALL MPI_BCAST( nx_a, 1, MPI_INTEGER, 0, comm2d, ierr)
+          CALL MPI_BCAST( ny_a, 1, MPI_INTEGER, 0, comm2d, ierr)
+          CALL MPI_BCAST( pdims_remote, 2, MPI_INTEGER, 0, comm2d, ierr)
+
+       ENDIF
+
+       ngp_a = ( nx_a+1 + 2 * nbgp ) * ( ny_a+1 + 2 * nbgp )
+       ngp_o = ( nx_o+1 + 2 * nbgp ) * ( ny_o+1 + 2 * nbgp )
+
+!
+!--    Determine if the horizontal grid and the number of PEs in ocean and atmosphere is same or not.
+       IF ( nx_o == nx_a  .AND.  ny_o == ny_a  .AND.                                               &
+            pdims(1) == pdims_remote(1)  .AND.  pdims(2) == pdims_remote(2) )  THEN
+          coupling_topology = 0
+       ELSE
+          coupling_topology = 1
+       ENDIF
+
+!
+!--    Determine the target PEs for the exchange between ocean and atmosphere (comm2d)
+       IF ( coupling_topology == 0 )  THEN
+!
+!--       In case of identical topologies, every atmosphere PE has exactly one ocean PE counterpart
+!--       and vice versa
+          IF ( TRIM( coupling_mode ) == 'atmosphere_to_ocean' )  THEN
+             target_id = myid + numprocs
+          ELSE
+             target_id = myid
+          ENDIF
+
+       ELSE
+!
+!--       In case of nonequivalent topology in ocean and atmosphere only for PE0 in ocean and PE0 in
+!--       atmosphere a target_id is needed, since data echxchange between ocean and atmosphere will
+!--       be done only between these PEs.
+          IF ( myid == 0 )  THEN
+
+             IF ( TRIM( coupling_mode ) == 'atmosphere_to_ocean' )  THEN
+                target_id = numprocs
+             ELSE
+                target_id = 0
+             ENDIF
+
+          ENDIF
+
+       ENDIF
+
+    ENDIF
+
+#else
 
 !
 !-- Array bounds when running on a single PE (respectively a non-parallel machine)
@@ -644,16 +763,6 @@
     nxr_z = nxr
     nys_z = nys
     nyn_z = nyn
-
-!
-!-- Set dimension variables here to be compatible with non-uniform grid.
-    nxr_x_max = nxr
-    nnx_x_max = nnx
-    nyn_x_max = nyn_x
-    nx_y_max  = nx
-    nz_x_max  = nz
-    nzt_y_max = nzt_y
-    ny_z_max  = ny
 
 #endif
 
@@ -694,7 +803,7 @@
 !--       An odd value of nz does not work. The finest level must have an even value.
           IF (  mg_levels_z == 0 )  THEN
              message_string = 'optimized multigrid method requires nz to be even'
-             CALL message( 'init_pegrid', 'PAC0241', 1, 2, 0, 6, 0 )
+             CALL message( 'init_pegrid', 'PA0495', 1, 2, 0, 6, 0 )
           ENDIF
        ENDIF
 
@@ -705,9 +814,11 @@
 !--    applied rather than a multigrid approach.
 !--    Give a warning in this case.
        IF ( maximum_grid_level == 1  .AND.  mg_switch_to_pe0_level == -1 )  THEN
-          message_string = 'no grid coarsening possible, multigrid ' //                            &
-                           'approach effectively reduces to a Gauss-Seidel scheme'
-          CALL message( 'poismg', 'PAC0242', 0, 1, 0, 6, 0 )
+          message_string = 'No grid coarsening possible, multigrid ' //                            &
+                           'approach effectively reduces to a Gauss-Seidel ' //                    &
+                           'scheme.'
+
+          CALL message( 'poismg', 'PA0648', 0, 1, 0, 6, 0 )
        ENDIF
 
 !
@@ -762,8 +873,9 @@
 !--          Check pre-defined value and reset to default, if neccessary
              IF ( mg_switch_to_pe0_level < mg_switch_to_pe0_level_l  .OR.                          &
                   mg_switch_to_pe0_level >= maximum_grid_level_l )  THEN
-                message_string = 'mg_switch_to_pe0_level out of range and reset to 0'
-                CALL message( 'init_pegrid', 'PAC0243', 0, 1, 0, 6, 0 )
+                message_string = 'mg_switch_to_pe0_level ' //                                      &
+                                 'out of range and reset to 0'
+                CALL message( 'init_pegrid', 'PA0235', 0, 1, 0, 6, 0 )
                 mg_switch_to_pe0_level = 0
              ELSE
 !
@@ -810,9 +922,9 @@
              DEALLOCATE( ind_all )
 !
 !--          Calculate the grid size of the total domain
-             nxr_l = ( nxr_l-nxl_l+1 ) * npex - 1
+             nxr_l = ( nxr_l-nxl_l+1 ) * pdims(1) - 1
              nxl_l = 0
-             nyn_l = ( nyn_l-nys_l+1 ) * npey - 1
+             nyn_l = ( nyn_l-nys_l+1 ) * pdims(2) - 1
              nys_l = 0
 !
 !--          The size of this gathered array must not be larger than the array tend, which is used
@@ -824,8 +936,9 @@
              gathered_size  = ( nxr_l - nxl_l + 3 ) * ( nyn_l - nys_l + 3 ) * ( nzt_l - nzb + 2 )
 
 #else
-             message_string = 'multigrid gather/scatter impossible in non parallel mode'
-             CALL message( 'init_pegrid', 'PAC0244', 1, 2, 0, 6, 0 )
+             message_string = 'multigrid gather/scatter impossible ' //                            &
+                          'in non parallel mode'
+             CALL message( 'init_pegrid', 'PA0237', 1, 2, 0, 6, 0 )
 #endif
           ENDIF
 
@@ -849,7 +962,7 @@
 !--    To be solved later.
        IF ( maximum_grid_level == mg_switch_to_pe0_level )  THEN
           message_string = 'grid coarsening on subdomain level cannot be performed'
-          CALL message( 'poismg', 'PAC0245', 1, 2, 0, 6, 0 )
+          CALL message( 'poismg', 'PA0236', 1, 2, 0, 6, 0 )
        ENDIF
 
     ELSE
@@ -1044,7 +1157,7 @@
 !-- In case of synthetic turbulence geneartor determine ids.
 !-- Please note, if no forcing or nesting is applied, the generator is applied only at the left
 !-- lateral boundary.
-    IF ( syn_turb_gen )  THEN
+    IF ( use_syn_turb_gen )  THEN
        IF ( bc_dirichlet_l )  THEN
           id_stg_left_l = myidx
        ELSE
@@ -1077,6 +1190,32 @@
 
        IF ( collective_wait )  CALL MPI_BARRIER( comm2d, ierr )
        CALL MPI_ALLREDUCE( id_stg_north_l, id_stg_north, 1, MPI_INTEGER, MPI_SUM, comm1dy, ierr )
+
+    ENDIF
+
+!
+!-- Broadcast the id of the inflow PE
+    IF ( bc_dirichlet_l )  THEN
+       id_inflow_l = myidx
+    ELSE
+       id_inflow_l = 0
+    ENDIF
+    IF ( collective_wait )  CALL MPI_BARRIER( comm2d, ierr )
+    CALL MPI_ALLREDUCE( id_inflow_l, id_inflow, 1, MPI_INTEGER, MPI_SUM, comm1dx, ierr )
+
+!
+!-- Broadcast the id of the recycling plane
+!-- WARNING: needs to be adjusted in case of inflows other than from left side!
+    IF ( turbulent_inflow ) THEN
+
+       IF ( NINT( recycling_width / dx, KIND=idp ) >= nxl  .AND.                                   &
+            NINT( recycling_width / dx, KIND=idp ) <= nxr )  THEN
+          id_recycling_l = myidx
+       ELSE
+          id_recycling_l = 0
+       ENDIF
+       IF ( collective_wait )  CALL MPI_BARRIER( comm2d, ierr )
+       CALL MPI_ALLREDUCE( id_recycling_l, id_recycling, 1, MPI_INTEGER, MPI_SUM, comm1dx, ierr )
 
     ENDIF
 
@@ -1147,267 +1286,63 @@
            SELECT CASE ( i )
 
               CASE ( 1 )
-                 ALLOCATE( topo_flags_1(nzb:nzt_mg(i)+1,                                           &
+                 ALLOCATE( wall_flags_1(nzb:nzt_mg(i)+1,                                           &
                                         nys_mg(i)-1:nyn_mg(i)+1,                                   &
                                         nxl_mg(i)-1:nxr_mg(i)+1) )
 
               CASE ( 2 )
-                 ALLOCATE( topo_flags_2(nzb:nzt_mg(i)+1,                                           &
+                 ALLOCATE( wall_flags_2(nzb:nzt_mg(i)+1,                                           &
                                         nys_mg(i)-1:nyn_mg(i)+1,                                   &
                                         nxl_mg(i)-1:nxr_mg(i)+1) )
 
               CASE ( 3 )
-                 ALLOCATE( topo_flags_3(nzb:nzt_mg(i)+1,                                           &
+                 ALLOCATE( wall_flags_3(nzb:nzt_mg(i)+1,                                           &
                                         nys_mg(i)-1:nyn_mg(i)+1,                                   &
                                         nxl_mg(i)-1:nxr_mg(i)+1) )
 
               CASE ( 4 )
-                 ALLOCATE( topo_flags_4(nzb:nzt_mg(i)+1,                                           &
+                 ALLOCATE( wall_flags_4(nzb:nzt_mg(i)+1,                                           &
                                         nys_mg(i)-1:nyn_mg(i)+1,                                   &
                                         nxl_mg(i)-1:nxr_mg(i)+1) )
 
               CASE ( 5 )
-                 ALLOCATE( topo_flags_5(nzb:nzt_mg(i)+1,                                           &
+                 ALLOCATE( wall_flags_5(nzb:nzt_mg(i)+1,                                           &
                                         nys_mg(i)-1:nyn_mg(i)+1,                                   &
                                         nxl_mg(i)-1:nxr_mg(i)+1) )
 
               CASE ( 6 )
-                 ALLOCATE( topo_flags_6(nzb:nzt_mg(i)+1,                                           &
+                 ALLOCATE( wall_flags_6(nzb:nzt_mg(i)+1,                                           &
                                         nys_mg(i)-1:nyn_mg(i)+1,                                   &
                                         nxl_mg(i)-1:nxr_mg(i)+1) )
 
               CASE ( 7 )
-                 ALLOCATE( topo_flags_7(nzb:nzt_mg(i)+1,                                           &
+                 ALLOCATE( wall_flags_7(nzb:nzt_mg(i)+1,                                           &
                                         nys_mg(i)-1:nyn_mg(i)+1,                                   &
                                         nxl_mg(i)-1:nxr_mg(i)+1) )
 
               CASE ( 8 )
-                 ALLOCATE( topo_flags_8(nzb:nzt_mg(i)+1,                                           &
+                 ALLOCATE( wall_flags_8(nzb:nzt_mg(i)+1,                                           &
                                         nys_mg(i)-1:nyn_mg(i)+1,                                   &
                                         nxl_mg(i)-1:nxr_mg(i)+1) )
 
               CASE ( 9 )
-                 ALLOCATE( topo_flags_9(nzb:nzt_mg(i)+1,                                           &
+                 ALLOCATE( wall_flags_9(nzb:nzt_mg(i)+1,                                           &
                                         nys_mg(i)-1:nyn_mg(i)+1,                                   &
                                         nxl_mg(i)-1:nxr_mg(i)+1) )
 
               CASE ( 10 )
-                 ALLOCATE( topo_flags_10(nzb:nzt_mg(i)+1,                                          &
+                 ALLOCATE( wall_flags_10(nzb:nzt_mg(i)+1,                                          &
                                         nys_mg(i)-1:nyn_mg(i)+1,                                   &
                                         nxl_mg(i)-1:nxr_mg(i)+1) )
 
               CASE DEFAULT
                  message_string = 'more than 10 multigrid levels'
-                 CALL message( 'init_pegrid', 'PAC0246', 1, 2, 0, 6, 0 )
+                 CALL message( 'init_pegrid', 'PA0238', 1, 2, 0, 6, 0 )
 
           END SELECT
 
        ENDDO
 
     ENDIF
-
-#if defined( __parallel )
- CONTAINS
-
-!--------------------------------------------------------------------------------------------------!
-! Description:
-! ------------
-!> Checks, if the total domain can be split up to uniform subdomains, so that each PE gets the
-!> same number of gridpoints.
-!--------------------------------------------------------------------------------------------------!
- SUBROUTINE check_subdomain_uniformity
-
-!
-!-- Check if current grid and PE combination requires non-uniform subdomains.
-    IF ( MOD( nx+1, npex ) == 0  .AND.  MOD( ny+1, npey ) == 0 )  THEN
-
-!
-!--    Since PE numbers are integral divisors of total grid point numbers,
-!--    the subdomains are uniform.
-       non_uniform_subdomain = .FALSE.
-!
-!--    Data arrays to be transposed have additional requirements concerning uniformity.
-!--    the following conditions is true.
-       IF ( psolver == 'poisfft_sm' )  THEN
-          IF ( MOD( nz, npey ) /= 0  .OR.  MOD( nx+1, npey ) /= 0  .OR.  MOD( ny+1, npex ) /= 0 )  &
-          THEN
-             non_uniform_data_for_transpose = .TRUE.
-          ENDIF
-       ELSE
-          IF ( MOD( nz, npex ) /= 0  .OR.  MOD( nx+1, npey ) /= 0  .OR.  MOD( ny+1, npex ) /= 0 )  &
-          THEN
-             non_uniform_data_for_transpose = .TRUE.
-          ENDIF
-       ENDIF
-
-    ELSE
-
-       non_uniform_subdomain = .TRUE.
-       non_uniform_data_for_transpose = .TRUE.
-
-    ENDIF
-
- END SUBROUTINE check_subdomain_uniformity
-
-
-!--------------------------------------------------------------------------------------------------!
-! Description:
-! ------------
-!> Calculates indices and gridpoint numbers required for transposition of 3d-arrays in case
-!> of a domain decomposition which has non-uniform subdomains.
-!--------------------------------------------------------------------------------------------------!
- SUBROUTINE setup_transpose_indices
-
-    INTEGER(iwp) ::  i
-    INTEGER(iwp) ::  irest_xy
-    INTEGER(iwp) ::  irest_yd
-    INTEGER(iwp) ::  irest_yz
-    INTEGER(iwp) ::  irest_z
-    INTEGER(iwp) ::  j
-    INTEGER(iwp) ::  k
-    INTEGER(iwp) ::  nnz_yd
-
-
-    ALLOCATE( nxl_y_pe(0:npey-1) )
-    ALLOCATE( nxr_y_pe(0:npey-1) )
-    ALLOCATE( nyn_z_pe(0:npex-1) )
-    ALLOCATE( nys_z_pe(0:npex-1) )
-    ALLOCATE( nzb_x_pe(0:npex-1) )
-    ALLOCATE( nzt_x_pe(0:npex-1) )
-
-!
-!-- 1. transposition  z --> x
-    nys_x   = nys
-    nyn_x   = nyn
-    nny_x   = nny
-    nnz_x   = nz / npex
-    irest_z = MOD( nz, npex )
-
-    DO  k = 0, npex-1
-       IF ( k < irest_z )  THEN
-          nzb_x_pe(k) = k * ( nnz_x + 1 ) + 1
-          nzt_x_pe(k) = nzb_x_pe(k) + ( nnz_x + 1 ) - 1
-       ELSE
-          nzb_x_pe(k) = irest_z * ( nnz_x + 1 ) + ( k - irest_z ) * nnz_x + 1
-          nzt_x_pe(k) = nzb_x_pe(k) + nnz_x - 1
-       ENDIF
-    ENDDO
-
-    nzb_x = nzb_x_pe(myidx)
-    nzt_x = nzt_x_pe(myidx)
-    nnz_x = nzt_x - nzb_x + 1
-!
-!-- Calculate index bounds and number of grid points that are required for allocating the
-!-- 3d-arrays used by the transpose routine. Arrays on all PEs need to have identical size.
-!-- Therefore, the dimensions defined on PE0 are used, because in case of non-uniform
-!-- subdomains, at least on PE0 the respective arrays contain one more grid point than on the
-!-- other PEs.
-    nxr_x_max = nxl + nnx_pe(0) - 1
-    nnx_x_max = nnx_pe(0)
-    nnz_x_max = nzt_x_pe(0) - nzb_x_pe(0) + 1
-    nz_x_max  = npex * nnz_x_max
-    nzt_x_max = nzb_x + nnz_x_max - 1
-    sendrecvcount_zx = nnx_x_max * nny * nnz_x_max
-
-!
-!-- 2. transposition  x --> y
-    nnz_y    = nnz_x
-    nzb_y    = nzb_x
-    nzt_y    = nzt_x
-    nnx_y    = (nx+1) / npey
-    irest_xy = MOD( (nx+1), npey )
-
-    DO  j = 0, npey-1
-       IF ( j < irest_xy )  THEN
-          nxl_y_pe(j) = j * ( nnx_y + 1 )
-          nxr_y_pe(j) = nxl_y_pe(j) + ( nnx_y + 1 ) - 1
-       ELSE
-          nxl_y_pe(j) = irest_xy * ( nnx_y + 1 ) + ( j - irest_xy ) * nnx_y
-          nxr_y_pe(j) = nxl_y_pe(j) + nnx_y - 1
-       ENDIF
-    ENDDO
-
-    nxl_y = nxl_y_pe(myidy)
-    nxr_y = nxr_y_pe(myidy)
-    nnx_y = nxr_y - nxl_y + 1
-!
-!-- Calculate index bounds and number of grid points that are required for allocating the
-!-- 3d-arrays used by the transpose routine. Arrays on all PEs need to have identical size.
-!-- Therefore, the dimensions defined on PE0 are used, because in case of non-uniform
-!-- subdomains, at least on PE0 the respective arrays contain one more grid point than on the
-!-- other PEs.
-    nyn_x_max = nys_x + nny_pe(0) - 1
-    nx_y_max  = npey * ( nxr_y_pe(0) - nxl_y_pe(0) + 1 ) - 1
-    nnx_y_max = nxr_y_pe(0) - nxl_y_pe(0) + 1
-    nxr_y_max = nxl_y + nxr_y_pe(0) - nxl_y_pe(0)
-    sendrecvcount_xy = ( nyn_x_max-nys_x + 1 ) * ( nzt_y-nzb_y + 1 ) * ( nxr_y_max-nxl_y + 1 )
-
-!
-!-- 3. transposition  y --> z
-!-- (ELSE:  x --> y  in case of 1D-decomposition along x)
-    nxl_z    = nxl_y
-    nxr_z    = nxr_y
-    nny_z    = ( ny+1 ) / npex
-    irest_yz = MOD( (ny+1), npex )
-
-    DO  i = 0, npex-1
-       IF ( i < irest_yz )  THEN
-          nys_z_pe(i) = i * ( nny_z + 1 )
-          nyn_z_pe(i) = nys_z_pe(i) + ( nny_z + 1 ) - 1
-       ELSE
-          nys_z_pe(i) = irest_yz * ( nny_z + 1 ) + ( i - irest_yz ) * nny_z
-          nyn_z_pe(i) = nys_z_pe(i) + nny_z - 1
-       ENDIF
-    ENDDO
-
-    nys_z = nys_z_pe(myidx)
-    nyn_z = nyn_z_pe(myidx)
-
-!
-!-- Calculate index bounds and number of grid points that are required for allocating the
-!-- 3d-arrays used by the transpose routine. Arrays on all PEs need to have identical size.
-!-- Therefore, the dimensions defined on PE0 are used, because in case of non-uniform
-!-- subdomains, at least on PE0 the respective arrays contain one more grid point than on the
-!-- other PEs.
-    nzt_y_max = nzt_x_max
-    ny_z_max  = npex * ( nyn_z_pe(0) - nys_z_pe(0) + 1 ) - 1
-    nnz_z_max = ( nz - 1 ) / npex + 1
-    nny_z_max = nyn_z_pe(0) - nys_z_pe(0) + 1
-    nyn_z_max = nys_z + nyn_z_pe(0) - nys_z_pe(0)
-    sendrecvcount_yz = ( nxr_z-nxl_z + 1 ) * nnz_z_max * ( nyn_z_max-nys_z + 1 )
-
-!
-!-- Indices for direct transpositions z --> y (used for calculating spectra)
-    ALLOCATE( nzb_yd_pe(0:npey-1) )
-    ALLOCATE( nzt_yd_pe(0:npey-1) )
-
-    nxl_yd   = nxl
-    nxr_yd   = nxr
-    nnz_yd   = nz / npey
-    irest_yd = MOD( nz, npey )
-
-    DO  k = 0, npey-1
-       IF ( k < irest_yd )  THEN
-          nzb_yd_pe(k) = k * ( nnz_yd + 1 ) + 1
-          nzt_yd_pe(k) = nzb_yd_pe(k) + ( nnz_yd + 1 ) - 1
-       ELSE
-          nzb_yd_pe(k) = irest_yd * ( nnz_yd + 1 ) + ( k - irest_yd ) * nnz_yd + 1
-          nzt_yd_pe(k) = nzb_yd_pe(k) + nnz_yd - 1
-       ENDIF
-    ENDDO
-
-    nzb_yd = nzb_yd_pe(myidy)
-    nzt_yd = nzt_yd_pe(myidy)
-    nnz_yd = nzt_yd - nzb_yd + 1
-
-    nyn_yd_max = nys + nny_pe(0) - 1
-    nnz_yd_max = nzt_yd_pe(0) - nzb_yd_pe(0) + 1
-    nz_yd_max  = npey * nnz_yd_max
-    nny_yd_max = nny_pe(0)
-    nzt_yd_max = nzb_yd + nnz_yd_max - 1
-    sendrecvcount_zyd = nnx * nnz_yd_max * nny_yd_max
-
- END SUBROUTINE setup_transpose_indices
-#endif
 
  END SUBROUTINE init_pegrid

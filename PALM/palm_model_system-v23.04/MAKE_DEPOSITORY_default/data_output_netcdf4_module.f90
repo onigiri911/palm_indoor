@@ -13,8 +13,48 @@
 ! You should have received a copy of the GNU General Public License along with PALM. If not, see
 ! <http://www.gnu.org/licenses/>.
 !
-! Copyright 2019-2021 Leibniz Universitaet Hannover
+! Copyright 2019-2020 Leibniz Universitaet Hannover
 !--------------------------------------------------------------------------------------------------!
+!
+! Current revisions:
+! ------------------
+!
+!
+! Former revisions:
+! -----------------
+! $Id: data_output_netcdf4_module.f90 4629 2020-07-29 09:37:56Z raasch $
+! support for MPI Fortran77 interface (mpif.h) removed
+!
+! 4599 2020-07-10 12:42:02Z gronemeier
+! bugfix: set no-fill mode per variable
+!
+! 4597 2020-07-09 19:21:53Z gronemeier
+! bugfix: - allow writing of unlimited dimensions in parallel mode
+!         - prevent unused-variable warning if preprocessor directives are not given
+! change: - set parallel access mode to independent per default
+! new   : - dimension variables can be written by every PE
+!
+! 4579 2020-06-25 20:05:07Z gronemeier
+! corrected formatting to follow PALM coding standard
+!
+! 4577 2020-06-25 09:53:58Z raasch
+! file re-formatted to follow the PALM coding standard
+!
+! 4481 2020-03-31 18:55:54Z maronga
+! bugfix: cpp-directive moved to avoid compile error due to unused dummy argument
+!
+! 4408 2020-02-14 10:04:39Z gronemeier
+! Enable character-array output
+!
+! 4232 2019-09-20 09:34:22Z knoop
+! Bugfix: INCLUDE "mpif.h" must be placed after IMPLICIT NONE statement
+!
+! 4147 2019-08-07 09:42:31Z gronemeier
+! corrected indentation according to coding standard
+!
+! 4141 2019-08-05 12:24:51Z gronemeier
+! Initial revision
+!
 !
 ! Authors:
 ! --------
@@ -22,11 +62,11 @@
 !
 ! Description:
 ! ------------
-!> NetCDF output module to write data to netCDF files.
-!> This is either done in parallel mode via parallel netCDF4 I/O or in serial mode only by PE0.
+!> NetCDF output module to write data to NetCDF files.
+!> This is either done in parallel mode via parallel NetCDF4 I/O or in serial mode only by PE0.
 !>
-!> @bug 'operation_mode' is not always checked. If a routine is called with an unknown
-!>      operation_mode (e.g. a typo), this does not throw any error.
+!> @bug 'mode' is not always checked. If a routine is called with an unknown mode (e.g. a typo),
+!>      this does not throw any error.
 !--------------------------------------------------------------------------------------------------!
  MODULE data_output_netcdf4_module
 
@@ -43,12 +83,8 @@
     IMPLICIT NONE
 
 
-    CHARACTER(LEN=*), PARAMETER ::  operation_mode_parallel = 'parallel'  !< string selecting netcdf4 parallel mode
-    CHARACTER(LEN=*), PARAMETER ::  operation_mode_serial   = 'serial'    !< string selecting netcdf4 serial mode
-
-    CHARACTER(LEN=*), PARAMETER ::  write_mode_collective  = 'collective'   !< write data collective by all ranks
-    CHARACTER(LEN=*), PARAMETER ::  write_mode_independent = 'independent'  !< write data independent by all ranks
-    CHARACTER(LEN=*), PARAMETER ::  write_mode_master_only = 'master-only'  !< write data only by master rank
+    CHARACTER(LEN=*), PARAMETER ::  mode_parallel = 'parallel'  !< string selecting netcdf4 parallel mode
+    CHARACTER(LEN=*), PARAMETER ::  mode_serial   = 'serial'    !< string selecting netcdf4 serial mode
 
     CHARACTER(LEN=100) ::  file_suffix = ''             !< file suffix added to each file name
     CHARACTER(LEN=800) ::  internal_error_message = ''  !< string containing the last error message
@@ -66,6 +102,34 @@
 
     PRIVATE
 
+    INTERFACE netcdf4_init_module
+       MODULE PROCEDURE netcdf4_init_module
+    END INTERFACE netcdf4_init_module
+
+    INTERFACE netcdf4_open_file
+       MODULE PROCEDURE netcdf4_open_file
+    END INTERFACE netcdf4_open_file
+
+    INTERFACE netcdf4_init_dimension
+       MODULE PROCEDURE netcdf4_init_dimension
+    END INTERFACE netcdf4_init_dimension
+
+    INTERFACE netcdf4_init_variable
+       MODULE PROCEDURE netcdf4_init_variable
+    END INTERFACE netcdf4_init_variable
+
+    INTERFACE netcdf4_write_attribute
+       MODULE PROCEDURE netcdf4_write_attribute
+    END INTERFACE netcdf4_write_attribute
+
+    INTERFACE netcdf4_stop_file_header_definition
+       MODULE PROCEDURE netcdf4_stop_file_header_definition
+    END INTERFACE netcdf4_stop_file_header_definition
+
+    INTERFACE netcdf4_write_variable
+       MODULE PROCEDURE netcdf4_write_variable
+    END INTERFACE netcdf4_write_variable
+
     INTERFACE netcdf4_finalize
        MODULE PROCEDURE netcdf4_finalize
     END INTERFACE netcdf4_finalize
@@ -74,54 +138,17 @@
        MODULE PROCEDURE netcdf4_get_error_message
     END INTERFACE netcdf4_get_error_message
 
-    INTERFACE netcdf4_init_dimension
-       MODULE PROCEDURE netcdf4_init_dimension
-    END INTERFACE netcdf4_init_dimension
-
-    INTERFACE netcdf4_init_module
-       MODULE PROCEDURE netcdf4_init_module
-    END INTERFACE netcdf4_init_module
-
-    INTERFACE netcdf4_init_variable
-       MODULE PROCEDURE netcdf4_init_variable
-    END INTERFACE netcdf4_init_variable
-
-    INTERFACE netcdf4_inquire_dimension
-       MODULE PROCEDURE netcdf4_inquire_dimension
-    END INTERFACE netcdf4_inquire_dimension
-
-    INTERFACE netcdf4_inq_varid
-       MODULE PROCEDURE netcdf4_inq_varid
-    END INTERFACE netcdf4_inq_varid
-
-    INTERFACE netcdf4_open_file
-       MODULE PROCEDURE netcdf4_open_file
-    END INTERFACE netcdf4_open_file
-
-    INTERFACE netcdf4_stop_file_header_definition
-       MODULE PROCEDURE netcdf4_stop_file_header_definition
-    END INTERFACE netcdf4_stop_file_header_definition
-
-    INTERFACE netcdf4_write_attribute
-       MODULE PROCEDURE netcdf4_write_attribute
-    END INTERFACE netcdf4_write_attribute
-
-    INTERFACE netcdf4_write_variable
-       MODULE PROCEDURE netcdf4_write_variable
-    END INTERFACE netcdf4_write_variable
-
     PUBLIC                                                                                         &
        netcdf4_finalize,                                                                           &
        netcdf4_get_error_message,                                                                  &
        netcdf4_init_dimension,                                                                     &
        netcdf4_init_module,                                                                        &
        netcdf4_init_variable,                                                                      &
-       netcdf4_inquire_dimension,                                                                  &
-       netcdf4_inq_varid,                                                                          &
        netcdf4_open_file,                                                                          &
        netcdf4_stop_file_header_definition,                                                        &
        netcdf4_write_attribute,                                                                    &
        netcdf4_write_variable
+
 
  CONTAINS
 
@@ -173,50 +200,38 @@
 
  END SUBROUTINE netcdf4_init_module
 
-
 !--------------------------------------------------------------------------------------------------!
 ! Description:
 ! ------------
 !> Open netcdf file.
 !--------------------------------------------------------------------------------------------------!
- SUBROUTINE netcdf4_open_file( operation_mode, file_name, file_id, return_value, reopen )
-
-    CHARACTER(LEN=*), INTENT(IN) ::  file_name       !< name of file
-    CHARACTER(LEN=*), INTENT(IN) ::  operation_mode  !< operation mode (either parallel or serial)
-    INTEGER, INTENT(OUT)         ::  file_id         !< file ID
-    INTEGER, INTENT(OUT)         ::  return_value    !< return value
-    LOGICAL,INTENT(IN),OPTIONAL  ::  reopen          !< reopen file
+ SUBROUTINE netcdf4_open_file( mode, file_name, file_id, return_value )
 
     CHARACTER(LEN=*), PARAMETER ::  routine_name = 'netcdf4_open_file'  !< name of this routine
 
-    INTEGER ::  nc_stat  !< netcdf return value
+    CHARACTER(LEN=*), INTENT(IN) ::  file_name  !< name of file
+    CHARACTER(LEN=*), INTENT(IN) ::  mode       !< operation mode (either parallel or serial)
 
-    LOGICAL ::  lo_reopen  !< local copy of reopen file
+    INTEGER, INTENT(OUT) ::  file_id       !< file ID
+    INTEGER              ::  nc_stat       !< netcdf return value
+    INTEGER, INTENT(OUT) ::  return_value  !< return value
 
 
     return_value = 0
     file_id = -1
-    lo_reopen = .FALSE.
-
-    IF ( PRESENT( reopen ) )  THEN
-       lo_reopen = reopen
-    ENDIF
 !
-!-- Open new file.
+!-- Open new file
     CALL internal_message( 'debug', routine_name // ': create file "' // TRIM( file_name ) // '"' )
 
-    IF ( TRIM( operation_mode ) == operation_mode_serial )  THEN
+    IF ( TRIM( mode ) == mode_serial )  THEN
 
 #if defined( __netcdf4 )
 
        IF ( return_value == 0 )  THEN
           IF ( my_rank == master_rank )  THEN
-             IF ( lo_reopen )  THEN
-                nc_stat = NF90_OPEN( TRIM( file_name ) // TRIM( file_suffix ), NF90_WRITE, file_id )
-             ELSE
-                nc_stat = NF90_CREATE( TRIM( file_name ) // TRIM( file_suffix ),                   &
-                                       IOR( NF90_NOCLOBBER, NF90_NETCDF4 ), file_id )
-             ENDIF
+             nc_stat = NF90_CREATE( TRIM( file_name ) // TRIM( file_suffix ),                      &
+                                    IOR( NF90_NOCLOBBER, NF90_NETCDF4 ),                           &
+                                    file_id )
           ELSE
              nc_stat = 0
           ENDIF
@@ -226,10 +241,10 @@
        return_value = 1
        CALL internal_message( 'error', routine_name //                                             &
                               ': pre-processor directive "__netcdf4" not given. ' //               &
-                              'Using netCDF4 output not possible' )
+                              'Using NetCDF4 output not possible' )
 #endif
 
-    ELSEIF ( TRIM( operation_mode ) == operation_mode_parallel )  THEN
+    ELSEIF ( TRIM( mode ) == mode_parallel )  THEN
 
 #if defined( __parallel ) && defined( __netcdf4 ) && defined( __netcdf4_parallel )
        nc_stat = NF90_CREATE( TRIM( file_name ) // TRIM( file_suffix ),                            &
@@ -241,43 +256,41 @@
        CALL internal_message( 'error', routine_name //                                             &
                               ': pre-processor directives "__parallel" and/or ' //                 &
                               '"__netcdf4" and/or "__netcdf4_parallel" not given. ' //             &
-                              'Using parallel netCDF4 output not possible' )
+                              'Using parallel NetCDF4 output not possible' )
 #endif
 
     ELSE
        nc_stat = 0
        return_value = 1
        CALL internal_message( 'error', routine_name //                                             &
-                              ': selected operation_mode "' // TRIM( operation_mode ) //           &
-                              '" must be either "' //                                              &
-                              operation_mode_serial // '" or "' // operation_mode_parallel // '"' )
+                              ': selected mode "' // TRIM( mode ) // '" must be either "' //       &
+                              mode_serial // '" or "' // mode_parallel // '"' )
     ENDIF
 
 #if defined( __netcdf4 )
     IF ( nc_stat /= NF90_NOERR  .AND.  return_value == 0 )  THEN
        return_value = 1
        CALL internal_message( 'error', routine_name //                                             &
-                              ': netCDF error while opening file "' //                             &
+                              ': NetCDF error while opening file "' //                             &
                               TRIM( file_name ) // '": ' // NF90_STRERROR( nc_stat ) )
     ENDIF
 #endif
 
  END SUBROUTINE netcdf4_open_file
 
-
 !--------------------------------------------------------------------------------------------------!
 ! Description:
 ! ------------
 !> Write attribute to netcdf file.
 !--------------------------------------------------------------------------------------------------!
- SUBROUTINE netcdf4_write_attribute( operation_mode, file_id, variable_id, attribute_name,         &
+ SUBROUTINE netcdf4_write_attribute( mode, file_id, variable_id, attribute_name,                   &
                                      value_char, value_int8, value_int16, value_int32,             &
                                      value_real32, value_real64, return_value )
 
     CHARACTER(LEN=*), PARAMETER ::  routine_name = 'netcdf4_write_attribute'  !< name of this routine
 
     CHARACTER(LEN=*), INTENT(IN)           ::  attribute_name  !< name of attribute
-    CHARACTER(LEN=*), INTENT(IN)           ::  operation_mode  !< operation mode (either parallel or serial)
+    CHARACTER(LEN=*), INTENT(IN)           ::  mode            !< operation mode (either parallel or serial)
     CHARACTER(LEN=*), INTENT(IN), OPTIONAL ::  value_char      !< value of attribute
 
     INTEGER, INTENT(IN)  ::  file_id       !< file ID
@@ -297,8 +310,7 @@
 #if defined( __netcdf4 )
     return_value = 0
 
-    IF ( .NOT. ( TRIM( operation_mode ) == operation_mode_serial  .AND.                            &
-         my_rank /= master_rank ) )  THEN
+    IF ( .NOT. ( TRIM( mode ) == mode_serial  .AND.  my_rank /= master_rank ) )  THEN
 
        IF ( variable_id == global_id_in_file )  THEN
           target_id = NF90_GLOBAL
@@ -332,7 +344,7 @@
           IF ( nc_stat /= NF90_NOERR )  THEN
              return_value = 1
              CALL internal_message( 'error', routine_name //                                       &
-                                    ': netCDF error while writing attribute "' //                  &
+                                    ': NetCDF error while writing attribute "' //                  &
                                     TRIM( attribute_name ) // '": ' // NF90_STRERROR( nc_stat ) )
           ENDIF
        ENDIF
@@ -350,22 +362,20 @@
 
  END SUBROUTINE netcdf4_write_attribute
 
-
 !--------------------------------------------------------------------------------------------------!
 ! Description:
 ! ------------
 !> Initialize dimension.
 !--------------------------------------------------------------------------------------------------!
- SUBROUTINE netcdf4_init_dimension( operation_mode, file_id, dimension_id, variable_id,            &
+ SUBROUTINE netcdf4_init_dimension( mode, file_id, dimension_id, variable_id,                      &
                                     dimension_name, dimension_type, dimension_length,              &
-                                    write_mode, return_value )
+                                    write_only_by_master_rank, return_value )
 
     CHARACTER(LEN=*), PARAMETER ::  routine_name = 'netcdf4_init_dimension'  !< name of this routine
 
     CHARACTER(LEN=*), INTENT(IN) ::  dimension_name  !< name of dimension
     CHARACTER(LEN=*), INTENT(IN) ::  dimension_type  !< data type of dimension
-    CHARACTER(LEN=*), INTENT(IN) ::  operation_mode  !< operation mode (either parallel or serial)
-    CHARACTER(LEN=*), INTENT(IN) ::  write_mode      !< write mode, defines file access for variable
+    CHARACTER(LEN=*), INTENT(IN) ::  mode            !< operation mode (either parallel or serial)
 
     INTEGER, INTENT(OUT) ::  dimension_id         !< dimension ID
     INTEGER, INTENT(IN)  ::  dimension_length     !< length of dimension
@@ -375,9 +385,7 @@
     INTEGER, INTENT(OUT) ::  return_value         !< return value
     INTEGER, INTENT(OUT) ::  variable_id          !< variable ID
 
-    ! LOGICAL, INTENT(IN) ::  write_collective           !< true if all ranks shall write variable collectively
-    ! LOGICAL, INTENT(IN) ::  write_independent          !< true if ranks shall write variable independently
-    ! LOGICAL, INTENT(IN) ::  write_only_by_master_rank  !< true if only master rank shall write variable
+    LOGICAL, INTENT(IN) ::  write_only_by_master_rank  !< true if only master rank shall write variable
 
 
 #if defined( __netcdf4 )
@@ -385,8 +393,7 @@
     variable_id = -1
     dimension_id = -1
 
-    IF ( .NOT. ( TRIM( operation_mode ) == operation_mode_serial  .AND.                            &
-         my_rank /= master_rank ) )  THEN
+    IF ( .NOT. ( TRIM( mode ) == mode_serial  .AND.  my_rank /= master_rank ) )  THEN
 
        CALL internal_message( 'debug', routine_name //                                             &
                               ': init dimension "' // TRIM( dimension_name ) // '"' )
@@ -404,16 +411,15 @@
        IF ( nc_stat == NF90_NOERR )  THEN
 !
 !--       Define variable holding dimension values in file
-          CALL netcdf4_init_variable( operation_mode, file_id, variable_id, dimension_name,        &
-                                      dimension_type,                                              &
+          CALL netcdf4_init_variable( mode, file_id, variable_id, dimension_name, dimension_type,  &
                                       (/ dimension_id /),                                          &
-                                      write_mode=write_mode,                                       &
+                                      write_only_by_master_rank=write_only_by_master_rank,         &
                                       return_value=return_value )
 
        ELSE
           return_value = 1
           CALL internal_message( 'error', routine_name //                                          &
-                                 ': netCDF error while initializing dimension "' //                &
+                                 ': NetCDF error while initializing dimension "' //                &
                                  TRIM( dimension_name ) // '": ' // NF90_STRERROR( nc_stat ) )
        ENDIF
 
@@ -432,68 +438,19 @@
 
  END SUBROUTINE netcdf4_init_dimension
 
-
-!--------------------------------------------------------------------------------------------------!
-! Description:
-! ------------
-!> Inquire dimension.
-!--------------------------------------------------------------------------------------------------!
- SUBROUTINE netcdf4_inquire_dimension( file_id, dimension_id, return_value, dimension_length,      &
-                                       dimension_name )
-
-    CHARACTER(LEN=*), INTENT(OUT), OPTIONAL ::  dimension_name  !< name of dimension
-
-    INTEGER, INTENT(IN)            ::  dimension_id      !< dimension ID
-    INTEGER, INTENT(OUT), OPTIONAL ::  dimension_length  !< length of dimension
-    INTEGER, INTENT(IN)            ::  file_id           !< file ID
-    INTEGER, INTENT(OUT)           ::  return_value      !< return value
-
-#if defined( __netcdf4 )
-    CHARACTER(LEN=*), PARAMETER ::  routine_name = 'netcdf4_inquire_dimension'  !< name of this routine
-    CHARACTER(LEN=128)          ::  dim_name                                    !< name of dimension
-
-    INTEGER ::  dim_len  !< dimension length
-    INTEGER ::  nc_stat  !< netcdf return value
-#endif
-
-
-    return_value = 0
-
-#if defined( __netcdf4 )
-    nc_stat = NF90_INQUIRE_DIMENSION( file_id, dimension_id, LEN = dim_len, name = dim_name )
-
-    IF ( nc_stat == NF90_NOERR )  THEN
-       IF ( PRESENT( dimension_length ) )  THEN
-          dimension_length = dim_len
-       ENDIF
-       IF ( PRESENT( dimension_name ) )  THEN
-          dimension_name = TRIM( dim_name )
-       ENDIF
-    ELSE
-       return_value = 1
-       CALL internal_message( 'error', routine_name //                                             &
-                              ': NetCDF error while inquiring dimension "' //                      &
-                               '": ' // NF90_STRERROR( nc_stat ) )
-    ENDIF
-#endif
-
- END SUBROUTINE netcdf4_inquire_dimension
-
-
 !--------------------------------------------------------------------------------------------------!
 ! Description:
 ! ------------
 !> Initialize variable.
 !--------------------------------------------------------------------------------------------------!
- SUBROUTINE netcdf4_init_variable( operation_mode, file_id, variable_id, variable_name,            &
-                                   variable_type, dimension_ids, write_mode, return_value )
+ SUBROUTINE netcdf4_init_variable( mode, file_id, variable_id, variable_name, variable_type,       &
+                                   dimension_ids, write_only_by_master_rank, return_value )
 
     CHARACTER(LEN=*), PARAMETER ::  routine_name = 'netcdf4_init_variable'  !< name of this routine
 
-    CHARACTER(LEN=*), INTENT(IN) ::  operation_mode  !< operation mode (either parallel or serial)
-    CHARACTER(LEN=*), INTENT(IN) ::  variable_name   !< name of variable
-    CHARACTER(LEN=*), INTENT(IN) ::  variable_type   !< data type of variable
-    CHARACTER(LEN=*), INTENT(IN) ::  write_mode      !< write mode, defines file access for variable
+    CHARACTER(LEN=*), INTENT(IN) ::  mode           !< operation mode (either parallel or serial)
+    CHARACTER(LEN=*), INTENT(IN) ::  variable_name  !< name of variable
+    CHARACTER(LEN=*), INTENT(IN) ::  variable_type  !< data type of variable
 
     INTEGER, INTENT(IN)  ::  file_id                 !< file ID
     INTEGER              ::  nc_stat                 !< netcdf return value
@@ -506,21 +463,20 @@
 #endif
     INTEGER, DIMENSION(:), INTENT(IN) ::  dimension_ids  !< list of dimension IDs used by variable
 
-    ! LOGICAL, INTENT(IN) ::  write_collective           !< true if all ranks shall write variable collectively
-    ! LOGICAL, INTENT(IN) ::  write_independent          !< true if ranks shall write variable independently
-    ! LOGICAL, INTENT(IN) ::  write_only_by_master_rank  !< true if only master rank shall write variable
+    LOGICAL, INTENT(IN) ::  write_only_by_master_rank  !< true if only master rank shall write variable
 
 
 #if defined( __netcdf4 )
     return_value = 0
     variable_id = -1
 
-    IF ( ( TRIM( operation_mode ) == operation_mode_serial  .AND.  my_rank == master_rank )        &
-         .OR.  TRIM( operation_mode ) == operation_mode_parallel )  THEN
+    IF ( ( TRIM( mode ) == mode_serial  .AND.  my_rank == master_rank )                            &
+         .OR.  TRIM( mode ) == mode_parallel )  THEN
 
+       WRITE( temp_string, * ) write_only_by_master_rank
        CALL internal_message( 'debug', routine_name //                                             &
                               ': init variable "' // TRIM( variable_name ) //                      &
-                              '" ( write_mode = ' // TRIM( write_mode ) // ')' )
+                              '" ( write_only_by_master_rank = ' // TRIM( temp_string ) // ')' )
 
        nc_variable_type = get_netcdf_data_type( variable_type )
 
@@ -537,8 +493,7 @@
 #if defined( __netcdf4_parallel )
 !
 !--       Define how variable can be accessed by PEs in parallel netcdf file
-          IF ( nc_stat == NF90_NOERR  .AND.  TRIM( operation_mode ) == operation_mode_parallel )   &
-             THEN
+          IF ( nc_stat == NF90_NOERR  .AND.  TRIM( mode ) == mode_parallel )  THEN
 !
 !--          If the variable uses an unlimited dimension, its access mode must be 'collective',
 !--          otherwise it can be set to independent.
@@ -550,16 +505,7 @@
                 IF ( ANY( dimension_ids == unlimited_dimension_id ) )  THEN
                    parallel_access_mode = NF90_COLLECTIVE
                 ELSE
-                   SELECT CASE ( TRIM( write_mode ) )
-                      CASE ( write_mode_collective )
-                         parallel_access_mode = NF90_COLLECTIVE
-                      CASE ( write_mode_independent )
-                         parallel_access_mode = NF90_INDEPENDENT
-                      CASE ( write_mode_master_only )
-                         parallel_access_mode = NF90_INDEPENDENT
-                      CASE DEFAULT
-                         parallel_access_mode = NF90_INDEPENDENT
-                   END SELECT
+                   parallel_access_mode = NF90_INDEPENDENT
                 ENDIF
 
                 nc_stat = NF90_VAR_PAR_ACCESS( file_id, variable_id, parallel_access_mode )
@@ -570,7 +516,7 @@
           IF ( nc_stat /= NF90_NOERR )  THEN
              return_value = 1
              CALL internal_message( 'error', routine_name //                                       &
-                                    ': netCDF error while initializing variable "' //              &
+                                    ': NetCDF error while initializing variable "' //              &
                                     TRIM( variable_name ) // '": ' // NF90_STRERROR( nc_stat ) )
           ENDIF
 
@@ -578,13 +524,11 @@
           return_value = 1
        ENDIF
 
-    ELSEIF ( TRIM( operation_mode ) /= operation_mode_serial  .AND.                                &
-             TRIM( operation_mode ) /= operation_mode_parallel )  THEN
+    ELSEIF ( TRIM( mode ) /= mode_serial  .AND.  TRIM( mode ) /= mode_parallel )  THEN
        return_value = 1
        CALL internal_message( 'error', routine_name //                                             &
-                              ': selected operation_mode "' // TRIM( operation_mode ) //           &
-                              '" must be either "' //                                              &
-                              operation_mode_serial // '" or "' // operation_mode_parallel // '"' )
+                              ': selected mode "' // TRIM( mode ) // '" must be either "' //       &
+                              mode_serial // '" or "' // mode_parallel // '"' )
     ENDIF
 
 #else
@@ -600,56 +544,16 @@
 
  END SUBROUTINE netcdf4_init_variable
 
-
-!--------------------------------------------------------------------------------------------------!
-! Description:
-! ------------
-!> Inquire variable-id.
-!--------------------------------------------------------------------------------------------------!
- SUBROUTINE netcdf4_inq_varid( file_id, variable_name, variable_id, return_value )
-
-    CHARACTER(LEN=*), INTENT(IN) ::  variable_name  !< name of variable
-    INTEGER, INTENT(IN)  ::  file_id                !< file ID
-    INTEGER, INTENT(OUT) ::  variable_id            !< variable ID
-    INTEGER, INTENT(OUT) ::  return_value           !< return value
-
-#if defined( __netcdf4 )
-    CHARACTER(LEN=*), PARAMETER ::  routine_name = 'netcdf4_inq_varid'  !< name of this routine
-    INTEGER ::  nc_stat    !< netcdf return value
-    INTEGER ::  lo_var_id  !< netcdf return value
-#endif
-
-
-    return_value = 0
-
-#if defined( __netcdf4 )
-    nc_stat = NF90_INQ_VARID( file_id, variable_name, lo_var_id )
-
-    IF ( nc_stat == NF90_NOERR )  THEN
-       variable_id = lo_var_id
-    ELSE
-       return_value = 1
-       CALL internal_message( 'error', routine_name //                                             &
-                              ': NetCDF error while inquiring variable-id "' //                    &
-                               '": ' // NF90_STRERROR( nc_stat ) )
-    ENDIF
-#else
-    variable_id = -1
-#endif
-
- END SUBROUTINE netcdf4_inq_varid
-
-
 !--------------------------------------------------------------------------------------------------!
 ! Description:
 ! ------------
 !> Leave file definition state.
 !--------------------------------------------------------------------------------------------------!
- SUBROUTINE netcdf4_stop_file_header_definition( operation_mode, file_id, return_value )
+ SUBROUTINE netcdf4_stop_file_header_definition( mode, file_id, return_value )
 
     CHARACTER(LEN=*), PARAMETER ::  routine_name = 'netcdf4_stop_file_header_definition'  !< name of this routine
 
-    CHARACTER(LEN=*), INTENT(IN) ::  operation_mode  !< operation mode (either parallel or serial)
+    CHARACTER(LEN=*), INTENT(IN) ::  mode  !< operation mode (either parallel or serial)
 
     INTEGER, INTENT(IN)  ::  file_id        !< file ID
     INTEGER              ::  nc_stat        !< netcdf return value
@@ -660,8 +564,7 @@
 #if defined( __netcdf4 )
     return_value = 0
 
-    IF ( .NOT. ( TRIM( operation_mode ) == operation_mode_serial  .AND.                            &
-         my_rank /= master_rank ) )  THEN
+    IF ( .NOT. ( TRIM( mode ) == mode_serial  .AND.  my_rank /= master_rank ) )  THEN
 
        WRITE( temp_string, * ) file_id
        CALL internal_message( 'debug', routine_name //                                             &
@@ -677,7 +580,7 @@
        IF ( nc_stat /= NF90_NOERR )  THEN
           return_value = 1
           CALL internal_message( 'error', routine_name //                                          &
-                                 ': netCDF error: ' // NF90_STRERROR( nc_stat ) )
+                                 ': NetCDF error: ' // NF90_STRERROR( nc_stat ) )
        ENDIF
 
     ENDIF
@@ -693,15 +596,14 @@
 
  END SUBROUTINE netcdf4_stop_file_header_definition
 
-
 !--------------------------------------------------------------------------------------------------!
 ! Description:
 ! ------------
 !> Write variable of different kind into netcdf file.
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE netcdf4_write_variable(                                                                &
-               operation_mode, file_id, variable_id, bounds_start, value_counts, bounds_origin,    &
-               write_mode,                                                                         &
+               mode, file_id, variable_id, bounds_start, value_counts, bounds_origin,              &
+               write_only_by_master_rank,                                                          &
                values_char_0d,   values_char_1d,   values_char_2d,   values_char_3d,               &
                values_int8_0d,   values_int8_1d,   values_int8_2d,   values_int8_3d,               &
                values_int16_0d,  values_int16_1d,  values_int16_2d,  values_int16_3d,              &
@@ -714,8 +616,7 @@
 
     CHARACTER(LEN=*), PARAMETER ::  routine_name = 'netcdf4_write_variable'  !< name of this routine
 
-    CHARACTER(LEN=*), INTENT(IN) ::  operation_mode  !< operation mode (either parallel or serial)
-    CHARACTER(LEN=*), INTENT(IN) ::  write_mode      !< write mode, defines file access for variable
+    CHARACTER(LEN=*), INTENT(IN) ::  mode  !< operation mode (either parallel or serial)
 
     CHARACTER(LEN=1), POINTER,             INTENT(IN), OPTIONAL                   ::  values_char_0d  !< output variable
     CHARACTER(LEN=1), POINTER, CONTIGUOUS, INTENT(IN), OPTIONAL, DIMENSION(:)     ::  values_char_1d  !< output variable
@@ -753,7 +654,7 @@
     INTEGER(KIND=4), POINTER, CONTIGUOUS, INTENT(IN), OPTIONAL, DIMENSION(:,:,:) ::  values_int32_3d  !< output variable
     INTEGER(iwp),    POINTER, CONTIGUOUS, INTENT(IN), OPTIONAL, DIMENSION(:,:,:) ::  values_intwp_3d  !< output variable
 
-    ! LOGICAL, INTENT(IN) ::  write_only_by_master_rank  !< true if only master rank shall write variable
+    LOGICAL, INTENT(IN) ::  write_only_by_master_rank  !< true if only master rank shall write variable
     LOGICAL             ::  write_data                 !< true if variable shall be written to file
 
     REAL(KIND=4), POINTER,             INTENT(IN), OPTIONAL                   ::  values_real32_0d  !< output variable
@@ -775,11 +676,11 @@
     write_data = .FALSE.
 !
 !-- Check whether this PE write any data to file
-    IF ( TRIM( operation_mode ) == operation_mode_serial )  THEN
+    IF ( TRIM( mode ) == mode_serial )  THEN
 
        IF ( my_rank == master_rank )  write_data = .TRUE.
 
-    ELSEIF ( TRIM( operation_mode ) == operation_mode_parallel )  THEN
+    ELSEIF ( TRIM( mode ) == mode_parallel )  THEN
 !
 !--    Check for collective access mode.
 !--    This cannot be checked directly but indirect via the presence of any unlimited dimensions
@@ -795,7 +696,7 @@
           write_data = .TRUE.
 !
 !--    If access is independent, check if only master rank shall write
-       ELSEIF ( TRIM( write_mode ) == write_mode_master_only )  THEN
+       ELSEIF ( write_only_by_master_rank )  THEN
           IF ( my_rank == master_rank )  write_data = .TRUE.
 !
 !--    If all PEs can write, check if there are any data to be written
@@ -806,9 +707,8 @@
     ELSE
        return_value = 1
        CALL internal_message( 'error', routine_name //                                             &
-                              ': selected operation_mode "' // TRIM( operation_mode ) //           &
-                              '" must be either "' //                                              &
-                              operation_mode_serial // '" or "' // operation_mode_parallel // '"' )
+                              ': selected mode "' // TRIM( mode ) // '" must be either "' //       &
+                              mode_serial // '" or "' // mode_parallel // '"' )
     ENDIF
 
     IF ( write_data )  THEN
@@ -1005,7 +905,7 @@
 
           ELSE
 !
-!--          Other netCDF error
+!--          Other NetCDF error
              CALL internal_message( 'error', routine_name //                                       &
                                     ': error while writing: ' // NF90_STRERROR( nc_stat ) )
           ENDIF
@@ -1026,17 +926,16 @@
 
  END SUBROUTINE netcdf4_write_variable
 
-
 !--------------------------------------------------------------------------------------------------!
 ! Description:
 ! ------------
 !> Close netcdf file.
 !--------------------------------------------------------------------------------------------------!
- SUBROUTINE netcdf4_finalize( operation_mode, file_id, return_value )
+ SUBROUTINE netcdf4_finalize( mode, file_id, return_value )
 
     CHARACTER(LEN=*), PARAMETER ::  routine_name = 'netcdf4_finalize'  !< name of routine
 
-    CHARACTER(LEN=*), INTENT(IN) ::  operation_mode  !< operation mode (either parallel or serial)
+    CHARACTER(LEN=*), INTENT(IN) ::  mode  !< operation mode (either parallel or serial)
 
     INTEGER, INTENT(IN)  ::  file_id       !< file ID
     INTEGER              ::  nc_stat       !< netcdf return value
@@ -1046,8 +945,7 @@
 #if defined( __netcdf4 )
     return_value = 0
 
-    IF ( .NOT. ( TRIM( operation_mode ) == operation_mode_serial  .AND.                            &
-         my_rank /= master_rank ) )  THEN
+    IF ( .NOT. ( TRIM( mode ) == mode_serial  .AND.  my_rank /= master_rank ) )  THEN
 
        WRITE( temp_string, * ) file_id
        CALL internal_message( 'debug', routine_name //                                             &
@@ -1059,7 +957,7 @@
        ELSE
           return_value = 1
           CALL internal_message( 'error', routine_name //                                          &
-                                 ': netCDF error: ' // NF90_STRERROR( nc_stat ) )
+                                 ': NetCDF error: ' // NF90_STRERROR( nc_stat ) )
        ENDIF
 
     ENDIF
@@ -1074,7 +972,6 @@
 #endif
 
  END SUBROUTINE netcdf4_finalize
-
 
 !--------------------------------------------------------------------------------------------------!
 ! Description:
@@ -1121,7 +1018,6 @@
 
  END FUNCTION get_netcdf_data_type
 
-
 !--------------------------------------------------------------------------------------------------!
 ! Description:
 ! ------------
@@ -1147,7 +1043,6 @@
 
  END SUBROUTINE internal_message
 
-
 !--------------------------------------------------------------------------------------------------!
 ! Description:
 ! ------------
@@ -1163,5 +1058,6 @@
     internal_error_message = ''
 
  END FUNCTION netcdf4_get_error_message
+
 
  END MODULE data_output_netcdf4_module

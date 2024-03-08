@@ -13,10 +13,56 @@
 ! You should have received a copy of the GNU General Public License along with PALM. If not, see
 ! <http://www.gnu.org/licenses/>.
 !
-! Copyright 1997-2021 Leibniz Universitaet Hannover
+! Copyright 1997-2020 Leibniz Universitaet Hannover
 !--------------------------------------------------------------------------------------------------!
 !
 !
+! Current revisions:
+! -----------------
+!
+!
+! Former revisions:
+! -----------------
+! $Id: pres.f90 4740 2020-10-14 11:22:04Z suehring $
+! Bugfix in OpenMP directives - intel compiler do not allow reduction operations on array elements
+!
+! 4719 2020-10-01 11:28:33Z pavelkrc
+! Bugfix of previous commit (div_old discrepancy)
+!
+! 4717 2020-09-30 22:27:40Z pavelkrc
+! Fixes and optimizations of OpenMP parallelization, formatting of OpenMP
+! directives (J. Resler)
+!
+! 4651 2020-08-27 07:17:45Z raasch
+! preprocessor branch for ibm removed
+!
+! 4649 2020-08-25 12:11:17Z raasch
+! File re-formatted to follow the PALM coding standard
+!
+! 4457 2020-03-11 14:20:43Z raasch
+! use statement for exchange horiz added
+!
+! 4360 2020-01-07 11:25:50Z suehring
+! Introduction of wall_flags_total_0, which currently sets bits based on static
+! topography information used in wall_flags_static_0
+!
+! 4329 2019-12-10 15:46:36Z motisi
+! Renamed wall_flags_0 to wall_flags_static_0
+!
+! 4182 2019-08-22 15:20:23Z scharf
+! Corrected "Former revisions" section
+!
+! 4015 2019-06-05 13:25:35Z raasch
+! variable child_domain_nvn eliminated
+!
+! 3849 2019-04-01 16:35:16Z knoop
+! OpenACC port for SPEC
+!
+! Revision 1.1  1997/07/24 11:24:44  raasch
+! Initial revision
+!
+!
+!--------------------------------------------------------------------------------------------------!
 ! Description:
 ! ------------
 !> Compute the divergence of the provisional velocity field. Solve the Poisson equation for the
@@ -25,16 +71,12 @@
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE pres
 
-#if defined( __parallel )
-    USE MPI
-#endif
 
     USE arrays_3d,                                                                                 &
         ONLY:  d,                                                                                  &
                ddzu,                                                                               &
                ddzu_pres,                                                                          &
                ddzw,                                                                               &
-               drho_air,                                                                           &
                dzw,                                                                                &
                p,                                                                                  &
                p_loc,                                                                              &
@@ -48,16 +90,13 @@
     USE control_parameters,                                                                        &
         ONLY:  bc_lr_cyc,                                                                          &
                bc_ns_cyc,                                                                          &
-               bc_dirichlet_l,                                                                     &
-               bc_dirichlet_n,                                                                     &
-               bc_dirichlet_r,                                                                     &
-               bc_dirichlet_s,                                                                     &
                bc_radiation_l,                                                                     &
                bc_radiation_n,                                                                     &
                bc_radiation_r,                                                                     &
                bc_radiation_s,                                                                     &
                child_domain,                                                                       &
                conserve_volume_flow,                                                               &
+               coupling_mode,                                                                      &
                dt_3d,                                                                              &
                gathered_size,                                                                      &
                ibc_p_b,                                                                            &
@@ -69,7 +108,6 @@
                psolver,                                                                            &
                subdomain_size,                                                                     &
                topography,                                                                         &
-               use_sm_for_poisfft,                                                                 &
                volume_flow,                                                                        &
                volume_flow_area,                                                                   &
                volume_flow_initial
@@ -78,10 +116,6 @@
         ONLY:  cpu_log,                                                                            &
                log_point,                                                                          &
                log_point_s
-
-    USE diagnostic_output_quantities_mod,                                                          &
-        ONLY:  div_new,                                                                            &
-               div_old
 
     USE exchange_horiz_mod,                                                                        &
         ONLY:  exchange_horiz
@@ -92,7 +126,7 @@
 
     USE indices,                                                                                   &
         ONLY:  nbgp,                                                                               &
-               ngp_2dh_wgrid,                                                                      &
+               ngp_2dh_outer,                                                                      &
                nx,                                                                                 &
                nxl,                                                                                &
                nxlg,                                                                               &
@@ -110,22 +144,17 @@
                nzb,                                                                                &
                nzt,                                                                                &
                nzt_mg,                                                                             &
-               topo_flags
+               wall_flags_total_0
 
     USE kinds
 
     USE pegrid
 
     USE pmc_interface,                                                                             &
-        ONLY:  nesting_bounds
+        ONLY:  nesting_mode
 
     USE poisfft_mod,                                                                               &
         ONLY:  poisfft
-
-#if defined( __parallel )
-    USE poisfft_sm_mod,                                                                            &
-        ONLY:  poisfft_sm
-#endif
 
     USE poismg_mod
 
@@ -138,11 +167,15 @@
                weight_pres,                                                                        &
                weight_substep
 
+    USE surface_mod,                                                                               &
+        ONLY :  bc_h
+
     IMPLICIT NONE
 
     INTEGER(iwp) ::  i  !<
     INTEGER(iwp) ::  j  !<
     INTEGER(iwp) ::  k  !<
+    INTEGER(iwp) ::  m  !<
 
     REAL(wp) ::  ddt_3d            !<
     REAL(wp) ::  d_weight_pres     !<
@@ -185,13 +218,12 @@
 !
 !--    Since p is later used to hold the weighted average of the substeps, it cannot be used in the
 !--    iterative solver. Therefore, its initial value is stored on p_loc, which is then iteratively
-!--    advanced in every substep. Attention: Because PALM solves the anelastic system of equations,
-!--    p_loc is defined as the perturbation pressure divided by the density.
+!--    advanced in every substep.
        IF ( intermediate_timestep_count <= 1 )  THEN
           DO  i = nxl-1, nxr+1
              DO  j = nys-1, nyn+1
                 DO  k = nzb, nzt+1
-                   p_loc(k,j,i) = p(k,j,i) * drho_air(k)
+                   p_loc(k,j,i) = p(k,j,i)
                 ENDDO
              ENDDO
           ENDDO
@@ -202,15 +234,8 @@
 !
 !--    Since p is later used to hold the weighted average of the substeps, it cannot be used in the
 !--    iterative solver. Therefore, its initial value is stored on p_loc, which is then iteratively
-!--    advanced in every substep. Attention: Because PALM solves the anelastic system of equations,
-!--    p_loc is defined as the perturbation pressure divided by the density.
-       DO  i = nxl-1, nxr+1
-          DO  j = nys-1, nyn+1
-             DO  k = nzb, nzt+1
-                p_loc(k,j,i) = p(k,j,i) * drho_air(k)
-             ENDDO
-          ENDDO
-       ENDDO
+!--    advanced in every substep.
+       p_loc = p
 
     ENDIF
 
@@ -237,7 +262,7 @@
 !--       Sum up the volume flow through the south/north boundary
           DO  k = nzb+1, nzt
              volume_flow_l(1) = volume_flow_l(1) + u(k,j,i) * dzw(k)                               &
-                                * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 1 ) )
+                                * MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 1 ) )
           ENDDO
        ENDDO
 
@@ -252,7 +277,7 @@
        DO  j = nysg, nyng
           DO  k = nzb+1, nzt
              u(k,j,i) = u(k,j,i) + volume_flow_offset(1)                                           &
-                        * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 1 ) )
+                        * MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 1 ) )
           ENDDO
        ENDDO
 
@@ -276,7 +301,7 @@
 !--       Sum up the volume flow through the south/north boundary
           DO  k = nzb+1, nzt
              volume_flow_l(2) = volume_flow_l(2) + v(k,j,i) * dzw(k)                               &
-                                * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 2 ) )
+                                * MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 2 ) )
           ENDDO
        ENDDO
 
@@ -291,7 +316,7 @@
        DO  i = nxlg, nxrg
           DO  k = nzb+1, nzt
              v(k,j,i) = v(k,j,i) + volume_flow_offset(2)                                           &
-                        * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 2 ) )
+                        * MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 2 ) )
           ENDDO
        ENDDO
 
@@ -303,24 +328,22 @@
 !-- vertical velocities. They should be removed, because incompressibility requires that the
 !-- vertical gradient of vertical velocity is zero. Since w=0 at the solid surface, it must be zero
 !-- everywhere.
-!-- This must not be done in case of a 3d-nesting child domain or in case of pure vertical nesting
-!-- with non-cyclic conditions, because a mean vertical velocity can physically exist in such a
-!-- domain.
+!-- This must not be done in case of a 3d-nesting child domain, because a mean vertical velocity
+!-- can physically exist in such a domain.
 !-- Also in case of offline nesting, mean vertical velocities may exist (and must not be removed),
 !-- caused by horizontal divergence/convergence of the large scale flow that is prescribed at the
 !-- side boundaries.
-!-- The removal cannot be done before the first initial time step because ngp_2dh_wgrid is not yet
+!-- The removal cannot be done before the first initial time step because ngp_2dh_outer is not yet
 !-- known then.
     IF ( ibc_p_b == 1  .AND.  ibc_p_t == 1  .AND.  .NOT. nesting_offline                           &
-         .AND. .NOT. ( child_domain .AND. ( nesting_bounds /= 'vertical_only'  .OR.  &
-              ( nesting_bounds == 'vertical_only' .AND. .NOT. ( bc_lr_cyc .AND. bc_ns_cyc ) ) ) )  &
+         .AND. .NOT. ( child_domain .AND. nesting_mode /= 'vertical' )                             &
          .AND. intermediate_timestep_count /= 0 )  THEN
        w_l = 0.0_wp;  w_l_l = 0.0_wp
        DO  i = nxl, nxr
           DO  j = nys, nyn
              DO  k = nzb+1, nzt
                 w_l_l(k) = w_l_l(k) + w(k,j,i)                                                     &
-                           * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 3 ) )
+                           * MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 3 ) )
              ENDDO
           ENDDO
        ENDDO
@@ -331,22 +354,16 @@
        w_l = w_l_l
 #endif
        DO  k = 1, nzt
-          w_l(k) = w_l(k) / ngp_2dh_wgrid(k)
+          w_l(k) = w_l(k) / ngp_2dh_outer(k,0)
        ENDDO
-       DO  i = nxl, nxr
-          DO  j = nys, nyn
+       DO  i = nxlg, nxrg
+          DO  j = nysg, nyng
              DO  k = nzb+1, nzt
                 w(k,j,i) = w(k,j,i) - w_l(k)                                                       &
-                           * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 3 ) )
+                           * MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 3 ) )
              ENDDO
           ENDDO
        ENDDO
-!
-!--    Instead of running the above loop over ghost points, they are set via exchange_horiz,
-!--    in order to correctly consider non-cyclic boundary conditions, where ghost boundaries
-!--    of the total domain must not be set. Otherwise w may continuously increase/decrease
-!--    at these points.
-       CALL exchange_horiz( w, nbgp )
     ENDIF
 
 !
@@ -381,7 +398,7 @@
     !$OMP PARALLEL PRIVATE (i,j,k)
     !$OMP DO SCHEDULE( STATIC )
     !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i, j, k) &
-    !$ACC PRESENT(u, v, w, rho_air, rho_air_zw, ddzw, topo_flags) &
+    !$ACC PRESENT(u, v, w, rho_air, rho_air_zw, ddzw, wall_flags_total_0) &
     !$ACC PRESENT(d)
     DO  i = nxl, nxr
        DO  j = nys, nyn
@@ -390,7 +407,7 @@
                           ( v(k,j+1,i) - v(k,j,i) ) * rho_air(k) * ddy +                           &
                           ( w(k,j,i)   * rho_air_zw(k) - w(k-1,j,i) * rho_air_zw(k-1) )            &
                           * ddzw(k) ) * ddt_3d * d_weight_pres                                     &
-                          * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                        * MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
           ENDDO
        ENDDO
     ENDDO
@@ -420,45 +437,22 @@
 !
 !-- For completeness, set the divergence sum of all statistic regions to those of the total domain
     IF ( intermediate_timestep_count == intermediate_timestep_count_max  .OR.                      &
-         intermediate_timestep_count == 0 )                                                        &
-    THEN
+         intermediate_timestep_count == 0 )  THEN
        sums_divold_l(0:statistic_regions) = localsum
-    ENDIF
-
-!
-!-- Store the "old" divergence for diagnostic output, only for the last Runge-Kutta timestep.
-    IF ( intermediate_timestep_count == intermediate_timestep_count_max  .OR.                      &
-         intermediate_timestep_count == 0 )                                                        &
-    THEN
-       IF ( ALLOCATED( div_old ) )  THEN
-          DO  i = nxl, nxr
-             DO  j = nys, nyn
-                DO  k = 1, nzt
-                   div_old(k,j,i) = d(k,j,i)
-                ENDDO
-             ENDDO
-          ENDDO
-       ENDIF
     ENDIF
 
     CALL cpu_log( log_point_s(1), 'divergence', 'stop' )
 
 !
-!-- Compute the pressure perturbation solving the Poisson equation.
-    IF ( psolver(1:7) == 'poisfft' )  THEN
+!-- Compute the pressure perturbation solving the Poisson equation
+    IF ( psolver == 'poisfft' )  THEN
 
 !
-!--    Solve Poisson equation via FFT and solution of tridiagonal matrices.
-       IF ( use_sm_for_poisfft )  THEN
-#if defined( __parallel )
-          CALL poisfft_sm( d )
-#endif
-       ELSE
-          CALL poisfft( d )
-       ENDIF
+!--    Solve Poisson equation via FFT and solution of tridiagonal matrices
+       CALL poisfft( d )
 
 !
-!--    Store computed perturbation pressure and set boundary condition in z-direction.
+!--    Store computed perturbation pressure and set boundary condition in z-direction
        !$OMP PARALLEL DO PRIVATE (i,j,k) SCHEDULE( STATIC )
        !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i, j, k) &
        !$ACC PRESENT(d, tend)
@@ -471,37 +465,59 @@
        ENDDO
 
 !
-!--    Set Neumann boundary conditions for pressure in non-cyclic case
-       IF ( .NOT. bc_lr_cyc )  THEN
-          IF ( bc_dirichlet_l  .OR.  bc_radiation_l )  tend(:,:,nxl-1) = tend(:,:,nxl)
-          IF ( bc_dirichlet_r  .OR.  bc_radiation_r )  tend(:,:,nxr+1) = tend(:,:,nxr)
-       ENDIF
-       IF ( .NOT. bc_ns_cyc )  THEN
-          IF ( bc_dirichlet_n  .OR.  bc_radiation_n )  tend(:,nyn+1,:) = tend(:,nyn,:)
-          IF ( bc_dirichlet_s  .OR.  bc_radiation_s )  tend(:,nys-1,:) = tend(:,nys,:)
-       ENDIF
-!
 !--    Bottom boundary:
 !--    This condition is only required for internal output. The pressure gradient
 !--    (dp(nzb+1)-dp(nzb))/dz is not used anywhere else.
-!--    Neumann
        IF ( ibc_p_b == 1 )  THEN
-          !$OMP PARALLEL DO PRIVATE (i,j) SCHEDULE( STATIC )
-          DO  i = nxlg, nxrg
-             DO  j = nysg, nyng
-                tend(nzb,j,i) = tend(nzb+1,j,i)
-             ENDDO
+!
+!--       Neumann (dp/dz = 0). Using surface data type, first for non-natural surfaces, then for
+!--       natural and urban surfaces
+!--       Upward facing
+          !$OMP PARALLEL DO PRIVATE( m, i, j, k ) SCHEDULE( STATIC )
+          !$ACC PARALLEL LOOP PRIVATE(i, j, k) &
+          !$ACC PRESENT(bc_h, tend)
+          DO  m = 1, bc_h(0)%ns
+             i = bc_h(0)%i(m)
+             j = bc_h(0)%j(m)
+             k = bc_h(0)%k(m)
+             tend(k-1,j,i) = tend(k,j,i)
           ENDDO
 !
-!--    Dirichlet
-       ELSE
-          !$OMP PARALLEL DO PRIVATE (i,j) SCHEDULE( STATIC )
-          DO  i = nxlg, nxrg
-             DO  j = nysg, nyng
-                tend(nzb,j,i) = 0.0_wp
-             ENDDO
+!--       Downward facing
+          !$OMP PARALLEL DO PRIVATE( m, i, j, k ) SCHEDULE( STATIC )
+          !$ACC PARALLEL LOOP PRIVATE(i, j, k) &
+          !$ACC PRESENT(bc_h, tend)
+          DO  m = 1, bc_h(1)%ns
+             i = bc_h(1)%i(m)
+             j = bc_h(1)%j(m)
+             k = bc_h(1)%k(m)
+             tend(k+1,j,i) = tend(k,j,i)
           ENDDO
+
+       ELSE
+!
+!--       Dirichlet. Using surface data type, first for non-natural surfaces, then for natural and
+!--       urban surfaces
+!--       Upward facing
+          !$OMP PARALLEL DO PRIVATE( m, i, j, k ) SCHEDULE( STATIC )
+          DO  m = 1, bc_h(0)%ns
+             i = bc_h(0)%i(m)
+             j = bc_h(0)%j(m)
+             k = bc_h(0)%k(m)
+             tend(k-1,j,i) = 0.0_wp
+          ENDDO
+!
+!--       Downward facing
+          !$OMP PARALLEL DO PRIVATE( m, i, j, k ) SCHEDULE( STATIC )
+          DO  m = 1, bc_h(1)%ns
+             i = bc_h(1)%i(m)
+             j = bc_h(1)%j(m)
+             k = bc_h(1)%k(m)
+             tend(k+1,j,i) = 0.0_wp
+          ENDDO
+
        ENDIF
+
 !
 !--    Top boundary
        IF ( ibc_p_t == 1 )  THEN
@@ -580,8 +596,6 @@
 
 !
 !-- Store perturbation pressure on array p, used for pressure data output.
-!-- Attention: Because PALM solves the anelastic system of equations, tend
-!-- contains the perturbation pressure divided by the density.
 !-- Ghost layers are added in the output routines (except sor-method: see below)
     IF ( intermediate_timestep_count <= 1 )  THEN
        !$OMP PARALLEL DO PRIVATE (i,j,k) SCHEDULE( STATIC )
@@ -590,7 +604,7 @@
        DO  i = nxl-1, nxr+1
           DO  j = nys-1, nyn+1
              DO  k = nzb, nzt+1
-                p(k,j,i) = tend(k,j,i)  * rho_air(k) * weight_substep_l
+                p(k,j,i) = tend(k,j,i) * weight_substep_l
              ENDDO
           ENDDO
        ENDDO
@@ -602,7 +616,7 @@
        DO  i = nxl-1, nxr+1
           DO  j = nys-1, nyn+1
              DO  k = nzb, nzt+1
-                p(k,j,i) = p(k,j,i) + tend(k,j,i) * rho_air(k) * weight_substep_l
+                p(k,j,i) = p(k,j,i) + tend(k,j,i) * weight_substep_l
              ENDDO
           ENDDO
        ENDDO
@@ -627,35 +641,35 @@
 !-- imposed at the boundaries.
     !$OMP PARALLEL DO PRIVATE (i,j,k) SCHEDULE( STATIC )
     !$ACC PARALLEL LOOP COLLAPSE(2) PRIVATE(i, j, k) &
-    !$ACC PRESENT(u, v, w, tend, ddzu, topo_flags)
+    !$ACC PRESENT(u, v, w, tend, ddzu, wall_flags_total_0)
     DO  i = nxl, nxr
        DO  j = nys, nyn
 
           DO  k = nzb+1, nzt
              w(k,j,i) = w(k,j,i) - dt_3d * ( tend(k+1,j,i) - tend(k,j,i) ) * ddzu(k+1)             &
                         * weight_pres_l                                                            &
-                        * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 3 ) )
+                        * MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 3 ) )
           ENDDO
 
           DO  k = nzb+1, nzt
              u(k,j,i) = u(k,j,i) - dt_3d * ( tend(k,j,i) - tend(k,j,i-1) ) * ddx * weight_pres_l   &
-                        * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 1 ) )
+                        * MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 1 ) )
           ENDDO
 
           DO  k = nzb+1, nzt
              v(k,j,i) = v(k,j,i) - dt_3d * ( tend(k,j,i) - tend(k,j-1,i) ) * ddy * weight_pres_l   &
-                        * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 2 ) )
+                        * MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 2 ) )
           ENDDO
 
        ENDDO
     ENDDO
 
 !
-!-- The vertical velocity is non zero at the top of nested child domains. w(nzt+1) is set to w(nzt)
-!-- in routine pmci_ensure_nest_mass_conservation BEFORE calling the pressure solver.
-!-- Same is done below, because w(nzt) has been changed above, to avoid jumps in the profile output
-!-- of w. Hint: w level nzt+1 does not impact results.
-    IF ( child_domain )  THEN
+!-- The vertical velocity is not set to zero at nzt + 1 for nested domains. Instead it is set to the
+!-- values of nzt (see routine vnest_boundary_conds or pmci_interp_tril_t) BEFORE calling the
+!-- pressure solver. To avoid jumps while plotting profiles, w at the top has to be set to the
+!-- values in height nzt after above modifications. Hint: w level nzt+1 does not impact results.
+    IF ( child_domain  .OR.  coupling_mode == 'vnested_fine' )  THEN
        w(nzt+1,:,:) = w(nzt,:,:)
     ENDIF
 
@@ -670,8 +684,8 @@
        !$OMP PARALLEL DO PRIVATE (j,k) REDUCTION (+:threadsum)
        DO  j = nys, nyn
           DO  k = nzb+1, nzt
-             threadsum = threadsum + u(k,j,nxr) * dzw(k)                                           &
-                                * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,nxr), 1 ) )
+             threadsum = threadsum + u(k,j,nxr) * dzw(k)                             &
+                                * MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,nxr), 1 ) )
           ENDDO
        ENDDO
        volume_flow_l(1) = threadsum
@@ -683,8 +697,8 @@
        !$OMP PARALLEL DO PRIVATE (j,k) REDUCTION (+:threadsum)
        DO  i = nxl, nxr
           DO  k = nzb+1, nzt
-             threadsum = threadsum + v(k,nyn,i) * dzw(k)                                           &
-                                * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,nyn,i), 2 ) )
+             threadsum = threadsum + v(k,nyn,i) * dzw(k)                             &
+                                * MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,nyn,i), 2 ) )
            ENDDO
        ENDDO
        volume_flow_l(2) = threadsum
@@ -710,11 +724,11 @@
           DO  j = nys, nyn
              DO  k = nzb+1, nzt
                 u(k,j,i) = u(k,j,i) + volume_flow_offset(1)                                        &
-                           * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 1 ) )
+                           * MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 1 ) )
              ENDDO
              DO  k = nzb+1, nzt
                 v(k,j,i) = v(k,j,i) + volume_flow_offset(2)                                        &
-                           * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 2 ) )
+                           * MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 2 ) )
              ENDDO
           ENDDO
        ENDDO
@@ -746,7 +760,7 @@
        !$OMP PARALLEL PRIVATE (i,j,k) FIRSTPRIVATE(threadsum) REDUCTION(+:localsum)
        !$OMP DO SCHEDULE( STATIC )
        !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i, j, k) &
-       !$ACC PRESENT(u, v, w, rho_air, rho_air_zw, ddzw, topo_flags) &
+       !$ACC PRESENT(u, v, w, rho_air, rho_air_zw, ddzw, wall_flags_total_0) &
        !$ACC PRESENT(d)
        DO  i = nxl, nxr
           DO  j = nys, nyn
@@ -755,7 +769,7 @@
                              ( v(k,j+1,i) - v(k,j,i) ) * rho_air(k) * ddy +    &
                              ( w(k,j,i)   * rho_air_zw(k) - w(k-1,j,i) * rho_air_zw(k-1) )         &
                              * ddzw(k) )                                                           &
-                             * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                           * MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
              ENDDO
           ENDDO
        ENDDO
@@ -780,18 +794,6 @@
 !--    For completeness, set the divergence sum of all statistic regions to those of the total
 !--    domain
        sums_divnew_l(0:statistic_regions) = localsum
-
-!
-!--    Store the "new" divergence for diagnostic output.
-       IF ( ALLOCATED( div_new ) )  THEN
-          DO  i = nxl, nxr
-             DO  j = nys, nyn
-                DO  k = 1, nzt
-                   div_new(k,j,i) = d(k,j,i)
-                ENDDO
-             ENDDO
-          ENDDO
-       ENDIF
 
        CALL cpu_log( log_point_s(1), 'divergence', 'stop' )
 

@@ -13,8 +13,58 @@
 ! You should have received a copy of the GNU General Public License along with PALM. If not, see
 ! <http://www.gnu.org/licenses/>.
 !
-! Copyright 1997-2021 Leibniz Universitaet Hannover
+! Copyright 1997-2020 Leibniz Universitaet Hannover
 !--------------------------------------------------------------------------------------------------!
+!
+! Current revisions:
+! -----------------
+!
+!
+! Former revisions:
+! -----------------
+! $Id: dynamics_mod.f90 4768 2020-11-02 19:11:23Z suehring $
+! Enable 3D data output also with 64-bit precision
+!
+! 4760 2020-10-26 13:26:47Z schwenkel
+! Implement relative humidity as diagnostic output quantity
+!
+! 4731 2020-10-07 13:25:11Z schwenkel
+! Move exchange_horiz from time_integration to modules
+!
+! 4627 2020-07-26 10:14:44Z raasch
+! bugfix for r4626
+!
+! 4626 2020-07-26 09:49:48Z raasch
+! file re-formatted to follow the PALM coding standard
+!
+! 4517 2020-05-03 14:29:30Z raasch
+! added restart with MPI-IO for reading local arrays
+!
+! 4505 2020-04-20 15:37:15Z schwenkel
+! Add flag for saturation check
+!
+! 4495 2020-04-13 20:11:20Z resler
+! restart data handling with MPI-IO added
+!
+! 4360 2020-01-07 11:25:50Z suehring
+! Bugfix for last commit.
+!
+! 4359 2019-12-30 13:36:50Z suehring
+! Refine post-initialization check for realistically inital values of mixing ratio. Give an error
+! message for faulty initial values, but only a warning in a restart run.
+!
+! 4347 2019-12-18 13:18:33Z suehring
+! Implement post-initialization check for realistically inital values of mixing ratio
+!
+! 4281 2019-10-29 15:15:39Z schwenkel
+! Moved boundary conditions in dynamics module
+!
+! 4097 2019-07-15 11:59:11Z suehring
+! Avoid overlong lines - limit is 132 characters per line
+!
+! 4047 2019-06-21 18:58:09Z knoop
+! Initial introduction of the dynamics module with only dynamics_swap_timelevel implemented
+!
 !
 ! Description:
 ! ------------
@@ -22,45 +72,22 @@
 !--------------------------------------------------------------------------------------------------!
  MODULE dynamics_mod
 
-#if defined( __parallel )
-    USE MPI
-#endif
 
     USE arrays_3d,                                                                                 &
-        ONLY:  diss,                                                                               &
+        ONLY:  c_u, c_u_m, c_u_m_l, c_v, c_v_m, c_v_m_l, c_w, c_w_m, c_w_m_l,                      &
+               diss,                                                                               &
                diss_p,                                                                             &
                dzu,                                                                                &
                e,                                                                                  &
                e_p,                                                                                &
                exner,                                                                              &
                hyp,                                                                                &
-               pt,                                                                                 &
-               pt_1,                                                                               &
-               pt_2,                                                                               &
-               pt_init,                                                                            &
-               pt_p,                                                                               &
-               q, q_1,                                                                             &
-               q_2,                                                                                &
-               q_p,                                                                                &
-               rho_air,                                                                            &
-               s,                                                                                  &
-               s_1,                                                                                &
-               s_2,                                                                                &
-               s_p,                                                                                &
-               u,                                                                                  &
-               u_1,                                                                                &
-               u_2,                                                                                &
-               u_init,                                                                             &
-               u_p,                                                                                &
-               v,                                                                                  &
-               v_1,                                                                                &
-               v_2,                                                                                &
-               v_p,                                                                                &
-               v_init,                                                                             &
-               w,                                                                                  &
-               w_1,                                                                                &
-               w_2,                                                                                &
-               w_p,                                                                                &
+               pt, pt_1, pt_2, pt_init, pt_p,                                                      &
+               q, q_1, q_2, q_p,                                                                   &
+               s, s_1, s_2, s_p,                                                                   &
+               u, u_1, u_2, u_init, u_p, u_m_l, u_m_n, u_m_r, u_m_s,                               &
+               v, v_1, v_2, v_p, v_init, v_m_l, v_m_n, v_m_r, v_m_s,                               &
+               w, w_1, w_2, w_p, w_m_l, w_m_n, w_m_r, w_m_s,                                       &
                zu
 
     USE basic_constants_and_equations_mod,                                                         &
@@ -74,16 +101,14 @@
                bc_radiation_n,                                                                     &
                bc_radiation_r,                                                                     &
                bc_radiation_s,                                                                     &
-               bc_pt_b,                                                                            &
                bc_pt_t_val,                                                                        &
                bc_q_t_val,                                                                         &
                bc_s_t_val,                                                                         &
                check_realistic_q,                                                                  &
                child_domain,                                                                       &
+               coupling_mode,                                                                      &
                constant_diffusion,                                                                 &
-               cyclic_fill_initialization,                                                         &
                dt_3d,                                                                              &
-               homogenize_surface_temperature,                                                     &
                humidity,                                                                           &
                ibc_pt_b,                                                                           &
                ibc_pt_t,                                                                           &
@@ -95,23 +120,17 @@
                ibc_uv_t,                                                                           &
                initializing_actions,                                                               &
                intermediate_timestep_count,                                                        &
-               land_surface,                                                                       &
                length,                                                                             &
                message_string,                                                                     &
                nesting_offline,                                                                    &
                neutral,                                                                            &
                nudging,                                                                            &
                passive_scalar,                                                                     &
-               pt_surface_heating_rate,                                                            &
-               pt_surface_initial_change,                                                          &
-               q_surface_initial_change,                                                           &
                restart_string,                                                                     &
                rans_mode,                                                                          &
                rans_tke_e,                                                                         &
-               s_surface_initial_change,                                                           &
-               time_since_reference_point,                                                         &
                tsc,                                                                                &
-               urban_surface
+               use_cmax
 
     USE exchange_horiz_mod,                                                                        &
         ONLY:  exchange_horiz
@@ -143,22 +162,19 @@
     USE pegrid
 
     USE pmc_interface,                                                                             &
-        ONLY:   nested_run,                                                                        &
-                root_model
+        ONLY : nesting_mode
 
 !    USE restart_data_mpi_io_mod,                                                                   &
 !        ONLY:
 
     USE surface_mod,                                                                               &
-        ONLY:  bc_hv,                                                                              &
-               surf_def,                                                                           &
-               surf_lsm,                                                                           &
-               surf_usm
-
-    USE statistics,                                                                                &
-        ONLY:  weight_substep
-
-
+        ONLY :  bc_h
+!
+!-- COVID-19 related code begins    
+    USE user
+!
+!-- COVID-19 related code ends
+    
     IMPLICIT NONE
 
     LOGICAL ::  dynamics_module_enabled = .FALSE.   !<
@@ -322,43 +338,36 @@
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE dynamics_parin
 
-    CHARACTER(LEN=100)  ::  line  !< dummy string that contains the current line of the parameter
-                                  !< file
-    INTEGER(iwp)  ::  io_status   !< status after reading the namelist file
 
-    LOGICAL ::  switch_off_module = .FALSE.  !< local namelist parameter to switch off the module
-                                             !< although the respective module namelist appears in
-                                             !< the namelist file
+    CHARACTER (LEN=80)  ::  line  !< dummy string that contains the current line of the parameter file
 
-    NAMELIST /dynamics_parameters/  switch_off_module
+    NAMELIST /dynamics_parameters/                                                                 &
+       dynamics_module_enabled
 
 
+    line = ' '
 !
-!-- For the time beeing (unless the dynamics module is further developed), set default module
-!-- switch to true.
+!-- Try to find module-specific namelist
+    REWIND ( 11 )
+    line = ' '
+    DO   WHILE ( INDEX( line, '&dynamics_parameters' ) == 0 )
+       READ ( 11, '(A)', END=12 )  line
+    ENDDO
+    BACKSPACE ( 11 )
+
+!-- Set default module switch to true
     dynamics_module_enabled = .TRUE.
 
-!
-!-- Move to the beginning of the namelist file and try to find and read the namelist.
-    REWIND( 11 )
-    READ( 11, dynamics_parameters, IOSTAT=io_status )
+!-- Read user-defined namelist
+    READ ( 11, dynamics_parameters, ERR = 10 )
 
-!
-!-- Action depending on the READ status
-    IF ( io_status == 0 )  THEN
-!
-!--    dynamics_parameters namelist was found and read correctly.
-       IF ( .NOT. switch_off_module )  dynamics_module_enabled = .TRUE.
+    GOTO 12
 
-    ELSEIF ( io_status > 0 )  THEN
-!
-!--    dynamics_parameters namelist was found, but contained errors. Print an error message
-!--    including the line that caused the problem.
-       BACKSPACE( 11 )
-       READ( 11 , '(A)') line
-       CALL parin_fail_message( 'dynamics_parameters', line )
+10  BACKSPACE( 11 )
+    READ( 11 , '(A)') line
+    CALL parin_fail_message( 'dynamics_parameters', line )
 
-    ENDIF
+12  CONTINUE
 
  END SUBROUTINE dynamics_parin
 
@@ -370,28 +379,6 @@
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE dynamics_check_parameters
 
-!
-!-- Checks concering homogenization of surface temperature.
-    IF ( homogenize_surface_temperature )  THEN
-!
-!--    Homogenization of the surface temperature is only allowed if the temperature equation is
-!--    enabled and if a Dirichlet boundary conditions for the pot. temperature is set.
-       IF ( neutral  .OR.  bc_pt_b /= 'dirichlet' )  THEN
-          message_string = 'homogenize_surface_temperature = .T. is only allowed in&' //           &
-                           'combination with neutral = .F. and bc_pt_b = "dirichlet".'
-          CALL message( 'dynamics_check_parameters', 'PAC0197', 1, 2, 0, 6, 0 )
-       ENDIF
-!
-!--    Homogenization of surface temperature is not allowed in combination with the land- and urban-
-!--    surface model, where the soil- and surface temperature is determined by a prognostic equation.
-!--    Note, this covers also the situation where the soil/surface temperature can be input via
-!--    the dynamic input file.
-       IF ( land_surface  .OR.  urban_surface )  THEN
-          message_string = 'homogenize_surface_temperature = .T. is not allowed in combination ' //&
-                           'with the land- or urban-surface model.'
-          CALL message( 'dynamics_check_parameters', 'PAC0198', 1, 2, 0, 6, 0 )
-       ENDIF
-    ENDIF
 
  END SUBROUTINE dynamics_check_parameters
 
@@ -521,155 +508,6 @@
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE dynamics_init
 
-    INTEGER(iwp) ::  i !< grid index in x direction
-    INTEGER(iwp) ::  j !< grid index in y direction
-    INTEGER(iwp) ::  k !< grid index in z direction
-    INTEGER(iwp) ::  m !< running index over boundary grid points
-
-    REAL(wp) ::  pt_surf_mean !< mean surface temperature
-
-    IF ( TRIM( initializing_actions ) /= 'read_restart_data'  .AND.                                &
-         .NOT. cyclic_fill_initialization )  THEN
-!
-!--    If required, change the surface temperature at the start of the 3D run. Further, directly
-!--    write the surface temperature onto the corresponding surface attribute %pt_surface, for
-!--    sake of data output before the very first timestep will be done.
-       IF ( pt_surface_initial_change /= 0.0_wp )  THEN
-          DO  m = 1, bc_hv%ns_bgp
-             i = bc_hv%i_bgp(m)
-             j = bc_hv%j_bgp(m)
-             k = bc_hv%k_bgp(m)
-             pt(k,j,i) = pt(k,j,i) + pt_surface_initial_change
-          ENDDO
-
-          DO  m = 1, surf_def%ns
-             i = surf_def%i(m) + surf_def%ioff(m)
-             j = surf_def%j(m) + surf_def%joff(m)
-             k = surf_def%k(m) + surf_def%koff(m)
-             surf_def%pt_surface(m) = pt(k,j,i)
-          ENDDO
-          DO  m = 1, surf_lsm%ns
-             i = surf_lsm%i(m) + surf_lsm%ioff(m)
-             j = surf_lsm%j(m) + surf_lsm%joff(m)
-             k = surf_lsm%k(m) + surf_lsm%koff(m)
-             surf_lsm%pt_surface(m) = pt(k,j,i)
-          ENDDO
-          DO  m = 1, surf_usm%ns
-             i = surf_usm%i(m) + surf_usm%ioff(m)
-             j = surf_usm%j(m) + surf_usm%joff(m)
-             k = surf_usm%k(m) + surf_usm%koff(m)
-             surf_usm%pt_surface(m) = pt(k,j,i)
-          ENDDO
-       ENDIF
-!
-!--    If required, change the surface humidity/scalar at the start of the 3D run.
-!--    Note, to store boundary values of passive scalar on the surface types is not require at
-!--    at the moment.
-       IF ( humidity  .AND.  q_surface_initial_change /= 0.0_wp )  THEN
-          DO  m = 1, bc_hv%ns_bgp
-             i = bc_hv%i_bgp(m)
-             j = bc_hv%j_bgp(m)
-             k = bc_hv%k_bgp(m)
-             q(k,j,i) = q(k,j,i) + q_surface_initial_change
-          ENDDO
-
-          DO  m = 1, surf_def%ns
-             i = surf_def%i(m) + surf_def%ioff(m)
-             j = surf_def%j(m) + surf_def%joff(m)
-             k = surf_def%k(m) + surf_def%koff(m)
-             surf_def%q_surface(m) = q(k,j,i)
-          ENDDO
-          DO  m = 1, surf_lsm%ns
-             i = surf_lsm%i(m) + surf_lsm%ioff(m)
-             j = surf_lsm%j(m) + surf_lsm%joff(m)
-             k = surf_lsm%k(m) + surf_lsm%koff(m)
-             surf_lsm%q_surface(m) = q(k,j,i)
-          ENDDO
-          DO  m = 1, surf_usm%ns
-             i = surf_usm%i(m) + surf_usm%ioff(m)
-             j = surf_usm%j(m) + surf_usm%joff(m)
-             k = surf_usm%k(m) + surf_usm%koff(m)
-             surf_usm%q_surface(m) = q(k,j,i)
-          ENDDO
-       ENDIF
-
-       IF ( passive_scalar  .AND.  s_surface_initial_change /= 0.0_wp )  THEN
-          DO  m = 1, bc_hv%ns_bgp
-             i = bc_hv%i_bgp(m)
-             j = bc_hv%j_bgp(m)
-             k = bc_hv%k_bgp(m)
-             s(k,j,i) = s(k,j,i) + s_surface_initial_change
-          ENDDO
-       ENDIF
-    ENDIF
-
-!
-!-- If required, homogenize the surface temperature. This is useful to remove horizontal
-!-- differences from the surface temperature in case the surface boundary condition for the
-!-- temperature changes between two runs. More precisely, if the previous run used Neumann
-!-- conditions but the current run uses Dirichlet conditions (e.g. to consider a rapid
-!-- stabilization of the atmosphere in an idealized way). Therefore, compute the mean surface
-!-- temperature and map this onto all boundary grid points. In case of a nested run, the surface
-!-- temperature from the root domain is taken and send to all child domains, in order to
-!-- guarantee the same surface temperature in all domains.
-    IF ( homogenize_surface_temperature )  THEN
-!
-!--    Calculate mean surface potential temperature in the outermost domain. Loop over all
-!--    boundary grid points.
-       IF ( root_model )  THEN
-
-          pt_surf_mean = 0.0_wp
-          DO  m = 1, bc_hv%ns_bgp
-             i = bc_hv%i_bgp(m)
-             j = bc_hv%j_bgp(m)
-             k = bc_hv%k_bgp(m)
-
-             pt_surf_mean = pt_surf_mean + pt(k,j,i)
-          ENDDO
-
-#if defined( __parallel )
-          CALL MPI_ALLREDUCE( MPI_IN_PLACE, pt_surf_mean, 1, MPI_REAL, MPI_SUM, comm2d, ierr )
-#endif
-          pt_surf_mean = pt_surf_mean / bc_hv%ns_bgp_tot
-!
-!--       Apply initial change of surface temperature in the restart run. Note,
-!--       pt_surface_initial_change is not part of the restart IO, so that the change in the
-!--       surface temperature needs to be explicitly set in the runtime_parameters namelist.
-          IF ( TRIM( initializing_actions ) == 'read_restart_data'  .AND.                          &
-               pt_surface_initial_change /= 0.0_wp )  THEN
-             pt_surf_mean = pt_surf_mean + pt_surface_initial_change
-          ENDIF
-       ENDIF
-
-       IF ( nested_run )  THEN
-#if defined( __parallel )
-          CALL MPI_BCAST( pt_surf_mean, 1, MPI_REAL, 0, MPI_COMM_WORLD, ierr )
-#endif
-       ENDIF
-!
-!--    Map surface temperature onto all boundary grid points. Note, surface temperature is also
-!--    written onto the default surface array (land- and urban-surfaces are not allowed). This
-!--    is only required to obtain the correct initial output of the surface temperature, which
-!--    is stored in the %pt_surface attribute.
-!--    Moreover, please note that the content of pt is copied onto pt_p at the end of init_3d_model,
-!--    so that this is not necessary here.
-       DO  m = 1, bc_hv%ns_bgp
-          i = bc_hv%i_bgp(m)
-          j = bc_hv%j_bgp(m)
-          k = bc_hv%k_bgp(m)
-          pt(k,j,i) = pt_surf_mean
-       ENDDO
-
-       DO  m = 1, surf_def%ns
-          surf_def%pt_surface(m) = pt_surf_mean
-       ENDDO
-       DO  m = 1, surf_lsm%ns
-          surf_lsm%pt_surface(m) = pt_surf_mean
-       ENDDO
-       DO  m = 1, surf_usm%ns
-          surf_usm%pt_surface(m) = pt_surf_mean
-       ENDDO
-    ENDIF
 
  END SUBROUTINE dynamics_init
 
@@ -730,16 +568,16 @@
        CALL MPI_ALLREDUCE( height, min_height, 1, MPI_REAL, MPI_MIN, comm2d, ierr )
 #endif
 
-       IF ( .NOT. realistic_q  .AND.  TRIM( initializing_actions ) /= 'read_restart_data' )  THEN
-          WRITE( message_string, * ) 'initial mixing ratio exceeds the saturation mixing ratio' // &
-                                     ', with rh = ', rh_min, '% at a height of ', min_height,      &
-                                     'm for the first time (initial run)'
-          CALL message( 'dynamic_init_checks', 'PAC0199', 2, 2, 0, 6, 0 )
-       ELSEIF ( .NOT. realistic_q  .AND.  TRIM( initializing_actions ) == 'read_restart_data' ) THEN
-          WRITE( message_string, * ) 'initial mixing ratio exceeds the saturation mixing ratio' // &
-                                     ', with rh = ', rh_min, '% at a height of ', min_height,      &
-                                     'm for the first time (restart run)'
-          CALL message( 'dynamic_init_checks', 'PAC0200', 0, 1, 0, 6, 0 )
+       IF ( .NOT. realistic_q  .AND.                                                               &
+            TRIM( initializing_actions ) /= 'read_restart_data' )  THEN
+            WRITE( message_string, * ) 'The initial mixing ratio exceeds the saturation mixing' // &
+               'ratio, with rh =', rh_min, '% in a height of', min_height, 'm for the first time'
+          CALL message( 'dynamic_init_checks', 'PA0697', 2, 2, 0, 6, 0 )
+       ELSEIF ( .NOT. realistic_q  .AND.                                                           &
+                TRIM( initializing_actions ) == 'read_restart_data' )  THEN
+          WRITE( message_string, * ) 'The initial mixing ratio exceeds the saturation mixing' //   &
+              'ratio, with rh =', rh_min, '% in a height of', min_height, 'm for the first time'
+          CALL message( 'dynamic_init_checks', 'PA0697', 0, 1, 0, 6, 0 )
        ENDIF
     ENDIF
 
@@ -787,16 +625,24 @@
  SUBROUTINE dynamics_header( io )
 
 
-    INTEGER(iwp) ::  io   !< output-file id
+    INTEGER(iwp) ::  io   !<
 
 !
-!-- Write dynamics module header
-!-- NOTE: Deactivated because no relevant information to write so far
-    IF ( .FALSE. )  WRITE ( io, 100 )
+!-- If no module-specific variables are read from the namelist-file, no information will be printed.
+    IF ( .NOT. dynamics_module_enabled )  THEN
+       WRITE ( io, 100 )
+       RETURN
+    ENDIF
+
+!
+!-- Printing the information.
+    WRITE ( io, 110 )
 
 !
 !-- Format-descriptors
-100 FORMAT (//' Dynamics module information:'/                                              &
+100 FORMAT (//' *** dynamic module disabled'/)
+110 FORMAT (//1X,78('#')                                                                           &
+            //' User-defined variables and actions:'/                                              &
               ' -----------------------------------'//)
 
  END SUBROUTINE dynamics_header
@@ -812,18 +658,12 @@
 
     CHARACTER (LEN=*) ::  location !<
 
-    INTEGER(iwp) ::  i !< running grid index in x-direction
-    INTEGER(iwp) ::  j !< running grid index in y-direction
-    INTEGER(iwp) ::  k !< running grid index in z-direction
-
-    LOGICAL, SAVE ::  rh_valid = .TRUE.
-
-    REAL(wp) ::  e_s !< saturation water vapor pressure
-    REAL(wp) ::  q_s !< saturation mixing ratio
-
+!    INTEGER(iwp) ::  i !<
+!    INTEGER(iwp) ::  j !<
+!    INTEGER(iwp) ::  k !<
 
 !
-!-- Here actions of the dynamics module follow.
+!-- Here the user-defined actions follow
 !-- No calls for single grid points are allowed at locations before and after the timestep, since
 !-- these calls are not within an i,j-loop
     SELECT CASE ( location )
@@ -835,42 +675,7 @@
 
 
        CASE ( 'after_integration' )
-!
-!--       Check values of the mixing ratio. They must lie in a realistic physical
-!--       range and must not exceed the saturation mixing ratio by more than 2 percent, else a
-!--       warning message is triggered. Note, this warning is only triggered one time to
-!--       make users aware of potential issues. For example, in case of LSM/USM runs, the energy
-!--       balance solvers might yield unrealistic fluxes causing strong numerical oscillations
-!--       in the surface temperature resulting in numerical instabilities.
-!--       Too high relative humidities may occur if no cloud water condensation is considered.
-          IF ( humidity  .AND.  .NOT. neutral  .AND.  check_realistic_q  .AND.  rh_valid )  THEN
-             DO  i = nxl, nxr
-                DO  j = nys, nyn
-                   DO  k = nzb+1, nzt
-!
-!--                   Calculate water vapor saturation pressure, and based on this, the saturation
-!--                   mixing ratio.
-                      e_s = magnus( exner(k) * pt(k,j,i) )
-                      q_s = rd_d_rv * e_s / ( hyp(k) - e_s )
 
-                      IF ( q(k,j,i) > 1.02_wp * q_s )  rh_valid = .FALSE.
-
-                   ENDDO
-                ENDDO
-             ENDDO
-!
-!--          Since the check is performed locally, merge the logical flag from all mpi ranks.
-#if defined( __parallel )
-             CALL MPI_ALLREDUCE( MPI_IN_PLACE, rh_valid, 1, MPI_LOGICAL, MPI_LAND, comm2d, ierr)
-#endif
-             IF ( .NOT. rh_valid )  THEN
-                WRITE( message_string, *) 'Mixing ratio exceeds the saturation mixing ratio for ', &
-                                          'the first time after ', time_since_reference_point,     &
-                                          ' s of simulated time.&No further warning will be ',     &
-                                          'given. Please check your results carefully.'
-                CALL message( 'dynamics_actions', 'PAC0201', 0, 1, 0, 6, 0 )
-             ENDIF
-          ENDIF
 
        CASE ( 'after_timestep' )
 
@@ -929,16 +734,28 @@
 !
 !--       Next line is to avoid compiler warning about unused variables. Please remove.
           IF ( i +  j < 0 )  CONTINUE
-
+!
+!--       COVID-19 related code begins
+          CALL user_actions( i, j, 'u-tendency' )
+!
+!--       COVID-19 related code ends
        CASE ( 'v-tendency' )
-
-
+!
+!--       COVID-19 related code begins
+          CALL user_actions( i, j, 'v-tendency' )
+!
+!--       COVID-19 related code ends
        CASE ( 'w-tendency' )
-
+!
+!--       COVID-19 related code begins
+          CALL user_actions( i, j, 'w-tendency' )
 
        CASE ( 'pt-tendency' )
-
-
+!
+!--       COVID-19 related code begins
+          CALL user_actions( i, j, 'pt-tendency' )
+!
+!--       COVID-19 related code ends
        CASE ( 'sa-tendency' )
 
 
@@ -949,8 +766,11 @@
 
 
        CASE ( 's-tendency' )
-
-
+!
+!--       COVID-19 related code begins          
+          CALL user_actions( i, j, 's-tendency' )
+!
+!--       COVID-19 related code ends
        CASE DEFAULT
           CONTINUE
 
@@ -1076,7 +896,11 @@
     INTEGER(iwp) ::  i  !< grid index x direction
     INTEGER(iwp) ::  j  !< grid index y direction
     INTEGER(iwp) ::  k  !< grid index z direction
+    INTEGER(iwp) ::  l  !< running index boundary type, for up- and downward-facing walls
     INTEGER(iwp) ::  m  !< running index surface elements
+
+    REAL(wp)    ::  c_max !< maximum phase velocity allowed by CFL criterion, used for outflow boundary condition
+    REAL(wp)    ::  denom !< horizontal gradient of velocity component normal to the outflow boundary
 
 !
 !-- Bottom boundary
@@ -1085,17 +909,20 @@
        v_p(nzb,:,:) = v_p(nzb+1,:,:)
     ENDIF
 !
-!-- Set zero vertical velocity at topography adjacent topography grid points.
-!-- Is this really necessary?
-    !$OMP PARALLEL DO PRIVATE( i, j, k )
-    !$ACC PARALLEL LOOP PRIVATE(i, j, k) &
-    !$ACC PRESENT(bc_hv, w_p)
-    DO  m = 1, bc_hv%ns
-       i = bc_hv%i(m)
-       j = bc_hv%j(m)
-       k = bc_hv%k(m)
-       w_p(k+bc_hv%koff(m),j+bc_hv%joff(m),i+bc_hv%ioff(m)) = 0.0_wp
+!-- Set zero vertical velocity at topography top (l=0), or bottom (l=1) in case
+!-- of downward-facing surfaces.
+    DO  l = 0, 1
+       !$OMP PARALLEL DO PRIVATE( i, j, k )
+       !$ACC PARALLEL LOOP PRIVATE(i, j, k) &
+       !$ACC PRESENT(bc_h, w_p)
+       DO  m = 1, bc_h(l)%ns
+          i = bc_h(l)%i(m)
+          j = bc_h(l)%j(m)
+          k = bc_h(l)%k(m)
+          w_p(k+bc_h(l)%koff,j,i) = 0.0_wp
+       ENDDO
     ENDDO
+
 !
 !-- Top boundary. A nested domain ( ibc_uv_t = 3 ) does not require settings.
     IF ( ibc_uv_t == 0 )  THEN
@@ -1107,10 +934,11 @@
         u_p(nzt+1,:,:) = u_p(nzt,:,:)
         v_p(nzt+1,:,:) = v_p(nzt,:,:)
     ENDIF
+
 !
-!-- Vertical velocity is zero at the model top, but maybe non-zero in child domains and
-!-- in case of offline nesting.
-    IF ( .NOT. child_domain  .AND.  .NOT. nesting_offline )  THEN
+!-- Vertical nesting: Vertical velocity not zero at the top of the fine grid
+    IF ( .NOT.  child_domain  .AND.  .NOT.  nesting_offline  .AND.                                 &
+         TRIM(coupling_mode) /= 'vnested_fine' )  THEN
        !$ACC KERNELS PRESENT(w_p)
        w_p(nzt:nzt+1,:,:) = 0.0_wp  !< nzt is not a prognostic level (but cf. pres)
        !$ACC END KERNELS
@@ -1120,41 +948,31 @@
 !-- Temperature at bottom and top boundary.
 !-- In case of coupled runs (ibc_pt_b = 2) the temperature is given by the sea surface temperature
 !-- of the coupled ocean model.
+!-- Dirichlet
     IF ( .NOT. neutral )  THEN
-!
-!--    Dirichlet
        IF ( ibc_pt_b == 0 )  THEN
-          !$OMP PARALLEL DO PRIVATE( i, j, k )
-          DO  m = 1, bc_hv%ns
-             i = bc_hv%i(m) + bc_hv%ioff(m)
-             j = bc_hv%j(m) + bc_hv%joff(m)
-             k = bc_hv%k(m) + bc_hv%koff(m)
-             pt_p(k,j,i) = pt(k,j,i)
-          ENDDO
-!
-!--       Increase temperature pt(0) according to pt_surface_heating_rate (convert from K/h to K/s).
-!--       Do this each Runge-Kutta substep.
-          IF ( pt_surface_heating_rate /= 0.0_wp ) THEN
+          DO  l = 0, 1
              !$OMP PARALLEL DO PRIVATE( i, j, k )
-             DO  m = 1, bc_hv%ns_bgp
-                i = bc_hv%i_bgp(m)
-                j = bc_hv%j_bgp(m)
-                k = bc_hv%k_bgp(m)
-                pt_p(k,j,i) = pt_p(k,j,i) + dt_3d * pt_surface_heating_rate / 3600.0_wp            &
-                                          * weight_substep(intermediate_timestep_count)
+             DO  m = 1, bc_h(l)%ns
+                i = bc_h(l)%i(m)
+                j = bc_h(l)%j(m)
+                k = bc_h(l)%k(m)
+                pt_p(k+bc_h(l)%koff,j,i) = pt(k+bc_h(l)%koff,j,i)
              ENDDO
-          ENDIF
+          ENDDO
 !
 !--    Neumann, zero-gradient
        ELSEIF ( ibc_pt_b == 1 )  THEN
-          !$OMP PARALLEL DO PRIVATE( i, j, k )
-          !$ACC PARALLEL LOOP PRIVATE(i, j, k) &
-          !$ACC PRESENT(bc_hv, pt_p)
-          DO  m = 1, bc_hv%ns
-             i = bc_hv%i(m)
-             j = bc_hv%j(m)
-             k = bc_hv%k(m)
-             pt_p(k+bc_hv%koff(m),j+bc_hv%joff(m),i+bc_hv%ioff(m)) = pt_p(k,j,i)
+          DO  l = 0, 1
+             !$OMP PARALLEL DO PRIVATE( i, j, k )
+             !$ACC PARALLEL LOOP PRIVATE(i, j, k) &
+             !$ACC PRESENT(bc_h, pt_p)
+             DO  m = 1, bc_h(l)%ns
+                i = bc_h(l)%i(m)
+                j = bc_h(l)%j(m)
+                k = bc_h(l)%k(m)
+                pt_p(k+bc_h(l)%koff,j,i) = pt_p(k,j,i)
+             ENDDO
           ENDDO
        ENDIF
 
@@ -1185,23 +1003,26 @@
 !--    belongs to the atmospheric grid point, therefore, set q_p at k-1
        IF ( ibc_q_b == 0 ) THEN
 
-          !$OMP PARALLEL DO PRIVATE( i, j, k )
-          DO  m = 1, bc_hv%ns
-             i = bc_hv%i(m)
-             j = bc_hv%j(m)
-             k = bc_hv%k(m)
-             q_p(k+bc_hv%koff(m),j+bc_hv%joff(m),i+bc_hv%ioff(m)) =                                &
-                                             q(k+bc_hv%koff(m),j+bc_hv%joff(m),i+bc_hv%ioff(m))
+          DO  l = 0, 1
+             !$OMP PARALLEL DO PRIVATE( i, j, k )
+             DO  m = 1, bc_h(l)%ns
+                i = bc_h(l)%i(m)
+                j = bc_h(l)%j(m)
+                k = bc_h(l)%k(m)
+                q_p(k+bc_h(l)%koff,j,i) = q(k+bc_h(l)%koff,j,i)
+             ENDDO
           ENDDO
 
        ELSE
 
-          !$OMP PARALLEL DO PRIVATE( i, j, k )
-          DO  m = 1, bc_hv%ns
-             i = bc_hv%i(m)
-             j = bc_hv%j(m)
-             k = bc_hv%k(m)
-             q_p(k+bc_hv%koff(m),j+bc_hv%joff(m),i+bc_hv%ioff(m)) = q_p(k,j,i)
+          DO  l = 0, 1
+             !$OMP PARALLEL DO PRIVATE( i, j, k )
+             DO  m = 1, bc_h(l)%ns
+                i = bc_h(l)%i(m)
+                j = bc_h(l)%j(m)
+                k = bc_h(l)%k(m)
+                q_p(k+bc_h(l)%koff,j,i) = q_p(k,j,i)
+             ENDDO
           ENDDO
        ENDIF
 !
@@ -1221,23 +1042,26 @@
 !--    belongs to the atmospheric grid point, therefore, set s_p at k-1
        IF ( ibc_s_b == 0 ) THEN
 
-          !$OMP PARALLEL DO PRIVATE( i, j, k )
-          DO  m = 1, bc_hv%ns
-             i = bc_hv%i(m)
-             j = bc_hv%j(m)
-             k = bc_hv%k(m)
-             s_p(k+bc_hv%koff(m),j+bc_hv%joff(m),i+bc_hv%ioff(m)) =                                &
-                                             s(k+bc_hv%koff(m),j+bc_hv%joff(m),i+bc_hv%ioff(m))
+          DO  l = 0, 1
+             !$OMP PARALLEL DO PRIVATE( i, j, k )
+             DO  m = 1, bc_h(l)%ns
+                i = bc_h(l)%i(m)
+                j = bc_h(l)%j(m)
+                k = bc_h(l)%k(m)
+                s_p(k+bc_h(l)%koff,j,i) = s(k+bc_h(l)%koff,j,i)
+             ENDDO
           ENDDO
 
        ELSE
 
-          !$OMP PARALLEL DO PRIVATE( i, j, k )
-          DO  m = 1, bc_hv%ns
-             i = bc_hv%i(m)
-             j = bc_hv%j(m)
-             k = bc_hv%k(m)
-             s_p(k+bc_hv%koff(m),j+bc_hv%joff(m),i+bc_hv%ioff(m)) = s_p(k,j,i)
+          DO  l = 0, 1
+             !$OMP PARALLEL DO PRIVATE( i, j, k )
+             DO  m = 1, bc_h(l)%ns
+                i = bc_h(l)%i(m)
+                j = bc_h(l)%j(m)
+                k = bc_h(l)%k(m)
+                s_p(k+bc_h(l)%koff,j,i) = s_p(k,j,i)
+             ENDDO
           ENDDO
        ENDIF
 !
@@ -1260,6 +1084,20 @@
        v_p(:,nys,:) = v_p(:,nys-1,:)
     ELSEIF ( bc_dirichlet_l ) THEN
        u_p(:,:,nxl) = u_p(:,:,nxl-1)
+    ENDIF
+
+!
+!-- The same restoration for u at i=nxl and v at j=nys as above must be made in case of nest
+!-- boundaries. This must not be done in case of vertical nesting mode as in that case the lateral
+!-- boundaries are actually cyclic.
+!-- Lateral oundary conditions for TKE and dissipation are set in tcm_boundary_conds.
+    IF ( nesting_mode /= 'vertical'  .OR.  nesting_offline )  THEN
+       IF ( bc_dirichlet_s )  THEN
+          v_p(:,nys,:) = v_p(:,nys-1,:)
+       ENDIF
+       IF ( bc_dirichlet_l )  THEN
+          u_p(:,:,nxl) = u_p(:,:,nxl-1)
+       ENDIF
     ENDIF
 
 !
@@ -1293,35 +1131,566 @@
 
 !
 !-- Radiation boundary conditions for the velocities at the respective outflow.
-!-- The phase velocity is set to the maximum phase velocity that ensures numerical
-!-- stability (CFL-condition), i.e. a Courant number of one is assumed.
+!-- The phase velocity is either assumed to the maximum phase velocity that ensures numerical
+!-- stability (CFL-condition) or calculated after Orlanski(1976) and averaged along the outflow
+!-- boundary.
     IF ( bc_radiation_s )  THEN
-       u_p(:,-1,:) = u(:,0,:)
-       v_p(:,0,:)  = v(:,1,:)
-       w_p(:,-1,:) = w(:,0,:)
+
+       IF ( use_cmax )  THEN
+          u_p(:,-1,:) = u(:,0,:)
+          v_p(:,0,:)  = v(:,1,:)
+          w_p(:,-1,:) = w(:,0,:)
+       ELSEIF ( .NOT. use_cmax )  THEN
+
+          c_max = dy / dt_3d
+
+          c_u_m_l = 0.0_wp
+          c_v_m_l = 0.0_wp
+          c_w_m_l = 0.0_wp
+
+          c_u_m = 0.0_wp
+          c_v_m = 0.0_wp
+          c_w_m = 0.0_wp
+
+!
+!--       Calculate the phase speeds for u, v, and w, first local and then average along the outflow
+!--       boundary.
+          DO  k = nzb+1, nzt+1
+             DO  i = nxl, nxr
+
+                denom = u_m_s(k,0,i) - u_m_s(k,1,i)
+
+                IF ( denom /= 0.0_wp )  THEN
+                   c_u(k,i) = -c_max * ( u(k,0,i) - u_m_s(k,0,i) ) / ( denom * tsc(2) )
+                   IF ( c_u(k,i) < 0.0_wp )  THEN
+                      c_u(k,i) = 0.0_wp
+                   ELSEIF ( c_u(k,i) > c_max )  THEN
+                      c_u(k,i) = c_max
+                   ENDIF
+                ELSE
+                   c_u(k,i) = c_max
+                ENDIF
+
+                denom = v_m_s(k,1,i) - v_m_s(k,2,i)
+
+                IF ( denom /= 0.0_wp )  THEN
+                   c_v(k,i) = -c_max * ( v(k,1,i) - v_m_s(k,1,i) ) / ( denom * tsc(2) )
+                   IF ( c_v(k,i) < 0.0_wp )  THEN
+                      c_v(k,i) = 0.0_wp
+                   ELSEIF ( c_v(k,i) > c_max )  THEN
+                      c_v(k,i) = c_max
+                   ENDIF
+                ELSE
+                   c_v(k,i) = c_max
+                ENDIF
+
+                denom = w_m_s(k,0,i) - w_m_s(k,1,i)
+
+                IF ( denom /= 0.0_wp )  THEN
+                   c_w(k,i) = -c_max * ( w(k,0,i) - w_m_s(k,0,i) ) / ( denom * tsc(2) )
+                   IF ( c_w(k,i) < 0.0_wp )  THEN
+                      c_w(k,i) = 0.0_wp
+                   ELSEIF ( c_w(k,i) > c_max )  THEN
+                      c_w(k,i) = c_max
+                   ENDIF
+                ELSE
+                   c_w(k,i) = c_max
+                ENDIF
+
+                c_u_m_l(k) = c_u_m_l(k) + c_u(k,i)
+                c_v_m_l(k) = c_v_m_l(k) + c_v(k,i)
+                c_w_m_l(k) = c_w_m_l(k) + c_w(k,i)
+
+             ENDDO
+          ENDDO
+
+#if defined( __parallel )
+          IF ( collective_wait )  CALL MPI_BARRIER( comm1dx, ierr )
+          CALL MPI_ALLREDUCE( c_u_m_l(nzb+1), c_u_m(nzb+1), nzt-nzb, MPI_REAL, MPI_SUM, comm1dx,   &
+                              ierr )
+          IF ( collective_wait )  CALL MPI_BARRIER( comm1dx, ierr )
+          CALL MPI_ALLREDUCE( c_v_m_l(nzb+1), c_v_m(nzb+1), nzt-nzb, MPI_REAL, MPI_SUM, comm1dx,   &
+                              ierr )
+          IF ( collective_wait )  CALL MPI_BARRIER( comm1dx, ierr )
+          CALL MPI_ALLREDUCE( c_w_m_l(nzb+1), c_w_m(nzb+1), nzt-nzb, MPI_REAL, MPI_SUM, comm1dx,   &
+                              ierr )
+#else
+          c_u_m = c_u_m_l
+          c_v_m = c_v_m_l
+          c_w_m = c_w_m_l
+#endif
+
+          c_u_m = c_u_m / (nx+1)
+          c_v_m = c_v_m / (nx+1)
+          c_w_m = c_w_m / (nx+1)
+
+!
+!--       Save old timelevels for the next timestep
+          IF ( intermediate_timestep_count == 1 )  THEN
+             u_m_s(:,:,:) = u(:,0:1,:)
+             v_m_s(:,:,:) = v(:,1:2,:)
+             w_m_s(:,:,:) = w(:,0:1,:)
+          ENDIF
+
+!
+!--       Calculate the new velocities
+          DO  k = nzb+1, nzt+1
+             DO  i = nxlg, nxrg
+                u_p(k,-1,i) = u(k,-1,i) - dt_3d * tsc(2) * c_u_m(k) *                              &
+                                          ( u(k,-1,i) - u(k,0,i) ) * ddy
+
+                v_p(k,0,i)  = v(k,0,i)  - dt_3d * tsc(2) * c_v_m(k) *                              &
+                                          ( v(k,0,i) - v(k,1,i) ) * ddy
+
+                w_p(k,-1,i) = w(k,-1,i) - dt_3d * tsc(2) * c_w_m(k) *                              &
+                                          ( w(k,-1,i) - w(k,0,i) ) * ddy
+             ENDDO
+          ENDDO
+
+!
+!--       Bottom boundary at the outflow
+          IF ( ibc_uv_b == 0 )  THEN
+             u_p(nzb,-1,:) = 0.0_wp
+             v_p(nzb,0,:)  = 0.0_wp
+          ELSE
+             u_p(nzb,-1,:) =  u_p(nzb+1,-1,:)
+             v_p(nzb,0,:)  =  v_p(nzb+1,0,:)
+          ENDIF
+          w_p(nzb,-1,:) = 0.0_wp
+
+!
+!--       Top boundary at the outflow
+          IF ( ibc_uv_t == 0 )  THEN
+             u_p(nzt+1,-1,:) = u_init(nzt+1)
+             v_p(nzt+1,0,:)  = v_init(nzt+1)
+          ELSE
+             u_p(nzt+1,-1,:) = u_p(nzt,-1,:)
+             v_p(nzt+1,0,:)  = v_p(nzt,0,:)
+          ENDIF
+          w_p(nzt:nzt+1,-1,:) = 0.0_wp
+
+       ENDIF
+
     ENDIF
 
     IF ( bc_radiation_n )  THEN
-       u_p(:,ny+1,:) = u(:,ny,:)
-       v_p(:,ny+1,:) = v(:,ny,:)
-       w_p(:,ny+1,:) = w(:,ny,:)
+
+       IF ( use_cmax )  THEN
+          u_p(:,ny+1,:) = u(:,ny,:)
+          v_p(:,ny+1,:) = v(:,ny,:)
+          w_p(:,ny+1,:) = w(:,ny,:)
+       ELSEIF ( .NOT. use_cmax )  THEN
+
+          c_max = dy / dt_3d
+
+          c_u_m_l = 0.0_wp
+          c_v_m_l = 0.0_wp
+          c_w_m_l = 0.0_wp
+
+          c_u_m = 0.0_wp
+          c_v_m = 0.0_wp
+          c_w_m = 0.0_wp
+
+!
+!--       Calculate the phase speeds for u, v, and w, first local and then average along the outflow
+!--       boundary.
+          DO  k = nzb+1, nzt+1
+             DO  i = nxl, nxr
+
+                denom = u_m_n(k,ny,i) - u_m_n(k,ny-1,i)
+
+                IF ( denom /= 0.0_wp )  THEN
+                   c_u(k,i) = -c_max * ( u(k,ny,i) - u_m_n(k,ny,i) ) / ( denom * tsc(2) )
+                   IF ( c_u(k,i) < 0.0_wp )  THEN
+                      c_u(k,i) = 0.0_wp
+                   ELSEIF ( c_u(k,i) > c_max )  THEN
+                      c_u(k,i) = c_max
+                   ENDIF
+                ELSE
+                   c_u(k,i) = c_max
+                ENDIF
+
+                denom = v_m_n(k,ny,i) - v_m_n(k,ny-1,i)
+
+                IF ( denom /= 0.0_wp )  THEN
+                   c_v(k,i) = -c_max * ( v(k,ny,i) - v_m_n(k,ny,i) ) / ( denom * tsc(2) )
+                   IF ( c_v(k,i) < 0.0_wp )  THEN
+                      c_v(k,i) = 0.0_wp
+                   ELSEIF ( c_v(k,i) > c_max )  THEN
+                      c_v(k,i) = c_max
+                   ENDIF
+                ELSE
+                   c_v(k,i) = c_max
+                ENDIF
+
+                denom = w_m_n(k,ny,i) - w_m_n(k,ny-1,i)
+
+                IF ( denom /= 0.0_wp )  THEN
+                   c_w(k,i) = -c_max * ( w(k,ny,i) - w_m_n(k,ny,i) ) / ( denom * tsc(2) )
+                   IF ( c_w(k,i) < 0.0_wp )  THEN
+                      c_w(k,i) = 0.0_wp
+                   ELSEIF ( c_w(k,i) > c_max )  THEN
+                      c_w(k,i) = c_max
+                   ENDIF
+                ELSE
+                   c_w(k,i) = c_max
+                ENDIF
+
+                c_u_m_l(k) = c_u_m_l(k) + c_u(k,i)
+                c_v_m_l(k) = c_v_m_l(k) + c_v(k,i)
+                c_w_m_l(k) = c_w_m_l(k) + c_w(k,i)
+
+             ENDDO
+          ENDDO
+
+#if defined( __parallel )
+          IF ( collective_wait )  CALL MPI_BARRIER( comm1dx, ierr )
+          CALL MPI_ALLREDUCE( c_u_m_l(nzb+1), c_u_m(nzb+1), nzt-nzb, MPI_REAL, MPI_SUM, comm1dx,   &
+                              ierr )
+          IF ( collective_wait )  CALL MPI_BARRIER( comm1dx, ierr )
+          CALL MPI_ALLREDUCE( c_v_m_l(nzb+1), c_v_m(nzb+1), nzt-nzb, MPI_REAL, MPI_SUM, comm1dx,   &
+                              ierr )
+          IF ( collective_wait )  CALL MPI_BARRIER( comm1dx, ierr )
+          CALL MPI_ALLREDUCE( c_w_m_l(nzb+1), c_w_m(nzb+1), nzt-nzb, MPI_REAL, MPI_SUM, comm1dx,   &
+                              ierr )
+#else
+          c_u_m = c_u_m_l
+          c_v_m = c_v_m_l
+          c_w_m = c_w_m_l
+#endif
+
+          c_u_m = c_u_m / (nx+1)
+          c_v_m = c_v_m / (nx+1)
+          c_w_m = c_w_m / (nx+1)
+
+!
+!--       Save old timelevels for the next timestep
+          IF ( intermediate_timestep_count == 1 )  THEN
+                u_m_n(:,:,:) = u(:,ny-1:ny,:)
+                v_m_n(:,:,:) = v(:,ny-1:ny,:)
+                w_m_n(:,:,:) = w(:,ny-1:ny,:)
+          ENDIF
+
+!
+!--       Calculate the new velocities
+          DO  k = nzb+1, nzt+1
+             DO  i = nxlg, nxrg
+                u_p(k,ny+1,i) = u(k,ny+1,i) - dt_3d * tsc(2) * c_u_m(k) *                          &
+                                              ( u(k,ny+1,i) - u(k,ny,i) ) * ddy
+
+                v_p(k,ny+1,i) = v(k,ny+1,i)  - dt_3d * tsc(2) * c_v_m(k) *                         &
+                                               ( v(k,ny+1,i) - v(k,ny,i) ) * ddy
+
+                w_p(k,ny+1,i) = w(k,ny+1,i) - dt_3d * tsc(2) * c_w_m(k) *                          &
+                                              ( w(k,ny+1,i) - w(k,ny,i) ) * ddy
+             ENDDO
+          ENDDO
+
+!
+!--       Bottom boundary at the outflow
+          IF ( ibc_uv_b == 0 )  THEN
+             u_p(nzb,ny+1,:) = 0.0_wp
+             v_p(nzb,ny+1,:) = 0.0_wp
+          ELSE
+             u_p(nzb,ny+1,:) =  u_p(nzb+1,ny+1,:)
+             v_p(nzb,ny+1,:) =  v_p(nzb+1,ny+1,:)
+          ENDIF
+          w_p(nzb,ny+1,:) = 0.0_wp
+
+!
+!--       Top boundary at the outflow
+          IF ( ibc_uv_t == 0 )  THEN
+             u_p(nzt+1,ny+1,:) = u_init(nzt+1)
+             v_p(nzt+1,ny+1,:) = v_init(nzt+1)
+          ELSE
+             u_p(nzt+1,ny+1,:) = u_p(nzt,nyn+1,:)
+             v_p(nzt+1,ny+1,:) = v_p(nzt,nyn+1,:)
+          ENDIF
+          w_p(nzt:nzt+1,ny+1,:) = 0.0_wp
+
+       ENDIF
+
     ENDIF
 
     IF ( bc_radiation_l )  THEN
-       u_p(:,:,0)  = u(:,:,1)
-       v_p(:,:,-1) = v(:,:,0)
-       w_p(:,:,-1) = w(:,:,0)
+
+       IF ( use_cmax )  THEN
+          u_p(:,:,0)  = u(:,:,1)
+          v_p(:,:,-1) = v(:,:,0)
+          w_p(:,:,-1) = w(:,:,0)
+       ELSEIF ( .NOT. use_cmax )  THEN
+
+          c_max = dx / dt_3d
+
+          c_u_m_l = 0.0_wp
+          c_v_m_l = 0.0_wp
+          c_w_m_l = 0.0_wp
+
+          c_u_m = 0.0_wp
+          c_v_m = 0.0_wp
+          c_w_m = 0.0_wp
+
+!
+!--       Calculate the phase speeds for u, v, and w, first local and then average along the outflow
+!--       boundary.
+          DO  k = nzb+1, nzt+1
+             DO  j = nys, nyn
+
+                denom = u_m_l(k,j,1) - u_m_l(k,j,2)
+
+                IF ( denom /= 0.0_wp )  THEN
+                   c_u(k,j) = -c_max * ( u(k,j,1) - u_m_l(k,j,1) ) / ( denom * tsc(2) )
+                   IF ( c_u(k,j) < 0.0_wp )  THEN
+                      c_u(k,j) = 0.0_wp
+                   ELSEIF ( c_u(k,j) > c_max )  THEN
+                      c_u(k,j) = c_max
+                   ENDIF
+                ELSE
+                   c_u(k,j) = c_max
+                ENDIF
+
+                denom = v_m_l(k,j,0) - v_m_l(k,j,1)
+
+                IF ( denom /= 0.0_wp )  THEN
+                   c_v(k,j) = -c_max * ( v(k,j,0) - v_m_l(k,j,0) ) / ( denom * tsc(2) )
+                   IF ( c_v(k,j) < 0.0_wp )  THEN
+                      c_v(k,j) = 0.0_wp
+                   ELSEIF ( c_v(k,j) > c_max )  THEN
+                      c_v(k,j) = c_max
+                   ENDIF
+                ELSE
+                   c_v(k,j) = c_max
+                ENDIF
+
+                denom = w_m_l(k,j,0) - w_m_l(k,j,1)
+
+                IF ( denom /= 0.0_wp )  THEN
+                   c_w(k,j) = -c_max * ( w(k,j,0) - w_m_l(k,j,0) ) / ( denom * tsc(2) )
+                   IF ( c_w(k,j) < 0.0_wp )  THEN
+                      c_w(k,j) = 0.0_wp
+                   ELSEIF ( c_w(k,j) > c_max )  THEN
+                      c_w(k,j) = c_max
+                   ENDIF
+                ELSE
+                   c_w(k,j) = c_max
+                ENDIF
+
+                c_u_m_l(k) = c_u_m_l(k) + c_u(k,j)
+                c_v_m_l(k) = c_v_m_l(k) + c_v(k,j)
+                c_w_m_l(k) = c_w_m_l(k) + c_w(k,j)
+
+             ENDDO
+          ENDDO
+
+#if defined( __parallel )
+          IF ( collective_wait )  CALL MPI_BARRIER( comm1dy, ierr )
+          CALL MPI_ALLREDUCE( c_u_m_l(nzb+1), c_u_m(nzb+1), nzt-nzb, MPI_REAL, MPI_SUM, comm1dy,   &
+                              ierr )
+          IF ( collective_wait )  CALL MPI_BARRIER( comm1dy, ierr )
+          CALL MPI_ALLREDUCE( c_v_m_l(nzb+1), c_v_m(nzb+1), nzt-nzb, MPI_REAL, MPI_SUM, comm1dy,   &
+                              ierr )
+          IF ( collective_wait )  CALL MPI_BARRIER( comm1dy, ierr )
+          CALL MPI_ALLREDUCE( c_w_m_l(nzb+1), c_w_m(nzb+1), nzt-nzb, MPI_REAL, MPI_SUM, comm1dy,   &
+                              ierr )
+#else
+          c_u_m = c_u_m_l
+          c_v_m = c_v_m_l
+          c_w_m = c_w_m_l
+#endif
+
+          c_u_m = c_u_m / (ny+1)
+          c_v_m = c_v_m / (ny+1)
+          c_w_m = c_w_m / (ny+1)
+
+!
+!--       Save old timelevels for the next timestep
+          IF ( intermediate_timestep_count == 1 )  THEN
+                u_m_l(:,:,:) = u(:,:,1:2)
+                v_m_l(:,:,:) = v(:,:,0:1)
+                w_m_l(:,:,:) = w(:,:,0:1)
+          ENDIF
+
+!
+!--       Calculate the new velocities
+          DO  k = nzb+1, nzt+1
+             DO  j = nysg, nyng
+                u_p(k,j,0)  = u(k,j,0) - dt_3d * tsc(2) * c_u_m(k) *                               &
+                                         ( u(k,j,0) - u(k,j,1) ) * ddx
+
+                v_p(k,j,-1) = v(k,j,-1) - dt_3d * tsc(2) * c_v_m(k) *                              &
+                                          ( v(k,j,-1) - v(k,j,0) ) * ddx
+
+                w_p(k,j,-1) = w(k,j,-1) - dt_3d * tsc(2) * c_w_m(k) *                              &
+                                          ( w(k,j,-1) - w(k,j,0) ) * ddx
+             ENDDO
+          ENDDO
+
+!
+!--       Bottom boundary at the outflow
+          IF ( ibc_uv_b == 0 )  THEN
+             u_p(nzb,:,0)  = 0.0_wp
+             v_p(nzb,:,-1) = 0.0_wp
+          ELSE
+             u_p(nzb,:,0)  =  u_p(nzb+1,:,0)
+             v_p(nzb,:,-1) =  v_p(nzb+1,:,-1)
+          ENDIF
+          w_p(nzb,:,-1) = 0.0_wp
+
+!
+!--       Top boundary at the outflow
+          IF ( ibc_uv_t == 0 )  THEN
+             u_p(nzt+1,:,0)  = u_init(nzt+1)
+             v_p(nzt+1,:,-1) = v_init(nzt+1)
+          ELSE
+             u_p(nzt+1,:,0)  = u_p(nzt,:,0)
+             v_p(nzt+1,:,-1) = v_p(nzt,:,-1)
+          ENDIF
+          w_p(nzt:nzt+1,:,-1) = 0.0_wp
+
+       ENDIF
+
     ENDIF
 
     IF ( bc_radiation_r )  THEN
-       u_p(:,:,nx+1) = u(:,:,nx)
-       v_p(:,:,nx+1) = v(:,:,nx)
-       w_p(:,:,nx+1) = w(:,:,nx)
+
+       IF ( use_cmax )  THEN
+          u_p(:,:,nx+1) = u(:,:,nx)
+          v_p(:,:,nx+1) = v(:,:,nx)
+          w_p(:,:,nx+1) = w(:,:,nx)
+       ELSEIF ( .NOT. use_cmax )  THEN
+
+          c_max = dx / dt_3d
+
+          c_u_m_l = 0.0_wp
+          c_v_m_l = 0.0_wp
+          c_w_m_l = 0.0_wp
+
+          c_u_m = 0.0_wp
+          c_v_m = 0.0_wp
+          c_w_m = 0.0_wp
+
+!
+!--       Calculate the phase speeds for u, v, and w, first local and then average along the outflow
+!--       boundary.
+          DO  k = nzb+1, nzt+1
+             DO  j = nys, nyn
+
+                denom = u_m_r(k,j,nx) - u_m_r(k,j,nx-1)
+
+                IF ( denom /= 0.0_wp )  THEN
+                   c_u(k,j) = -c_max * ( u(k,j,nx) - u_m_r(k,j,nx) ) / ( denom * tsc(2) )
+                   IF ( c_u(k,j) < 0.0_wp )  THEN
+                      c_u(k,j) = 0.0_wp
+                   ELSEIF ( c_u(k,j) > c_max )  THEN
+                      c_u(k,j) = c_max
+                   ENDIF
+                ELSE
+                   c_u(k,j) = c_max
+                ENDIF
+
+                denom = v_m_r(k,j,nx) - v_m_r(k,j,nx-1)
+
+                IF ( denom /= 0.0_wp )  THEN
+                   c_v(k,j) = -c_max * ( v(k,j,nx) - v_m_r(k,j,nx) ) / ( denom * tsc(2) )
+                   IF ( c_v(k,j) < 0.0_wp )  THEN
+                      c_v(k,j) = 0.0_wp
+                   ELSEIF ( c_v(k,j) > c_max )  THEN
+                      c_v(k,j) = c_max
+                   ENDIF
+                ELSE
+                   c_v(k,j) = c_max
+                ENDIF
+
+                denom = w_m_r(k,j,nx) - w_m_r(k,j,nx-1)
+
+                IF ( denom /= 0.0_wp )  THEN
+                   c_w(k,j) = -c_max * ( w(k,j,nx) - w_m_r(k,j,nx) ) / ( denom * tsc(2) )
+                   IF ( c_w(k,j) < 0.0_wp )  THEN
+                      c_w(k,j) = 0.0_wp
+                   ELSEIF ( c_w(k,j) > c_max )  THEN
+                      c_w(k,j) = c_max
+                   ENDIF
+                ELSE
+                   c_w(k,j) = c_max
+                ENDIF
+
+                c_u_m_l(k) = c_u_m_l(k) + c_u(k,j)
+                c_v_m_l(k) = c_v_m_l(k) + c_v(k,j)
+                c_w_m_l(k) = c_w_m_l(k) + c_w(k,j)
+
+             ENDDO
+          ENDDO
+
+#if defined( __parallel )
+          IF ( collective_wait )  CALL MPI_BARRIER( comm1dy, ierr )
+          CALL MPI_ALLREDUCE( c_u_m_l(nzb+1), c_u_m(nzb+1), nzt-nzb, MPI_REAL, MPI_SUM, comm1dy,   &
+                              ierr )
+          IF ( collective_wait )  CALL MPI_BARRIER( comm1dy, ierr )
+          CALL MPI_ALLREDUCE( c_v_m_l(nzb+1), c_v_m(nzb+1), nzt-nzb, MPI_REAL, MPI_SUM, comm1dy,   &
+                              ierr )
+          IF ( collective_wait )  CALL MPI_BARRIER( comm1dy, ierr )
+          CALL MPI_ALLREDUCE( c_w_m_l(nzb+1), c_w_m(nzb+1), nzt-nzb, MPI_REAL, MPI_SUM, comm1dy,   &
+                              ierr )
+#else
+          c_u_m = c_u_m_l
+          c_v_m = c_v_m_l
+          c_w_m = c_w_m_l
+#endif
+
+          c_u_m = c_u_m / (ny+1)
+          c_v_m = c_v_m / (ny+1)
+          c_w_m = c_w_m / (ny+1)
+
+!
+!--       Save old timelevels for the next timestep
+          IF ( intermediate_timestep_count == 1 )  THEN
+                u_m_r(:,:,:) = u(:,:,nx-1:nx)
+                v_m_r(:,:,:) = v(:,:,nx-1:nx)
+                w_m_r(:,:,:) = w(:,:,nx-1:nx)
+          ENDIF
+
+!
+!--       Calculate the new velocities
+          DO  k = nzb+1, nzt+1
+             DO  j = nysg, nyng
+                u_p(k,j,nx+1) = u(k,j,nx+1) - dt_3d * tsc(2) * c_u_m(k) *                          &
+                                              ( u(k,j,nx+1) - u(k,j,nx) ) * ddx
+
+                v_p(k,j,nx+1) = v(k,j,nx+1) - dt_3d * tsc(2) * c_v_m(k) *                          &
+                                              ( v(k,j,nx+1) - v(k,j,nx) ) * ddx
+
+                w_p(k,j,nx+1) = w(k,j,nx+1) - dt_3d * tsc(2) * c_w_m(k) *                          &
+                                              ( w(k,j,nx+1) - w(k,j,nx) ) * ddx
+             ENDDO
+          ENDDO
+
+!
+!--       Bottom boundary at the outflow
+          IF ( ibc_uv_b == 0 )  THEN
+             u_p(nzb,:,nx+1) = 0.0_wp
+             v_p(nzb,:,nx+1) = 0.0_wp
+          ELSE
+             u_p(nzb,:,nx+1) =  u_p(nzb+1,:,nx+1)
+             v_p(nzb,:,nx+1) =  v_p(nzb+1,:,nx+1)
+          ENDIF
+          w_p(nzb,:,nx+1) = 0.0_wp
+
+!
+!--       Top boundary at the outflow
+          IF ( ibc_uv_t == 0 )  THEN
+             u_p(nzt+1,:,nx+1) = u_init(nzt+1)
+             v_p(nzt+1,:,nx+1) = v_init(nzt+1)
+          ELSE
+             u_p(nzt+1,:,nx+1) = u_p(nzt,:,nx+1)
+             v_p(nzt+1,:,nx+1) = v_p(nzt,:,nx+1)
+          ENDIF
+          w_p(nzt:nzt+1,:,nx+1) = 0.0_wp
+
+       ENDIF
+
     ENDIF
 
  END SUBROUTINE dynamics_boundary_conditions
-
-
 !--------------------------------------------------------------------------------------------------!
 ! Description:
 ! ------------
@@ -1415,6 +1784,7 @@
 
     ENDIF
 
+
  END SUBROUTINE dynamics_3d_data_averaging
 
 
@@ -1426,7 +1796,7 @@
 !> Allowed values for grid are "zu" and "zw".
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE dynamics_data_output_2d( av, variable, found, grid, mode, local_pf, two_d, nzb_do,     &
-                                     nzt_do )
+                                     nzt_do, fill_value )
 
 
     CHARACTER (LEN=*)             ::  grid       !<
@@ -1444,11 +1814,13 @@
     LOGICAL      ::  found !<
     LOGICAL      ::  two_d !< flag parameter that indicates 2D variables (horizontal cross sections)
 
+    REAL(wp), INTENT(IN) ::  fill_value
+
     REAL(wp), DIMENSION(nxl:nxr,nys:nyn,nzb_do:nzt_do) ::  local_pf !<
 
 !
 !-- Next line is just to avoid compiler warnings about unused variables. You may remove it.
-    IF ( two_d .AND. av + LEN( mode ) + local_pf(nxl,nys,nzb_do) < 0.0 )  CONTINUE
+    IF ( two_d .AND. av + LEN( mode ) + local_pf(nxl,nys,nzb_do) + fill_value < 0.0 )  CONTINUE
 
     found = .TRUE.
 
@@ -1472,7 +1844,7 @@
 !> Resorts the module-specific output quantity with indices (k,j,i) to a temporary array with
 !> indices (i,j,k).
 !--------------------------------------------------------------------------------------------------!
- SUBROUTINE dynamics_data_output_3d( av, variable, found, local_pf, nzb_do, nzt_do )
+ SUBROUTINE dynamics_data_output_3d( av, variable, found, local_pf, fill_value, nzb_do, nzt_do )
 
 
     CHARACTER (LEN=*) ::  variable !<
@@ -1486,11 +1858,13 @@
 
     LOGICAL      ::  found !<
 
+    REAL(wp), INTENT(IN) ::  fill_value    !< value for the _FillValue attribute
+
     REAL(wp), DIMENSION(nxl:nxr,nys:nyn,nzb_do:nzt_do) ::  local_pf !<
 
 !
 !-- Next line is to avoid compiler warning about unused variables. Please remove.
-    IF ( av + local_pf(nxl,nys,nzb_do) < 0.0 )  CONTINUE
+    IF ( av + local_pf(nxl,nys,nzb_do) + fill_value < 0.0 )  CONTINUE
 
 
     found = .TRUE.
@@ -1645,17 +2019,11 @@
 
 !    LOGICAL ::  array_found  !<
 
-!
-!--  Restart input of time-averaged quantities is skipped in case of cyclic-fill initialization.
-!--  This case, input of time-averaged data is useless and can lead to faulty averaging.
-!    IF ( .NOT. cyclic_fill_initialization )  THEN
 
-!       CALL rd_mpi_io_check_array( 'u2_av' , found = array_found )
-!       IF ( array_found )  THEN
-!          IF ( .NOT. ALLOCATED( u2_av ) )  ALLOCATE( u2_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-!          CALL rrd_mpi_io( 'u2_av', u2_av )
-!       ENDIF
-
+!    CALL rd_mpi_io_check_array( 'u2_av' , found = array_found )
+!    IF ( array_found )  THEN
+!       IF ( .NOT. ALLOCATED( u2_av ) )  ALLOCATE( u2_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
+!       CALL rrd_mpi_io( 'u2_av', u2_av )
 !    ENDIF
 
     CONTINUE

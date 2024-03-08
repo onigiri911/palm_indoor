@@ -13,8 +13,70 @@
 ! You should have received a copy of the GNU General Public License along with PALM. If not, see
 ! <http://www.gnu.org/licenses/>.
 !
-! Copyright 1997-2021 Leibniz Universitaet Hannover
+! Copyright 1997-2020 Leibniz Universitaet Hannover
 !--------------------------------------------------------------------------------------------------!
+!
+!
+! Current revisions:
+! -----------------
+!
+!
+! Former revisions:
+! -----------------
+! $Id: restart_data_mpi_io_mod.f90 4735 2020-10-13 07:00:22Z raasch $
+! interface for 3d logical arrays added
+!
+! 4694 2020-09-23 15:09:19Z pavelkrc
+! Fix name of subroutine in message
+!
+! 4629 2020-07-29 09:37:56Z raasch
+! support for MPI Fortran77 interface (mpif.h) removed
+!
+! 4628 2020-07-29 07:23:03Z raasch
+! extensions required for MPI-I/O of particle data to restart files
+!
+! 4622 2020-07-23 09:02:23Z raasch
+! unused variables removed
+!
+! 4621 2020-07-23 08:15:59Z raasch
+! bugfixes for serial (non-parallel) mode
+!
+! 4619 2020-07-22 13:21:28Z raasch
+! unused variable removed
+!
+! 4617 2020-07-22 09:48:50Z raasch
+! Cyclic fill mode implemented
+!
+! 4598 2020-07-10 10:13:23Z suehring
+! Bugfix in treatment of 3D soil arrays
+!
+! 4591 2020-07-06 15:56:08Z raasch
+! File re-formatted to follow the PALM coding standard
+!
+! 4539 2020-05-18 14:05:17Z raasch
+! Checks added, if index limits in header are exceeded
+! Bugfix in rrd_mpi_io_int_2d
+!
+! 4536 2020-05-17 17:24:13Z raasch
+! Messages and debug output converted to PALM routines
+!
+! 4534 2020-05-14 18:35:22Z raasch
+! I/O on reduced number of cores added (using shared memory MPI)
+!
+! 4500 2020-04-17 10:12:45Z suehring
+! Fix too long lines
+!
+! 4498 2020-04-15 14:26:31Z raasch
+! Bugfix for creation of filetypes, argument removed from rd_mpi_io_open
+!
+! 4497 2020-04-15 10:20:51Z raasch
+! Last bugfix deactivated because of compile problems
+!
+! 4496 2020-04-15 08:37:26Z raasch
+! Problem with posix read arguments for surface data fixed
+!
+! 4495 2020-04-13 20:11:20Z raasch
+! Initial version (K. Ketelsen), adjusted to PALM formatting standards (S. Raasch)
 !
 !
 ! Description:
@@ -36,15 +98,10 @@
 
     USE, INTRINSIC ::  ISO_C_BINDING
 
-    USE boundary_settings_mod,                                                                     &
-        ONLY:  set_lateral_neumann_bc
-
     USE control_parameters,                                                                        &
-        ONLY:  bc_lr_cyc,                                                                          &
-               bc_ns_cyc,                                                                          &
-               cyclic_fill_initialization,                                                         &
-               debug_output,                                                                       &
+        ONLY:  debug_output,                                                                       &
                debug_string,                                                                       &
+               include_total_domain_boundaries,                                                    &
                message_string,                                                                     &
                restart_data_format_input,                                                          &
                restart_data_format_output,                                                         &
@@ -93,11 +150,13 @@
                myidy,                                                                              &
                npex,                                                                               &
                npey,                                                                               &
-               numprocs
+               numprocs,                                                                           &
+               pdims
 
     USE shared_memory_io_mod,                                                                      &
         ONLY:  domain_decomposition_grid_features,                                                 &
                sm_class
+
 
     IMPLICIT NONE
 
@@ -112,12 +171,16 @@
     INTEGER(iwp), PARAMETER ::  rd_status_size = 1                !< Not required in sequential mode
 #endif
 
+    INTEGER(iwp)            ::  debug_level = 1  !< TODO: replace with standard debug output steering
+
     INTEGER(iwp)            ::  comm_io          !< Communicator for MPI-IO
     INTEGER(iwp)            ::  fh = -1          !< MPI-IO file handle
 #if defined( __parallel )
+    INTEGER(iwp)            ::  fhs = -1         !< MPI-IO file handle to open file with comm2d always
+#endif
     INTEGER(iwp)            ::  ft_surf = -1     !< MPI filetype surface data
+#if defined( __parallel )
     INTEGER(iwp)            ::  ft_2di_nb        !< MPI filetype 2D array INTEGER no outer boundary
-    INTEGER(iwp)            ::  ft_2di8_nb       !< MPI filetype 2D array INTEGER no outer boundary
     INTEGER(iwp)            ::  ft_2d            !< MPI filetype 2D array REAL with outer boundaries
     INTEGER(iwp)            ::  ft_3d            !< MPI filetype 3D array REAL with outer boundaries
     INTEGER(iwp)            ::  ft_3di4 = -1     !< MPI filetype 3D array INTEGER*4
@@ -125,66 +188,40 @@
     INTEGER(iwp)            ::  ft_3dsoil        !< MPI filetype for 3d-soil array
 #endif
     INTEGER(iwp)            ::  glo_start        !< global start index on this PE
-    INTEGER(isp)            ::  i4_rep           !<  representive variable for INTEGER*4, can be used with HUGE
-    INTEGER(idp)            ::  total_number_of_surface_elements  !< total number of surface elements for one variable
 #if defined( __parallel )
-    INTEGER(iwp)            ::  win_2di          !< MPI window variables
-    INTEGER(iwp)            ::  win_2di8         !<
+    INTEGER(iwp)            ::  local_start      !<
+#endif
+    INTEGER(iwp)            ::  nr_iope          !<
+    INTEGER(iwp)            ::  nr_val           !< local number of values in x and y direction
+#if defined( __parallel )
+    INTEGER(iwp)            ::  win_2di          !<
     INTEGER(iwp)            ::  win_2dr          !<
     INTEGER(iwp)            ::  win_3di4 = -1    !<
     INTEGER(iwp)            ::  win_3di8 = -1    !<
     INTEGER(iwp)            ::  win_3dr          !<
     INTEGER(iwp)            ::  win_3ds          !<
-    INTEGER(iwp)            ::  win_end   = -1   !<
-    INTEGER(iwp)            ::  win_glost = -1   !<
-    INTEGER(iwp)            ::  win_out   = -1   !<
-    INTEGER(iwp)            ::  win_start = -1   !<
     INTEGER(iwp)            ::  win_surf = -1    !<
 #endif
+    INTEGER(iwp)            ::  total_number_of_surface_values  !< total number of values for one variable
 
     INTEGER(KIND=rd_offset_kind) ::  array_position   !<
     INTEGER(KIND=rd_offset_kind) ::  header_position  !<
-#if defined( __parallel )
-    INTEGER(KIND=rd_offset_kind) ::  local_offset     !<
-#endif
 
-    INTEGER(iwp), DIMENSION(:,:), POINTER, CONTIGUOUS ::  array_2di   !<
-    INTEGER(idp), DIMENSION(:,:), POINTER, CONTIGUOUS ::  array_2di8  !<
+    INTEGER(iwp), DIMENSION(:,:), POINTER, CONTIGUOUS   ::  array_2di   !<
 
-    INTEGER(iwp), DIMENSION(:,:), ALLOCATABLE ::  e_end_index       !< extended end index, every grid cell has at least one value
-    INTEGER(iwp), DIMENSION(:,:), ALLOCATABLE ::  e_start_index     !<
-    INTEGER(iwp), DIMENSION(:,:), ALLOCATABLE ::  m_end_index       !< module copy of end_index
-    INTEGER(iwp), DIMENSION(:,:), ALLOCATABLE ::  m_start_index     !<
-    INTEGER(idp), DIMENSION(:),   ALLOCATABLE ::  nr_surfaces_in_tb !< number of surface elements in transfer buffer
-    INTEGER(idp), DIMENSION(:),   ALLOCATABLE ::  s_index_in_tb     !< start index of surface elements in transfer buffer
-    INTEGER(idp), DIMENSION(:,:), ALLOCATABLE ::  s_index_in_window !< start index for the pe in the rma window
-    INTEGER(idp), DIMENSION(:,:), ALLOCATABLE ::  transfer_index    !<
-!
-!-- Indices for cyclic fill
-    INTEGER(iwp), DIMENSION(:,:), ALLOCATABLE ::  c_end_index     !< extended end index cyclic fill
-    INTEGER(idp), DIMENSION(:,:), ALLOCATABLE ::  c_global_end    !< global end index cyclic-fill
-    INTEGER(idp), DIMENSION(:,:), ALLOCATABLE ::  c_global_start  !< global start index cyclic-fill
-    INTEGER(iwp), DIMENSION(:,:), ALLOCATABLE ::  c_start_index   !< extended start index cyclic fill
-    INTEGER(iwp), DIMENSION(:,:), ALLOCATABLE ::  o_end_index     !< end index cyclic-fill
-    INTEGER(iwp), DIMENSION(:,:), ALLOCATABLE ::  o_start_index   !< start index cyclic-fill
+    INTEGER(iwp), DIMENSION(:,:), ALLOCATABLE ::  m_end_index     !<
+    INTEGER(iwp), DIMENSION(:,:), ALLOCATABLE ::  m_global_start  !<
+    INTEGER(iwp), DIMENSION(:,:), ALLOCATABLE ::  m_start_index   !<
 
     INTEGER(isp), DIMENSION(:,:,:), POINTER, CONTIGUOUS ::  array_3di4  !<
     INTEGER(idp), DIMENSION(:,:,:), POINTER, CONTIGUOUS ::  array_3di8  !<
 
-    LOGICAL ::  filetypes_created                !<
-    LOGICAL ::  io_on_limited_cores_per_node     !< switch to shared memory MPI-IO
-    LOGICAL ::  less_than_2g_elements            !< TRUE if less than 2**31-1 elements
-    LOGICAL ::  rd_flag                          !< file is opened for read
-    LOGICAL ::  total_domain_boundaries_on_file  !< total domain boundaries are read from or written to file
-    LOGICAL ::  wr_flag                          !< file is opened for write
+    LOGICAL ::  all_pes_write                 !< all PEs have data to write
+    LOGICAL ::  filetypes_created             !<
+    LOGICAL ::  io_on_limited_cores_per_node  !< switch to shared memory MPI-IO
+    LOGICAL ::  rd_flag                       !< file is opened for read
+    LOGICAL ::  wr_flag                       !< file is opened for write
 
-#if defined( __parallel )
-    INTEGER(idp) ::  array_out_reduction  !< reduction of array_out to allow start with index 1
-
-    INTEGER(idp), DIMENSION(:,:), ALLOCATABLE  ::  local_indices
-#endif
-
-    REAL(wp), DIMENSION(:), POINTER, CONTIGUOUS     ::  array_out      !<
 #if defined( __parallel )
     REAL(wp), DIMENSION(:), POINTER, CONTIGUOUS     ::  array_1d       !<
 #endif
@@ -201,19 +238,17 @@
 !
 !-- General Header (first 32 byte in restart file)
     TYPE general_header
-       INTEGER(iwp) :: endian       !< little endian (1) or big endian (2) internal format
-       INTEGER(iwp) :: outer_ghost_layers_included  !< if 1, file contains the outer ghost layer data
-       INTEGER(iwp) :: nr_arrays    !< number of arrays in restart files
-       INTEGER(iwp) :: nr_char      !< number of Text strings entries in header
-       INTEGER(iwp) :: nr_int       !< number of INTEGER entries in header
-       INTEGER(iwp) :: nr_real      !< number of REAL entries in header
-       INTEGER(iwp) :: pes_along_x  !< number of PEs along x-direction during writing restart file
-       INTEGER(iwp) :: pes_along_y  !< number of PEs along y-direction during writing restart file
-       INTEGER(iwp) :: total_nx     !< total number of points in x-direction
-       INTEGER(iwp) :: total_ny     !< total number of points in y-direction
+       INTEGER(iwp) :: endian         !< little endian (1) or big endian (2) internal format
+       INTEGER(iwp) :: i_outer_bound  !< if 1, outer boundaries are stored in restart file
+       INTEGER(iwp) :: nr_arrays      !< number of arrays in restart files
+       INTEGER(iwp) :: nr_char        !< number of Text strings entries in header
+       INTEGER(iwp) :: nr_int         !< number of INTEGER entries in header
+       INTEGER(iwp) :: nr_real        !< number of REAL entries in header
+       INTEGER(iwp) :: total_nx       !< total number of points in x-direction
+       INTEGER(iwp) :: total_ny       !< total number of points in y-direction
     END TYPE general_header
 
-    TYPE(general_header), TARGET, PUBLIC ::  tgh    !<
+    TYPE(general_header), TARGET ::  tgh    !<
 
     TYPE(sm_class)               ::  sm_io  !<
 
@@ -243,17 +278,15 @@
     INTEGER ::  comm_cyclic_fill  !< communicator for cyclic fill PEs
 #if defined( __parallel )
     INTEGER ::  rmawin_2di        !< RMA window 2d INTEGER
-    INTEGER ::  rmawin_2di8       !< RMA window 2d INTEGER*8
     INTEGER ::  rmawin_2d         !< RMA window 2d REAL
     INTEGER ::  rmawin_3d         !< RMA window 3d
 #endif
 
-    INTEGER(iwp), ALLOCATABLE, DIMENSION(:,:) ::  remote_pe      !<
-    INTEGER(iwp), ALLOCATABLE, DIMENSION(:,:) ::  remote_pe_s    !<
-    INTEGER(iwp), ALLOCATABLE, DIMENSION(:,:) ::  rma_offset     !<
-    INTEGER(iwp), ALLOCATABLE, DIMENSION(:,:) ::  rma_offset_s   !<
-    INTEGER(iwp), ALLOCATABLE, DIMENSION(:,:) ::  rmabuf_2di     !<
-    INTEGER(iwp), ALLOCATABLE, DIMENSION(:,:) ::  rmabuf_2di8    !<
+    INTEGER(iwp), ALLOCATABLE, DIMENSION(:,:) ::  remote_pe
+    INTEGER(iwp), ALLOCATABLE, DIMENSION(:,:) ::  remote_pe_s
+    INTEGER(iwp), ALLOCATABLE, DIMENSION(:,:) ::  rma_offset
+    INTEGER(iwp), ALLOCATABLE, DIMENSION(:,:) ::  rma_offset_s
+    INTEGER(iwp), ALLOCATABLE, DIMENSION(:,:) ::  rmabuf_2di
 
     LOGICAL ::  cyclic_fill_mode            !< arrays are filled cyclically with data from prerun
     LOGICAL ::  pe_active_for_read = .TRUE. !< this PE is active for reading data from prerun or
@@ -276,7 +309,7 @@
 
     PRIVATE
 
-    PUBLIC  restart_file_size, total_number_of_surface_elements
+    PUBLIC  restart_file_size, total_number_of_surface_values
 
 !
 !-- PALM interfaces
@@ -300,10 +333,7 @@
        MODULE PROCEDURE rrd_mpi_io_char
        MODULE PROCEDURE rrd_mpi_io_int
        MODULE PROCEDURE rrd_mpi_io_int_2d
-       MODULE PROCEDURE rrd_mpi_io_int8
-       MODULE PROCEDURE rrd_mpi_io_int8_2d
        MODULE PROCEDURE rrd_mpi_io_int4_3d
-       MODULE PROCEDURE rrd_mpi_io_int4_3d_special
        MODULE PROCEDURE rrd_mpi_io_int8_3d
        MODULE PROCEDURE rrd_mpi_io_logical
        MODULE PROCEDURE rrd_mpi_io_logical_3d
@@ -342,10 +372,7 @@
        MODULE PROCEDURE wrd_mpi_io_char
        MODULE PROCEDURE wrd_mpi_io_int
        MODULE PROCEDURE wrd_mpi_io_int_2d
-       MODULE PROCEDURE wrd_mpi_io_int8
-       MODULE PROCEDURE wrd_mpi_io_int8_2d
        MODULE PROCEDURE wrd_mpi_io_int4_3d
-       MODULE PROCEDURE wrd_mpi_io_int4_3d_special
        MODULE PROCEDURE wrd_mpi_io_int8_3d
        MODULE PROCEDURE wrd_mpi_io_logical
        MODULE PROCEDURE wrd_mpi_io_logical_3d
@@ -387,6 +414,7 @@
             wrd_mpi_io_particles,                                                                  &
             wrd_mpi_io_surface
 
+
  CONTAINS
 
 
@@ -395,8 +423,7 @@
 ! ------------
 !> Open restart file for read or write with MPI-IO
 !--------------------------------------------------------------------------------------------------!
- SUBROUTINE rd_mpi_io_open( action, file_name, open_for_global_io_only,                            &
-                            write_total_domain_boundaries )
+ SUBROUTINE rd_mpi_io_open( action, file_name, open_for_global_io_only )
 
     IMPLICIT NONE
 
@@ -412,14 +439,12 @@
     INTEGER, DIMENSION(rd_status_size) ::  status  !<
 #endif
 
-    LOGICAL, INTENT(IN), OPTIONAL ::  open_for_global_io_only        !<
-    LOGICAL                       ::  set_filetype                   !<
-    LOGICAL, INTENT(IN), OPTIONAL ::  write_total_domain_boundaries  !<
+    LOGICAL, INTENT(IN), OPTIONAL ::  open_for_global_io_only  !<
+    LOGICAL                       ::  set_filetype             !<
 
 #if ! defined( __parallel )
     TYPE(C_PTR)                   ::  buf_ptr  !<
 #endif
-
 
     offset = 0
     io_on_limited_cores_per_node = .FALSE.
@@ -429,15 +454,13 @@
 
     IF ( .NOT. ( rd_flag .OR. wr_flag ) )  THEN
        message_string = 'illegal action "' // TRIM( action ) // '" for opening restart files'
-       CALL message( 'restart_data_mpi_io_mod', 'PAC0294', 1, 2, 0, 6, 0 )
+       CALL message( 'restart_data_mpi_io_mod', 'PA0720', 1, 2, 0, 6, 0 )
     ENDIF
-
 !
 !-- Store name of I/O file to communicate it internally within this module.
     io_file_name = file_name
-
 !
-!-- Setup for IO on a limited number of PEs per node (using shared memory MPI)
+!-- Setup for IO on a limited number of threads per node (using shared memory MPI)
     IF ( rd_flag )  THEN
        set_filetype = .TRUE.
        IF ( TRIM( restart_data_format_input ) == 'mpi_shared_memory' )  THEN
@@ -448,7 +471,6 @@
     IF ( TRIM( restart_data_format_output ) == 'mpi_shared_memory' .AND.  wr_flag )  THEN
        io_on_limited_cores_per_node = .TRUE.
     ENDIF
-
 !
 !-- Shared memory MPI is not used for reading of global data
     IF ( PRESENT( open_for_global_io_only )  .AND.  rd_flag )  THEN
@@ -460,18 +482,17 @@
 
 !
 !-- Determine, if prerun data shall be read and mapped cyclically to the mainrun arrays.
-!-- In cyclic fill initialization mode only a subset of the PEs will read.
+!-- In cyclic fill mode only a subset of the PEs will read.
     cyclic_fill_mode   = .FALSE.
     pe_active_for_read = .TRUE.
 
     IF ( rd_flag  .AND.  .NOT. PRESENT( open_for_global_io_only )  .AND.                           &
-         cyclic_fill_initialization )                                                              &
-    THEN
+         nx_on_file < nx  .AND.  ny_on_file < ny )  THEN
        cyclic_fill_mode = .TRUE.
        CALL setup_cyclic_fill
 !
-!--    Shared memory IO on limited cores is not allowed for cyclic fill mode.
-       CALL sm_io%sm_init_comm( .FALSE. )
+!--    Shared memory IO on limited cores is not allowed for cyclic fill mode
+       CALL sm_io%sm_init_comm( .FALSE. )  !
     ELSE
        CALL sm_io%sm_init_comm( io_on_limited_cores_per_node )
     ENDIF
@@ -479,10 +500,11 @@
 !
 !-- TODO: add a more detailed meaningful comment about what is happening here
 !-- activate model grid
-    IF ( cyclic_fill_mode  .AND.  .NOT. pe_active_for_read )  THEN
+    IF( cyclic_fill_mode  .AND.  .NOT. pe_active_for_read )  THEN
       CALL mainrun_grid%activate_grid_from_this_class()
       RETURN
     ENDIF
+
 
 !
 !-- Set communicator to be used. If all cores are doing I/O, comm2d is used as usual.
@@ -495,26 +517,15 @@
     ENDIF
 
 !
-!-- Decide if the total domain boundaries are written to file.
-    IF ( wr_flag )  THEN
-       IF ( PRESENT( write_total_domain_boundaries ) )  THEN
-          total_domain_boundaries_on_file = write_total_domain_boundaries
-       ELSE
-!
-!--       Boundaries will and need only be written if non-cyclic boundary conditions are used at
-!--       least along one direction.
-          total_domain_boundaries_on_file = .NOT. ( bc_lr_cyc  .AND.  bc_ns_cyc )
-       ENDIF
-    ENDIF
+!-- Create subarrays and file types
+    filetypes_created = .FALSE.
 
 !
-!-- Create subarrays and file types. In case of read it is not known yet if data include total
-!-- domain boundaries. Therefore, filetypes will be created further below.
+!-- In case of read it is not known yet if data include total domain. Filetypes will be created
+!-- further below.
     IF ( wr_flag )  THEN
        CALL rd_mpi_io_create_filetypes
        filetypes_created = .TRUE.
-    ELSE
-       filetypes_created = .FALSE.
     ENDIF
 
 !
@@ -536,7 +547,7 @@
           IF ( ierr /= 0 )  THEN
              message_string = 'error opening restart file "' // TRIM( io_file_name ) //            &
                               '" for reading with MPI-IO'
-             CALL message( 'rrd_mpi_io_open', 'PAC0295', 3, 2, 0, 6, 0 )
+             CALL message( 'rrd_mpi_io_open', 'PA0727', 3, 2, 0, 6, 0 )
           ENDIF
 
           IF ( debug_output )  THEN
@@ -559,7 +570,7 @@
           IF ( ierr /= 0 )  THEN
              message_string = 'error opening restart file "' // TRIM( io_file_name ) //            &
                               '" for writing with MPI-IO'
-             CALL message( 'rrd_mpi_io_open', 'PAC0296', 3, 2, 0, 6, 0 )
+             CALL message( 'rrd_mpi_io_open', 'PA0728', 3, 2, 0, 6, 0 )
           ENDIF
 
           IF ( debug_output )  THEN
@@ -608,7 +619,7 @@
 
     IF ( fh < 0 )  THEN
        message_string = 'error opening restart file for posix I/O'
-       CALL message( 'restart_data_mpi_io_mod', 'PAC0297', 1, 2, 0, 6, 0 )
+       CALL message( 'restart_data_mpi_io_mod', 'PA0721', 1, 2, 0, 6, 0 )
     ENDIF
 #endif
 
@@ -667,7 +678,7 @@
 #endif
        header_position = header_position + gh_size
 
-       total_domain_boundaries_on_file = ( tgh%outer_ghost_layers_included == 1 )
+       include_total_domain_boundaries = ( tgh%i_outer_bound == 1 )
 
 !
 !--    File types depend on boundaries of the total domain being included in data. This has been
@@ -710,7 +721,7 @@
 
           CALL MPI_FILE_SEEK( fh, header_position, MPI_SEEK_SET, ierr )
           CALL MPI_FILE_READ( fh, array_offset, SIZE( array_offset ) * MPI_OFFSET_KIND, MPI_BYTE,  &
-                              status,ierr )
+                              status,ierr )   ! there is no I*8 datatype in Fortran
           header_position = header_position + SIZE( array_offset ) * rd_offset_kind
 #else
           CALL posix_lseek( fh, header_position )
@@ -741,7 +752,7 @@
           header_position = header_position + SIZE( array_names ) * 32
 
           CALL posix_lseek( fh, header_position )
-          CALL posix_read( fh, array_offset, SIZE( array_offset ) )
+          CALL posix_read( fh, array_offset, SIZE( array_offset ) ) ! there is no I*8 datatype in Fortran
           header_position = header_position + SIZE( array_offset ) * rd_offset_kind
 #endif
           IF ( debug_output )  CALL rd_mpi_io_print_header
@@ -772,7 +783,7 @@
               CALL MPI_BCAST( array_names(i), 32, MPI_CHARACTER, 0, sm_io%comm_shared, ierr )
            ENDDO
            CALL MPI_BCAST( array_offset, SIZE( array_offset )*8, MPI_BYTE, 0, sm_io%comm_shared,   &
-                           ierr )
+                           ierr )  ! there is no I*8 datatype in Fortran (array_offset is I*8!)
 
            CALL MPI_BCAST( header_position, rd_offset_kind, MPI_BYTE, 0, sm_io%comm_shared, ierr )
 
@@ -804,8 +815,8 @@
 #endif
 
 !
-!--    Save grid information of the mainrun, i.e. grid variables like nxl, nxr, nys, nyn and other
-!--    values are stored within the mainrun_grid structure
+!--    TODO: describe in more detail what is done here and why it is done
+!--    save grid of main run
        CALL mainrun_grid%save_grid_into_this_class()
 
        ALLOCATE( remote_pe(0:nx_on_file,0:ny_on_file) )
@@ -816,7 +827,7 @@
        remote_pe_s  = 0
        rma_offset_s = 0
 !
-!--    Determine, if gridpoints of the prerun are located on this PE.
+!--    Determine, if gridpoints of the prerun are located on this thread.
 !--    Set the (cyclic) prerun grid.
        nxr = MIN( nxr, nx_on_file )
        IF ( nxl > nx_on_file )  THEN
@@ -839,7 +850,7 @@
        nx = nx_on_file
        ny = ny_on_file
 !
-!--    Determine, if this PE is doing IO
+!--    Determine, if this thread is doing IO
        IF ( nnx > 0  .AND.  nny > 0 )  THEN
           color = 1
           pe_active_for_read = .TRUE.
@@ -874,25 +885,17 @@
        numprocs   = 1
 #endif
 !
-!--    Allocate 2d buffers as RMA window, accessible on all PEs
+!--    Allocate 2d buffers as RMA window, accessible on all threads
        IF ( pe_active_for_read )  THEN
           ALLOCATE( rmabuf_2di(nys:nyn,nxl:nxr) )
-          ALLOCATE( rmabuf_2di8(nys:nyn,nxl:nxr) )
        ELSE
           ALLOCATE( rmabuf_2di(1,1) )
-          ALLOCATE( rmabuf_2di8(1,1) )
        ENDIF
        winsize = SIZE( rmabuf_2di ) * iwp
 
 #if defined( __parallel )
        CALL MPI_WIN_CREATE( rmabuf_2di, winsize, iwp, MPI_INFO_NULL, comm2d, rmawin_2di, ierr )
        CALL MPI_WIN_FENCE( 0, rmawin_2di, ierr )
-#endif
-       winsize = SIZE( rmabuf_2di8 ) * idp
-
-#if defined( __parallel )
-       CALL MPI_WIN_CREATE( rmabuf_2di8, winsize, iwp, MPI_INFO_NULL, comm2d, rmawin_2di8, ierr )
-       CALL MPI_WIN_FENCE( 0, rmawin_2di8, ierr )
 #endif
 
        IF ( pe_active_for_read )  THEN
@@ -908,7 +911,7 @@
 #endif
 
 !
-!--    Allocate 3d buffer as RMA window, accessable on all PEs
+!--    Allocate 3d buffer as RMA window, accessable on all threads
        IF ( pe_active_for_read )  THEN
           ALLOCATE( rmabuf_3d(nzb:nzt+1,nys:nyn,nxl:nxr) )
        ELSE
@@ -922,9 +925,8 @@
 #endif
 
 !
-!--    Save grid of the prerun, i.e. grid variables like nxl, nxr, nys, nyn and other values
-!--    are stored within the prerun_grid structure.
-!--    The prerun grid can later be activated by calling prerun_grid%activate_grid_from_this_class()
+!--    TODO: comment in more detail, what is done here, and why
+!--    save small grid
        CALL prerun_grid%save_grid_into_this_class()
        prerun_grid%comm2d = comm_cyclic_fill
 
@@ -933,7 +935,6 @@
     END SUBROUTINE setup_cyclic_fill
 
  END SUBROUTINE rd_mpi_io_open
-
 
 
 !--------------------------------------------------------------------------------------------------!
@@ -996,36 +997,10 @@
 
     IF ( .NOT. found )  THEN
        message_string = 'INTEGER variable "' // TRIM( name ) // '" not found in restart file'
-       CALL message( 'rrd_mpi_io_int', 'PAC0298', 3, 2, 0, 6, 0 )
+       CALL message( 'rrd_mpi_io_int', 'PA0722', 3, 2, 0, 6, 0 )
     ENDIF
 
  END SUBROUTINE rrd_mpi_io_int
-
-
-
-!--------------------------------------------------------------------------------------------------!
-! Description:
-! ------------
-!> Read INTEGER*8 with MPI-IO
-!--------------------------------------------------------------------------------------------------!
- SUBROUTINE rrd_mpi_io_int8( name, value )
-
-    IMPLICIT NONE
-
-    CHARACTER(LEN=*), INTENT(IN)   ::  name   !<
-
-    INTEGER(KIND=idp), INTENT(OUT) ::  value  !<
-
-    REAL(KIND=wp)                  ::  tmp  !<
-
-!
-!-- Preliminary Version, read INTEGER*8 as REAL.
-!-- Later create an INTEGER*8 header section.
-    CALL rrd_mpi_io ( name, tmp )
-
-    value = NINT( tmp, idp )
-
- END SUBROUTINE rrd_mpi_io_int8
 
 
 
@@ -1060,7 +1035,7 @@
 
     IF ( .NOT. found )  THEN
        message_string = 'REAL variable "' // TRIM( name ) // '" not found in restart file'
-       CALL message( 'rrd_mpi_io_int', 'PAC0298', 3, 2, 0, 6, 0 )
+       CALL message( 'rrd_mpi_io_int', 'PA0722', 3, 2, 0, 6, 0 )
     ENDIF
 
  END SUBROUTINE rrd_mpi_io_real
@@ -1076,18 +1051,16 @@
 
     IMPLICIT NONE
 
-    CHARACTER(LEN=*), INTENT(IN)       ::  name       !< name of array to be read
+    CHARACTER(LEN=*), INTENT(IN)       ::  name    !<
 
 #if defined( __parallel )
-    INTEGER, DIMENSION(rd_status_size) ::  status     !< returned status of MPI call
+    INTEGER, DIMENSION(rd_status_size) ::  status  !<
 #endif
-    INTEGER(iwp)                       ::  i          !< loop index
-    INTEGER(iwp)                       ::  shift_i    !< shift of i index
-    INTEGER(iwp)                       ::  shift_j    !< shift of j index
+    INTEGER(iwp)                       ::  i       !<
 
-    LOGICAL                            ::  found      !< true if array found in restart file
+    LOGICAL                            ::  found   !<
 
-    REAL(wp), INTENT(INOUT), DIMENSION(:,:) ::  data  !< array to be read
+    REAL(wp), INTENT(INOUT), DIMENSION(nysg:nyng,nxlg:nxrg) ::  data  !<
 
 
     found = .FALSE.
@@ -1102,64 +1075,48 @@
 
     IF ( found )  THEN
 
-       IF ( SIZE( data, 1 ) == ( nyn - nys + 1 + 2 * nbgp )  .AND.                                 &
-            SIZE( data, 2 ) == ( nxr - nxl + 1 + 2 * nbgp )  )  THEN
-!
-!--       REAL arrays with ghost boundaries.
-!--       This kind of array would be dimensioned in the caller subroutine like this:
-!--       REAL, DIMENSION(nys:nyn,nxl:nxr) ::  data
-!
-!--       Because the dimension bounds of 'data' are not explicitly given, they start at 1. To match
-!--       the indices of data to the correct indices of array_2d, they must be shifted.
-!--       Index nysg in array_2d corresponds to index 1 in data. Hence, to get the correct position
-!--       inside the data array, the index "nysg" must be shifted by "-nysg+1". The same for x.
-          shift_i = - nxlg + 1
-          shift_j = - nysg + 1
+       IF ( cyclic_fill_mode )  THEN
 
-          IF ( cyclic_fill_mode )  THEN
-
-             CALL rrd_mpi_io_real_2d_cyclic_fill
-
-          ELSE
-
-#if defined( __parallel )
-             CALL sm_io%sm_node_barrier()  ! Has no effect if I/O on limited # of cores is inactive
-             IF ( sm_io%iam_io_pe )  THEN
-                CALL MPI_FILE_SET_VIEW( fh, array_position, MPI_REAL, ft_2d, 'native',             &
-                                        MPI_INFO_NULL, ierr )
-                CALL MPI_FILE_READ_ALL( fh, array_2d, SIZE( array_2d ), MPI_REAL, status, ierr )
-             ENDIF
-             CALL sm_io%sm_node_barrier()
-#else
-             CALL posix_lseek( fh, array_position )
-             CALL posix_read( fh, array_2d, SIZE( array_2d ) )
-#endif
-
-             IF ( total_domain_boundaries_on_file )  THEN
-                DO  i = iog%nxl, iog%nxr
-                   data(iog%nys-nbgp+shift_j:iog%nyn-nbgp+shift_j,i-nbgp+shift_i) =                &
-                     array_2d(i,iog%nys:iog%nyn)
-                ENDDO
-             ELSE
-                DO  i = nxl, nxr
-                   data(nys+shift_j:nyn+shift_j,i+shift_i) = array_2d(i,nys:nyn)
-                ENDDO
-             ENDIF
-
-          ENDIF
-
-          CALL exchange_horiz_2d( data )
-          CALL set_lateral_neumann_bc( data )
+          CALL rrd_mpi_io_real_2d_cyclic_fill
 
        ELSE
-          message_string = '2d-REAL array "' // TRIM( name ) // '" to be read ' //                 &
-                           'from restart file is defined with illegal dimensions'
-          CALL message( 'rrd_mpi_io_real_2d', 'PAC0299', 3, 2, 0, 6, 0 )
+
+#if defined( __parallel )
+          CALL sm_io%sm_node_barrier()  ! Has no effect if I/O on limited # of cores is inactive
+          IF ( sm_io%iam_io_pe )  THEN
+             CALL MPI_FILE_SET_VIEW( fh, array_position, MPI_REAL, ft_2d, 'native', MPI_INFO_NULL, &
+                                     ierr )
+             CALL MPI_FILE_READ_ALL( fh, array_2d, SIZE( array_2d ), MPI_REAL, status, ierr )
+          ENDIF
+          CALL sm_io%sm_node_barrier()
+#else
+          CALL posix_lseek( fh, array_position )
+          CALL posix_read( fh, array_2d, SIZE( array_2d ) )
+#endif
+
+          IF ( include_total_domain_boundaries )  THEN
+             DO  i = iog%nxl, iog%nxr
+                data(iog%nys-nbgp:iog%nyn-nbgp,i-nbgp) = array_2d(i,iog%nys:iog%nyn)
+             ENDDO
+             IF ( debug_level >= 2)  THEN
+                WRITE(9,*) 'r2f_ob ', TRIM(name),' ', SUM( data(nys:nyn,nxl:nxr) )
+             ENDIF
+          ELSE
+             DO  i = nxl, nxr
+                data(nys:nyn,i) = array_2d(i,nys:nyn)
+             ENDDO
+             IF ( debug_level >= 2)  THEN
+                WRITE(9,*) 'r2f ', TRIM( name ),' ', SUM( data(nys:nyn,nxl:nxr) )
+             ENDIF
+          ENDIF
+
        ENDIF
+
+       CALL exchange_horiz_2d( data )
 
     ELSE
        message_string = '2d-REAL array "' // TRIM( name ) // '" not found in restart file'
-       CALL message( 'rrd_mpi_io_int', 'PAC0298', 3, 2, 0, 6, 0 )
+       CALL message( 'rrd_mpi_io_int', 'PA0722', 3, 2, 0, 6, 0 )
     ENDIF
 
 
@@ -1188,6 +1145,8 @@
 #endif
 
 
+!kk       write(9,*) 'Here is rma_cylic_fill_real_2d ',nxl,nxr,nys,nyn; FLUSH(9)
+
 !
 !--    Reading 2d real array on prerun grid
        CALL prerun_grid%activate_grid_from_this_class()
@@ -1201,9 +1160,7 @@
           DO  i = nxl, nxr
              rmabuf_2d(nys:nyn,i) = array_2d(i,nys:nyn)
           ENDDO
-!
-!--       Copy prerund data directly into output array data
-          data(nys+shift_j:nyn+shift_j,nxl+shift_i:nxr+shift_i) = rmabuf_2d
+          data(nys:nyn,nxl:nxr) = rmabuf_2d     ! copy prerund data directly into output array data
        ENDIF
 
        CALL mainrun_grid%activate_grid_from_this_class()
@@ -1240,13 +1197,13 @@
 
 #if defined( __parallel )
                 IF ( rem_pe /= myid )  THEN
-                   CALL MPI_GET( data(j+shift_j,i+shift_i), nval, MPI_REAL, rem_pe, rem_offs,      &
-                                 nval, MPI_REAL, rmawin_2d, ierr )
+                   CALL MPI_GET( data(j,i), nval, MPI_REAL, rem_pe, rem_offs, nval, MPI_REAL,      &
+                                 rmawin_2d, ierr )
                 ELSE
-                   data(j+shift_j,i+shift_i) = rmabuf_2d(j_remote,i_remote)
+                   data(j,i) = rmabuf_2d(j_remote,i_remote)
                 ENDIF
 #else
-                data(j+shift_j,i+shift_i) = array_2d(i_remote,j_remote)
+                data(j,i) = array_2d(i_remote,j_remote)
 #endif
              ENDDO
           ENDDO
@@ -1269,13 +1226,13 @@
 
 #if defined( __parallel )
              IF ( rem_pe /= myid )  THEN
-                CALL MPI_GET( data(j+shift_j,i+shift_i), nval, MPI_REAL, rem_pe, rem_offs, nval,   &
-                              MPI_REAL, rmawin_2d, ierr )
+                CALL MPI_GET( data(j,i), nval, MPI_REAL, rem_pe, rem_offs, nval, MPI_REAL,         &
+                              rmawin_2d, ierr )
              ELSE
-                data(j+shift_j,i+shift_i) = rmabuf_2d(j_remote,i_remote)
+                data(j,i) = rmabuf_2d(j_remote,i_remote)
              ENDIF
 #else
-             data(j+shift_j,i+shift_i) = array_2d(i_remote,j_remote)
+             data(j,i) = array_2d(i_remote,j_remote)
 #endif
           ENDDO
        ENDDO
@@ -1333,9 +1290,9 @@
 !--       ATTENTION: INTEGER arrays with ghost boundaries are not implemented yet. This kind of
 !--                  array would be dimensioned in the caller subroutine like this:
 !--                  INTEGER, DIMENSION(nysg:nyng,nxlg:nxrg)::  data
-          message_string = '2d-INTEGER array "' // TRIM( name ) // '" to be read ' //              &
-                           'from restart file is defined with illegal dimensions'
-          CALL message( 'rrd_mpi_io_int_2d', 'PAC0301', 3, 2, 0, 6, 0 )
+          message_string = '2d-INTEGER array "' // TRIM( name ) // '" to be read from restart ' // &
+                           'file is defined with illegal dimensions in the PALM code'
+          CALL message( 'rrd_mpi_io_int_2d', 'PA0723', 3, 2, 0, 6, 0 )
 
        ELSEIF ( (nxr - nxl + 1) == SIZE( data, 2 ) )  THEN
 !
@@ -1372,15 +1329,15 @@
        ELSE
 
           message_string = '2d-INTEGER array "' // TRIM( name ) // '" to be read from restart ' // &
-                           'file is defined with illegal dimensions'
-          CALL message( 'rrd_mpi_io_int_2d', 'PAC0301', 3, 2, 0, 6, 0 )
+                           'file is defined with illegal dimensions in the PALM code'
+          CALL message( 'rrd_mpi_io_int_2d', 'PA0723', 3, 2, 0, 6, 0 )
 
        ENDIF
 
     ELSE
 
        message_string = '2d-INTEGER array "' // TRIM( name ) // '" not found in restart file'
-       CALL message( 'rrd_mpi_io_int_2d', 'PAC0298', 3, 2, 0, 6, 0 )
+       CALL message( 'rrd_mpi_io_int_2d', 'PA0722', 3, 2, 0, 6, 0 )
 
     ENDIF
 
@@ -1410,24 +1367,21 @@
 #endif
 
 
-       IF ( pe_active_for_read )  THEN
-          CALL prerun_grid%activate_grid_from_this_class()
+       CALL prerun_grid%activate_grid_from_this_class()
 
+       IF ( pe_active_for_read )  THEN
 #if defined( __parallel )
           CALL MPI_FILE_SET_VIEW( fh, array_position, MPI_INTEGER, ft_2di_nb, 'native',            &
                                   MPI_INFO_NULL, ierr )
           CALL MPI_FILE_READ_ALL( fh, array_2di, SIZE( array_2di ), MPI_INTEGER, status, ierr )
-#else
-          CALL posix_lseek( fh, array_position )
-          CALL posix_read( fh, array_2di, SIZE( array_2di ) )
 #endif
           DO  i = nxl, nxr
              rmabuf_2di(nys:nyn,i) = array_2di(i,nys:nyn)
           ENDDO
           data(1:nny,1:nnx) = rmabuf_2di
-
-          CALL mainrun_grid%activate_grid_from_this_class()
        ENDIF
+
+       CALL mainrun_grid%activate_grid_from_this_class()
 
 #if defined( __parallel )
 !
@@ -1435,10 +1389,45 @@
        CALL MPI_WIN_FENCE( 0, rmawin_2di, ierr )
 #endif
 
-       is = nxl
-       ie = nxr
-       js = nys
-       je = nyn
+       IF ( .NOT. pe_active_for_read )  THEN
+
+          is = nxl
+          ie = nxr
+          js = nys
+          je = nyn
+
+       ELSE
+
+          is = nxl
+          ie = nxr
+          js = prerun_grid%nys+1
+          je = nyn
+          DO  i = is, ie
+             DO  j = js, je
+                i_remote = MOD(i,nx_on_file+1)
+                j_remote = MOD(j,ny_on_file+1)
+                rem_pe   = remote_pe(i_remote,j_remote)
+                rem_offs = rma_offset(i_remote,j_remote)
+                nval     = 1
+
+#if defined( __parallel )
+                IF ( rem_pe /= myid )  THEN
+                   CALL MPI_GET( data(j-nys+1,i-nxl+1), nval, MPI_INTEGER, rem_pe, rem_offs, nval, &
+                                 MPI_INTEGER, rmawin_2di, ierr )
+                ELSE
+                   data(j-nys+1,i-nxl+1) = rmabuf_2di(j_remote,i_remote)
+                ENDIF
+#else
+                data(j-nys+1,i-nxl+1) = array_2di(i_remote,j_remote)
+#endif
+             ENDDO
+          ENDDO
+          is = prerun_grid%nxr+1
+          ie = nxr
+          js = nys
+          je = nyn
+
+       ENDIF
 
        DO  i = is, ie
           DO  j = js, je
@@ -1469,185 +1458,6 @@
     END SUBROUTINE rrd_mpi_io_int_2d_cyclic_fill
 
  END SUBROUTINE rrd_mpi_io_int_2d
-
-
-
-!--------------------------------------------------------------------------------------------------!
-! Description:
-! ------------
-!> Read 2d-INTEGER array with MPI-IO
-!--------------------------------------------------------------------------------------------------!
- SUBROUTINE rrd_mpi_io_int8_2d( name, data )
-
-    IMPLICIT NONE
-
-    CHARACTER(LEN=*), INTENT(IN)       ::  name    !<
-
-    INTEGER(iwp)                       ::  i       !<
-    INTEGER(iwp)                       ::  j       !<
-
-#if defined( __parallel )
-    INTEGER, DIMENSION(rd_status_size) ::  status  !<
-#endif
-
-    INTEGER(KIND=idp), INTENT(INOUT), DIMENSION(:,:) ::  data  !<
-
-    LOGICAL ::  found  !<
-
-
-    found = .FALSE.
-
-    DO  i = 1, tgh%nr_arrays
-       IF ( TRIM( array_names(i) ) == TRIM( name ) )  THEN
-          array_position = array_offset(i)
-          found = .TRUE.
-          EXIT
-       ENDIF
-    ENDDO
-
-    IF ( found )  THEN
-
-       IF ( ( nxr - nxl + 1 + 2 * nbgp ) == SIZE( data, 2 ) )  THEN
-!
-!--       Output array with ghost layers.
-!--       ATTENTION: INTEGER arrays with ghost boundaries are not implemented yet. This kind of
-!--                  array would be dimensioned in the caller subroutine like this:
-!--                  INTEGER, DIMENSION(nysg:nyng,nxlg:nxrg)::  data
-          message_string = '2d-INTEGER*8 array "' // TRIM( name ) // '" to be read ' //            &
-                           'from restart file is defined with illegal dimensions'
-          CALL message( 'rrd_mpi_io_int8_2d', 'PAC0301', 3, 2, 0, 6, 0 )
-
-       ELSEIF ( (nxr - nxl + 1) == SIZE( data, 2 ) )  THEN
-!
-!--       INTEGER input array without ghost layers.
-!--       This kind of array is dimensioned in the caller subroutine as
-!--       INTEGER, DIMENSION(nys:nyn,nxl:nxr) ::  data
-          IF ( cyclic_fill_mode )  THEN
-
-             CALL rrd_mpi_io_int8_2d_cyclic_fill
-
-          ELSE
-#if defined( __parallel )
-             CALL sm_io%sm_node_barrier() ! Has no effect if I/O on limited # of cores is inactive
-             IF ( sm_io%iam_io_pe )  THEN
-                CALL MPI_FILE_SET_VIEW( fh, array_position, MPI_INTEGER8, ft_2di8_nb, 'native',    &
-                                        MPI_INFO_NULL, ierr )
-                CALL MPI_FILE_READ_ALL( fh, array_2di8, SIZE( array_2di8 ), MPI_INTEGER8, status,  &
-                                        ierr )
-             ENDIF
-             CALL sm_io%sm_node_barrier()
-#else
-             CALL posix_lseek( fh, array_position )
-             CALL posix_read( fh, array_2di8, SIZE( array_2di8 ) )
-#endif
-             DO  j = nys, nyn
-                DO  i = nxl, nxr
-                   data(j-nys+1,i-nxl+1) = array_2di8(i,j)
-                 ENDDO
-             ENDDO
-
-          ENDIF
-
-       ELSE
-
-          message_string = '2d-INTEGER*8 array "' // TRIM( name ) // '" to be read from ' //       &
-                           'restart file is defined with illegal dimensions'
-          CALL message( 'rrd_mpi_io_int8_2d', 'PAC0301', 3, 2, 0, 6, 0 )
-
-       ENDIF
-
-    ELSE
-
-       message_string = '2d-INTEGER*8 array "' // TRIM( name ) // '" not found in restart file'
-       CALL message( 'rrd_mpi_io_int8_2d', 'PAC0298', 3, 2, 0, 6, 0 )
-
-    ENDIF
-
- CONTAINS
-
-    SUBROUTINE rrd_mpi_io_int8_2d_cyclic_fill
-
-       IMPLICIT NONE
-
-       INTEGER(iwp)    :: i         !<
-       INTEGER(iwp)    :: ie        !<
-       INTEGER(iwp)    :: is        !<
-       INTEGER(iwp)    :: i_remote  !<
-       INTEGER(iwp)    :: j         !<
-       INTEGER(iwp)    :: je        !<
-       INTEGER(iwp)    :: js        !<
-       INTEGER(iwp)    :: j_remote  !<
-       INTEGER(iwp)    :: nval      !<
-       INTEGER(iwp)    :: rem_pe    !<
-
-#if defined( __parallel )
-       INTEGER(iwp)    :: ierr      !<
-       INTEGER(KIND=MPI_ADDRESS_KIND) ::  rem_offs  !<
-#else
-       INTEGER(idp) ::  rem_offs
-#endif
-
-
-       IF ( pe_active_for_read )  THEN
-          CALL prerun_grid%activate_grid_from_this_class()
-
-#if defined( __parallel )
-          CALL MPI_FILE_SET_VIEW( fh, array_position, MPI_INTEGER8, ft_2di8_nb, 'native',            &
-                                  MPI_INFO_NULL, ierr )
-          CALL MPI_FILE_READ_ALL( fh, array_2di8, SIZE( array_2di8 ), MPI_INTEGER8, status, ierr )
-#else
-          CALL posix_lseek( fh, array_position )
-          CALL posix_read( fh, array_2di8, SIZE( array_2di8 ) )
-#endif
-          DO  i = nxl, nxr
-             rmabuf_2di8(nys:nyn,i) = array_2di8(i,nys:nyn)
-          ENDDO
-          data(1:nny,1:nnx) = rmabuf_2di8
-
-          CALL mainrun_grid%activate_grid_from_this_class()
-       ENDIF
-
-#if defined( __parallel )
-!
-!--    Close RMA window to allow remote access
-       CALL MPI_WIN_FENCE( 0, rmawin_2di8, ierr )
-#endif
-
-       is = nxl
-       ie = nxr
-       js = nys
-       je = nyn
-
-       DO  i = is, ie
-          DO  j = js, je
-             i_remote = MOD(i,nx_on_file+1)
-             j_remote = MOD(j,ny_on_file+1)
-             rem_pe   = remote_pe(i_remote,j_remote)
-             rem_offs = rma_offset(i_remote,j_remote)
-             nval     = 1
-#if defined( __parallel )
-             IF ( rem_pe /= myid )  THEN
-                CALL MPI_GET( data(j-nys+1,i-nxl+1), nval, MPI_INTEGER8, rem_pe, rem_offs, nval,    &
-                              MPI_INTEGER8, rmawin_2di8, ierr)
-             ELSE
-                data(j-nys+1,i-nxl+1) = rmabuf_2di8(j_remote,i_remote)
-             ENDIF
-#else
-             data(j-nys+1,i-nxl+1) = array_2di8(i_remote,j_remote)
-#endif
-          ENDDO
-       ENDDO
-
-#if defined( __parallel )
-!
-!--    Reopen RMA window to allow filling
-       CALL MPI_WIN_FENCE( 0, rmawin_2di8, ierr )
-#endif
-
-    END SUBROUTINE rrd_mpi_io_int8_2d_cyclic_fill
-
- END SUBROUTINE rrd_mpi_io_int8_2d
-
 
 
 
@@ -1698,7 +1508,7 @@
        CALL posix_lseek( fh, array_position )
        CALL posix_read(fh, array_3di4, SIZE( array_3di4 ) )
 #endif
-       IF ( total_domain_boundaries_on_file )  THEN
+       IF ( include_total_domain_boundaries )  THEN
           DO  i = iog%nxl, iog%nxr
              data(:,iog%nys-nbgp:iog%nyn-nbgp,i-nbgp) = array_3di4(:,i,iog%nys:iog%nyn)
           ENDDO
@@ -1711,54 +1521,12 @@
     ELSE
 
        message_string = '3d-INTEGER*4 array "' // TRIM( name ) // '" not found in restart file'
-       CALL message( 'rrd_mpi_io_int4_3d', 'PAC0298', 3, 2, 0, 6, 0 )
+       CALL message( 'rrd_mpi_io_int4_3d', 'PA0722', 3, 2, 0, 6, 0 )
 
     ENDIF
 
 
  END SUBROUTINE rrd_mpi_io_int4_3d
-
-
-!--------------------------------------------------------------------------------------------------!
-! Description:
-! ------------
-!> Read 3d-INTEGER*4 array with MPI-IO;
-!> Dimension order: y, x, special
-!> Dimension x and y do not contain ghost layers. The 3rd dimension is of size 'size_3rd_dimension'
-!> and must be smaller than (nzt+1) - nzb + 1.
-!--------------------------------------------------------------------------------------------------!
- SUBROUTINE rrd_mpi_io_int4_3d_special( name, data, size_3rd_dimension )
-
-    IMPLICIT NONE
-
-    CHARACTER(LEN=*), INTENT(IN) ::  name            !< name of variable to be read
-
-    INTEGER(iwp)             ::  n                   !< loop index
-    INTEGER(iwp), INTENT(IN) ::  size_3rd_dimension  !< size of 3rd dimension of array 'data'
-
-    INTEGER(isp), INTENT(OUT), DIMENSION(nys:nyn,nxl:nxr,1:size_3rd_dimension) ::  data  !< array to be read
-
-    INTEGER(isp), DIMENSION(nzb:nzt+1,nysg:nyng,nxlg:nxrg) ::  out_buf  !< reordered data array
-
-    IF ( size_3rd_dimension > nzt - nzb + 2 )  THEN
-       WRITE(message_string, '(A,I6,A,I6,A)')  '3rd dimension of array "' // TRIM( name ) //       &
-                                             '" is larger than number of domain height levels:&',  &
-                                             size_3rd_dimension, ' > ', nzt - nzb + 1,             &
-                                             ', writing impossible'
-       CALL message( 'rrd_mpi_io_int4_3d_special', 'PAC0302', 1, 2, 0, 6, 0 )
-    ENDIF
-
-!
-!-- Read data into array of default size (entire subdomain)
-    CALL rrd_mpi_io_int4_3d( name, out_buf )
-
-!
-!-- Reorder data from file to output array
-    DO  n = 1, size_3rd_dimension
-       data(nys:nyn,nxl:nxr,n) = out_buf(nzb+n-1,nys:nyn,nxl:nxr)
-    ENDDO
-
-END SUBROUTINE rrd_mpi_io_int4_3d_special
 
 
 
@@ -1809,7 +1577,7 @@ END SUBROUTINE rrd_mpi_io_int4_3d_special
           CALL posix_lseek( fh, array_position )
           CALL posix_read(fh, array_3di8, SIZE( array_3di8 ) )
 #endif
-          IF ( total_domain_boundaries_on_file )  THEN
+          IF ( include_total_domain_boundaries )  THEN
              DO  i = iog%nxl, iog%nxr
                 data(:,iog%nys-nbgp:iog%nyn-nbgp,i-nbgp) = array_3di8(:,i,iog%nys:iog%nyn)
              ENDDO
@@ -1822,7 +1590,7 @@ END SUBROUTINE rrd_mpi_io_int4_3d_special
     ELSE
 
        message_string = '3d-INTEGER*8 array "' // TRIM( name ) // '" not found in restart file'
-       CALL message( 'rrd_mpi_io_int8_3d', 'PAC0298', 3, 2, 0, 6, 0 )
+       CALL message( 'rrd_mpi_io_int8_3d', 'PA0722', 3, 2, 0, 6, 0 )
 
     ENDIF
 
@@ -1888,7 +1656,7 @@ END SUBROUTINE rrd_mpi_io_int4_3d_special
           CALL posix_lseek( fh, array_position )
           CALL posix_read(fh, array_3d, SIZE( array_3d ) )
 #endif
-          IF ( total_domain_boundaries_on_file )  THEN
+          IF ( include_total_domain_boundaries )  THEN
              DO  i = iog%nxl, iog%nxr
                 data(:,iog%nys-nbgp:iog%nyn-nbgp,i-nbgp) = array_3d(:,i,iog%nys:iog%nyn)
              ENDDO
@@ -1905,7 +1673,7 @@ END SUBROUTINE rrd_mpi_io_int4_3d_special
     ELSE
 
        message_string = '3d-REAL array "' // TRIM( name ) // '" not found in restart file'
-       CALL message( 'rrd_mpi_io_real_3d', 'PAC0298', 3, 2, 0, 6, 0 )
+       CALL message( 'rrd_mpi_io_real_3d', 'PA0722', 3, 2, 0, 6, 0 )
 
     ENDIF
 
@@ -1942,9 +1710,6 @@ END SUBROUTINE rrd_mpi_io_int4_3d_special
           CALL MPI_FILE_SET_VIEW( fh, array_position, MPI_REAL, ft_3d, 'native', MPI_INFO_NULL,    &
                                   ierr )
           CALL MPI_FILE_READ_ALL( fh, array_3d, SIZE( array_3d ), MPI_REAL, status, ierr )
-#else
-          CALL posix_lseek( fh, array_position )
-          CALL posix_read( fh, array_3d, SIZE( array_3d ) )
 #endif
           DO  i = nxl, nxr
              rmabuf_3d(:,nys:nyn,i) = array_3d(:,i,nys:nyn)
@@ -1955,19 +1720,55 @@ END SUBROUTINE rrd_mpi_io_int4_3d_special
 
 #if defined( __parallel )
 !
-!--    Close RMA window to allow remote access
-       CALL MPI_WIN_FENCE( 0, rmawin_3d, ierr )
+!--     Close RMA window to allow remote access
+        CALL MPI_WIN_FENCE( 0, rmawin_3d, ierr )
 #endif
 
-       is = nxl
-       ie = nxr
-       js = nys
-       je = nyn
+       IF ( .NOT. pe_active_for_read )  THEN
+
+          is = nxl
+          ie = nxr
+          js = nys
+          je = nyn
+
+       ELSE
+
+          is = nxl
+          ie = nxr
+          js = prerun_grid%nys+1
+          je = nyn
+
+          DO  i = is, ie
+             DO  j = js, je
+                i_remote = MOD(i,nx_on_file+1)
+                j_remote = MOD(j,ny_on_file+1)
+                rem_pe   = remote_pe(i_remote,j_remote)
+                rem_offs = rma_offset(i_remote,j_remote)*(nzt-nzb+2)
+                nval     = nzt-nzb+2
+
+#if defined( __parallel )
+                IF(rem_pe /= myid)   THEN
+                   CALL MPI_GET( data(nzb,j,i), nval, MPI_REAL, rem_pe, rem_offs, nval, MPI_REAL,  &
+                                 rmawin_3d, ierr)
+                ELSE
+                   data(:,j,i) = rmabuf_3d(:,j_remote,i_remote)
+                ENDIF
+#else
+                data(:,j,i) = array_3d(:,i_remote,j_remote)
+#endif
+             ENDDO
+          ENDDO
+          is = prerun_grid%nxr+1
+          ie = nxr
+          js = nys
+          je = nyn
+
+       ENDIF
 
        DO  i = is, ie
           DO  j = js, je
-             i_remote = MOD( i, nx_on_file+1 )
-             j_remote = MOD( j, ny_on_file+1 )
+             i_remote = MOD(i,nx_on_file+1)
+             j_remote = MOD(j,ny_on_file+1)
              rem_pe   = remote_pe(i_remote,j_remote)
              rem_offs = rma_offset(i_remote,j_remote) * ( nzt-nzb+2 )
              nval     = nzt-nzb+2
@@ -2028,7 +1829,7 @@ END SUBROUTINE rrd_mpi_io_int4_3d_special
 !-- Prerun data is not allowed to contain soil information so far
     IF ( cyclic_fill_mode )  THEN
        message_string = 'prerun data is not allowed to contain soil information'
-       CALL message( 'rrd_mpi_io_real_3d_soil', 'PAC0303', 3, 2, -1, 6, 0 )
+       CALL message( 'rrd_mpi_io_real_3d_soil', 'PA0729', 3, 2, -1, 6, 0 )
     ENDIF
 
     found = .FALSE.
@@ -2042,8 +1843,8 @@ END SUBROUTINE rrd_mpi_io_int4_3d_special
     ENDDO
 
     IF ( found )  THEN
-       CALL rd_mpi_io_create_filetypes_3dsoil( nzb_soil, nzt_soil )
 #if defined( __parallel )
+       CALL rd_mpi_io_create_filetypes_3dsoil( nzb_soil, nzt_soil )
        CALL sm_io%sm_node_barrier()  ! Has no effect if I/O on limited number of cores is inactive
        IF ( sm_io%iam_io_pe )  THEN
           CALL MPI_FILE_SET_VIEW( fh, array_position, MPI_REAL, ft_3dsoil, 'native',               &
@@ -2056,7 +1857,7 @@ END SUBROUTINE rrd_mpi_io_int4_3d_special
        CALL posix_lseek( fh, array_position )
        CALL posix_read( fh, array_3d_soil, SIZE( array_3d_soil ) )
 #endif
-       IF ( total_domain_boundaries_on_file )  THEN
+       IF ( include_total_domain_boundaries )  THEN
           DO  i = iog%nxl, iog%nxr
              data(:,iog%nys-nbgp:iog%nyn-nbgp,i-nbgp) = array_3d_soil(:,i,iog%nys:iog%nyn)
           ENDDO
@@ -2066,24 +1867,15 @@ END SUBROUTINE rrd_mpi_io_int4_3d_special
           ENDDO
        ENDIF
 
-#if defined( __parallel )
-      IF ( sm_io%is_sm_active() )  THEN
-         CALL sm_io%sm_free_shared( win_3ds )
-      ELSE
-         DEALLOCATE( array_3d_soil )
-      ENDIF
-#else
-      DEALLOCATE( array_3d_soil )
-#endif
-
     ELSE
 
        message_string = '3d-REAL soil array "' // TRIM( name ) // '" not found in restart file'
-       CALL message( 'rrd_mpi_io_real_3d_soil', 'PAC0298', 3, 2, 0, 6, 0 )
+       CALL message( 'rrd_mpi_io_real_3d_soil', 'PA0722', 3, 2, 0, 6, 0 )
 
     ENDIF
 
  END SUBROUTINE rrd_mpi_io_real_3d_soil
+
 
 
 !--------------------------------------------------------------------------------------------------!
@@ -2118,7 +1910,7 @@ END SUBROUTINE rrd_mpi_io_int4_3d_special
 
     IF ( .NOT. found )  THEN
        message_string = 'CHARACTER variable "' // TRIM( name ) // '" not found in restart file'
-       CALL message( 'rrd_mpi_io_char', 'PAC0298', 3, 2, 0, 6, 0 )
+       CALL message( 'rrd_mpi_io_char', 'PA0722', 3, 2, 0, 6, 0 )
     ENDIF
 
  END SUBROUTINE rrd_mpi_io_char
@@ -2196,33 +1988,6 @@ END SUBROUTINE rrd_mpi_io_int4_3d_special
  END SUBROUTINE wrd_mpi_io_int
 
 
-
-!--------------------------------------------------------------------------------------------------!
-! Description:
-! ------------
-!> Write INTEGER*8 with MPI-IO
-!--------------------------------------------------------------------------------------------------!
- SUBROUTINE wrd_mpi_io_int8( name, value )
-
-    IMPLICIT NONE
-
-    CHARACTER(LEN=*), INTENT(IN)  ::  name   !<
-
-    INTEGER(KIND=idp), INTENT(IN) ::  value  !<
-
-    REAL(KIND=wp)                 ::  tmp  !<
-
-!
-!-- Preliminary Version, write INTEGER*8 as REAL.
-!-- Later create an INTEGER*8 header section.
-    tmp = value
-
-    CALL wrd_mpi_io( name, tmp )
-
- END SUBROUTINE wrd_mpi_io_int8
-
-
-
 !--------------------------------------------------------------------------------------------------!
 ! Description:
 ! ------------
@@ -2258,91 +2023,57 @@ END SUBROUTINE rrd_mpi_io_int4_3d_special
 
     IMPLICIT NONE
 
-    CHARACTER(LEN=*), INTENT(IN)       ::  name     !< name of array to be written
+    CHARACTER(LEN=*), INTENT(IN)       ::  name    !<
 
-    INTEGER(iwp)                       ::  i        !< loop index
-    INTEGER(iwp)                       ::  shift_i  !< shift of i index
-    INTEGER(iwp)                       ::  shift_j  !< shift of j index
+    INTEGER(iwp)                       ::  i       !<
 
 #if defined( __parallel )
-    INTEGER, DIMENSION(rd_status_size) ::  status   !< returned status of MPI call
+    INTEGER, DIMENSION(rd_status_size) ::  status  !<
 #endif
 
-    REAL(wp), INTENT(IN), DIMENSION(:,:) ::  data   !< array to be written
+    REAL(wp), INTENT(IN), DIMENSION(nysg:nyng,nxlg:nxrg) ::  data  !<
 
 
     IF ( header_array_index == max_nr_arrays )  THEN
-       message_string = 'maximum number of 2d/3d-array entries in restart file header exceeded'
-       CALL message( 'wrd_mpi_io_real_2d', 'PAC0300', 1, 2, 0, 6, 0 )
+       STOP '+++ maximum number of 2d/3d-array entries in restart file header exceeded'
     ENDIF
 
     array_names(header_array_index)  = name
     array_offset(header_array_index) = array_position
     header_array_index = header_array_index + 1
 
-    IF ( SIZE( data, 1 ) == ( nyn - nys + 1 + 2 * nbgp )  .AND.                                    &
-         SIZE( data, 2 ) == ( nxr - nxl + 1 + 2 * nbgp ) )  THEN
+    IF ( include_total_domain_boundaries )  THEN
 !
-!--    Array with ghost layers.
-!--    This kind of array is dimensioned in the caller subroutine as
-!--    REAL, DIMENSION(nysg:nyng,nxlg:nxrg) ::  data
-!
-!--    Because the dimension bounds of 'data' are not explicitly given, they start at 1. To match
-!--    the indices of data to the correct indices of array_2d, they must be shifted.
-!--    Index nysg in array_2d corresponds to index 1 in data. Hence, to get the correct position
-!--    inside the data array, the index "nysg" must be shifted by "-nysg+1". The same applies for x.
-       shift_i = - nxlg + 1
-       shift_j = - nysg + 1
-
-       IF ( total_domain_boundaries_on_file )  THEN
-!
-!--       Prepare output with outer boundaries
-          DO  i = iog%nxl, iog%nxr
-             array_2d(i,iog%nys:iog%nyn) =                                                         &
-                data(iog%nys-nbgp+shift_j:iog%nyn-nbgp+shift_j,i-nbgp+shift_i)
-          ENDDO
-
-       ELSE
-!
-!--       Prepare output without outer boundaries
-          DO  i = nxl, nxr
-             array_2d(i,iog%nys:iog%nyn) = data(nys+shift_j:nyn+shift_j,i+shift_i)
-          ENDDO
-
-       ENDIF
-
-#if defined( __parallel )
-       CALL sm_io%sm_node_barrier()  ! Has no effect if I/O on limited number of cores is inactive
-       IF ( sm_io%iam_io_pe )  THEN
-          CALL MPI_FILE_SET_VIEW( fh, array_position, MPI_REAL, ft_2d, 'native', MPI_INFO_NULL,    &
-                                  ierr )
-          CALL MPI_FILE_WRITE_ALL( fh, array_2d, SIZE( array_2d), MPI_REAL, status, ierr )
-       ENDIF
-       CALL sm_io%sm_node_barrier()
-#else
-       CALL posix_lseek( fh, array_position )
-       CALL posix_write( fh, array_2d, SIZE( array_2d ) )
-#endif
-!
-!--    Type conversion required, otherwise right hand side brackets are calculated assuming 4 byte
-!--    INT. Maybe a compiler problem.
-       array_position = array_position + ( INT( iog%ny, KIND=rd_offset_kind ) + 1 ) *              &
-                                         ( INT( iog%nx, KIND=rd_offset_kind ) + 1 ) * wp
-
-!     ELSEIF ( SIZE( data, 1 ) == ( nyn - nys + 1 )  .AND.  &
-!              SIZE( data, 2 ) == ( nxr - nxl + 1 ) )  THEN
-!
-!--    Array without ghost layers are not implemented yet.
-!--    This kind of array is dimensioned in the caller subroutine as
-!--    REAL, DIMENSION(nys:nyn,nxl:nxr) ::  data
+!--    Prepare output with outer boundaries
+       DO  i = iog%nxl, iog%nxr
+          array_2d(i,iog%nys:iog%nyn) = data(iog%nys-nbgp:iog%nyn-nbgp,i-nbgp)
+       ENDDO
 
     ELSE
-
-       message_string = '2d-REAL array "' // TRIM( name ) // '" to be written to restart ' //   &
-                        'file is defined with illegal dimensions'
-       CALL message( 'wrd_mpi_io_real_2d', 'PAC0299', 3, 2, 0, 6, 0 )
+!
+!--    Prepare output without outer boundaries
+       DO  i = nxl,nxr
+          array_2d(i,iog%nys:iog%nyn) = data(nys:nyn,i)
+       ENDDO
 
     ENDIF
+
+#if defined( __parallel )
+    CALL sm_io%sm_node_barrier()  ! Has no effect if I/O on limited number of cores is inactive
+    IF ( sm_io%iam_io_pe )  THEN
+       CALL MPI_FILE_SET_VIEW( fh, array_position, MPI_REAL, ft_2d, 'native', MPI_INFO_NULL, ierr )
+       CALL MPI_FILE_WRITE_ALL( fh, array_2d, SIZE( array_2d), MPI_REAL, status, ierr )
+    ENDIF
+    CALL sm_io%sm_node_barrier()
+#else
+    CALL posix_lseek( fh, array_position )
+    CALL posix_write( fh, array_2d, SIZE( array_2d ) )
+#endif
+!
+!-- Type conversion required, otherwise right hand side brackets are calculated assuming 4 byte INT.
+!-- Maybe a compiler problem.
+    array_position = array_position + ( INT( iog%ny, KIND=rd_offset_kind ) + 1 ) *                 &
+                                      ( INT( iog%nx, KIND=rd_offset_kind ) + 1 ) * wp
 
  END SUBROUTINE wrd_mpi_io_real_2d
 
@@ -2369,8 +2100,7 @@ END SUBROUTINE rrd_mpi_io_int4_3d_special
 
 
     IF ( header_array_index == max_nr_arrays )  THEN
-       message_string = 'maximum number of 2d/3d-array entries in restart file header exceeded'
-       CALL message( 'wrd_mpi_io_int_2d', 'PAC0300', 1, 2, 0, 6, 0 )
+       STOP '+++ maximum number of 2d/3d-array entries in restart file header exceeded'
     ENDIF
 
     array_names(header_array_index)  = name
@@ -2383,8 +2113,8 @@ END SUBROUTINE rrd_mpi_io_int4_3d_special
 !--    dimensioned in the caller subroutine as
 !--    INTEGER, DIMENSION(nysg:nyng,nxlg:nxrg) ::  data
        message_string = '2d-INTEGER array "' // TRIM( name ) // '" to be written to restart ' //   &
-                        'file is defined with illegal dimensions'
-       CALL message( 'wrd_mpi_io_int_2d', 'PAC0301', 3, 2, 0, 6, 0 )
+                        'file is defined with illegal dimensions in the PALM code'
+       CALL message( 'wrd_mpi_io_int_2d', 'PA0723', 3, 2, 0, 6, 0 )
 
     ELSEIF ( ( nxr-nxl+1 ) == SIZE( data, 2 ) )  THEN
 !
@@ -2417,90 +2147,12 @@ END SUBROUTINE rrd_mpi_io_int4_3d_special
     ELSE
 
        message_string = '2d-INTEGER array "' // TRIM( name ) // '" to be written to restart ' //   &
-                        'file is defined with illegal dimensions'
-       CALL message( 'wrd_mpi_io_int_2d', 'PAC0301', 3, 2, 0, 6, 0 )
+                        'file is defined with illegal dimensions in the PALM code'
+       CALL message( 'wrd_mpi_io_int_2d', 'PA0723', 3, 2, 0, 6, 0 )
 
     ENDIF
 
  END SUBROUTINE wrd_mpi_io_int_2d
-
-
-
-!--------------------------------------------------------------------------------------------------!
-! Description:
-! ------------
-!> Write 2d-INTEGER array with MPI-IO
-!--------------------------------------------------------------------------------------------------!
- SUBROUTINE wrd_mpi_io_int8_2d( name, data )
-
-    IMPLICIT NONE
-
-    CHARACTER(LEN=*), INTENT(IN)                  ::  name    !<
-
-    INTEGER(iwp)                                  ::  i       !<
-    INTEGER(iwp)                                  ::  j       !<
-
-#if defined( __parallel )
-    INTEGER, DIMENSION(rd_status_size)            ::  status  !<
-#endif
-    INTEGER(KIND=idp), INTENT(IN), DIMENSION(:,:) ::  data    !<
-
-
-    IF ( header_array_index == max_nr_arrays )  THEN
-       message_string = 'maximum number of 2d/3d-array entries in restart file header exceeded'
-       CALL message( 'wrd_mpi_io_int8_2d', 'PAC0300', 1, 2, 0, 6, 0 )
-    ENDIF
-
-    array_names(header_array_index)  = name
-    array_offset(header_array_index) = array_position
-    header_array_index = header_array_index + 1
-
-    IF ( ( nxr - nxl + 1 + 2 * nbgp ) == SIZE( data, 2 ) )  THEN
-!
-!--    Integer arrays with ghost layers are not implemented yet. These kind of arrays would be
-!--    dimensioned in the caller subroutine as
-!--    INTEGER, DIMENSION(nysg:nyng,nxlg:nxrg) ::  data
-       message_string = '2d-INTEGER*8 array "' // TRIM( name ) // '" to be written to restart ' // &
-                        'file is defined with illegal dimensions'
-       CALL message( 'wrd_mpi_io_int8_2d', 'PAC0301', 3, 2, 0, 6, 0 )
-
-    ELSEIF ( ( nxr-nxl+1 ) == SIZE( data, 2 ) )  THEN
-!
-!--    INTEGER input array without ghost layers.
-!--    This kind of array is dimensioned in the caller subroutine as
-!--    INTEGER, DIMENSION(nys:nyn,nxl:nxr) ::  data
-       DO  j = nys, nyn
-          DO  i = nxl, nxr
-             array_2di8(i,j) = data(j-nys+1,i-nxl+1)
-          ENDDO
-       ENDDO
-#if defined( __parallel )
-       CALL sm_io%sm_node_barrier()  ! Has no effect if I/O on limited number of cores is inactive
-       IF ( sm_io%iam_io_pe )  THEN
-          CALL MPI_FILE_SET_VIEW( fh, array_position, MPI_INTEGER8, ft_2di8_nb, 'native',          &
-                                  MPI_INFO_NULL, ierr )
-          CALL MPI_FILE_WRITE_ALL( fh, array_2di8, SIZE( array_2di8 ), MPI_INTEGER8, status, ierr )
-       ENDIF
-       CALL sm_io%sm_node_barrier()
-#else
-       CALL posix_lseek( fh, array_position )
-       CALL posix_write( fh, array_2di8, SIZE( array_2di8 ) )
-#endif
-!
-!--    Type conversion required, otherwise rigth hand side brackets are calculated assuming 4 byte
-!--    INT. Maybe a compiler problem.
-       array_position = array_position + INT( (ny+1), KIND=rd_offset_kind ) *                      &
-                                         INT( (nx+1), KIND=rd_offset_kind ) * idp
-
-    ELSE
-
-       message_string = '2d-INTEGER*8 array "' // TRIM( name ) // '" to be written to restart ' // &
-                        'file is defined with illegal dimensions'
-       CALL message( 'wrd_mpi_io_int8_2d', 'PAC0301', 3, 2, 0, 6, 0 )
-
-    ENDIF
-
- END SUBROUTINE wrd_mpi_io_int8_2d
 
 
 
@@ -2523,15 +2175,14 @@ END SUBROUTINE rrd_mpi_io_int4_3d_special
 
 
     IF ( header_array_index == max_nr_arrays )  THEN
-       message_string = 'maximum number of 2d/3d-array entries in restart file header exceeded'
-       CALL message( 'wrd_mpi_io_int4_3d', 'PAC0300', 1, 2, 0, 6, 0 )
+       STOP '+++ maximum number of 2d/3d-array entries in restart file header exceeded'
     ENDIF
 
     array_names(header_array_index)  = name
     array_offset(header_array_index) = array_position
     header_array_index = header_array_index + 1
 
-    IF ( total_domain_boundaries_on_file )  THEN
+    IF ( include_total_domain_boundaries )  THEN
 !
 !--    Prepare output of 3d-REAL-array with ghost layers. In the virtual PE grid, the first
 !--    dimension is PEs along x, and the second along y. For MPI-IO it is recommended to have the
@@ -2567,53 +2218,9 @@ END SUBROUTINE rrd_mpi_io_int4_3d_special
                                       INT( (iog%ny+1), KIND = rd_offset_kind ) *                   &
                                       INT( (iog%nx+1), KIND = rd_offset_kind ) * isp
 
+    write(9,*) 'array_position int4_3d ',trim(name),' ',array_position
+
  END SUBROUTINE wrd_mpi_io_int4_3d
-
-
-
-!--------------------------------------------------------------------------------------------------!
-! Description:
-! ------------
-!> Write 3d-INTEGER*4 array with MPI-IO
-!> Dimension order: y, x, special
-!> Dimension x and y do not contain ghost layers. The 3rd dimension is of size 'size_3rd_dimension'
-!> and must be smaller than (nzt+1) - nzb + 1.
-!--------------------------------------------------------------------------------------------------!
- SUBROUTINE wrd_mpi_io_int4_3d_special( name, data, size_3rd_dimension )
-
-    IMPLICIT NONE
-
-    CHARACTER(LEN=*), INTENT(IN) ::  name            !< name of variable to be written
-
-    INTEGER(iwp), INTENT(IN) ::  size_3rd_dimension  !< size of 3rd dimension of array 'data'
-    INTEGER(iwp)             ::  n                   !< loop index
-
-    INTEGER(isp), INTENT(IN), DIMENSION(nys:nyn,nxl:nxr,1:size_3rd_dimension) ::  data  !< array to be written
-
-    INTEGER(isp), DIMENSION(nzb:nzt+1,nysg:nyng,nxlg:nxrg) ::  out_buf  !< resorted data array
-
-
-    IF ( size_3rd_dimension > nzt - nzb + 2 )  THEN
-       WRITE(message_string, '(A,I6,A,I6,A)')  '3rd dimension of array "' // TRIM( name ) //       &
-                                             '" is larger than number of domain height levels:&',  &
-                                             size_3rd_dimension, ' > ', nzt - nzb + 1,             &
-                                             ', reading impossible'
-       CALL message( 'wrd_mpi_io_int4_3d_special', 'PAC0304', 1, 2, 0, 6, 0 )
-    ENDIF
-
-!
-!-- Reorder data from input array to default output buffer
-    out_buf = 0_isp
-
-    DO  n = 1, size_3rd_dimension
-       out_buf(nzb+n-1,nys:nyn,nxl:nxr) = data(nys:nyn,nxl:nxr,n)
-    ENDDO
-
-!
-!-- Write data to file
-    CALL wrd_mpi_io_int4_3d( name, out_buf )
-
- END SUBROUTINE wrd_mpi_io_int4_3d_special
 
 
 
@@ -2636,15 +2243,14 @@ END SUBROUTINE rrd_mpi_io_int4_3d_special
 
 
     IF ( header_array_index == max_nr_arrays )  THEN
-       message_string = 'maximum number of 2d/3d-array entries in restart file header exceeded'
-       CALL message( 'wrd_mpi_io_int8_3d', 'PAC0300', 1, 2, 0, 6, 0 )
+       STOP '+++ maximum number of 2d/3d-array entries in restart file header exceeded'
     ENDIF
 
     array_names(header_array_index)  = name
     array_offset(header_array_index) = array_position
     header_array_index = header_array_index + 1
 
-    IF ( total_domain_boundaries_on_file )  THEN
+    IF ( include_total_domain_boundaries )  THEN
 !
 !--    Prepare output of 3d-REAL-array with ghost layers. In the virtual PE grid, the first
 !--    dimension is PEs along x, and the second along y. For MPI-IO it is recommended to have the
@@ -2680,6 +2286,8 @@ END SUBROUTINE rrd_mpi_io_int4_3d_special
                                       INT( (iog%ny+1), KIND = rd_offset_kind ) *                   &
                                       INT( (iog%nx+1), KIND = rd_offset_kind ) * dp
 
+    write(9,*) 'array_position int8_3d ',trim(name),' ',array_position
+
  END SUBROUTINE wrd_mpi_io_int8_3d
 
 
@@ -2703,15 +2311,14 @@ END SUBROUTINE rrd_mpi_io_int4_3d_special
 
 
     IF ( header_array_index == max_nr_arrays )  THEN
-       message_string = 'maximum number of 2d/3d-array entries in restart file header exceeded'
-       CALL message( 'wrd_mpi_io_real_3d', 'PAC0300', 1, 2, 0, 6, 0 )
+       STOP '+++ maximum number of 2d/3d-array entries in restart file header exceeded'
     ENDIF
 
     array_names(header_array_index)  = name
     array_offset(header_array_index) = array_position
     header_array_index = header_array_index + 1
 
-    IF ( total_domain_boundaries_on_file )  THEN
+    IF ( include_total_domain_boundaries )  THEN
 !
 !--    Prepare output of 3d-REAL-array with ghost layers. In the virtual PE grid, the first
 !--    dimension is PEs along x, and the second along y. For MPI-IO it is recommended to have the
@@ -2747,10 +2354,7 @@ END SUBROUTINE rrd_mpi_io_int4_3d_special
                                       INT( (iog%ny+1), KIND = rd_offset_kind ) *                   &
                                       INT( (iog%nx+1), KIND = rd_offset_kind ) * wp
 
-    IF ( debug_output )  THEN
-       WRITE( debug_string, '(3A,I10)' ) 'array_position real3d ', TRIM( name ), ' ', array_position
-       CALL debug_message( debug_string, 'info' )
-    ENDIF
+    write(9,*) 'array_position real3d ',trim(name),' ',array_position
 
  END SUBROUTINE wrd_mpi_io_real_3d
 
@@ -2781,17 +2385,18 @@ END SUBROUTINE rrd_mpi_io_int4_3d_special
 
 
     IF ( header_array_index == max_nr_arrays )  THEN
-       message_string = 'maximum number of 2d/3d-array entries in restart file header exceeded'
-       CALL message( 'wrd_mpi_io_real_3d_soil', 'PAC0300', 1, 2, 0, 6, 0 )
+       STOP '+++ maximum number of 2d/3d-array entries in restart file header exceeded'
     ENDIF
 
     array_names(header_array_index)  = name
     array_offset(header_array_index) = array_position
     header_array_index = header_array_index + 1
 
+#if defined( __parallel )
     CALL rd_mpi_io_create_filetypes_3dsoil( nzb_soil, nzt_soil )
+#endif
 
-    IF ( total_domain_boundaries_on_file)  THEN
+    IF ( include_total_domain_boundaries)  THEN
 !
 !--    Prepare output of 3d-REAL-array with ghost layers. In the virtual PE grid, the first
 !--    dimension is PEs along x, and the second along y. For MPI-IO it is recommended to have the
@@ -2817,19 +2422,9 @@ END SUBROUTINE rrd_mpi_io_int4_3d_special
        CALL MPI_FILE_WRITE_ALL( fh, array_3d_soil, SIZE( array_3d_soil ), MPI_REAL, status, ierr )
     ENDIF
     CALL sm_io%sm_node_barrier()
-
-    IF ( sm_io%is_sm_active() )  THEN
-       CALL sm_io%sm_free_shared( win_3ds )
-    ELSE
-       DEALLOCATE( array_3d_soil )
-    ENDIF
-    IF ( sm_io%iam_io_pe )  THEN
-       CALL MPI_TYPE_FREE( ft_3dsoil, ierr )
-    ENDIF
 #else
     CALL posix_lseek( fh, array_position )
     CALL posix_write( fh, array_3d_soil, SIZE( array_3d_soil ) )
-    DEALLOCATE( array_3d_soil )
 #endif
 !
 !-- Type conversion required, otherwise right hand side brackets are calculated assuming 4 byte INT.
@@ -2839,6 +2434,7 @@ END SUBROUTINE rrd_mpi_io_int4_3d_special
                                       INT( (iog%nx+1),            KIND = rd_offset_kind ) * wp
 
  END SUBROUTINE wrd_mpi_io_real_3d_soil
+
 
 
 !--------------------------------------------------------------------------------------------------!
@@ -2975,7 +2571,7 @@ END SUBROUTINE rrd_mpi_io_int4_3d_special
 !
 !--    Set default view
 #if defined( __parallel )
-       IF ( cyclic_fill_mode )  THEN
+       IF ( cyclic_fill_mode )  THEN        !kk This may be the general solution for all cases
           IF ( pe_active_for_read )  THEN
              CALL MPI_FILE_SET_VIEW( fh, offset, MPI_BYTE, MPI_BYTE, 'native', MPI_INFO_NULL, ierr )
              CALL MPI_FILE_SEEK( fh, array_position, MPI_SEEK_SET, ierr )
@@ -2983,14 +2579,14 @@ END SUBROUTINE rrd_mpi_io_int4_3d_special
          ENDIF
          CALL MPI_BCAST( data, SIZE( data ), MPI_REAL, 0, comm2d, ierr )
        ELSE
-          IF( sm_io%iam_io_pe )  THEN
+          IF ( sm_io%iam_io_pe )  THEN
              CALL MPI_FILE_SET_VIEW( fh, offset, MPI_BYTE, MPI_BYTE, 'native', MPI_INFO_NULL, ierr )
-          ENDIF
-          IF ( myid == 0 )  THEN
              CALL MPI_FILE_SEEK( fh, array_position, MPI_SEEK_SET, ierr )
-             CALL MPI_FILE_READ( fh, data, SIZE( data ), MPI_REAL, status, ierr )
+             CALL MPI_FILE_READ_ALL( fh, data, SIZE( data ), MPI_REAL, status, ierr )
           ENDIF
-          CALL MPI_BCAST( data, SIZE( data ), MPI_REAL, 0, comm2d, ierr )
+          IF ( sm_io%is_sm_active() )  THEN
+             CALL MPI_BCAST( data, SIZE( data ), MPI_REAL, 0, sm_io%comm_shared, ierr )
+          ENDIF
        ENDIF
 #else
        CALL posix_lseek( fh, array_position )
@@ -2999,9 +2595,9 @@ END SUBROUTINE rrd_mpi_io_int4_3d_special
 
     ELSE
 
-       message_string = '1d/2d/3d/4d-REAL global array "' // TRIM( name ) //                       &
-                        '" not found in restart file'
-       CALL message( 'rrd_mpi_io_global_array_real_1d', 'PAC0298', 3, 2, 0, 6, 0 )
+       message_string = '1d/2d/3d/4d-REAL global array "' // TRIM( name ) // '" not found in ' //  &
+                        'restart file'
+       CALL message( 'rrd_mpi_io_global_array_real_1d', 'PA0722', 3, 2, 0, 6, 0 )
 
     ENDIF
 
@@ -3137,31 +2733,32 @@ END SUBROUTINE rrd_mpi_io_int4_3d_special
 !
 !--    Set default view
 #if defined( __parallel )
-       IF ( cyclic_fill_mode )  THEN
+       IF ( cyclic_fill_mode )  THEN      !kk This may be the general solution for all cases
           IF ( pe_active_for_read )  THEN
              CALL MPI_FILE_SET_VIEW( fh, offset, MPI_BYTE, MPI_BYTE, 'native', MPI_INFO_NULL, ierr )
              CALL MPI_FILE_SEEK( fh, array_position, MPI_SEEK_SET, ierr )
              CALL MPI_FILE_READ_ALL( fh, data, SIZE( data), MPI_INTEGER, status, ierr )
           ENDIF
-          CALL MPI_BCAST( data, SIZE( data ), MPI_INTEGER, 0, comm2d, ierr )
+          CALL MPI_BCAST( data, SIZE( data ), MPI_REAL, 0, comm2d, ierr )
        ELSE
-          IF( sm_io%iam_io_pe )  THEN
+          IF ( sm_io%iam_io_pe )  THEN
              CALL MPI_FILE_SET_VIEW( fh, offset, MPI_BYTE, MPI_BYTE, 'native', MPI_INFO_NULL, ierr )
-          ENDIF
-          IF ( myid == 0 )  THEN
              CALL MPI_FILE_SEEK( fh, array_position, MPI_SEEK_SET, ierr )
-             CALL MPI_FILE_READ( fh, data, SIZE( data), MPI_INTEGER, status, ierr )
+             CALL MPI_FILE_READ_ALL( fh, data, SIZE( data), MPI_INTEGER, status, ierr )
           ENDIF
-          CALL MPI_BCAST( data, SIZE( data ), MPI_INTEGER, 0, comm2d, ierr )
-        ENDIF
+          IF ( sm_io%is_sm_active() )  THEN
+             CALL MPI_BCAST( data, SIZE( data ), MPI_INTEGER, 0, sm_io%comm_shared, ierr )
+          ENDIF
+       ENDIF
 #else
        CALL posix_lseek( fh, array_position )
        CALL posix_read( fh, data, SIZE( data ) )
 #endif
     ELSE
 
-       message_string = '1d-INTEGER global array "' // TRIM( name ) // '" not found in restart file'
-       CALL message( 'rrd_mpi_io_global_array_int_1d', 'PAC0298', 3, 2, 0, 6, 0 )
+       message_string = '1d-INTEGER global array "' // TRIM( name ) // '" not found in ' //        &
+                        'restart file'
+       CALL message( 'rrd_mpi_io_global_array_int_1d', 'PA0722', 3, 2, 0, 6, 0 )
 
     ENDIF
 
@@ -3193,8 +2790,7 @@ END SUBROUTINE rrd_mpi_io_int4_3d_special
     offset = 0
 
     IF ( header_array_index == max_nr_arrays )  THEN
-       message_string = 'maximum number of 2d/3d-array entries in restart file header exceeded'
-       CALL message( 'wrd_mpi_io_global_array_real_1d', 'PAC0300', 1, 2, 0, 6, 0 )
+       STOP '+++ maximum number of 2d/3d-array entries in restart file header exceeded'
     ENDIF
 
     array_names(header_array_index)  = name
@@ -3333,8 +2929,7 @@ END SUBROUTINE rrd_mpi_io_int4_3d_special
 #endif
 
     IF ( header_array_index == max_nr_arrays )  THEN
-       message_string = 'maximum number of 2d/3d-array entries in restart file header exceeded'
-       CALL message( 'wrd_mpi_io_global_array_int_1d', 'PAC0300', 1, 2, 0, 6, 0 )
+       STOP '+++ maximum number of 2d/3d-array entries in restart file header exceeded'
     ENDIF
 
     offset = 0
@@ -3425,6 +3020,8 @@ END SUBROUTINE rrd_mpi_io_int4_3d_special
           ENDDO
        ENDDO
 
+       write(9,*) 'particle_size_read ',particle_size,array_size,array_position,sum(prt_global_index)
+
        ALLOCATE( prt_data(MAX(array_size,1)) )
 
 !
@@ -3471,6 +3068,8 @@ END SUBROUTINE rrd_mpi_io_int4_3d_special
 #endif
        array_position = prt_nr_bytes
 
+       write(9,*) 'array_position after particle read ',array_position,prt_nr_bytes,rs
+
        DEALLOCATE( prt_data )
 
     ENDIF
@@ -3483,40 +3082,35 @@ END SUBROUTINE rrd_mpi_io_int4_3d_special
 ! Description:
 ! ------------
 !> Read 1d-REAL surface data array with MPI-IO.
-!> This is a recursive subroutine. In case of cyclic fill mode it may call itself for reading parts
-!> of the prerun grid.
 !--------------------------------------------------------------------------------------------------!
- RECURSIVE SUBROUTINE rrd_mpi_io_surface( name, data, first_index )
+ SUBROUTINE rrd_mpi_io_surface( name, data, first_index )
 
     IMPLICIT NONE
 
     CHARACTER(LEN=*), INTENT(IN) ::  name            !<
 
-    INTEGER(iwp), OPTIONAL       ::  first_index     !<
-    INTEGER(idp)                 ::  i               !<
-    INTEGER(idp)                 ::  j               !<
-    INTEGER(iwp)                 ::  lo_first_index  !<
-
-#if defined( __parallel )
-    INTEGER(idp)                 ::  buf_start       !<
     INTEGER(KIND=rd_offset_kind) ::  disp            !< displacement of actual indices
-    INTEGER(idp)                 ::  ie              !<
-    INTEGER(idp)                 ::  ind_gb          !<
-    INTEGER(idp)                 ::  ind_out         !<
-    INTEGER(idp)                 ::  is              !<
-    INTEGER(iwp)                 ::  n               !<
-    INTEGER(iwp)                 ::  n_trans         !<
-    INTEGER(KIND=rd_offset_kind) ::  offset          !<
+    INTEGER(KIND=rd_offset_kind) ::  disp_f          !< displacement in file
+    INTEGER(KIND=rd_offset_kind) ::  disp_n          !< displacement of next column
+    INTEGER(iwp), OPTIONAL       ::  first_index     !<
 
-    INTEGER(iwp),DIMENSION(0:numprocs-1) ::  lo_index  !<
-    INTEGER, DIMENSION(rd_status_size)   ::  status    !<
+    INTEGER(iwp)                 ::  i               !<
+    INTEGER(iwp)                 ::  i_f             !<
+    INTEGER(iwp)                 ::  j               !<
+    INTEGER(iwp)                 ::  j_f             !<
+    INTEGER(iwp)                 ::  lo_first_index  !<
+    INTEGER(iwp)                 ::  nr_bytes        !<
+    INTEGER(iwp)                 ::  nr_bytes_f      !<
+    INTEGER(iwp)                 ::  nr_words        !<
+#if defined( __parallel )
+    INTEGER, DIMENSION(rd_status_size)  ::  status   !<
+#else
+    TYPE(C_PTR)                         ::  buf      !<
 #endif
-    LOGICAL                      ::  found  !<
+
+    LOGICAL                             ::  found    !<
 
     REAL(wp), INTENT(OUT), DIMENSION(:), TARGET ::  data  !<
-#if defined( __parallel )
-    REAL(wp),DIMENSION(:),ALLOCATABLE    ::  put_buffer  !<
-#endif
 
 
     found = .FALSE.
@@ -3528,131 +3122,89 @@ END SUBROUTINE rrd_mpi_io_int4_3d_special
 
     DO  i = 1, tgh%nr_arrays
         IF ( TRIM( array_names(i) ) == TRIM( name ) )  THEN
-!
-!--        ATTENTION: The total_number_of_surface_elements and wp MUST be INTERGER*8.
-!--        The compiler (at least Intel) first computes total_number_of_surface_elements*wp
-!--        and then does the conversion to INTEGER(8).
-!--        This may lead to wrong results when total_number_of_surface_elements*wp is > 2*10**6
            array_position = array_offset(i) + ( lo_first_index - 1 ) *                             &
-                            INT( total_number_of_surface_elements, idp ) * INT( wp, idp )
+                            total_number_of_surface_values * wp
            found = .TRUE.
            EXIT
         ENDIF
     ENDDO
 
-!
-!-- In case of 2d-data, name is written only once
-    IF ( lo_first_index == 1 )  THEN
-
-       array_names(header_array_index)  = name
-       array_offset(header_array_index) = array_position
-       header_array_index = header_array_index + 1
-
-    ENDIF
-
+    disp   = -1
+    disp_f = -1
+    disp_n = -1
     IF ( found )  THEN
+
        IF ( cyclic_fill_mode )  THEN
 
           CALL rrd_mpi_io_surface_cyclic_fill
-          RETURN
 
        ELSE
+
+          IF ( MAXVAL( m_global_start ) == -1 )   RETURN   ! Nothing to do on this PE
+          DO  i = nxl, nxr
+             DO  j = nys, nyn
+
+                IF ( m_global_start(j,i) > 0 )  THEN
+                   disp     = array_position+(m_global_start(j,i)-1) * wp
+                   nr_words = m_end_index(j,i)-m_start_index(j,i)+1
+                   nr_bytes = nr_words * wp
+                ENDIF
+                IF ( disp >= 0  .AND.  disp_f == -1 )  THEN   ! First entry
+                   disp_f     = disp
+                   nr_bytes_f = 0
+                   i_f = i
+                   j_f = j
+                ENDIF
+                IF ( j == nyn  .AND.  i == nxr )  THEN        ! Last entry
+                   disp_n = -1
+                   IF (  nr_bytes > 0 )  THEN
+                      nr_bytes_f = nr_bytes_f+nr_bytes
+                   ENDIF
+                ELSEIF ( j == nyn )  THEN                     ! Next x
+                   IF ( m_global_start(nys,i+1) > 0  .AND.  disp > 0 )  THEN
+                      disp_n = array_position + ( m_global_start(nys,i+1) - 1 ) * wp
+                   ELSE
+                      CYCLE
+                   ENDIF
+                ELSE
+                   IF ( m_global_start(j+1,i) > 0  .AND.  disp > 0 )  THEN
+                      disp_n = array_position + ( m_global_start(j+1,i) - 1 ) * wp
+                   ELSE
+                      CYCLE
+                   ENDIF
+                ENDIF
+
+
+                IF ( disp + nr_bytes == disp_n )  THEN        ! Contiguous block
+                   nr_bytes_f = nr_bytes_f + nr_bytes
+                ELSE                                          ! Read
 #if defined( __parallel )
-!
-!--       Read data from restart file
-          CALL sm_io%sm_node_barrier() ! has no effect if I/O on limited number of cores is inactive
-          IF ( sm_io%iam_io_pe )  THEN
-             IF ( less_than_2g_elements )  THEN
-                CALL MPI_FILE_SET_VIEW( fh, array_position, MPI_REAL, ft_surf, 'native',           &
-                                        MPI_INFO_NULL, ierr )
-             ELSE
-                offset =  array_position+local_offset
-                CALL MPI_FILE_SET_VIEW( fh, offset, MPI_BYTE, MPI_BYTE, 'native',                  &
-                                        MPI_INFO_NULL, ierr )
-             ENDIF
-             CALL MPI_FILE_READ_ALL( fh, array_out, SIZE( array_out ), MPI_REAL, status, ierr )
-          ENDIF
-          CALL sm_io%sm_node_barrier()
-
-!
-!--       Copy data into transfer buffer. Data is organized in a way that only one MPI_PUT to the
-!--       respective PE ist required.
-          ALLOCATE( put_buffer(SUM( transfer_index(4,:) )) )
-!
-!--       Copy into to transfer buffer. Here, array_out matches the indices global_start and
-!--       global_end, reduced by array_out_reduction.
-!--       The use of array_out_reduction allows the use 32 bit indices in sm_allocate_shared.
-          ind_gb = 1
-          DO  i = 1, SIZE( local_indices, 2 )
-             ind_out = local_indices(1,i) - array_out_reduction
-             DO  j = 1, local_indices(2,i)
-                put_buffer(ind_gb) = array_out(ind_out)
-                ind_out = ind_out + 1
-                ind_gb  = ind_gb  + 1
-             ENDDO
-          ENDDO
-!
-!--       Transfer data from I/O PEs to the respective PEs to which they belong.
-          CALL MPI_WIN_FENCE( 0, win_surf, ierr )
-
-          buf_start = 1
-          DO  n = 0, numprocs-1
-             n_trans = transfer_index(4,n)
-             IF ( n_trans > 0 )  THEN
-                disp = transfer_index(3,n) - 1
-                CALL MPI_PUT( put_buffer(buf_start), n_trans, MPI_REAL, n, disp, n_trans,          &
-                              MPI_REAL, win_surf, ierr)
-                buf_start = buf_start + n_trans
-             ENDIF
-          ENDDO
-
-          CALL MPI_WIN_FENCE( 0, win_surf, ierr )
-          DEALLOCATE( put_buffer )
-!
-!--       Copy from RMA window into output array (data) to allow transfering data to target PEs.
-!--       Check, if the number of surface elements per horizontal gridbox match the index setup.
-          lo_index = nr_surfaces_in_tb
-          DO  i = nxl, nxr
-             DO  j = nys, nyn
-                is = lo_index(s_index_in_window(j,i)) + 1
-                ie = is + m_end_index(j,i) - m_start_index(j,i)
-                data(m_start_index(j,i):m_end_index(j,i)) = array_1d(is:ie)
-                lo_index(s_index_in_window(j,i)) = lo_index(s_index_in_window(j,i)) +              &
-                                                   e_end_index(j,i) - e_start_index(j,i) + 1
-!
-!--             Internal check. Should not happen and would mean programming error.
-                IF ( e_end_index(j,i) - e_start_index(j,i) + 1 /= NINT( array_1d(is-1) ) )  THEN
-                   WRITE( message_string, '(A,6I8)' ) 'number of surface elements in array_1d ' // &
-                                    'does not match ', j, i, e_start_index(j,i), e_end_index(j,i), &
-                                    e_end_index(j,i)-e_start_index(j,i)+1 , NINT( array_1d(is-1) )
-                   CALL message( 'rrd_mpi_io_surface', 'PAC0305', 2, 2, 0, 6, 1 )
-                ENDIF
-             ENDDO
-          ENDDO
-
-
+                   CALL MPI_FILE_SEEK( fhs, disp_f, MPI_SEEK_SET, ierr )
+                   nr_words = nr_bytes_f / wp
+                   CALL MPI_FILE_READ( fhs, data(m_start_index(j_f,i_f)), nr_words, MPI_REAL, status, &
+                      ierr )
 #else
-          CALL posix_lseek( fh, array_position )
-          CALL posix_read( fh, array_out, SIZE(array_out) )
-
-          DO  i = nxl, nxr
-             DO  j = nys, nyn
-                data(m_start_index(j,i):m_end_index(j,i)) =                                        &
-                                                   array_out(e_start_index(j,i)+1:e_end_index(j,i))
 !
-!--             Internal check. Should not happen and would mean programming error.
-                IF ( e_end_index(j,i) - e_start_index(j,i) + 1 /=                                  &
-                     NINT( array_out(e_start_index(j,i)) ) )                                       &
-                THEN
-                   WRITE( message_string, '(A,6I8)' ) 'number of surface elements in array_out ' //&
-                      'does not match ', j, i, e_start_index(j,i), e_end_index(j,i),               &
-                      e_end_index(j,i)-e_start_index(j,i)+1 , NINT( array_out(e_start_index(j,i)) )
-                   CALL message( 'rrd_mpi_io_surface', 'PAC0305', 2, 2, 0, 6, 1 )
+!--                Use C_PTR here, because posix read does not work with indexed array
+                   buf = C_LOC( data(m_start_index(j_f,i_f)) )
+                   CALL posix_lseek( fh, disp_f )
+                   CALL posix_read( fh, buf, nr_bytes_f )
+#endif
+                   disp_f     = disp
+                   nr_bytes_f = nr_bytes
+                   i_f = i
+                   j_f = j
                 ENDIF
+
              ENDDO
           ENDDO
-#endif
        ENDIF
+
+
+    ELSE
+
+       message_string = 'surface array "' // TRIM( name ) // '" not found in restart file'
+       CALL message( 'rrd_mpi_io_surface', 'PA0722', 3, 2, 0, 6, 0 )
 
     ENDIF
 
@@ -3664,6 +3216,9 @@ END SUBROUTINE rrd_mpi_io_int4_3d_special
 
        INTEGER(iwp) ::  i         !<
        INTEGER(iwp) ::  ie        !<
+#if defined( __parallel )
+       INTEGER(iwp) ::  ierr      !<
+#endif
        INTEGER(iwp) ::  is        !<
        INTEGER(iwp) ::  i_remote  !<
        INTEGER(iwp) ::  j         !<
@@ -3676,49 +3231,81 @@ END SUBROUTINE rrd_mpi_io_int4_3d_special
 #if defined( __parallel )
        INTEGER(KIND=MPI_ADDRESS_KIND) ::  rem_offs  !<
 #else
-       INTEGER(idp) ::  rem_offs                    !<
+       INTEGER(idp) ::  rem_offs
 #endif
 
-       REAL(wp), DIMENSION(:), ALLOCATABLE ::  c_data  !<
+       LOGICAL ::  write_done  !<
 
 
 !
-!--    ATTENTION: This version allows only 1 surface element per grid cell.
-!
-!--    Activate grid of the smaller prerun, i.e. grid variables like nxl, nxr, nys, nyn and other
-!--    values are set according to the prerun settings.
+!--    In the current version, there is only 1 value per grid cell allowed.
+!--    In this special case, the cyclical repetition can be done with the same method as for 2d-real
+!--    array.
        CALL prerun_grid%activate_grid_from_this_class()
 
        IF ( pe_active_for_read )  THEN
-
-          IF ( MAXVAL( m_end_index ) <= 0 )  THEN
-             CALL mainrun_grid%activate_grid_from_this_class()
-             IF ( debug_output )  THEN
-                CALL debug_message( 'PE inactive for reading restart or prerun data', 'start' )
-             ENDIF
-             RETURN
-          ENDIF
-
-          ALLOCATE( c_data(MAXVAL( m_end_index )) )
-
-!
-!--       Recursive CALL of rrd_mpi_io_surface.
-!--       rrd_mpi_io_surface is called with cyclic_fill_mode = .FALSE. on the smaller
-!--       prerun grid.
-          cyclic_fill_mode = .FALSE.
-          CALL rrd_mpi_io_surface( name, c_data )
-          cyclic_fill_mode = .TRUE.
-
+          rmabuf_2d = -1.0
           DO  i = nxl, nxr
              DO  j = nys, nyn
-                rmabuf_2d(j,i) = c_data(c_start_index(j,i))
+
+                IF ( m_global_start(j,i) > 0 )  THEN
+                   disp     = array_position+(m_global_start(j,i)-1) * wp
+                   nr_words = m_end_index(j,i)-m_start_index(j,i)+1
+                   nr_bytes = nr_words * wp
+                ENDIF
+                IF ( disp >= 0  .AND.  disp_f == -1 )  THEN   ! First entry
+                   disp_f     = disp
+                   nr_bytes_f = 0
+                   write_done = .TRUE.
+                ENDIF
+                IF( write_done )  THEN
+                   i_f = i
+                   j_f = j
+                   write_done = .FALSE.
+                ENDIF
+
+                IF ( j == nyn  .AND.  i == nxr )  THEN        ! Last entry
+                   disp_n = -1
+                   IF (  nr_bytes > 0 )  THEN
+                      nr_bytes_f = nr_bytes_f+nr_bytes
+                   ENDIF
+                ELSEIF ( j == nyn )  THEN                     ! Next x
+                   IF ( m_global_start(nys,i+1) > 0  .AND.  disp > 0 )  THEN
+                      disp_n = array_position + ( m_global_start(nys,i+1) - 1 ) * wp
+                   ELSE
+                      CYCLE
+                   ENDIF
+                ELSE
+                   IF ( m_global_start(j+1,i) > 0  .AND.  disp > 0 )  THEN
+                      disp_n = array_position + ( m_global_start(j+1,i) - 1 ) * wp
+                   ELSE
+                      CYCLE
+                   ENDIF
+                ENDIF
+
+
+                IF ( disp + nr_bytes == disp_n )  THEN        ! Contiguous block
+                   nr_bytes_f = nr_bytes_f + nr_bytes
+                ELSE                                          ! Read
+#if defined( __parallel )
+                   CALL MPI_FILE_SEEK( fhs, disp_f, MPI_SEEK_SET, ierr )
+                   nr_words = nr_bytes_f / wp
+                   CALL MPI_FILE_READ( fhs, rmabuf_2d(j_f,i_f), nr_words, MPI_REAL, status, ierr )
+#else
+                   CALL posix_lseek( fh, disp_f )
+                   CALL posix_read( fh, rmabuf_2d(j_f:,i_f:), nr_bytes_f )
+#endif
+
+                   disp_f     = disp
+                   nr_bytes_f = nr_bytes
+                   write_done = .TRUE.
+                ENDIF
+
              ENDDO
           ENDDO
 
        ENDIF
-!
-!--    Activate grid of the mainrun, i.e. grid variables like nxl, nxr, nys, nyn and other values
-!--    are set according to the mainrun settings.
+
        CALL mainrun_grid%activate_grid_from_this_class()
 
 #if defined( __parallel )
@@ -3727,31 +3314,64 @@ END SUBROUTINE rrd_mpi_io_int4_3d_special
        CALL MPI_WIN_FENCE( 0, rmawin_2d, ierr )
 #endif
 
-!
-!--   After reading surface data on the small grid, map these data in a cyclic way to all respective
-!--   grid points of the main run.
-      is = nxl
-      ie = nxr
-      js = nys
-      je = nyn
+       IF ( .NOT. pe_active_for_read )  THEN
+
+          is = nxl
+          ie = nxr
+          js = nys
+          je = nyn
+
+       ELSE
+
+          is = nxl
+          ie = nxr
+          js = prerun_grid%nys+1
+          je = nyn
+
+          DO  i = is, ie
+             DO  j = js, je
+                i_remote = MOD(i,nx_on_file+1)
+                j_remote = MOD(j,ny_on_file+1)
+                rem_pe   = remote_pe(i_remote,j_remote)
+                rem_offs = rma_offset(i_remote,j_remote)
+                nval     = 1
+
+#if defined( __parallel )
+                IF ( rem_pe /= myid )  THEN
+                   CALL MPI_GET( data(m_start_index(j,i)), nval, MPI_REAL, rem_pe, rem_offs, nval, &
+                                 MPI_REAL, rmawin_2d, ierr)
+                ELSE
+                   data(m_start_index(j,i)) = rmabuf_2d(j_remote,i_remote)
+                ENDIF
+#else
+                data(m_start_index(j,i)) = array_2d(i_remote,j_remote)
+#endif
+             ENDDO
+          ENDDO
+          is = prerun_grid%nxr+1
+          ie = nxr
+          js = nys
+          je = nyn
+
+       ENDIF
 
        DO  i = is, ie
           DO  j = js, je
-             i_remote = MOD( i, nx_on_file+1 )
-             j_remote = MOD( j, ny_on_file+1 )
+             i_remote = MOD(i,nx_on_file+1)
+             j_remote = MOD(j,ny_on_file+1)
              rem_pe   = remote_pe(i_remote,j_remote)
              rem_offs = rma_offset(i_remote,j_remote)
              nval     = 1
 
 #if defined( __parallel )
              IF ( rem_pe /= myid )  THEN
-                CALL MPI_GET( data(o_start_index(j,i)), nval, MPI_REAL, rem_pe, rem_offs, nval,    &
+                CALL MPI_GET( data(m_start_index(j,i)), nval, MPI_REAL, rem_pe, rem_offs, nval,    &
                               MPI_REAL, rmawin_2d, ierr)
              ELSE
-                data(o_start_index(j,i)) = rmabuf_2d(j_remote,i_remote)
+                data(m_start_index(j,i)) = rmabuf_2d(j_remote,i_remote)
              ENDIF
 #else
-             data(o_start_index(j,i)) = array_2d(i_remote,j_remote)
+             data(m_start_index(j,i)) = array_2d(i_remote,j_remote)
 #endif
           ENDDO
        ENDDO
@@ -3761,8 +3381,6 @@ END SUBROUTINE rrd_mpi_io_int4_3d_special
 !--    Reopen RMA window to allow filling
        CALL MPI_WIN_FENCE( 0, rmawin_2d, ierr )
 #endif
-
-       IF ( ALLOCATED( c_data ) )  DEALLOCATE( c_data )
 
     END SUBROUTINE rrd_mpi_io_surface_cyclic_fill
 
@@ -3911,6 +3529,8 @@ END SUBROUTINE rrd_mpi_io_int4_3d_special
 #endif
     array_position = prt_nr_bytes
 
+    write(9,*) 'array_position after particle ',array_position,prt_nr_bytes,rs
+
     DEALLOCATE( prt_data )
 
  END SUBROUTINE wrd_mpi_io_particles
@@ -3926,49 +3546,37 @@ END SUBROUTINE rrd_mpi_io_int4_3d_special
 
     IMPLICIT NONE
 
-    CHARACTER(LEN=*), INTENT(IN) ::  name  !<
-
-    INTEGER(iwp), OPTIONAL ::  first_index     !<
-    INTEGER(idp) ::  i               !<
-    INTEGER(idp) ::  j               !<
-    INTEGER(iwp) ::  lo_first_index  !<
-#if defined( __parallel )
-    INTEGER(idp) ::  buf_start       !<
-    INTEGER(iwp) ::  ie              !<
-    INTEGER(idp) ::  is              !<
-    INTEGER(idp) ::  ind_gb          !<
-    INTEGER(idp) ::  ind_out         !<
-    INTEGER(iwp) ::  n               !<
-    INTEGER(iwp) ::  n_trans         !<
-#endif
+    CHARACTER(LEN=*), INTENT(IN)       ::  name            !<
 
 #if defined( __parallel )
-    INTEGER(KIND=MPI_ADDRESS_KIND) ::  disp    !< displacement in RMA window
-    INTEGER(KIND=rd_offset_kind)   ::  offset  !<
-
-    INTEGER(iwp), DIMENSION(0:numprocs-1)   ::  lo_index  !<
-    INTEGER(iwp), DIMENSION(rd_status_size) ::  status    !<
+    INTEGER(KIND=rd_offset_kind)       ::  disp            !<
 #endif
-
-    REAL(wp), INTENT(IN), DIMENSION(:), TARGET ::  data  !<
+    INTEGER(iwp), OPTIONAL             ::  first_index     !<
 #if defined( __parallel )
-    REAL(wp), DIMENSION(:), ALLOCATABLE ::  get_buffer  !<
+    INTEGER(iwp)                       ::  i               !<
+#endif
+    INTEGER(iwp)                       ::  lo_first_index  !<
+    INTEGER(KIND=rd_offset_kind)       ::  offset          !<
+
+#if defined( __parallel )
+    INTEGER, DIMENSION(rd_status_size) ::  status          !<
 #endif
 
+    REAL(wp), INTENT(IN), DIMENSION(:), TARGET ::  data    !<
 
+
+    offset = 0
     lo_first_index = 1
 
     IF ( PRESENT( first_index ) )  THEN
        lo_first_index = first_index
     ENDIF
-
 !
 !-- In case of 2d-data, name is written only once
     IF ( lo_first_index == 1 )  THEN
 
        IF ( header_array_index == max_nr_arrays )  THEN
-          message_string = 'maximum number of 2d/3d-array entries in restart file header exceeded'
-          CALL message( 'wrd_mpi_io_surface', 'PAC0300', 1, 2, 0, 6, 0 )
+          STOP '+++ maximum number of 2d/3d-array entries in restart file header exceeded'
        ENDIF
 
        array_names(header_array_index)  = name
@@ -3978,90 +3586,48 @@ END SUBROUTINE rrd_mpi_io_int4_3d_special
     ENDIF
 
 #if defined( __parallel )
-    offset = 0
-
-    ALLOCATE( get_buffer(SUM( transfer_index(4,:) )) )
-!
-!-- Copy from input array (data) to RMA window to allow the target PEs to get the appropiate data.
-!-- At this point, a dummy surface element is added. This makes sure that every x-y gridbox owns
-!-- at least one surface element. This way, bookkeeping becomes much easier.
-    lo_index = nr_surfaces_in_tb
-    DO  i = nxl, nxr
-       DO  j = nys, nyn
-          is = lo_index(s_index_in_window(j,i)) + 1
-          ie = is + m_end_index(j,i) - m_start_index(j,i)
-!
-!--       Store number of surface elements in dummy additional surface element
-          array_1d(is-1)  = e_end_index(j,i) - e_start_index(j,i) + 1
-          array_1d(is:ie) = data(m_start_index(j,i):m_end_index(j,i))
-          lo_index(s_index_in_window(j,i)) = lo_index(s_index_in_window(j,i)) +                    &
-                                             e_end_index(j,i) - e_start_index(j,i) + 1
+    IF ( sm_io%is_sm_active() )  THEN
+       DO  i = 1, nr_val
+          array_1d(i+local_start) = data(i)
        ENDDO
-    ENDDO
-!
-!-- On target PE, get data from source PEs which are assigned for output on this PE.
-    CALL MPI_WIN_FENCE( 0, win_surf, ierr )
+    ELSE
+!       array_1d => data                           !kk Did not work in all cases    why???
+       ALLOCATE( array_1d( SIZE( data ) ) )
+       array_1d = data
+    ENDIF
 
-    buf_start = 1
-    DO  n = 0, numprocs-1
-       n_trans = transfer_index(4,n)
-       IF ( n_trans > 0 )  THEN
-          disp = transfer_index(3,n) - 1
-          CALL MPI_GET( get_buffer(buf_start), n_trans, MPI_REAL, n, disp, n_trans, MPI_REAL,      &
-                        win_surf, ierr )
-          buf_start = buf_start + n_trans
-       ENDIF
-    ENDDO
-
-    CALL MPI_WIN_FENCE( 0, win_surf, ierr )
-!
-!-- Copy data to output buffer. Here, the outpuf buffer matches the indices global_start and
-!-- global_end, reduced by array_out_reduction.
-!-- The use of array_out_reduction allows to use 32 bit indices in sm_allocate_shared.
-    ind_gb  = 1
-    DO  i = 1, SIZE( local_indices, 2 )
-       ind_out = local_indices(1,i) - array_out_reduction
-       DO  j = 1, local_indices(2,i)
-          array_out(ind_out) = get_buffer(ind_gb)
-          ind_out = ind_out+1
-          ind_gb  = ind_gb+1
-       ENDDO
-    ENDDO
-
-    DEALLOCATE( get_buffer )
-
-!
-!-- Write data to disk.
-    CALL sm_io%sm_node_barrier()  ! has no effect if I/O on limited number of cores is inactive
+    CALL sm_io%sm_node_barrier()  ! Has no effect if I/O on limited number of cores is inactive
     IF ( sm_io%iam_io_pe )  THEN
-       IF ( less_than_2g_elements )  THEN
+       IF ( all_pes_write )  THEN
           CALL MPI_FILE_SET_VIEW( fh, array_position, MPI_REAL, ft_surf, 'native', MPI_INFO_NULL,  &
                                   ierr )
+          CALL MPI_FILE_WRITE_ALL( fh, array_1d, nr_iope, MPI_REAL, status, ierr )
        ELSE
-          offset =  array_position + local_offset
           CALL MPI_FILE_SET_VIEW( fh, offset, MPI_BYTE, MPI_BYTE, 'native', MPI_INFO_NULL, ierr )
-
+          IF ( nr_val > 0 )  THEN
+             disp = array_position + 8 * ( glo_start - 1 )
+             CALL MPI_FILE_SEEK( fh, disp, MPI_SEEK_SET, ierr )
+             CALL MPI_FILE_WRITE( fh, array_1d, nr_iope, MPI_REAL, status, ierr )
+          ENDIF
        ENDIF
-
-       CALL MPI_FILE_WRITE_ALL( fh, array_out, SIZE( array_out ), MPI_REAL, status, ierr )
     ENDIF
     CALL sm_io%sm_node_barrier()
+    IF( .NOT. sm_io%is_sm_active() )  DEALLOCATE( array_1d )
 #else
-    DO  i = nxl, nxr
-       DO  j = nys, nyn
-          array_out(e_start_index(j,i)) = e_end_index(j,i) - e_start_index(j,i) + 1
-          array_out(e_start_index(j,i)+1:e_end_index(j,i)) =                                       &
-                                                          data(m_start_index(j,i):m_end_index(j,i))
-       ENDDO
-    ENDDO
-
     CALL posix_lseek( fh, array_position )
-    CALL posix_write( fh, array_out, SIZE(array_out) )
+    CALL posix_write( fh, data, nr_val )
 #endif
+    array_position = array_position + total_number_of_surface_values * wp
 
-    array_position = array_position + total_number_of_surface_elements * wp
+!    IF ( lo_first_index == 1 )  THEN
+!       IF ( debug_level >= 2 .AND. nr_val  > 0 )  WRITE(9,*) 'w_surf_1 ', TRIM( name ), ' ', nr_val, SUM( data(1:nr_val) )
+!    ELSE
+!       IF ( debug_level >= 2 .AND. nr_val  > 0 ) WRITE(9,*) 'w_surf_n ', TRIM( name ), ' ', &
+!                                                            lo_first_index, nr_val, SUM( data(1:nr_val) )
+!    ENDIF
 
  END SUBROUTINE wrd_mpi_io_surface
+
 
 
 !--------------------------------------------------------------------------------------------------!
@@ -4114,18 +3680,16 @@ END SUBROUTINE rrd_mpi_io_int4_3d_special
 
     IF ( wr_flag  .AND.  sm_io%iam_io_pe )  THEN
 
-       tgh%nr_int      = header_int_index - 1
-       tgh%nr_char     = header_char_index - 1
-       tgh%nr_real     = header_real_index - 1
-       tgh%nr_arrays   = header_array_index - 1
-       tgh%total_nx    = iog%nx + 1
-       tgh%total_ny    = iog%ny + 1
-       tgh%pes_along_x = npex
-       tgh%pes_along_y = npey
-       IF ( total_domain_boundaries_on_file )  THEN   ! Not sure, if LOGICAL interpretation is the same for all compilers,
-          tgh%outer_ghost_layers_included = 1         ! therefore store as INTEGER in general header
+       tgh%nr_int    = header_int_index - 1
+       tgh%nr_char   = header_char_index - 1
+       tgh%nr_real   = header_real_index - 1
+       tgh%nr_arrays = header_array_index - 1
+       tgh%total_nx  = iog%nx + 1
+       tgh%total_ny  = iog%ny + 1
+       IF ( include_total_domain_boundaries )  THEN   ! Not sure, if LOGICAL interpretation is the same for all compilers,
+          tgh%i_outer_bound = 1                       ! therefore store as INTEGER in general header
        ELSE
-          tgh%outer_ghost_layers_included = 0
+          tgh%i_outer_bound = 0
        ENDIF
 !
 !--    Check for big/little endian format. This check is currently not used, and could be removed
@@ -4176,7 +3740,7 @@ END SUBROUTINE rrd_mpi_io_int4_3d_special
 
           CALL MPI_FILE_SEEK( fh, header_position, MPI_SEEK_SET, ierr )
           CALL MPI_FILE_WRITE( fh, array_offset, SIZE( array_offset ) * MPI_OFFSET_KIND, MPI_BYTE, &
-                               status, ierr )
+                               status, ierr )  ! There is no I*8 datatype in Fortran
           header_position = header_position + SIZE( array_offset ) * rd_offset_kind
 #else
           CALL posix_lseek( fh, header_position )
@@ -4229,25 +3793,20 @@ END SUBROUTINE rrd_mpi_io_int4_3d_special
 !-- Close MPI-IO files
 #if defined( __parallel )
 !
+!-- Restart file has been opened with comm2d
+    IF ( fhs /= -1 )  THEN
+       CALL MPI_FILE_CLOSE( fhs, ierr )
+    ENDIF
+!
 !-- Free RMA windows
     IF ( cyclic_fill_mode )  THEN
        CALL MPI_WIN_FREE( rmawin_2di, ierr )
-       CALL MPI_WIN_FREE( rmawin_2di8, ierr )
        CALL MPI_WIN_FREE( rmawin_2d, ierr )
        CALL MPI_WIN_FREE( rmawin_3d, ierr )
     ENDIF
 #endif
 
-    IF ( ALLOCATED( e_start_index )     )   DEALLOCATE( e_start_index )
-    IF ( ALLOCATED( e_end_index )       )   DEALLOCATE( e_end_index )
-    IF ( ALLOCATED( m_start_index )     )   DEALLOCATE( m_start_index )
-    IF ( ALLOCATED( m_end_index )       )   DEALLOCATE( m_end_index )
-    IF ( ALLOCATED( nr_surfaces_in_tb ) )   DEALLOCATE( nr_surfaces_in_tb )
-    IF ( ALLOCATED( s_index_in_tb )     )   DEALLOCATE( s_index_in_tb )
-    IF ( ALLOCATED( s_index_in_window ) )   DEALLOCATE( s_index_in_window )
-    IF ( ALLOCATED( transfer_index )    )   DEALLOCATE( transfer_index )
-
-    IF ( .NOT. pe_active_for_read )  RETURN
+    IF (.NOT. pe_active_for_read )  RETURN
 !
 !-- TODO: better explain the following message
 !-- In case on non cyclic read, pe_active_for_read is set .TRUE.
@@ -4286,500 +3845,181 @@ END SUBROUTINE rrd_mpi_io_int4_3d_special
 !> Whenever a new set of start_index and end_index is used, rd_mpi_io_surface_filetypes has to be
 !> called. A main feature of this subroutine is computing the global start indices of the 1d- and
 !> 2d- surface arrays.
-!> A reorganization of data is done to get nearly equally distributed number of cells on all PEs.
-!> The total number of surface cells can be greater than 2**31-1 so an INTEGER(KIND=8) index space
-!> is required for global indices.
+!> Even if I/O is done by a limited number of cores only, the surface data are read by ALL cores!
+!> Reading them by some cores and then distributing the data would result in complicated code
+!> which is suspectable for errors and overloads the reading subroutine. Since reading of surface
+!> data is not time critical (data size is comparably small), it will be read by all cores.
 !--------------------------------------------------------------------------------------------------!
- RECURSIVE SUBROUTINE rd_mpi_io_surface_filetypes( start_index, end_index, data_to_write,          &
-                                                   global_start, global_end )
+ SUBROUTINE rd_mpi_io_surface_filetypes( start_index, end_index, data_to_write, global_start )
 
     IMPLICIT NONE
 
-    INTEGER(idp) ::  e_lo_start        !<
-    INTEGER(iwp) ::  i                 !<  loop index
-    INTEGER(iwp) ::  j                 !<  loop index
-    INTEGER(iwp) ::  index_offset      !<
-    INTEGER(iwp) ::  last_end_index    !<
-    INTEGER(idp) ::  lo_start          !<
-    INTEGER(idp) ::  nr_surfcells_pe   !<
-    INTEGER(idp) ::  rest_cells_pe     !<
-    INTEGER(idp) ::  rest_bound        !<
-#if defined( __parallel )
-    INTEGER(iwp) ::  io_end_index      !<
-    INTEGER(iwp) ::  io_start_index    !<
-    INTEGER(iwp) ::  n                 !<  loop index
-    INTEGER(idp) ::  nr_previous       !<
-    INTEGER(iwp) ::  sum_local_ind     !<  sum of local indices (I4)
-#endif
+    INTEGER(iwp)                          ::  i           !<  loop index
+    INTEGER(iwp)                          ::  j           !<  loop index
+    INTEGER(KIND=rd_offset_kind)          ::  offset      !<
 
-    INTEGER(idp), DIMENSION(0:numprocs-1,2) ::  nr_surfcells_all_r  !<
-    INTEGER(idp), DIMENSION(0:numprocs-1,2) ::  nr_surfcells_all_s  !<
-#if defined( __parallel )
-    INTEGER(iwp), DIMENSION(1)              ::  dims1               !< global dimension for MPI_TYPE_CREATE_SUBARRAY
-    INTEGER(idp), DIMENSION(1)              ::  dims8               !< global dimension for MPI_TYPE_CREATE_SUBARRAY   (I8)
-    INTEGER(iwp), DIMENSION(1)              ::  lsize1              !< local size for MPI_TYPE_CREATE_SUBARRAY
-    INTEGER(iwp), DIMENSION(0:numprocs-1)   ::  nr_gp_with_surfaces_for_pe  !< number of horizontal gridpoints containing surface elements for the respective pe
-    INTEGER(iwp), DIMENSION(0:numprocs-1)   ::  nr_surface_elements_for_pe !< total number of surface elements for the respective pe
-    INTEGER(idp), DIMENSION(0:npex)         ::  nr_surf_cells_x     !<
-    INTEGER(idp), DIMENSION(0:npex)         ::  nr_surf_cells_x_s   !<
-    INTEGER(iwp), DIMENSION(1)              ::  start1              !< start index for MPI_TYPE_CREATE_SUBARRAY
-    INTEGER(idp), DIMENSION(1)              ::  start8              !< start index for MPI_TYPE_CREATE_SUBARRAY   (I8)
+    INTEGER(iwp), DIMENSION(1)            ::  dims1       !<
+    INTEGER(iwp), DIMENSION(1)            ::  lize1       !<
+    INTEGER(iwp), DIMENSION(1)            ::  start1      !<
 
-    INTEGER(idp), DIMENSION(nxl:nxr)        ::  sum_y               !<
-#endif
+    INTEGER(iwp), DIMENSION(0:numprocs-1) ::  all_nr_val  !< number of values for all PEs
+    INTEGER(iwp), DIMENSION(0:numprocs-1) ::  lo_nr_val   !< local number of values in x and y direction
 
-    INTEGER(iwp), INTENT(INOUT), DIMENSION(nys:nyn,nxl:nxr) ::  end_index     !< local end indx
-    INTEGER(idp), INTENT(INOUT), DIMENSION(nys:nyn,nxl:nxr) ::  global_start  !< global start index
-    INTEGER(idp), INTENT(INOUT), DIMENSION(nys:nyn,nxl:nxr) ::  global_end    !< global end index
-    INTEGER(iwp), INTENT(INOUT), DIMENSION(nys:nyn,nxl:nxr) ::  start_index   !< local start index
-#if defined( __parallel )
-    INTEGER(idp), DIMENSION(0:myidy,nxl:nxr) ::  nr_previous_y      !<
-    INTEGER(idp), DIMENSION(0:npey,nxl:nxr)  ::  nr_surf_cells_y    !<
-    INTEGER(idp), DIMENSION(0:npey,nxl:nxr)  ::  nr_surf_cells_y_s  !<
-    INTEGER(idp), DIMENSION(4,0:numprocs-1)  ::  transfer_index_s   !<
-#endif
 
-    LOGICAL, INTENT(OUT) ::  data_to_write        !< returns .TRUE., if surface data have been written
-    LOGICAL              ::  only_dummy_elements  !< only dummy elements, i.e. no data to write
+    INTEGER, INTENT(INOUT), DIMENSION(nys:nyn,nxl:nxr)  ::  end_index     !<
+    INTEGER, INTENT(OUT), DIMENSION(nys:nyn,nxl:nxr)    ::  global_start  !<
+    INTEGER, INTENT(INOUT), DIMENSION(nys:nyn,nxl:nxr)  ::  start_index   !<
 
-    data_to_write = .FALSE.
-!
-!-- Clean up previous calls.
-#if defined( __parallel )
-    IF ( win_surf /= -1 )  THEN
-       CALL MPI_WIN_FREE( win_surf, ierr )
-       DEALLOCATE( array_1d )
-       win_surf = -1
-    ENDIF
-    IF ( ft_surf /= -1  .AND.  sm_io%iam_io_pe )  THEN
-       CALL MPI_TYPE_FREE( ft_surf, ierr )
-    ENDIF
-    ft_surf = -1
-    IF ( sm_io%is_sm_active() )  THEN
-       IF ( win_out /= -1 )  THEN
-          CALL sm_io%sm_free_shared( win_out )
-          win_out = -1
-       ENDIF
-    ELSE
-       IF ( ASSOCIATED( array_out ) )  DEALLOCATE( array_out )
-    ENDIF
-#else
-    IF ( ASSOCIATED( array_out ) )  DEALLOCATE( array_out )
-#endif
-
-    IF ( cyclic_fill_mode )  THEN
-       CALL cyclic_fill_surface_filetype
-       RETURN
-    ELSE
-       IF ( .NOT. ALLOCATED( e_end_index )        )  ALLOCATE( e_end_index(nys:nyn,nxl:nxr) )
-       IF ( .NOT. ALLOCATED( e_start_index )      )  ALLOCATE( e_start_index(nys:nyn,nxl:nxr) )
-       IF ( .NOT. ALLOCATED( m_end_index )        )  ALLOCATE( m_end_index(nys:nyn,nxl:nxr) )
-       IF ( .NOT. ALLOCATED( m_start_index )      )  ALLOCATE( m_start_index(nys:nyn,nxl:nxr) )
-       IF ( .NOT. ALLOCATED( nr_surfaces_in_tb )  )  ALLOCATE( nr_surfaces_in_tb(0:numprocs-1) )
-       IF ( .NOT. ALLOCATED( s_index_in_tb )      )  ALLOCATE( s_index_in_tb(0:numprocs-1) )
-       IF ( .NOT. ALLOCATED( s_index_in_window )  )  ALLOCATE( s_index_in_window(nys:nyn,nxl:nxr) )
-       IF ( .NOT. ALLOCATED( transfer_index )     )  ALLOCATE( transfer_index(4,0:numprocs-1) )
-    ENDIF
-
-    IF ( wr_flag)  THEN
-!
-!--    Add one dummy value at every grid box.
-!--    This allows to use MPI_FILE_WRITE_ALL and MPI_FILE_READ_ALL with subarray file type.
-       index_offset   = 0
-       last_end_index = 0
-       DO  i = nxl, nxr
-          DO  j = nys, nyn
-             e_start_index(j,i) = start_index (j,i) + index_offset
-             IF ( end_index (j,i) - start_index(j,i) < 0 )  THEN
-                e_end_index (j,i) = last_end_index+1
-                last_end_index    = last_end_index+1
-             ELSE
-                e_end_index (j,i) = end_index(j,i) + index_offset + 1
-                last_end_index    = e_end_index (j,i)
-             ENDIF
-             index_offset = index_offset + 1
-           ENDDO
-       ENDDO
-#if defined( __parallel )
-!
-!--    Compute indices for global, PE independent 1-d surface element array.
-       nr_surf_cells_y_s = 0
-!
-!--    Count number of surface elements in y-direction for every x.
-       DO  i = nxl, nxr
-          nr_surf_cells_y_s(myidy,i) = SUM( e_end_index (:,i) - e_start_index (:,i) + 1 )
-       ENDDO
-!
-!--    Distribute these elements to all PEs along y.
-       CALL MPI_ALLREDUCE( nr_surf_cells_y_s, nr_surf_cells_y, SIZE( nr_surf_cells_y ),            &
-                           MPI_INTEGER8, MPI_SUM, comm1dy, ierr )
+    LOGICAL, INTENT(OUT) ::  data_to_write  !< returns, if surface data have to be written
 
 !
-!--    Sum all surface elements along y for individual x PEs
-       nr_surf_cells_x_s        = 0
-       nr_surf_cells_x_s(myidx) = SUM( nr_surf_cells_y )
+!-- Actions during reading
+    IF ( rd_flag )  THEN
 !
-!--    Distribute to all PEs along x.
-       CALL MPI_ALLREDUCE( nr_surf_cells_x_s, nr_surf_cells_x, SIZE( nr_surf_cells_x ),            &
-                           MPI_INTEGER8, MPI_SUM, comm1dx, ierr )
-       DO  i = nxl, nxr
-          nr_previous_y(:,i) = 0
-          DO  n = 1, myidy
-             nr_previous_y(n,i) = nr_previous_y(n-1,i) + nr_surf_cells_y(n-1,i)
-          ENDDO
-       ENDDO
-
-       sum_y(nxl) = SUM( nr_surf_cells_y(:,nxl) )
-       DO  i = nxl, nxr
-          IF ( i > nxl )  THEN
-             sum_y(i) = sum_y(i-1) + SUM( nr_surf_cells_y(:,i) )
-          ENDIF
-       ENDDO
-
-       nr_previous = 0
-       IF ( myidx >= 1 )  THEN
-          nr_previous = SUM(nr_surf_cells_x(0:myidx-1))
-       ENDIF
-
-       global_start(nys,nxl) = 1 + nr_previous + nr_previous_y(myidy,nxl)
-       DO  j = nys+1, nyn
-          global_start(j,nxl) = global_start(j-1,nxl) +                                            &
-                                e_end_index(j-1,nxl) - e_start_index(j-1,nxl) + 1
-       ENDDO
-
-       DO  i = nxl+1, nxr
-          global_start(nys,i) = 1 + nr_previous + nr_previous_y(myidy,i) + sum_y(i-1)
-          DO  j = nys+1, nyn
-             global_start(j,i) = global_start(j-1,i) +                                             &
-                                 e_end_index(j-1,i) - e_start_index(j-1,i) + 1
-          ENDDO
-       ENDDO
-#else
-       global_start = e_start_index
-#endif
-       DO  i = nxl, nxr
-          DO  j = nys, nyn
-             global_end(j,i) = global_start(j,i) + e_end_index (j,i) - e_start_index (j,i)
-          ENDDO
-       ENDDO
-
-    ELSE
-!
-!--    In case of read, compute e_start_index and e_end_index for current processor grid.
-!--    This data contains one extra value for every i and j.
-       e_lo_start = 1
-       lo_start   = 1
-       DO  i = nxl, nxr
-          DO  j = nys, nyn
-             e_start_index(j,i) = e_lo_start
-             e_end_index(j,i)   = e_lo_start + global_end(j,i) - global_start(j,i)
-             e_lo_start         = e_lo_start + global_end(j,i) - global_start(j,i) + 1
-             start_index(j,i)   = lo_start
-             end_index(j,i)     = lo_start + global_end(j,i) - global_start(j,i) - 1
-             lo_start           = lo_start + global_end(j,i) - global_start(j,i)
-          ENDDO
-       ENDDO
-
-    ENDIF
-
-    nr_surfcells_all_s = 0
-    nr_surfcells_all_s(myid,1) = MAXVAL( e_end_index ) ! don't split surface elements of one gridbox
-    nr_surfcells_all_s(myid,2) = MAXVAL( e_end_index - e_start_index )
-
-#if defined( __parallel )
-    CALL MPI_ALLREDUCE( nr_surfcells_all_s, nr_surfcells_all_r, SIZE( nr_surfcells_all_s ),        &
-                        MPI_INTEGER8, MPI_SUM, comm2d, ierr )
-#else
-    nr_surfcells_all_r = nr_surfcells_all_s
-#endif
-
-    total_number_of_surface_elements = 0
-    DO  i = 0, numprocs-1
-       IF ( i == myid )  THEN
-          glo_start = total_number_of_surface_elements + 1
-       ENDIF
-       total_number_of_surface_elements = total_number_of_surface_elements + nr_surfcells_all_r(i,1)
-    ENDDO
-    only_dummy_elements   = ( MAXVAL( nr_surfcells_all_r(:,2) ) <= 0 )
-    less_than_2g_elements = ( total_number_of_surface_elements < INT( HUGE( i4_rep ), 8 ) )
-
-!
-!-- Compute indices of equally distributed surface elements.
-!-- Number of surface elements scheduled for ouput on this PE:
-    nr_surfcells_pe  = total_number_of_surface_elements  / INT( numprocs, idp )
-    rest_cells_pe    = MOD( total_number_of_surface_elements, INT( numprocs, idp ) )
-    rest_bound       = rest_cells_pe * ( nr_surfcells_pe + 1 )
-    m_start_index    = start_index
-    m_end_index      = end_index
-
-!
-!-- Compute number of surface elements on source PE, which have to be send to the corresponding
-!-- target PE.
-#if defined( __parallel )
-    nr_gp_with_surfaces_for_pe = 0
-    nr_surface_elements_for_pe = 0
-    DO  i = nxl, nxr
-       DO  j = nys, nyn
-          IF ( rest_cells_pe == 0 )  THEN
-             s_index_in_window(j,i) = ( global_start(j,i) - 1 ) / nr_surfcells_pe
-          ELSE
-             IF ( global_start(j,i) <= rest_bound )  THEN
-                s_index_in_window(j,i) = ( global_start(j,i) - 1 ) / ( nr_surfcells_pe + 1 )
-             ELSE
-                s_index_in_window(j,i) = ( global_start(j,i) - rest_bound - 1 ) / nr_surfcells_pe
-                s_index_in_window(j,i) = s_index_in_window(j,i) + rest_cells_pe
-             ENDIF
-          ENDIF
-          nr_gp_with_surfaces_for_pe(s_index_in_window(j,i)) =                                     &
-                                             nr_gp_with_surfaces_for_pe(s_index_in_window(j,i)) + 1
-          nr_surface_elements_for_pe(s_index_in_window(j,i)) =                                     &
-                                             nr_surface_elements_for_pe(s_index_in_window(j,i)) +  &
-                                             e_end_index(j,i) - e_start_index(j,i) + 1
-       ENDDO
-    ENDDO
-
-!
-!-- Compute start index in the transfer buffer on the source side for the corresponding target PE.
-    s_index_in_tb(0)     = 1
-    nr_surfaces_in_tb(0) = 1
-    DO  n = 1, numprocs-1
-       s_index_in_tb(n)     = s_index_in_tb(n-1)     + nr_gp_with_surfaces_for_pe(n-1)
-       nr_surfaces_in_tb(n) = nr_surfaces_in_tb(n-1) + nr_surface_elements_for_pe(n-1)
-    ENDDO
-
-!
-!-- Buffer distribution on the source side.
-    DO  n = 0, numprocs-1
-       transfer_index_s(1,n) = s_index_in_tb(n)
-       transfer_index_s(2,n) = nr_gp_with_surfaces_for_pe(n)
-       transfer_index_s(3,n) = nr_surfaces_in_tb(n)
-       transfer_index_s(4,n) = nr_surface_elements_for_pe(n)
-    ENDDO
-
-    CALL MPI_ALLTOALL( transfer_index_s, 4, MPI_INTEGER8, transfer_index, 4, MPI_INTEGER8, comm2d, &
-                       ierr)
-!
-!-- Buffer distribution on the target side side.
-    CALL get_remote_indices()
-!
-!-- Create surface element file type.
-    IF ( total_number_of_surface_elements > 0 .AND. .NOT. only_dummy_elements)  THEN
-        data_to_write = .TRUE.
-    ELSE
-        data_to_write = .FALSE.
-    ENDIF
-
-    start8(1) = MINVAL( local_indices(1,:) ) - 1
-    IF ( sm_io%is_sm_active() )  THEN
-       sum_local_ind = SUM( local_indices(2,:) )
-       CALL MPI_ALLREDUCE( sum_local_ind, lsize1(1), 1, MPI_INTEGER, MPI_SUM, sm_io%comm_shared,   &
-                           ierr )
-    ELSE
-       lsize1(1) = SUM( local_indices(2,:) )
-    ENDIF
-
-    IF ( less_than_2g_elements )  THEN
-       CALL MPI_ALLREDUCE( global_end(nyn,nxr), dims8(1), 1, MPI_INTEGER8, MPI_MAX, comm2d, ierr )
-       dims1(1)  = dims8(1)
-       start1(1) = start8(1)
-
-       IF ( sm_io%iam_io_pe )  THEN
-          IF ( total_number_of_surface_elements > 0 )  THEN
-             CALL MPI_TYPE_CREATE_SUBARRAY( 1, dims1, lsize1, start1, MPI_ORDER_FORTRAN, MPI_REAL, &
-                                            ft_surf, ierr )
-             CALL MPI_TYPE_COMMIT( ft_surf, ierr )
-          ENDIF
-       ENDIF
-    ELSE
-       local_offset =  start8(1) * wp
-    ENDIF
-
-!
-!-- Allocate rma window to supply surface data to other PEs.
-    CALL rd_alloc_rma_mem( array_1d, SUM( nr_surface_elements_for_pe ), win_surf )
-
-!
-!-- Allocate shared array on IO-PE to supply data for MPI-IO (write or read).
-    array_out_reduction = start8(1)
-    IF ( sm_io%is_sm_active() )  THEN
-       IF ( sm_io%iam_io_pe )  THEN
-          io_start_index = start8(1) + 1_dp - array_out_reduction
-          io_end_index   = start8(1) + INT( lsize1(1), 8 ) - array_out_reduction
-       ENDIF
-       CALL MPI_BCAST( io_start_index,        1, MPI_INTEGER,  0, sm_io%comm_shared, ierr )
-       CALL MPI_BCAST( io_end_index,          1, MPI_INTEGER,  0, sm_io%comm_shared, ierr )
-       CALL MPI_BCAST( array_out_reduction,   1, MPI_INTEGER8, 0, sm_io%comm_shared, ierr )
-       CALL sm_io%sm_allocate_shared( array_out, io_start_index, io_end_index, win_out )
-    ELSE
-       io_start_index = start8(1) + 1_dp - array_out_reduction
-       io_end_index   = start8(1) + INT( lsize1(1) , 8 ) - array_out_reduction
-       ALLOCATE( array_out(io_start_index:io_end_index) )
-    ENDIF
-#else
-    IF ( total_number_of_surface_elements > 0  .AND.  .NOT. only_dummy_elements )  THEN
-        data_to_write = .TRUE.
-    ELSE
-        data_to_write = .FALSE.
-    ENDIF
-    ALLOCATE( array_out(1:total_number_of_surface_elements) )
-#endif
-
- CONTAINS
-
-    SUBROUTINE cyclic_fill_surface_filetype
-
-       INTEGER(iwp) ::  i  !<  loop index
-       INTEGER(iwp) ::  j  !<  loop index
-
-
-       IF ( .NOT. ALLOCATED( o_start_index ) )  ALLOCATE( o_start_index(nys:nyn,nxl:nxr) )
-       IF ( .NOT. ALLOCATED( o_end_index )   )  ALLOCATE( o_end_index(nys:nyn,nxl:nxr)   )
-
-       lo_start   = 1
-       DO  i = nxl, nxr
-           DO  j = nys, nyn
-               o_start_index(j,i) = lo_start
-               o_end_index(j,i)   = lo_start
-               lo_start           = lo_start + 1
-           ENDDO
-       ENDDO
-       start_index = o_start_index
-       end_index   = o_end_index
-
-!
-!--    Activate grid of the smaller prerun, i.e. grid variables like nxl, nxr, nys, nyn and others
-!--    are set according to the prerun layout.
-       CALL prerun_grid%activate_grid_from_this_class()
-
-       IF ( pe_active_for_read )  THEN
-
-          IF ( .NOT. ALLOCATED( c_global_start ) )  ALLOCATE( c_global_start(nys:nyn,nxl:nxr) )
-          IF ( .NOT. ALLOCATED( c_global_end )   )  ALLOCATE( c_global_end(nys:nyn,nxl:nxr)   )
-          IF ( .NOT. ALLOCATED( c_start_index )  )  ALLOCATE( c_start_index(nys:nyn,nxl:nxr)  )
-          IF ( .NOT. ALLOCATED( c_end_index )    )  ALLOCATE( c_end_index(nys:nyn,nxl:nxr)    )
-
+!--    Set start index and end index for the mainrun grid.
+!--    ATTENTION: This works only for horizontal surfaces with one vale per grid cell!!!
+       IF ( cyclic_fill_mode )  THEN
           DO  i = nxl, nxr
              DO  j = nys, nyn
-                c_global_start(j,i) = global_start(j,i)
-                c_global_end(j,i)   = global_end(j,i)
+                start_index (j,i) = (i-nxl) * nny + j - nys + 1
+                end_index (j,i)   = start_index(j,i)
              ENDDO
           ENDDO
-
-!
-!--       Recursive call of rd_mpi_io_surface_filetypes.
-!--       Prerun data are read, but they are treated as if they are mainrun data, just on a smaller
-!--       grid.
-          cyclic_fill_mode = .FALSE.
-          CALL rd_mpi_io_surface_filetypes( c_start_index, c_end_index, data_to_write,             &
-                                            c_global_start, c_global_end )
-          cyclic_fill_mode = .TRUE.
-
        ENDIF
-!
-!--    Activate grid of the mainrun, i.e. grid variables like nxl, nxr, nys, nyn and others
-!--    are set according to the mainrun layout.
-       CALL mainrun_grid%activate_grid_from_this_class()
 
+       IF ( .NOT. ALLOCATED( m_start_index )  )  ALLOCATE( m_start_index(nys:nyn,nxl:nxr)  )
+       IF ( .NOT. ALLOCATED( m_end_index )    )  ALLOCATE( m_end_index(nys:nyn,nxl:nxr)    )
+       IF ( .NOT. ALLOCATED( m_global_start ) )  ALLOCATE( m_global_start(nys:nyn,nxl:nxr) )
+!
+!--    Save arrays for later reading
+       m_start_index  = start_index
+       m_end_index    = end_index
+       m_global_start = global_start
+       nr_val = MAXVAL( end_index )
+
+    ENDIF
+
+    IF ( .NOT. pe_active_for_read )  RETURN
+
+    IF ( cyclic_fill_mode )  CALL prerun_grid%activate_grid_from_this_class()
+
+    offset = 0
+    lo_nr_val= 0
+    lo_nr_val(myid) = MAXVAL( end_index )
 #if defined( __parallel )
-       CALL MPI_BCAST( data_to_write, 1, MPI_LOGICAL, 0, comm2d, ierr )
+    CALL MPI_ALLREDUCE( lo_nr_val, all_nr_val, numprocs, MPI_INTEGER, MPI_SUM, comm2d, ierr )
+    IF ( ft_surf /= -1  .AND.  sm_io%iam_io_pe )  THEN
+       CALL MPI_TYPE_FREE( ft_surf, ierr )    ! If set, free last surface filetype
+    ENDIF
+
+    IF ( win_surf /= -1 )  THEN
+       IF ( sm_io%is_sm_active() )  THEN
+          CALL MPI_WIN_FREE( win_surf, ierr )
+       ENDIF
+       win_surf = -1
+    ENDIF
+
+    IF ( sm_io%is_sm_active() .AND. rd_flag )  THEN
+       IF ( fhs == -1 )  THEN
+          CALL MPI_FILE_OPEN( comm2d, TRIM( io_file_name ), MPI_MODE_RDONLY, MPI_INFO_NULL, fhs,   &
+                              ierr )
+       ENDIF
+    ELSE
+       fhs = fh
+    ENDIF
+#else
+    all_nr_val(myid) = lo_nr_val(myid)
 #endif
+    nr_val = lo_nr_val(myid)
 
-    END SUBROUTINE cyclic_fill_surface_filetype
+    total_number_of_surface_values = 0
+    DO  i = 0, numprocs-1
+       IF ( i == myid )  THEN
+          glo_start = total_number_of_surface_values + 1
+       ENDIF
+       total_number_of_surface_values = total_number_of_surface_values + all_nr_val(i)
+    ENDDO
+
+!
+!-- Actions during reading
+    IF ( rd_flag )  THEN
 
 #if defined( __parallel )
+       CALL MPI_FILE_SET_VIEW( fhs, offset, MPI_BYTE, MPI_BYTE, 'native', MPI_INFO_NULL, ierr )
+#endif
+    ENDIF
+
+    IF ( cyclic_fill_mode )  CALL mainrun_grid%activate_grid_from_this_class()
+
 !
-!-- Get the indices of the surface elements inside the RMA window on the remote PE.
-!-- This information is required to fetch the surface element data on remote PEs
-!-- in rrd_mpi_io_surface and wrd_mpi_io_surface.
-    SUBROUTINE get_remote_indices
+!-- Actions during writing
+    IF ( wr_flag )  THEN
+!
+!--    Create surface filetype
+       ft_surf      = -1
+       global_start = start_index + glo_start - 1
 
-       INTEGER(idp) ::  buf_start  !<
-       INTEGER(iwp) ::  i          !<
-       INTEGER(iwp) ::  j          !<
-       INTEGER(iwp) ::  n          !<
-       INTEGER(iwp) ::  n_trans    !<
-       INTEGER(iwp) ::  win_ind    !<
+       WHERE ( end_index < start_index )
+          global_start = -1
+       ENDWHERE
 
-       INTEGER(KIND=MPI_ADDRESS_KIND) ::  disp     !< displacement in RMA window
-       INTEGER(KIND=MPI_ADDRESS_KIND) ::  winsize  !< size of RMA window
-
-       INTEGER(idp), DIMENSION(0:numprocs-1) ::  lo_index         !<
-
-       INTEGER(idp), POINTER, DIMENSION(:,:) ::  surf_val_index  !<
-
-
-       IF ( ALLOCATED( local_indices ) )  DEALLOCATE( local_indices )
-       ALLOCATE( local_indices(2,MAX( SUM( transfer_index(2,:) ), 2_idp )))
-
-       local_indices(1,:) = HUGE(local_indices)
-       local_indices(2,:) = 0
-
-       winsize = MAX( 2 * SUM( nr_gp_with_surfaces_for_pe ), 2 )
-
-       ALLOCATE( surf_val_index(2,winsize) )
-       winsize = winsize * idp
-       CALL MPI_WIN_CREATE( surf_val_index, winsize, idp, MPI_INFO_NULL, comm2d, win_ind, ierr )
-       CALL MPI_WIN_FENCE( 0, win_ind, ierr )
-
-       lo_index = s_index_in_tb
-       DO  i = nxl, nxr
-          DO  j = nys, nyn
-             surf_val_index(1,lo_index(s_index_in_window(j,i))) = global_start(j,i)
-             surf_val_index(2,lo_index(s_index_in_window(j,i))) = global_end(j,i) -                &
-                                                                  global_start(j,i) + 1
-             lo_index(s_index_in_window(j,i)) = lo_index(s_index_in_window(j,i)) + 1
-          ENDDO
-       ENDDO
-
-       CALL MPI_WIN_FENCE( 0, win_ind, ierr )
-
-       buf_start = 1
-       DO  n = 0, numprocs-1
-          n_trans = transfer_index(2,n)
-          IF ( n_trans > 0 )  THEN
-             disp = 2 * ( transfer_index(1,n) - 1 )
-             CALL MPI_GET( local_indices(1,buf_start), 2*n_trans, MPI_INTEGER8, n, disp, 2*n_trans, &
-                           MPI_INTEGER8, win_ind, ierr )
-             buf_start = buf_start + n_trans
+#if defined( __parallel )
+       IF ( sm_io%is_sm_active() )  THEN
+          IF ( sm_io%iam_io_pe )  THEN
+!
+!--          Calculate number of values of all PEs of an I/O group
+             nr_iope = 0
+             DO  i = myid, myid+sm_io%sh_npes-1
+                nr_iope = nr_iope + all_nr_val(i)
+             ENDDO
+          ELSE
+             local_start = 0
+             DO  i = myid-sm_io%sh_rank, myid-1
+                local_start = local_start + all_nr_val(i)
+             ENDDO
           ENDIF
-       ENDDO
-
-       CALL MPI_WIN_FENCE( 0, win_ind, ierr )
-
-       CALL MPI_WIN_FREE( win_ind, ierr )
-
-       DEALLOCATE( surf_val_index )
-
-    END SUBROUTINE get_remote_indices
-
-!--------------------------------------------------------------------------------------------------!
-! Description:
-! ------------
-!> Allocate memory and create window for one-sided communication (1-d INTEGER array)
-!--------------------------------------------------------------------------------------------------!
-    SUBROUTINE rd_alloc_rma_mem( array, idim, win )
-
-       IMPLICIT NONE
-
-       INTEGER(iwp), INTENT(IN)       ::  idim     !< Dimension of this 1-D array
-       INTEGER                        ::  ierr     !< MPI error code
-       INTEGER(iwp), INTENT(OUT)      ::  win      !< MPI window
-       INTEGER(KIND=MPI_ADDRESS_KIND) ::  winsize  !< size of RMA window
-
-       REAL(wp), DIMENSION(:), POINTER, INTENT(INOUT) ::  array  !< array to access RMA window locally
-
-
-       winsize = MAX( idim, 2 )
-       ALLOCATE( array(winsize) )
-       winsize = winsize * wp
-       CALL MPI_WIN_CREATE( array, winsize, wp, MPI_INFO_NULL, comm2d, win, ierr )
-       array = -1
-       CALL MPI_WIN_FENCE( 0, win, ierr )
-
-    END SUBROUTINE rd_alloc_rma_mem
+!
+!--       Get the size of shared memory window on all PEs
+          CALL MPI_BCAST( nr_iope, 1, MPI_INTEGER, 0, sm_io%comm_shared, ierr )
+          CALL sm_io%sm_allocate_shared( array_1d, 1, MAX( 1, nr_iope ), win_surf )
+       ELSE
+          nr_iope = nr_val
+       ENDIF
+#else
+       nr_iope = nr_val
 #endif
+
+!
+!--    Check, if surface data exist on this PE
+       data_to_write = .TRUE.
+       IF ( total_number_of_surface_values == 0 )  THEN
+          data_to_write = .FALSE.
+          RETURN
+       ENDIF
+
+       IF ( sm_io%iam_io_pe )  THEN
+
+          all_pes_write = ( MINVAL( all_nr_val ) > 0 )
+
+          IF ( all_pes_write )  THEN
+             dims1(1)  = total_number_of_surface_values
+             lize1(1)  = nr_iope
+             start1(1) = glo_start-1
+
+#if defined( __parallel )
+             IF ( total_number_of_surface_values > 0 )  THEN
+                 CALL MPI_TYPE_CREATE_SUBARRAY( 1, dims1, lize1, start1, MPI_ORDER_FORTRAN,        &
+                                                MPI_REAL, ft_surf, ierr )
+                 CALL MPI_TYPE_COMMIT( ft_surf, ierr )
+             ENDIF
+#endif
+          ENDIF
+       ENDIF
+
+    ENDIF
 
  END SUBROUTINE rd_mpi_io_surface_filetypes
+
 
 
 !--------------------------------------------------------------------------------------------------!
@@ -4815,7 +4055,7 @@ END SUBROUTINE rrd_mpi_io_int4_3d_special
 !-- Decision, if storage with or without ghost layers.
 !-- Please note that the indexing of the global array always starts at 0, even in Fortran.
 !-- Therefore the PE local indices have to be shifted by nbgp in the case with ghost layers.
-    IF ( total_domain_boundaries_on_file )  THEN
+    IF ( include_total_domain_boundaries )  THEN
 
        iog%nxl = nxl + nbgp
        iog%nxr = nxr + nbgp
@@ -4829,7 +4069,7 @@ END SUBROUTINE rrd_mpi_io_int4_3d_special
           iog%nxl = iog%nxl - nbgp
           iog%nnx = iog%nnx + nbgp
        ENDIF
-       IF ( myidx == npex-1 )  THEN
+       IF ( myidx == npex-1  .OR.  npex == -1 )  THEN   ! npex == 1 if -D__parallel not set
           iog%nxr = iog%nxr + nbgp
           iog%nnx = iog%nnx + nbgp
        ENDIF
@@ -4837,7 +4077,7 @@ END SUBROUTINE rrd_mpi_io_int4_3d_special
           iog%nys = iog%nys - nbgp
           iog%nny = iog%nny + nbgp
        ENDIF
-       IF ( myidy == npey-1 )  THEN
+       IF ( myidy == npey-1  .OR.  npey == -1 )  THEN   ! npey == 1 if -D__parallel not set
           iog%nyn = iog%nyn + nbgp
           iog%nny = iog%nny + nbgp
        ENDIF
@@ -4863,19 +4103,13 @@ END SUBROUTINE rrd_mpi_io_int4_3d_special
                                       sm_io%io_grid%nys, sm_io%io_grid%nyn, win_2dr )
        CALL sm_io%sm_allocate_shared( array_2di, save_io_grid%nxl, save_io_grid%nxr,               &
                                       save_io_grid%nys, save_io_grid%nyn, win_2di )
-       CALL sm_io%sm_allocate_shared( array_2di8, save_io_grid%nxl, save_io_grid%nxr,              &
-                                      save_io_grid%nys, save_io_grid%nyn, win_2di8 )
        CALL sm_io%sm_allocate_shared( array_3d, nzb, nzt+1, sm_io%io_grid%nxl, sm_io%io_grid%nxr,  &
                                       sm_io%io_grid%nys, sm_io%io_grid%nyn, win_3dr )
-       CALL sm_io%sm_allocate_shared( array_3di4, nzb, nzt+1, sm_io%io_grid%nxl, sm_io%io_grid%nxr,&
-                                      sm_io%io_grid%nys, sm_io%io_grid%nyn, win_3di4 )
 #endif
     ELSE
        ALLOCATE( array_2d(iog%nxl:iog%nxr,iog%nys:iog%nyn) )
        ALLOCATE( array_2di(nxl:nxr,nys:nyn) )
-       ALLOCATE( array_2di8(nxl:nxr,nys:nyn) )
        ALLOCATE( array_3d(nzb:nzt+1,iog%nxl:iog%nxr,iog%nys:iog%nyn) )
-       ALLOCATE( array_3di4(nzb:nzt+1,iog%nxl:iog%nxr,iog%nys:iog%nyn) )
        sm_io%io_grid = iog
     ENDIF
 
@@ -4925,10 +4159,6 @@ END SUBROUTINE rrd_mpi_io_int4_3d_special
        CALL MPI_TYPE_CREATE_SUBARRAY( 2, dims2, lize2, start2, MPI_ORDER_FORTRAN, MPI_INTEGER,     &
                                       ft_2di_nb, ierr )
        CALL MPI_TYPE_COMMIT( ft_2di_nb, ierr )
-
-       CALL MPI_TYPE_CREATE_SUBARRAY( 2, dims2, lize2, start2, MPI_ORDER_FORTRAN, MPI_INTEGER8,    &
-                                      ft_2di8_nb, ierr )
-       CALL MPI_TYPE_COMMIT( ft_2di8_nb, ierr )
     ENDIF
 #endif
 !
@@ -4947,10 +4177,6 @@ END SUBROUTINE rrd_mpi_io_int4_3d_special
 
 #if defined( __parallel )
     IF ( sm_io%iam_io_pe )  THEN
-       CALL MPI_TYPE_CREATE_SUBARRAY( 3, dims3, lize3, start3, MPI_ORDER_FORTRAN, MPI_INTEGER,     &
-                                      ft_3di4, ierr )
-       CALL MPI_TYPE_COMMIT( ft_3di4, ierr )
-
        CALL MPI_TYPE_CREATE_SUBARRAY( 3, dims3, lize3, start3, MPI_ORDER_FORTRAN, MPI_REAL, ft_3d, &
                                       ierr )
        CALL MPI_TYPE_COMMIT( ft_3d, ierr )
@@ -4998,7 +4224,7 @@ END SUBROUTINE rrd_mpi_io_int4_3d_special
 !-- Decision, if storage with or without ghost layers.
 !-- Please note that the indexing of the global array always starts at 0, even in Fortran.
 !-- Therefore the PE local indices have to be shifted by nbgp in the case with ghost layers.
-    IF ( total_domain_boundaries_on_file )  THEN
+    IF ( include_total_domain_boundaries )  THEN
 
        iog%nxl = nxl + nbgp
        iog%nxr = nxr + nbgp
@@ -5012,7 +4238,7 @@ END SUBROUTINE rrd_mpi_io_int4_3d_special
           iog%nxl = iog%nxl - nbgp
           iog%nnx = iog%nnx + nbgp
        ENDIF
-       IF ( myidx == npex-1 )  THEN
+       IF ( myidx == npex-1  .OR.  npex == -1 )  THEN   ! npex == 1 if -D__parallel not set
           iog%nxr = iog%nxr + nbgp
           iog%nnx = iog%nnx + nbgp
        ENDIF
@@ -5020,7 +4246,7 @@ END SUBROUTINE rrd_mpi_io_int4_3d_special
           iog%nys = iog%nys - nbgp
           iog%nny = iog%nny + nbgp
        ENDIF
-       IF ( myidy == npey-1 )  THEN
+       IF ( myidy == npey-1  .OR.  npey == -1 )  THEN   ! npey == 1 if -D__parallel not set
           iog%nyn = iog%nyn + nbgp
           iog%nny = iog%nny + nbgp
        ENDIF
@@ -5042,10 +4268,13 @@ END SUBROUTINE rrd_mpi_io_int4_3d_special
 
     IF ( sm_io%is_sm_active() )  THEN
 #if defined( __parallel )
+       CALL sm_io%sm_allocate_shared( array_3di4, nzb, nzt+1, sm_io%io_grid%nxl, sm_io%io_grid%nxr,&
+                                      sm_io%io_grid%nys, sm_io%io_grid%nyn, win_3di4 )
        CALL sm_io%sm_allocate_shared( array_3di8, nzb, nzt+1, sm_io%io_grid%nxl, sm_io%io_grid%nxr,&
                                       sm_io%io_grid%nys, sm_io%io_grid%nyn, win_3di8 )
 #endif
     ELSE
+       ALLOCATE( array_3di4(nzb:nzt+1,iog%nxl:iog%nxr,iog%nys:iog%nyn) )
        ALLOCATE( array_3di8(nzb:nzt+1,iog%nxl:iog%nxr,iog%nys:iog%nyn) )
 
        sm_io%io_grid = iog
@@ -5067,6 +4296,10 @@ END SUBROUTINE rrd_mpi_io_int4_3d_special
 
 #if defined( __parallel )
     IF ( sm_io%iam_io_pe )  THEN
+       CALL MPI_TYPE_CREATE_SUBARRAY( 3, dims3, lize3, start3, MPI_ORDER_FORTRAN, MPI_INTEGER,     &
+                                      ft_3di4, ierr )
+       CALL MPI_TYPE_COMMIT( ft_3di4, ierr )
+
        CALL MPI_TYPE_CREATE_SUBARRAY( 3, dims3, lize3, start3, MPI_ORDER_FORTRAN, MPI_INTEGER8,    &
                                       ft_3di8, ierr )
        CALL MPI_TYPE_COMMIT( ft_3di8, ierr )
@@ -5083,6 +4316,7 @@ END SUBROUTINE rrd_mpi_io_int4_3d_special
 !> This subroutine creates file types to access 3d-soil arrays distributed in blocks among processes
 !> to a single file that contains the global arrays. It is not required for the serial mode.
 !--------------------------------------------------------------------------------------------------!
+#if defined( __parallel )
  SUBROUTINE rd_mpi_io_create_filetypes_3dsoil( nzb_soil, nzt_soil )
 
     IMPLICIT NONE
@@ -5090,7 +4324,6 @@ END SUBROUTINE rrd_mpi_io_int4_3d_special
     INTEGER, INTENT(IN)   ::  nzb_soil  !<
     INTEGER, INTENT(IN)   ::  nzt_soil  !<
 
-#if defined( __parallel )
     INTEGER, DIMENSION(3) ::  dims3     !<
     INTEGER, DIMENSION(3) ::  lize3     !<
     INTEGER, DIMENSION(3) ::  start3    !<
@@ -5124,12 +4357,11 @@ END SUBROUTINE rrd_mpi_io_int4_3d_special
                                       ft_3dsoil, ierr )
        CALL MPI_TYPE_COMMIT( ft_3dsoil, ierr )
     ENDIF
-#else
-    ALLOCATE( array_3d_soil(nzb_soil:nzt_soil,iog%nxl:iog%nxr,iog%nys:iog%nyn) )
-    sm_io%io_grid = iog
-#endif
 
  END SUBROUTINE rd_mpi_io_create_filetypes_3dsoil
+#endif
+
+
 
 !--------------------------------------------------------------------------------------------------!
 ! Description:
@@ -5140,85 +4372,55 @@ END SUBROUTINE rrd_mpi_io_int4_3d_special
 
     IMPLICIT NONE
 
+
 #if defined( __parallel )
     IF ( filetypes_created )  THEN
 
        IF ( sm_io%iam_io_pe )  THEN
           CALL MPI_TYPE_FREE( ft_2d, ierr )
           CALL MPI_TYPE_FREE( ft_2di_nb, ierr )
-          CALL MPI_TYPE_FREE( ft_2di8_nb, ierr )
           CALL MPI_TYPE_FREE( ft_3d, ierr )
        ENDIF
 
        IF ( sm_io%is_sm_active() )  THEN
           CALL sm_io%sm_free_shared( win_2dr )
           CALL sm_io%sm_free_shared( win_2di )
-          CALL sm_io%sm_free_shared( win_2di8 )
           CALL sm_io%sm_free_shared( win_3dr )
        ELSE
           DEALLOCATE( array_2d, array_2di, array_3d )
        ENDIF
 
     ENDIF
-
 !
 !-- Free last surface filetype
     IF ( sm_io%iam_io_pe .AND. ft_surf /= -1 )  THEN
        CALL MPI_TYPE_FREE( ft_surf, ierr )
     ENDIF
 
-    IF ( win_surf /= -1 )  THEN
-       CALL MPI_WIN_FREE( win_surf, ierr )
-       DEALLOCATE( array_1d )
-       win_surf = -1
+    IF ( sm_io%is_sm_active() .AND.  win_surf /= -1 )  THEN
+       CALL sm_io%sm_free_shared( win_surf )
     ENDIF
 
-    IF ( sm_io%is_sm_active() )  THEN
-       IF ( win_out /= -1 )  THEN
-          CALL sm_io%sm_free_shared( win_out )  ! frees shared memory window and releases memory
-          win_out = -1
-       ENDIF
-       NULLIFY( array_out )  ! disassociate Fortran pointer
-    ELSE
-       IF ( ASSOCIATED( array_out ) )  DEALLOCATE( array_out )
-    ENDIF
 !
 !-- Free last particle filetypes
     IF ( sm_io%iam_io_pe .AND. ft_3di4 /= -1 )  THEN
        CALL MPI_TYPE_FREE( ft_3di4, ierr )
-       ft_3di4 = -1
-    ENDIF
-    IF ( sm_io%iam_io_pe .AND. ft_3di8 /= -1 )  THEN
        CALL MPI_TYPE_FREE( ft_3di8, ierr )
-       ft_3di8 = -1
     ENDIF
 
     IF ( sm_io%is_sm_active() .AND.  win_3di4 /= -1 )  THEN
        CALL sm_io%sm_free_shared( win_3di4 )
-       win_3di4 = -1
-    ENDIF
-    IF ( sm_io%is_sm_active() .AND.  win_3di8 /= -1 )  THEN
        CALL sm_io%sm_free_shared( win_3di8 )
-       win_3di8 = -1
-    ENDIF
-
-    IF ( win_start /= -1 )  THEN
-       CALL sm_io%sm_free_shared( win_start)
-       CALL sm_io%sm_free_shared( win_end)
-       CALL sm_io%sm_free_shared( win_glost)
-       win_start = -1
-       win_end   = -1
-       win_glost = -1
     ENDIF
 
     ft_surf  = -1
     win_surf = -1
 #else
-    IF ( ASSOCIATED( array_2d )   )  DEALLOCATE( array_2d )
-    IF ( ASSOCIATED( array_2di )  )  DEALLOCATE( array_2di )
-    IF ( ASSOCIATED( array_3d )   )  DEALLOCATE( array_3d )
-    IF ( ASSOCIATED( array_3di4 ) )  DEALLOCATE( array_3di4 )
-    IF ( ASSOCIATED( array_3di8 ) )  DEALLOCATE( array_3di8 )
+    IF ( ASSOCIATED(array_2d)   )  DEALLOCATE( array_2d )
+    IF ( ASSOCIATED(array_2di)  )  DEALLOCATE( array_2di )
+    IF ( ASSOCIATED(array_3d)   )  DEALLOCATE( array_3d )
+    IF ( ASSOCIATED(array_3di4) )  DEALLOCATE( array_3di4 )
+    IF ( ASSOCIATED(array_3di8) )  DEALLOCATE( array_3di8 )
 #endif
 
  END SUBROUTINE rd_mpi_io_free_filetypes
@@ -5246,7 +4448,7 @@ END SUBROUTINE rrd_mpi_io_int4_3d_special
     WRITE (9,*)  ' CHARACTER header values   Total number: ', tgh%nr_char
     WRITE (9,*)  ' '
     DO  i = 1, tgh%nr_char
-       WRITE ( 9, '(I3,A,1X,A)' )  i, ': ', text_lines(i)(1:80)
+       WRITE( 9, '(I3,A,1X,A)' )  i, ': ', text_lines(i)(1:80)
     ENDDO
     WRITE (9,*)  ' '
 

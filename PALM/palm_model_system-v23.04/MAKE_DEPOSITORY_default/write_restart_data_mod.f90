@@ -13,8 +13,72 @@
 ! You should have received a copy of the GNU General Public License along with PALM. If not, see
 ! <http://www.gnu.org/licenses/>.
 !
-! Copyright 1997-2021 Leibniz Universitaet Hannover
+! Copyright 1997-2020 Leibniz Universitaet Hannover
 !--------------------------------------------------------------------------------------------------!
+!
+! Current revisions:
+! -----------------
+!
+!
+! Former revisions:
+! -----------------
+! $Id: write_restart_data_mod.f90 4777 2020-11-06 14:50:49Z raasch $
+! bugfix for writing spectra data with MPI-I/O (they are global arrays!)
+!
+! 4671 2020-09-09 20:27:58Z pavelkrc
+! Implementation of downward facing USM and LSM surfaces
+! 
+! 4564 2020-06-12 14:03:36Z raasch
+! Vertical nesting method of Huq et al. (2019) removed
+! 
+! 4536 2020-05-17 17:24:13Z raasch
+! binary version incremented
+! 
+! 4535 2020-05-15 12:07:23Z raasch
+! bugfix for restart data format query
+! 
+! 4514 2020-04-30 16:29:59Z suehring
+! qsurf and ssurf added
+! 
+! 4495 2020-04-13 20:11:20Z raasch
+! restart data handling with MPI-IO added
+! 
+! 4489 2020-04-04 10:54:08Z raasch
+! file re-formatted to follow the PALM coding standard
+!
+! 4360 2020-01-07 11:25:50Z suehring
+! - Move 2-m potential temperature to diagnostic_output_quantities.
+!
+! 4301 2019-11-22 12:09:09Z oliver.maas
+! removed recycling_yshift
+!
+! 4227 2019-09-10 18:04:34Z gronemeier
+! implement new palm_date_time_mod and increased binary version
+!
+! 4146 2019-08-07 07:47:36Z gronemeier
+! Corrected "Former revisions" section
+!
+! 4101 2019-07-17 15:14:26Z gronemeier
+! remove old_dt
+!
+! 4039 2019-06-18 10:32:41Z suehring
+! Modularize diagnostic output
+!
+! 4017 2019-06-06 12:16:46Z schwenkel
+! output of turbulence intensity added
+!
+! 3988 2019-05-22 11:32:37Z kanani
+! + time_virtual_measurement (to enable steering of output interval)
+!
+! 3936 2019-04-26 15:38:02Z kanani
+! Enable time-averaged output of theta_2m* with restarts
+!
+! 3668 2019-01-14 12:49:24Z maronga
+! Implementation of the PALM module interface
+!
+! 2894 2018-03-15 09:17:58Z Giersch
+! Initial revision
+!
 !
 ! Description:
 ! ------------
@@ -22,28 +86,11 @@
 !--------------------------------------------------------------------------------------------------!
  MODULE write_restart_data_mod
 
+
     USE arrays_3d,                                                                                 &
-        ONLY:  e,                                                                                  &
-               kh,                                                                                 &
-               km,                                                                                 &
-               mean_inflow_profiles,                                                               &
-               p,                                                                                  &
-               pt,                                                                                 &
-               pt_init,                                                                            &
-               q,                                                                                  &
-               q_init,                                                                             &
-               ql,                                                                                 &
-               ref_state,                                                                          &
-               s,                                                                                  &
-               s_init,                                                                             &
-               u,                                                                                  &
-               u_init,                                                                             &
-               ug,                                                                                 &
-               v,                                                                                  &
-               v_init,                                                                             &
-               vg,                                                                                 &
-               vpt,                                                                                &
-               w
+        ONLY:  e, inflow_damping_factor, kh, km, mean_inflow_profiles, p, pt, pt_init, q, q_init,  &
+               ql, ref_state, s, s_init, u, u_init, ug, u_m_l, u_m_n, u_m_r, u_m_s, v, v_init, vg, &
+               v_m_l, v_m_n, v_m_r, v_m_s, vpt, w, w_m_l, w_m_n, w_m_r, w_m_s
 
     USE averaging
 
@@ -53,87 +100,50 @@
     USE control_parameters
 
     USE grid_variables,                                                                            &
-        ONLY:  dx,                                                                                 &
-               dy
+        ONLY:  dx, dy
 
     USE gust_mod,                                                                                  &
         ONLY:  gust_module_enabled
 
     USE indices,                                                                                   &
-        ONLY:  nx,                                                                                 &
-               nxl,                                                                                &
-               nxr,                                                                                &
-               ny,                                                                                 &
-               nys,                                                                                &
-               nyn,                                                                                &
-               nz,                                                                                 &
-               nzb,                                                                                &
-               nzt
-
-    USE indoor_model_mod,                                                                          &
-        ONLY:  time_indoor
+        ONLY:  nx, nxl, nxr, ny, nys, nyn, nz, nzb, nzt
 
     USE kinds
 
     USE model_1d_mod,                                                                              &
-        ONLY:  damp_level_1d,                                                                      &
-               dt_pr_1d,                                                                           &
-               dt_run_control_1d,                                                                  &
-               end_time_1d
+        ONLY:  damp_level_1d, dt_pr_1d, dt_run_control_1d, end_time_1d
 
     USE module_interface,                                                                          &
         ONLY:  module_interface_wrd_global,                                                        &
-               module_interface_wrd_local,                                                         &
-               module_interface_wrd_local_spinup
+               module_interface_wrd_local
 
     USE netcdf_interface,                                                                          &
-        ONLY:  netcdf_precision,                                                                   &
-               output_for_t0
+        ONLY:  netcdf_precision, output_for_t0
 
     USE particle_attributes,                                                                       &
         ONLY:  particle_advection
 
     USE pegrid,                                                                                    &
-        ONLY:  collective_wait,                                                                    &
-               hor_index_bounds,                                                                   &
-               myid,                                                                               &
-               numprocs
+        ONLY:  collective_wait, hor_index_bounds, myid, numprocs
 
     USE radiation_model_mod,                                                                       &
         ONLY:  time_radiation
 
     USE random_function_mod,                                                                       &
-        ONLY:  random_iv,                                                                          &
-               random_iy
+        ONLY:  random_iv, random_iy
 
     USE random_generator_parallel,                                                                 &
-        ONLY:  id_random_array,                                                                    &
-               seq_random_array
+        ONLY:  id_random_array, seq_random_array
 
     USE restart_data_mpi_io_mod,                                                                   &
-        ONLY:  wrd_mpi_io,                                                                         &
-               wrd_mpi_io_global_array
+        ONLY:  wrd_mpi_io, wrd_mpi_io_global_array
 
     USE spectra_mod,                                                                               &
-        ONLY:  average_count_sp,                                                                   &
-               spectrum_x,                                                                         &
-               spectrum_y
+        ONLY:  average_count_sp, spectrum_x, spectrum_y
 
     USE statistics,                                                                                &
-        ONLY:  hom,                                                                                &
-               hom_sum,                                                                            &
-               statistic_regions,                                                                  &
-               u_max,                                                                              &
-               u_max_ijk,                                                                          &
-               v_max,                                                                              &
-               v_max_ijk,                                                                          &
-               w_max,                                                                              &
-               w_max_ijk,                                                                          &
-               z_i
-
-    USE surface_data_output_mod,                                                                   &
-        ONLY:  surface_data_output_wrd_global,                                                     &
-               surface_data_output_wrd_local
+        ONLY:  hom, hom_sum, statistic_regions, u_max, u_max_ijk, v_max, v_max_ijk, w_max,         &
+        w_max_ijk, z_i
 
     USE surface_mod,                                                                               &
         ONLY:  surface_wrd_local
@@ -142,9 +152,7 @@
         ONLY:  user_module_enabled
 
     USE virtual_measurement_mod,                                                                   &
-        ONLY:  time_virtual_measurement_pr,                                                        &
-               time_virtual_measurement_ts,                                                        &
-               time_virtual_measurement_tr
+        ONLY:  time_virtual_measurement
 
 
     IMPLICIT NONE
@@ -154,23 +162,12 @@
        MODULE PROCEDURE wrd_global
     END INTERFACE wrd_global
 
-    INTERFACE wrd_global_spinup
-       MODULE PROCEDURE wrd_global_spinup
-    END INTERFACE wrd_global_spinup
-
     INTERFACE wrd_local
        MODULE PROCEDURE wrd_local
     END INTERFACE wrd_local
 
-    INTERFACE wrd_local_spinup
-       MODULE PROCEDURE wrd_local_spinup
-    END INTERFACE wrd_local_spinup
 
-
-    PUBLIC wrd_global,                                                                             &
-           wrd_global_spinup,                                                                      &
-           wrd_local,                                                                              &
-           wrd_local_spinup
+    PUBLIC wrd_local, wrd_global
 
 
  CONTAINS
@@ -192,7 +189,7 @@
 
     INTEGER ::  i                                !< loop index
 
-    binary_version_global = '22.04'
+    binary_version_global = '5.1'
 
     IF ( restart_data_format_output == 'fortran_binary' )  THEN
 !
@@ -224,9 +221,6 @@
 
        CALL wrd_write_string( 'advected_distance_y' )
        WRITE ( 14 )  advected_distance_y
-
-       CALL wrd_write_string( 'allow_negative_scalar_values' )
-       WRITE ( 14 )  allow_negative_scalar_values
 
        CALL wrd_write_string( 'alpha_surface' )
        WRITE ( 14 )  alpha_surface
@@ -354,6 +348,18 @@
        CALL wrd_write_string( 'dissipation_1d' )
        WRITE ( 14 )  dissipation_1d
 
+       CALL wrd_write_string( 'do2d_xy_time_count' )
+       WRITE ( 14 )  do2d_xy_time_count
+
+       CALL wrd_write_string( 'do2d_xz_time_count' )
+       WRITE ( 14 )  do2d_xz_time_count
+
+       CALL wrd_write_string( 'do2d_yz_time_count' )
+       WRITE ( 14 )  do2d_yz_time_count
+
+       CALL wrd_write_string( 'do3d_time_count' )
+       WRITE ( 14 )  do3d_time_count
+
        CALL wrd_write_string( 'dp_external' )
        WRITE ( 14 )  dp_external
 
@@ -423,11 +429,19 @@
        CALL wrd_write_string( 'hom_sum' )
        WRITE ( 14 )  hom_sum
 
-       CALL wrd_write_string( 'homogenize_surface_temperature' )
-       WRITE ( 14 )  homogenize_surface_temperature
-
        CALL wrd_write_string( 'humidity' )
        WRITE ( 14 )  humidity
+
+       IF ( ALLOCATED( inflow_damping_factor ) )  THEN
+          CALL wrd_write_string( 'inflow_damping_factor' )
+          WRITE ( 14 )  inflow_damping_factor
+       ENDIF
+
+       CALL wrd_write_string( 'inflow_damping_height' )
+       WRITE ( 14 )  inflow_damping_height
+
+       CALL wrd_write_string( 'inflow_damping_width' )
+       WRITE ( 14 )  inflow_damping_width
 
        CALL wrd_write_string( 'inflow_disturbance_begin' )
        WRITE ( 14 )  inflow_disturbance_begin
@@ -536,8 +550,8 @@
        CALL wrd_write_string( 'pt_surface' )
        WRITE ( 14 )  pt_surface
 
-       CALL wrd_write_string( 'pt_surface_heating_rate' )
-       WRITE ( 14 )  pt_surface_heating_rate
+       CALL wrd_write_string( 'pt_surface_initial_change' )
+       WRITE ( 14 )  pt_surface_initial_change
 
        CALL wrd_write_string( 'pt_vertical_gradient' )
        WRITE ( 14 )  pt_vertical_gradient
@@ -553,6 +567,9 @@
 
        CALL wrd_write_string( 'q_surface' )
        WRITE ( 14 )  q_surface
+
+       CALL wrd_write_string( 'q_surface_initial_change' )
+       WRITE ( 14 )  q_surface_initial_change
 
        CALL wrd_write_string( 'q_vertical_gradient' )
        WRITE ( 14 )  q_vertical_gradient
@@ -578,6 +595,9 @@
        CALL wrd_write_string( 'rayleigh_damping_height' )
        WRITE ( 14 )  rayleigh_damping_height
 
+       CALL wrd_write_string( 'recycling_width' )
+       WRITE ( 14 )  recycling_width
+
        CALL wrd_write_string( 'ref_state' )
        WRITE ( 14 )  ref_state
 
@@ -590,6 +610,9 @@
        CALL wrd_write_string( 'roughness_length' )
        WRITE ( 14 )  roughness_length
 
+       CALL wrd_write_string( 'run_coupled' )
+       WRITE ( 14 )  run_coupled
+
        CALL wrd_write_string( 'runnr' )
        WRITE ( 14 )  runnr
 
@@ -598,6 +621,9 @@
 
        CALL wrd_write_string( 's_surface' )
        WRITE ( 14 )  s_surface
+
+       CALL wrd_write_string( 's_surface_initial_change' )
+       WRITE ( 14 )  s_surface_initial_change
 
        CALL wrd_write_string( 's_vertical_gradient' )
        WRITE ( 14 )  s_vertical_gradient
@@ -690,9 +716,6 @@
        CALL wrd_write_string( 'time_dots' )
        WRITE ( 14 )  time_dots
 
-       CALL wrd_write_string( 'time_indoor' )
-       WRITE ( 14 )  time_indoor
-
        CALL wrd_write_string( 'time_radiation' )
        WRITE ( 14 )  time_radiation
 
@@ -705,14 +728,8 @@
        CALL wrd_write_string( 'time_since_reference_point' )
        WRITE ( 14 )  time_since_reference_point
 
-       CALL wrd_write_string( 'time_virtual_measurement_pr' )
-       WRITE ( 14 )  time_virtual_measurement_pr
-
-       CALL wrd_write_string( 'time_virtual_measurement_ts' )
-       WRITE ( 14 )  time_virtual_measurement_ts
-
-       CALL wrd_write_string( 'time_virtual_measurement_tr' )
-       WRITE ( 14 )  time_virtual_measurement_tr
+       CALL wrd_write_string( 'time_virtual_measurement' )
+       WRITE ( 14 )  time_virtual_measurement
 
        CALL wrd_write_string( 'timestep_scheme' )
        WRITE ( 14 )  timestep_scheme
@@ -755,6 +772,9 @@
 
        CALL wrd_write_string( 'turbulence_closure' )
        WRITE ( 14 )  turbulence_closure
+
+       CALL wrd_write_string( 'turbulent_inflow' )
+       WRITE ( 14 )  turbulent_inflow
 
        CALL wrd_write_string( 'u_bulk' )
        WRITE ( 14 )  u_bulk
@@ -880,7 +900,6 @@
 !--             done in the parameter-list in rrd_global.
        CALL wrd_mpi_io( 'advected_distance_x',  advected_distance_x )
        CALL wrd_mpi_io( 'advected_distance_y', advected_distance_y )
-       CALL wrd_mpi_io( 'allow_negative_scalar_values', allow_negative_scalar_values )
        CALL wrd_mpi_io( 'alpha_surface', alpha_surface )
        CALL wrd_mpi_io( 'average_count_pr', average_count_pr )
        CALL wrd_mpi_io( 'average_count_sp', average_count_sp )
@@ -924,6 +943,10 @@
        CALL wrd_mpi_io( 'cycle_mg', cycle_mg )
        CALL wrd_mpi_io( 'damp_level_1d', damp_level_1d )
        CALL wrd_mpi_io( 'dissipation_1d', dissipation_1d )
+       CALL wrd_mpi_io_global_array( 'do2d_xy_time_count', do2d_xy_time_count )
+       CALL wrd_mpi_io_global_array( 'do2d_xz_time_count', do2d_xz_time_count )
+       CALL wrd_mpi_io_global_array( 'do2d_yz_time_count', do2d_yz_time_count )
+       CALL wrd_mpi_io_global_array( 'do3d_time_count', do3d_time_count )
        CALL wrd_mpi_io( 'dp_external', dp_external )
        CALL wrd_mpi_io( 'dp_level_b', dp_level_b )
        CALL wrd_mpi_io( 'dp_smooth', dp_smooth )
@@ -948,8 +971,12 @@
        CALL wrd_mpi_io( 'gust_module_enabled', gust_module_enabled )
        CALL wrd_mpi_io_global_array( 'hom', hom )
        CALL wrd_mpi_io_global_array( 'hom_sum', hom_sum )
-       CALL wrd_mpi_io( 'homogenize_surface_temperature', homogenize_surface_temperature )
        CALL wrd_mpi_io( 'humidity', humidity )
+       IF ( ALLOCATED( inflow_damping_factor ) )  THEN
+          CALL wrd_mpi_io_global_array( 'inflow_damping_factor', inflow_damping_factor )
+       ENDIF
+       CALL wrd_mpi_io( 'inflow_damping_height', inflow_damping_height )
+       CALL wrd_mpi_io( 'inflow_damping_width', inflow_damping_width )
        CALL wrd_mpi_io( 'inflow_disturbance_begin', inflow_disturbance_begin )
        CALL wrd_mpi_io( 'inflow_disturbance_end', inflow_disturbance_end )
        CALL wrd_mpi_io( 'km_constant', km_constant )
@@ -994,12 +1021,13 @@
        CALL wrd_mpi_io_global_array( 'pt_init', pt_init )
        CALL wrd_mpi_io( 'pt_reference', pt_reference )
        CALL wrd_mpi_io( 'pt_surface', pt_surface )
-       CALL wrd_mpi_io( 'pt_surface_heating_rate', pt_surface_heating_rate )
+       CALL wrd_mpi_io( 'pt_surface_initial_change', pt_surface_initial_change )
        CALL wrd_mpi_io_global_array( 'pt_vertical_gradient', pt_vertical_gradient )
        CALL wrd_mpi_io_global_array( 'pt_vertical_gradient_level', pt_vertical_gradient_level )
        CALL wrd_mpi_io_global_array( 'pt_vertical_gradient_level_ind', pt_vertical_gradient_level_ind )
        CALL wrd_mpi_io_global_array( 'q_init', q_init )
        CALL wrd_mpi_io( 'q_surface', q_surface )
+       CALL wrd_mpi_io( 'q_surface_initial_change', q_surface_initial_change )
        CALL wrd_mpi_io_global_array( 'q_vertical_gradient', q_vertical_gradient )
        CALL wrd_mpi_io_global_array( 'q_vertical_gradient_level', q_vertical_gradient_level )
        CALL wrd_mpi_io_global_array( 'q_vertical_gradient_level_ind', q_vertical_gradient_level_ind )
@@ -1008,13 +1036,16 @@
        CALL wrd_mpi_io( 'rans_mode', rans_mode )
        CALL wrd_mpi_io( 'rayleigh_damping_factor', rayleigh_damping_factor )
        CALL wrd_mpi_io( 'rayleigh_damping_height', rayleigh_damping_height )
+       CALL wrd_mpi_io( 'recycling_width', recycling_width )
        CALL wrd_mpi_io_global_array( 'ref_state', ref_state )
        CALL wrd_mpi_io( 'reference_state', reference_state )
        CALL wrd_mpi_io( 'residual_limit', residual_limit )
        CALL wrd_mpi_io( 'roughness_length', roughness_length )
+       CALL wrd_mpi_io( 'run_coupled', run_coupled )
        CALL wrd_mpi_io( 'runnr', runnr )
        CALL wrd_mpi_io_global_array( 's_init', s_init )
        CALL wrd_mpi_io( 's_surface', s_surface )
+       CALL wrd_mpi_io( 's_surface_initial_change', s_surface_initial_change )
        CALL wrd_mpi_io_global_array( 's_vertical_gradient', s_vertical_gradient )
        CALL wrd_mpi_io_global_array( 's_vertical_gradient_level', s_vertical_gradient_level )
        CALL wrd_mpi_io_global_array( 's_vertical_gradient_level_ind', s_vertical_gradient_level_ind )
@@ -1033,6 +1064,7 @@
        CALL wrd_mpi_io( 'surface_pressure', surface_pressure )
        CALL wrd_mpi_io( 'surface_scalarflux', surface_scalarflux )
        CALL wrd_mpi_io( 'surface_waterflux', surface_waterflux )
+       CALL wrd_mpi_io( 'syn_turb_gen', syn_turb_gen )
        CALL wrd_mpi_io( 'time_coupling', time_coupling )
        CALL wrd_mpi_io( 'time_disturb', time_disturb )
        CALL wrd_mpi_io( 'time_do2d_xy', time_do2d_xy )
@@ -1048,14 +1080,11 @@
        CALL wrd_mpi_io( 'time_dopts', time_dopts )
        CALL wrd_mpi_io( 'time_dosp', time_dosp )
        CALL wrd_mpi_io( 'time_dots', time_dots )
-       CALL wrd_mpi_io( 'time_indoor', time_indoor )
        CALL wrd_mpi_io( 'time_radiation', time_radiation )
        CALL wrd_mpi_io( 'time_restart', time_restart )
        CALL wrd_mpi_io( 'time_run_control', time_run_control )
        CALL wrd_mpi_io( 'time_since_reference_point', time_since_reference_point )
-       CALL wrd_mpi_io( 'time_virtual_measurement_pr', time_virtual_measurement_pr )
-       CALL wrd_mpi_io( 'time_virtual_measurement_ts', time_virtual_measurement_ts )
-       CALL wrd_mpi_io( 'time_virtual_measurement_tr', time_virtual_measurement_tr )
+       CALL wrd_mpi_io( 'time_virtual_measurement', time_virtual_measurement )
        CALL wrd_mpi_io( 'timestep_scheme', timestep_scheme )
        CALL wrd_mpi_io( 'top_heatflux', top_heatflux )
        CALL wrd_mpi_io( 'top_momentumflux_u', top_momentumflux_u )
@@ -1070,6 +1099,7 @@
        CALL wrd_mpi_io( 'tunnel_width_x', tunnel_width_x )
        CALL wrd_mpi_io( 'tunnel_width_y', tunnel_width_y )
        CALL wrd_mpi_io( 'turbulence_closure', turbulence_closure )
+       CALL wrd_mpi_io( 'turbulent_inflow', turbulent_inflow )
        CALL wrd_mpi_io( 'u_bulk', u_bulk )
        CALL wrd_mpi_io_global_array( 'u_init', u_init )
        CALL wrd_mpi_io( 'u_max', u_max )
@@ -1109,29 +1139,13 @@
        CALL wrd_mpi_io_global_array( 'z_i', z_i )
 
     ENDIF
-!
-!-- Write restart data of surface_data_output_mod
-    IF ( surface_output )  CALL surface_data_output_wrd_global
+
 !
 !-- Write restart data of the other modules
     CALL module_interface_wrd_global
 
 
  END SUBROUTINE wrd_global
-
-!--------------------------------------------------------------------------------------------------!
-! Description:
-! ------------
-!> Write global parameters to spinup restart file
-!--------------------------------------------------------------------------------------------------!
- SUBROUTINE wrd_global_spinup
-!
-!-- Write nx and ny. This is actually only required to check if the spinup-surface data matches
-!-- the dimensions in the main run, in order to enable the cyclic-fill control flag.
-    CALL wrd_mpi_io( 'nx', nx )
-    CALL wrd_mpi_io( 'ny', ny )
-
- END SUBROUTINE wrd_global_spinup
 
 
 !--------------------------------------------------------------------------------------------------!
@@ -1152,7 +1166,7 @@
 
 !
 !-- Write arrays.
-    binary_version_local = '22.04'
+    binary_version_local = '5.1'
 
     IF ( TRIM( restart_data_format_output ) == 'fortran_binary' )  THEN
 !
@@ -1202,11 +1216,6 @@
           WRITE ( 14 )  lwp_av
        ENDIF
 
-       IF ( ALLOCATED( ol_av ) )  THEN
-          CALL wrd_write_string( 'ol_av' )
-          WRITE ( 14 )  ol_av
-       ENDIF
-
        CALL wrd_write_string( 'p' )
        WRITE ( 14 )  p
 
@@ -1223,16 +1232,6 @@
        IF ( ALLOCATED( pr_av ) )  THEN
           CALL wrd_write_string( 'pr_av' )
           WRITE ( 14 )  pr_av
-       ENDIF
-
-       IF ( ALLOCATED( pres_drag_x_av ) )  THEN
-          CALL wrd_write_string( 'pres_drag_x_av' )
-          WRITE ( 14 )  pres_drag_x_av
-       ENDIF
-
-       IF ( ALLOCATED( pres_drag_y_av ) )  THEN
-          CALL wrd_write_string( 'pres_drag_y_av' )
-          WRITE ( 14 )  pres_drag_y_av
        ENDIF
 
        CALL wrd_write_string( 'pt' )
@@ -1352,6 +1351,26 @@
           WRITE ( 14 )  u_av
        ENDIF
 
+       IF ( ALLOCATED( u_m_l ) )  THEN
+          CALL wrd_write_string( 'u_m_l' )
+          WRITE ( 14 )  u_m_l
+       ENDIF
+
+       IF ( ALLOCATED( u_m_n ) )  THEN
+          CALL wrd_write_string( 'u_m_n' )
+          WRITE ( 14 )  u_m_n
+       ENDIF
+
+       IF ( ALLOCATED( u_m_r ) )  THEN
+          CALL wrd_write_string( 'u_m_r' )
+          WRITE ( 14 )  u_m_r
+       ENDIF
+
+       IF ( ALLOCATED( u_m_s ) )  THEN
+          CALL wrd_write_string( 'u_m_s' )
+          WRITE ( 14 )  u_m_s
+       ENDIF
+
        IF ( ALLOCATED( us_av ) )  THEN
           CALL wrd_write_string( 'us_av' )
           WRITE ( 14 )  us_av
@@ -1363,6 +1382,26 @@
        IF ( ALLOCATED( v_av ) )  THEN
           CALL wrd_write_string( 'v_av' )
           WRITE ( 14 )  v_av
+       ENDIF
+
+       IF ( ALLOCATED( v_m_l  ) )  THEN
+          CALL wrd_write_string( 'v_m_l' )
+          WRITE ( 14 )  v_m_l
+       ENDIF
+
+       IF ( ALLOCATED( v_m_n ) )  THEN
+          CALL wrd_write_string( 'v_m_n' )
+         WRITE ( 14 )  v_m_n
+       ENDIF
+
+       IF ( ALLOCATED( v_m_r ) )  THEN
+          CALL wrd_write_string( 'v_m_r' )
+          WRITE ( 14 )  v_m_r
+       ENDIF
+
+       IF ( ALLOCATED( v_m_s ) )  THEN
+          CALL wrd_write_string( 'v_m_s' )
+          WRITE ( 14 )  v_m_s
        ENDIF
 
        IF ( humidity )  THEN
@@ -1383,6 +1422,26 @@
        IF ( ALLOCATED( w_av ) )  THEN
           CALL wrd_write_string( 'w_av' )
           WRITE ( 14 )  w_av
+       ENDIF
+
+       IF ( ALLOCATED( w_m_l ) )  THEN
+          CALL wrd_write_string( 'w_m_l' )
+          WRITE ( 14 )  w_m_l
+       ENDIF
+
+       IF ( ALLOCATED( w_m_n ) )  THEN
+          CALL wrd_write_string( 'w_m_n' )
+          WRITE ( 14 )  w_m_n
+       ENDIF
+
+       IF ( ALLOCATED( w_m_r ) )  THEN
+          CALL wrd_write_string( 'w_m_r' )
+          WRITE ( 14 )  w_m_r
+       ENDIF
+
+       IF ( ALLOCATED( w_m_s ) )  THEN
+          CALL wrd_write_string( 'w_m_s' )
+          WRITE ( 14 )  w_m_s
        ENDIF
 
        IF ( ALLOCATED( z0_av ) )  THEN
@@ -1433,13 +1492,10 @@
        IF ( ALLOCATED( km_av ) )  CALL wrd_mpi_io( 'km_av', km_av )
        IF ( ALLOCATED( lpt_av ) )  CALL wrd_mpi_io( 'lpt_av', lpt_av )
        IF ( ALLOCATED( lwp_av ) )  CALL wrd_mpi_io( 'lwp_av', lwp_av )
-       IF ( ALLOCATED( ol_av ) )  CALL wrd_mpi_io( 'ol_av', ol_av )
        CALL wrd_mpi_io( 'p', p )
        IF ( ALLOCATED( p_av ) )  CALL wrd_mpi_io( 'p_av', p_av )
        IF ( ALLOCATED( pc_av ) )  CALL wrd_mpi_io( 'pc_av', pc_av )
        IF ( ALLOCATED( pr_av ) )  CALL wrd_mpi_io( 'pr_av', pr_av )
-       IF ( ALLOCATED( pres_drag_x_av ) )  CALL wrd_mpi_io( 'pres_drag_x_av', pres_drag_x_av )
-       IF ( ALLOCATED( pres_drag_y_av ) )  CALL wrd_mpi_io( 'pres_drag_y_av', pres_drag_y_av )
        CALL wrd_mpi_io( 'pt', pt )
        IF ( ALLOCATED( pt_av ) )  CALL wrd_mpi_io( 'pt_av', pt_av )
 
@@ -1493,15 +1549,27 @@
        IF ( ALLOCATED( ts_av ) )  CALL wrd_mpi_io( 'ts_av', ts_av )
        CALL wrd_mpi_io( 'u', u)
        IF ( ALLOCATED( u_av ) )  CALL wrd_mpi_io( 'u_av', u_av )
+       IF ( ALLOCATED( u_m_l ) )  CALL wrd_mpi_io( 'u_m_l', u_m_l )
+       IF ( ALLOCATED( u_m_n ) )  CALL wrd_mpi_io( 'u_m_n', u_m_n )
+       IF ( ALLOCATED( u_m_r ) )  CALL wrd_mpi_io( 'u_m_r', u_m_r )
+       IF ( ALLOCATED( u_m_s ) )  CALL wrd_mpi_io( 'u_m_s', u_m_s )
        IF ( ALLOCATED( us_av ) )  CALL wrd_mpi_io( 'us_av', us_av )
        CALL wrd_mpi_io( 'v', v )
        IF ( ALLOCATED( v_av ) )  CALL wrd_mpi_io( 'v_av', v_av )
+       IF ( ALLOCATED( v_m_l ) )  CALL wrd_mpi_io( 'v_m_l', v_m_l )
+       IF ( ALLOCATED( v_m_n ) )  CALL wrd_mpi_io( 'v_m_n', v_m_n )
+       IF ( ALLOCATED( v_m_r ) )  CALL wrd_mpi_io( 'v_m_r', v_m_r )
+       IF ( ALLOCATED( v_m_s ) )  CALL wrd_mpi_io( 'v_m_s', v_m_s )
        IF ( humidity )  THEN
           CALL wrd_mpi_io( 'vpt',  vpt )
           IF ( ALLOCATED( vpt_av ) )  CALL wrd_mpi_io( 'vpt_av', vpt_av )
        ENDIF
        CALL wrd_mpi_io( 'w', w)
        IF ( ALLOCATED( w_av ) )  CALL wrd_mpi_io( 'w_av', w_av )
+       IF ( ALLOCATED( w_m_l ) )  CALL wrd_mpi_io( 'w_m_l', w_m_l )
+       IF ( ALLOCATED( w_m_n ) )  CALL wrd_mpi_io( 'w_m_n', w_m_n )
+       IF ( ALLOCATED( w_m_r ) )  CALL wrd_mpi_io( 'w_m_r', w_m_r )
+       IF ( ALLOCATED( w_m_s ) )  CALL wrd_mpi_io( 'w_m_s', w_m_s )
        IF ( ALLOCATED( z0_av ) )  CALL wrd_mpi_io( 'z0_av', z0_av )
        IF ( ALLOCATED( z0h_av ) )  CALL wrd_mpi_io( 'z0h_av', z0h_av )
        IF ( ALLOCATED( z0q_av ) )  CALL wrd_mpi_io( 'z0q_av', z0q_av )
@@ -1514,9 +1582,7 @@
     ENDIF
 
     CALL surface_wrd_local
-!
-!-- Write restart data of surface_data_output_mod
-    IF ( surface_output )  CALL surface_data_output_wrd_local
+
 !
 !-- Write restart data of other modules
     CALL module_interface_wrd_local
@@ -1528,20 +1594,6 @@
     ENDIF
 
  END SUBROUTINE wrd_local
-
-!--------------------------------------------------------------------------------------------------!
-! Description:
-! ------------
-!> Write local variables to spinup file
-!--------------------------------------------------------------------------------------------------!
- SUBROUTINE wrd_local_spinup
-
-    CALL surface_wrd_local
-!
-!-- Write restart data of other modules
-    CALL module_interface_wrd_local_spinup
-
- END SUBROUTINE wrd_local_spinup
 
 
  END MODULE write_restart_data_mod

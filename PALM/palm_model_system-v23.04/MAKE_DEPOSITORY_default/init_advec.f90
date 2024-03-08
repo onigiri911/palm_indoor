@@ -13,8 +13,27 @@
 ! You should have received a copy of the GNU General Public License along with PALM. If not, see
 ! <http://www.gnu.org/licenses/>.
 !
-! Copyright 1997-2021 Leibniz Universitaet Hannover
+! Copyright 1997-2020 Leibniz Universitaet Hannover
 !--------------------------------------------------------------------------------------------------!
+!
+! Current revisions:
+! -----------------
+!
+!
+! Former revisions:
+! -----------------
+! $Id: init_advec.f90 4648 2020-08-25 07:52:08Z raasch $
+! file re-formatted to follow the PALM coding standard
+!
+! 4360 2020-01-07 11:25:50Z suehring
+! Corrected "Former revisions" section
+!
+! 3655 2019-01-07 16:51:22Z knoop
+! Corrected "Former revisions" section
+!
+! Revision 1.1  1999/02/05 09:07:38  raasch
+! Initial revision
+!
 !
 ! Description:
 ! ------------
@@ -22,16 +41,14 @@
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE init_advec
 
+
     USE advection,                                                                                 &
-        ONLY:  aex,                                                                                &
-               bex,                                                                                &
-               dex,                                                                                &
-               eex
+        ONLY:  aex, bex, dex, eex
+
+    USE kinds
 
     USE control_parameters,                                                                        &
         ONLY:  scalar_advec
-
-    USE kinds
 
     IMPLICIT NONE
 

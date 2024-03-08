@@ -13,9 +13,75 @@
 ! You should have received a copy of the GNU General Public License along with PALM. If not, see
 ! <http://www.gnu.org/licenses/>.
 !
-! Copyright 1997-2021 Leibniz Universitaet Hannover
-! Copyright 2022-2022 pecanode GmbH
+! Copyright 1997-2020 Leibniz Universitaet Hannover
 !--------------------------------------------------------------------------------------------------!
+!
+! Current revisions:
+! ------------------
+!
+!
+! Former revisions:
+! -----------------
+! $Id: data_output_3d.f90 4769 2020-11-03 13:51:23Z suehring $
+! Keep 32-bit output for netcdf_data_output < 5
+!
+! 4768 2020-11-02 19:11:23Z suehring
+! Enable 3D data output also with 64-bit precision
+! 
+! 4559 2020-06-11 08:51:48Z raasch
+! file re-formatted to follow the PALM coding standard
+!
+! 4457 2020-03-11 14:20:43Z raasch
+! use statement for exchange horiz added
+!
+! 4444 2020-03-05 15:59:50Z raasch
+! bugfix: cpp-directives for serial mode added
+!
+! 4360 2020-01-07 11:25:50Z suehring
+! Introduction of wall_flags_total_0, which currently sets bits based on static topography
+! information used in wall_flags_static_0
+!
+! 4329 2019-12-10 15:46:36Z motisi
+! Renamed wall_flags_0 to wall_flags_static_0
+!
+! 4182 2019-08-22 15:20:23Z scharf
+! Corrected "Former revisions" section
+!
+! 4162 2019-08-16 05:54:29Z raasch
+! bugfix for r4155
+!
+! 4155 2019-08-14 06:25:18Z raasch
+! bugfix for 3d-output in serial mode (ghost points must not be written)
+!
+! 4127 2019-07-30 14:47:10Z suehring
+! Adjustment for top boundary index for plant-canopy model outputs (merge from branch resler)
+!
+! 4048 2019-06-21 21:00:21Z knoop
+! Moved tcm_data_output_3d to module_interface
+!
+! 4039 2019-06-18 10:32:41Z suehring
+! modularize diagnostic output
+!
+! 3994 2019-05-22 18:08:09Z suehring
+! output of turbulence intensity added
+!
+! 3987 2019-05-22 09:52:13Z kanani
+! Introduce alternative switch for debug output during timestepping
+!
+! 3885 2019-04-11 11:29:34Z kanani
+! Changes related to global restructuring of location messages and introduction of additional debug
+! messages
+!
+! 3814 2019-03-26 08:40:31Z pavelkrc
+! unused variables removed
+!
+! 3655 2019-01-07 16:51:22Z knoop
+! Bugfix: use time_since_reference_point instead of simulated_time (relevant when using wall/soil
+!         spinup)
+!
+! Revision 1.1  1997/09/03 06:29:36  raasch
+! Initial revision
+!
 !
 ! Description:
 ! ------------
@@ -23,21 +89,9 @@
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE data_output_3d( av )
 
+
     USE arrays_3d,                                                                                 &
-        ONLY:  d_exner,                                                                            &
-               e,                                                                                  &
-               p,                                                                                  &
-               pt,                                                                                 &
-               q,                                                                                  &
-               ql,                                                                                 &
-               ql_c,                                                                               &
-               ql_v,                                                                               &
-               s,                                                                                  &
-               tend,                                                                               &
-               u,                                                                                  &
-               v,                                                                                  &
-               vpt,                                                                                &
-               w
+        ONLY:  d_exner, e, p, pt, q, ql, ql_c, ql_v, s, tend, u, v, vpt, w
 
     USE averaging
 
@@ -48,78 +102,33 @@
         ONLY:  bulk_cloud_model
 
     USE control_parameters,                                                                        &
-        ONLY:  debug_output_timestep,                                                              &
-               dcep,                                                                               &
-               do3d,                                                                               &
-               do3d_no,                                                                            &
-               do3d_time_count,                                                                    &
-               interpolate_to_grid_center,                                                         &
-               land_surface,                                                                       &
-               message_string,                                                                     &
-               ntdim_3d,                                                                           &
-               nz_do3d,                                                                            &
-               output_fill_value,                                                                  &
-               plant_canopy,                                                                       &
-               psolver,                                                                            &
-               time_since_reference_point,                                                         &
-               urban_surface,                                                                      &
+        ONLY:  debug_output_timestep, do3d, do3d_no, do3d_time_count, land_surface, message_string,&
+               ntdim_3d, nz_do3d, plant_canopy, psolver, time_since_reference_point, urban_surface,&
                varnamelength
 
 #if defined( __parallel )
     USE control_parameters,                                                                        &
-        ONLY:  io_blocks,                                                                          &
-               io_group,                                                                           &
-               output_3d_file_size
+        ONLY:  io_blocks, io_group
 #endif
 
     USE cpulog,                                                                                    &
         ONLY: cpu_log, log_point
-#if defined( __parallel ) && defined( __netcdf )
-    USE cpulog,                                                                                    &
-        ONLY: log_point_s
-#endif
-
-    USE dcep_mod,                                                                                  &
-        ONLY:  ke_uhl,                                                                             &
-               ke_ground,                                                                          &
-               ke_roof,                                                                            &
-               ke_wall,                                                                            &
-               nz_mesom
 
     USE exchange_horiz_mod,                                                                        &
         ONLY:  exchange_horiz
 
     USE indices,                                                                                   &
-        ONLY:  nbgp,                                                                               &
-               nxl,                                                                                &
-               nxlg,                                                                               &
-               nxr,                                                                                &
-               nxrg,                                                                               &
-               nyn,                                                                                &
-               nyng,                                                                               &
-               nys,                                                                                &
-               nysg,                                                                               &
-               nzb,                                                                                &
-               nzt,                                                                                &
-               topo_flags
-
-#if defined( __parallel )
-    USE indices,                                                                                   &
-        ONLY:  nx
-#endif
+        ONLY:  nbgp, nxl, nxlg, nxr, nxrg, nyn, nyng, nys, nysg, nzb, nzt, wall_flags_total_0
 
 #if ! defined( __parallel )
     USE indices,                                                                                   &
-        ONLY:  nx,                                                                                 &
-               ny
+        ONLY:  nx, ny
 #endif
 
     USE kinds
 
     USE land_surface_model_mod,                                                                    &
-        ONLY: lsm_data_output_3d,                                                                  &
-              nzb_soil,                                                                            &
-              nzt_soil
+        ONLY: lsm_data_output_3d, nzb_soil, nzt_soil
 
     USE module_interface,                                                                          &
         ONLY:  module_interface_data_output_3d
@@ -129,19 +138,11 @@
 #endif
 
     USE netcdf_interface,                                                                          &
-        ONLY:  id_set_3d,                                                                          &
-               id_var_do3d,                                                                        &
-               id_var_time_3d,                                                                     &
-               nc_stat,                                                                            &
-               netcdf_data_format,                                                                 &
+        ONLY:  fill_value, id_set_3d, id_var_do3d, id_var_time_3d, nc_stat, netcdf_data_format,    &
                netcdf_handle_error
 
     USE particle_attributes,                                                                       &
-        ONLY:  grid_particles,                                                                     &
-               number_of_particles,                                                                &
-               particles,                                                                          &
-               particle_advection_start,                                                           &
-               prt_count
+        ONLY:  grid_particles, number_of_particles, particles, particle_advection_start, prt_count
 
     USE pegrid
 
@@ -149,58 +150,40 @@
         ONLY:  pch_index
 
     USE radiation_model_mod,                                                                       &
-        ONLY:  nz_urban_b,                                                                         &
-               nz_urban_t
-
-#if defined( __parallel )
-    USE transpose_mod,                                                                             &
-        ONLY:  nnz_x_diffnz,                                                                       &
-               nxr_x_max,                                                                          &
-               nzb_x_diffnz,                                                                       &
-               nzt_x_diffnz,                                                                       &
-               nz_x_max_diffnz,                                                                    &
-               resort_for_zx,                                                                      &
-               setup_transpose_indices_zx_diffnz,                                                  &
-               transpose_zx
-#endif
+        ONLY:  nz_urban_b, nz_urban_t
 
     USE urban_surface_mod,                                                                         &
         ONLY:  usm_data_output_3d
 
+
     IMPLICIT NONE
 
-    CHARACTER(LEN=varnamelength) ::  trimvar  !< TRIM of output-variable string
+    INTEGER(iwp) ::  av        !< flag for (non-)average output
+    INTEGER(iwp) ::  flag_nr   !< number of masking flag
+    INTEGER(iwp) ::  i         !< loop index
+    INTEGER(iwp) ::  ivar      !< variable index
+    INTEGER(iwp) ::  j         !< loop index
+    INTEGER(iwp) ::  k         !< loop index
+    INTEGER(iwp) ::  n         !< loop index
+    INTEGER(iwp) ::  nzb_do    !< vertical lower limit for data output
+    INTEGER(iwp) ::  nzt_do    !< vertical upper limit for data output
 
-    INTEGER(iwp) ::  av       !< flag for (non-)average output
-    INTEGER(iwp) ::  flag_nr  !< number of masking flag
-    INTEGER(iwp) ::  i        !< loop index
-    INTEGER(iwp) ::  ivar     !< variable index
-    INTEGER(iwp) ::  j        !< loop index
-    INTEGER(iwp) ::  k        !< loop index
-    INTEGER(iwp) ::  kl       !< vertical index used to limit lower interpolation index
-    INTEGER(iwp) ::  n        !< loop index
-    INTEGER(iwp) ::  nzb_do   !< vertical lower limit for data output
-    INTEGER(iwp) ::  nzt_do   !< vertical upper limit for data output
+    LOGICAL      ::  found     !< true if output variable was found
+    LOGICAL      ::  resorted  !< true if variable is resorted
 
-    LOGICAL ::  found     !< true if output variable was found
-    LOGICAL ::  resorted  !< true if variable is resorted
-
-    REAL(wp) ::  mean_r  !< mean particle radius
-    REAL(wp) ::  s_r2    !< sum( particle-radius**2 )
-    REAL(wp) ::  s_r3    !< sum( particle-radius**3 )
+    REAL(wp)     ::  mean_r    !< mean particle radius
+    REAL(wp)     ::  s_r2      !< sum( particle-radius**2 )
+    REAL(wp)     ::  s_r3      !< sum( particle-radius**3 )
 
     REAL(wp), DIMENSION(:,:,:), ALLOCATABLE ::  local_pf  !< output array
 
     REAL(wp), DIMENSION(:,:,:), POINTER ::  to_be_resorted  !< pointer to array which shall be
+                                                            !< output
 
-#if defined( __parallel )
-    REAL(sp), ALLOCATABLE, DIMENSION(:,:,:) :: f_inv   !< input array for transposition in 4 byte precision
-    REAL(sp), ALLOCATABLE, DIMENSION(:,:,:) :: tr_out  !< transposed output array in 4 byte precision
-#endif
-
+    CHARACTER (LEN=varnamelength) ::  trimvar  !< TRIM of output-variable string
 
 !
-!-- Return, if nothing to output.
+!-- Return, if nothing to output
     IF ( do3d_no(av) == 0 )  RETURN
 
     IF ( debug_output_timestep )  CALL debug_message( 'data_output_3d', 'start' )
@@ -228,10 +211,11 @@
 !-- given output interval.
     IF ( netcdf_data_format > 4 )  THEN
        IF ( do3d_time_count(av) + 1 > ntdim_3d(av) )  THEN
-          WRITE ( message_string, * ) 'no output for 3d data at t = ',                             &
-                                      time_since_reference_point, ' s because maximum number of ', &
-                                      ' of output time levels is exceeded'
-          CALL message( 'data_output_3d', 'PAC0188', 0, 1, 0, 6, 0 )
+          WRITE ( message_string, * ) 'Output of 3d data is not given at t=',                      &
+                                      time_since_reference_point, 's because the maximum ',        &
+                                      'number of output time levels is ',                          &
+                                      'exceeded.'
+          CALL message( 'data_output_3d', 'PA0387', 0, 1, 0, 6, 0 )
           CALL cpu_log( log_point(14), 'data_output_3d', 'stop' )
           RETURN
        ENDIF
@@ -267,39 +251,24 @@
 !--    Temporary solution to account for data output within the new urban surface model
 !--    (urban_surface_mod.f90), see also SELECT CASE ( trimvar ).
 !--    Store the array chosen on the temporary array.
-       nzb_do = nzb
+       nzb_do   = nzb
 !
 !--    Set top index for 3D output. Note in case of plant-canopy model these index is determined by
 !--    pch_index.
        IF ( plant_canopy  .AND.  trimvar(1:4) == 'pcm_' )  THEN
-          nzt_do = pch_index
-       ELSEIF ( dcep  .AND.  trimvar == 'dcep_t_ground' )  THEN
-          nzt_do = ke_ground
-          nzb_do = 1
-       ELSEIF ( dcep  .AND.  trimvar == 'dcep_t_roof1' )  THEN
-          nzt_do = ke_roof
-          nzb_do = 1
-       ELSEIF ( dcep  .AND.  trimvar(1:11) == 'dcep_t_wall' )  THEN
-          nzt_do = ke_wall
-          nzb_do = 1
-       ELSEIF ( dcep  .AND.  trimvar(1:11) == 'dcep_tt_urb' )  THEN
-          nzt_do = nz_mesom
-          nzb_do = 1
-       ELSEIF ( dcep  .AND.  trimvar(1:4) == 'dcep' )  THEN
-          nzt_do = ke_uhl
-          nzb_do = 1
+          nzt_do   = pch_index
        ELSE
-          nzt_do = nz_do3d
+          nzt_do   = nz_do3d
        ENDIF
 
 !
 !--    Allocate a temporary array with the desired output dimensions.
        ALLOCATE( local_pf(nxl:nxr,nys:nyn,nzb_do:nzt_do) )
 !
-!--    Before each output, set array local_pf to fill value.
-       local_pf = output_fill_value
+!--    Before each output, set array local_pf to fill value
+       local_pf = REAL( fill_value, KIND=wp )
 !
-!--    Set masking flag for topography for not resorted arrays.
+!--    Set masking flag for topography for not resorted arrays
        flag_nr = 0
 
        SELECT CASE ( trimvar )
@@ -310,7 +279,7 @@
              ELSE
                 IF ( .NOT. ALLOCATED( e_av ) )  THEN
                    ALLOCATE( e_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-                   e_av = 0.0_wp
+                   e_av = REAL( fill_value, KIND = wp )
                 ENDIF
                 to_be_resorted => e_av
              ENDIF
@@ -321,7 +290,7 @@
              ELSE
                 IF ( .NOT. ALLOCATED( lpt_av ) )  THEN
                    ALLOCATE( lpt_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-                   lpt_av = 0.0_wp
+                   lpt_av = REAL( fill_value, KIND = wp )
                 ENDIF
                 to_be_resorted => lpt_av
              ENDIF
@@ -333,7 +302,7 @@
              ELSE
                 IF ( .NOT. ALLOCATED( p_av ) )  THEN
                    ALLOCATE( p_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-                   p_av = 0.0_wp
+                   p_av = REAL( fill_value, KIND = wp )
                 ENDIF
                 IF ( psolver /= 'sor' )  CALL exchange_horiz( p_av, nbgp )
                 to_be_resorted => p_av
@@ -357,7 +326,7 @@
              ELSE
                 IF ( .NOT. ALLOCATED( pc_av ) )  THEN
                    ALLOCATE( pc_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-                   pc_av = 0.0_wp
+                   pc_av = REAL( fill_value, KIND = wp )
                 ENDIF
                 to_be_resorted => pc_av
              ENDIF
@@ -402,7 +371,7 @@
              ELSE
                 IF ( .NOT. ALLOCATED( pr_av ) )  THEN
                    ALLOCATE( pr_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-                   pr_av = 0.0_wp
+                   pr_av = REAL( fill_value, KIND = wp )
                 ENDIF
                 to_be_resorted => pr_av
              ENDIF
@@ -424,7 +393,7 @@
              ELSE
                 IF ( .NOT. ALLOCATED( pt_av ) )  THEN
                    ALLOCATE( pt_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-                   pt_av = 0.0_wp
+                   pt_av = REAL( fill_value, KIND = wp )
                 ENDIF
                 to_be_resorted => pt_av
              ENDIF
@@ -435,7 +404,7 @@
              ELSE
                 IF ( .NOT. ALLOCATED( q_av ) )  THEN
                    ALLOCATE( q_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-                   q_av = 0.0_wp
+                   q_av = REAL( fill_value, KIND = wp )
                 ENDIF
                 to_be_resorted => q_av
              ENDIF
@@ -446,7 +415,7 @@
              ELSE
                 IF ( .NOT. ALLOCATED( ql_av ) )  THEN
                    ALLOCATE( ql_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-                   ql_av = 0.0_wp
+                   ql_av = REAL( fill_value, KIND = wp )
                 ENDIF
                 to_be_resorted => ql_av
              ENDIF
@@ -457,7 +426,7 @@
              ELSE
                 IF ( .NOT. ALLOCATED( ql_c_av ) )  THEN
                    ALLOCATE( ql_c_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-                   ql_c_av = 0.0_wp
+                   ql_c_av = REAL( fill_value, KIND = wp )
                 ENDIF
                 to_be_resorted => ql_c_av
              ENDIF
@@ -468,7 +437,7 @@
              ELSE
                 IF ( .NOT. ALLOCATED( ql_v_av ) )  THEN
                    ALLOCATE( ql_v_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-                   ql_v_av = 0.0_wp
+                   ql_v_av = REAL( fill_value, KIND = wp )
                 ENDIF
                 to_be_resorted => ql_v_av
              ENDIF
@@ -505,7 +474,7 @@
              ELSE
                 IF ( .NOT. ALLOCATED( ql_vp_av ) )  THEN
                    ALLOCATE( ql_vp_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-                   ql_vp_av = 0.0_wp
+                   ql_vp_av = REAL( fill_value, KIND = wp )
                 ENDIF
                 to_be_resorted => ql_vp_av
              ENDIF
@@ -523,7 +492,7 @@
              ELSE
                 IF ( .NOT. ALLOCATED( qv_av ) )  THEN
                    ALLOCATE( qv_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-                   qv_av = 0.0_wp
+                   qv_av = REAL( fill_value, KIND = wp )
                 ENDIF
                 to_be_resorted => qv_av
              ENDIF
@@ -534,57 +503,31 @@
              ELSE
                 IF ( .NOT. ALLOCATED( s_av ) )  THEN
                    ALLOCATE( s_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-                   s_av = 0.0_wp
+                   s_av = REAL( fill_value, KIND = wp )
                 ENDIF
                 to_be_resorted => s_av
              ENDIF
 
           CASE ( 'u' )
-             flag_nr = MERGE( 0, 1, interpolate_to_grid_center )
+             flag_nr = 1
              IF ( av == 0 )  THEN
-                IF ( interpolate_to_grid_center )  THEN
-                   DO  i = nxl, nxr
-                      DO  j = nys, nyn
-                         DO  k = nzb_do, nzt_do
-                            IF ( BTEST( topo_flags(k,j,i), flag_nr ) )  THEN
-                               local_pf(i,j,k) = 0.5_wp * ( u(k,j,i) + u(k,j,i+1) )
-                            ENDIF
-                         ENDDO
-                      ENDDO
-                   ENDDO
-                   resorted = .TRUE.
-                ELSE
-                   to_be_resorted => u
-                ENDIF
+                to_be_resorted => u
              ELSE
                 IF ( .NOT. ALLOCATED( u_av ) )  THEN
                    ALLOCATE( u_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-                   u_av = 0.0_wp
+                   u_av = REAL( fill_value, KIND = wp )
                 ENDIF
                 to_be_resorted => u_av
              ENDIF
 
           CASE ( 'v' )
-             flag_nr = MERGE( 0, 2, interpolate_to_grid_center )
+             flag_nr = 2
              IF ( av == 0 )  THEN
-                IF ( interpolate_to_grid_center )  THEN
-                   DO  i = nxl, nxr
-                      DO  j = nys, nyn
-                         DO  k = nzb_do, nzt_do
-                            IF ( BTEST( topo_flags(k,j,i), flag_nr ) )  THEN
-                               local_pf(i,j,k) = 0.5_wp * ( v(k,j,i) + v(k,j+1,i) )
-                            ENDIF
-                         ENDDO
-                      ENDDO
-                   ENDDO
-                   resorted = .TRUE.
-                ELSE
-                   to_be_resorted => v
-                ENDIF
+                to_be_resorted => v
              ELSE
                 IF ( .NOT. ALLOCATED( v_av ) )  THEN
                    ALLOCATE( v_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-                   v_av = 0.0_wp
+                   v_av = REAL( fill_value, KIND = wp )
                 ENDIF
                 to_be_resorted => v_av
              ENDIF
@@ -595,35 +538,19 @@
              ELSE
                 IF ( .NOT. ALLOCATED( vpt_av ) )  THEN
                    ALLOCATE( vpt_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-                   vpt_av = 0.0_wp
+                   vpt_av = REAL( fill_value, KIND = wp )
                 ENDIF
                 to_be_resorted => vpt_av
              ENDIF
 
           CASE ( 'w' )
-             flag_nr = MERGE( 0, 3, interpolate_to_grid_center )
+             flag_nr = 3
              IF ( av == 0 )  THEN
-                IF ( interpolate_to_grid_center )  THEN
-                   DO  i = nxl, nxr
-                      DO  j = nys, nyn
-                         DO  k = nzb_do, nzt_do
-!
-!--                         Limit k index used to interpolate to grid center.
-                            kl = MAX( k-1, 0 )
-                            IF ( BTEST( topo_flags(k,j,i), flag_nr ) )  THEN
-                               local_pf(i,j,k) = 0.5_wp * ( w(k,j,i) + w(kl,j,i) )
-                            ENDIF
-                         ENDDO
-                      ENDDO
-                   ENDDO
-                   resorted = .TRUE.
-                ELSE
-                   to_be_resorted => w
-                ENDIF
+                to_be_resorted => w
              ELSE
                 IF ( .NOT. ALLOCATED( w_av ) )  THEN
                    ALLOCATE( w_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-                   w_av = 0.0_wp
+                   w_av = REAL( fill_value, KIND = wp )
                 ENDIF
                 to_be_resorted => w_av
              ENDIF
@@ -632,8 +559,9 @@
 !
 !--          Quantities of other modules
              IF ( .NOT. found )  THEN
-                CALL module_interface_data_output_3d( av, trimvar, found, local_pf, resorted,      &
-                                                      nzb_do, nzt_do )
+                CALL module_interface_data_output_3d( av, trimvar, found, local_pf, fill_value,    &
+                                                      resorted, nzb_do, nzt_do                     &
+                                                    )
              ENDIF
 
 !
@@ -646,7 +574,7 @@
 
                 DEALLOCATE ( local_pf )
                 ALLOCATE( local_pf(nxl:nxr,nys:nyn,nzb_do:nzt_do) )
-                local_pf = output_fill_value
+                local_pf = fill_value
 
                 CALL usm_data_output_3d( av, trimvar, found, local_pf, nzb_do, nzt_do )
                 resorted = .TRUE.
@@ -673,7 +601,7 @@
 
                 DEALLOCATE ( local_pf )
                 ALLOCATE( local_pf(nxl:nxr,nys:nyn,nzb_do:nzt_do) )
-                local_pf = output_fill_value
+                local_pf = fill_value
 
                 CALL lsm_data_output_3d( av, trimvar, found, local_pf )
                 resorted = .TRUE.
@@ -690,6 +618,11 @@
 
              ENDIF
 
+             IF ( .NOT. found )  THEN
+                message_string =  'no output available for: ' // TRIM( do3d(av,ivar) )
+                CALL message( 'data_output_3d', 'PA0182', 0, 0, 0, 6, 0 )
+             ENDIF
+
        END SELECT
 
 !
@@ -698,9 +631,9 @@
           DO  i = nxl, nxr
              DO  j = nys, nyn
                 DO  k = nzb_do, nzt_do
-                   IF ( BTEST( topo_flags(k,j,i), flag_nr ) )  THEN
-                      local_pf(i,j,k) = to_be_resorted(k,j,i)
-                   ENDIF
+                   local_pf(i,j,k) = MERGE( to_be_resorted(k,j,i),                                 &
+                                            REAL( fill_value, KIND = wp ),                         &
+                                            BTEST( wall_flags_total_0(k,j,i), flag_nr ) )
                 ENDDO
              ENDDO
           ENDDO
@@ -729,57 +662,32 @@
        ELSE
 #if defined( __netcdf )
 !
-!--       Call for parallel runs.
-!--       Try to rearrange the data (via transposition) so that contiguous vectors 0:nx are located
-!--       on the PEs. This way fragmentation of output data is reduced and data chunks for
-!--       NetCDF I/O are getting larger.
-!--       The rearrangement (transposition) requires that the virtual PE grid has no more cores
-!--       along x than output grid points along z. If a 1d-decomposition along y is used (npex=1),
-!--       a transposition is not required.
-          IF ( npex <= ( nzt_do - nzb_do + 1 )  .AND.  npex > 1 )  THEN
+!--       Parallel output in netCDF4/HDF5 format.
+!          IF ( nxr == nx  .AND.  nyn /= ny )  THEN
+!             nc_stat = NF90_PUT_VAR( id_set_3d(av), id_var_do3d(av,ivar),  &
+!                               local_pf(nxl:nxr+1,nys:nyn,nzb_do:nzt_do),    &
+!                start = (/ nxl+1, nys+1, nzb_do+1, do3d_time_count(av) /),  &
+!                count = (/ nxr-nxl+2, nyn-nys+1, nzt_do-nzb_do+1, 1 /) )
+!          ELSEIF ( nxr /= nx  .AND.  nyn == ny )  THEN
+!             nc_stat = NF90_PUT_VAR( id_set_3d(av), id_var_do3d(av,ivar),  &
+!                               local_pf(nxl:nxr,nys:nyn+1,nzb_do:nzt_do),    &
+!                start = (/ nxl+1, nys+1, nzb_do+1, do3d_time_count(av) /),  &
+!                count = (/ nxr-nxl+1, nyn-nys+2, nzt_do-nzb_do+1, 1 /) )
+!          ELSEIF ( nxr == nx  .AND.  nyn == ny )  THEN
+!             nc_stat = NF90_PUT_VAR( id_set_3d(av), id_var_do3d(av,ivar),  &
+!                             local_pf(nxl:nxr+1,nys:nyn+1,nzb_do:nzt_do  ),  &
+!                start = (/ nxl+1, nys+1, nzb_do+1, do3d_time_count(av) /),  &
+!                count = (/ nxr-nxl+2, nyn-nys+2, nzt_do-nzb_do+1, 1 /) )
+!          ELSE
 !
-!--          Indices must be set each time, because output arrays can have different size along z.
-             CALL setup_transpose_indices_zx_diffnz( nzb_do, nzt_do )
-
-             ALLOCATE( f_inv(nys:nyn,nxl:nxr_x_max,1:nz_x_max_diffnz) )
-             ALLOCATE( tr_out(nx+1,nys:nyn,nzb_x_diffnz:nzt_x_diffnz) )
-
-             CALL resort_for_zx( local_pf, f_inv, nzb_do, nzt_do )
-!
-!--          Do transposition for array where z is dimensioned (nzb_do:nzt_do).
-!--          Be aware that this routine does not work for npex = 1.
-             CALL transpose_zx( f_inv, tr_out, diffnz = .TRUE. )
-
-             CALL cpu_log( log_point_s(58), 'output_3d 1:nx+1 PUT', 'start' )
-             output_3d_file_size = output_3d_file_size + SIZE( tr_out )
-             nc_stat = NF90_PUT_VAR( id_set_3d(av), id_var_do3d(av,ivar),                          &
-                                     tr_out(1:nx+1,nys:nyn,nzb_x_diffnz:nzt_x_diffnz),             &
-                                     start = (/ 1, nys+1, nzb_x_diffnz, do3d_time_count(av) /),    &
-                                     count = (/ nx+1, nyn-nys+1, nnz_x_diffnz, 1 /)                &
-                                   )
-             CALL netcdf_handle_error( 'data_output_3d', 386 )
-             CALL cpu_log( log_point_s(58), 'output_3d 1:nx+1 PUT', 'stop' )
-
-             DEALLOCATE( f_inv, tr_out )
-
-          ELSE
-!
-!--          Output arrays in their standard dimensions, as given by the domain decomposition.
-             CALL cpu_log( log_point_s(59), 'output_3d nxl:nxr PUT', 'start' )
-             IF ( wp == dp )  THEN
-                output_3d_file_size = output_3d_file_size + SIZE( local_pf ) / 2
-             ELSE
-                output_3d_file_size = output_3d_file_size + SIZE( local_pf )
-             ENDIF
-             nc_stat = NF90_PUT_VAR( id_set_3d(av), id_var_do3d(av,ivar),                          &
-                                      local_pf(nxl:nxr,nys:nyn,nzb_do:nzt_do),                     &
-                                      start = (/ nxl+1, nys+1, nzb_do+1, do3d_time_count(av) /),   &
-                                      count = (/ nxr-nxl+1, nyn-nys+1, nzt_do-nzb_do+1, 1 /)       &
-                )
-             CALL netcdf_handle_error( 'data_output_3d', 386 )
-             CALL cpu_log( log_point_s(59), 'output_3d nxl:nxr PUT', 'stop' )
-
-          ENDIF
+!--       Call for parallel runs
+          nc_stat = NF90_PUT_VAR( id_set_3d(av), id_var_do3d(av,ivar),                             &
+                                   local_pf(nxl:nxr,nys:nyn,nzb_do:nzt_do),                        &
+                                   start = (/ nxl+1, nys+1, nzb_do+1, do3d_time_count(av) /),      &
+                                   count = (/ nxr-nxl+1, nyn-nys+1, nzt_do-nzb_do+1, 1 /)          &
+                                 )
+!          ENDIF
+          CALL netcdf_handle_error( 'data_output_3d', 386 )
 #endif
        ENDIF
 #else
@@ -805,5 +713,6 @@
     CALL cpu_log( log_point(14), 'data_output_3d', 'stop' )
 
     IF ( debug_output_timestep )  CALL debug_message( 'data_output_3d', 'end' )
+
 
  END SUBROUTINE data_output_3d

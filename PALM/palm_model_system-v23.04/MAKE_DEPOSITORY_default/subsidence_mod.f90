@@ -13,9 +13,35 @@
 ! You should have received a copy of the GNU General Public License along with PALM. If not, see
 ! <http://www.gnu.org/licenses/>.
 !
-! Copyright 1997-2021 Leibniz Universitaet Hannover
+! Copyright 1997-2020 Leibniz Universitaet Hannover
 !--------------------------------------------------------------------------------------------------!
 !
+!
+! Current revisions:
+! -----------------
+!
+!
+! Former revisions:
+! -----------------
+! $Id: subsidence_mod.f90 4591 2020-07-06 15:56:08Z raasch $
+! File re-formatted to follow the PALM coding standard
+!
+!
+! 4360 2020-01-07 11:25:50Z suehring
+! Introduction of wall_flags_total_0, which currently sets bits based on static topography
+! information used in wall_flags_static_0
+!
+! 4329 2019-12-10 15:46:36Z motisi
+! Renamed wall_flags_0 to wall_flags_static_0
+!
+! 4182 2019-08-22 15:20:23Z scharf
+! Corrected "Former revisions" section
+!
+! 3655 2019-01-07 16:51:22Z knoop
+! Add subroutine and variable description
+!
+! Revision 3.7 2009-12-11 14:15:58Z heinze
+! Initial revision
 !
 ! Description:
 ! ------------
@@ -24,6 +50,7 @@
 !> time.
 !--------------------------------------------------------------------------------------------------!
  MODULE subsidence_mod
+
 
     IMPLICIT NONE
 
@@ -81,7 +108,7 @@
 
        IF ( ocean_mode )  THEN
           message_string = 'applying large scale vertical motion is not allowed for ocean mode'
-          CALL message( 'init_w_subsidence', 'PAC0314', 2, 2, 0, 6, 0 )
+          CALL message( 'init_w_subsidence', 'PA0324', 2, 2, 0, 6, 0 )
        ENDIF
 
 !
@@ -102,7 +129,11 @@
             ENDIF
          ENDIF
          IF ( gradient /= 0.0_wp )  THEN
-            w_subs(k) = w_subs(k-1) + dzu(k) * gradient
+            IF ( k /= 1 )  THEN
+               w_subs(k) = w_subs(k-1) + dzu(k) * gradient
+            ELSE
+               w_subs(k) = ws_surface   + 0.5_wp * dzu(k) * gradient
+            ENDIF
          ELSE
             w_subs(k) = w_subs(k-1)
          ENDIF
@@ -145,7 +176,7 @@
                   nysg,                                                                            &
                   nzb,                                                                             &
                   nzt,                                                                             &
-                  topo_flags
+                  wall_flags_total_0
 
        USE kinds
 
@@ -178,10 +209,10 @@
              DO  k = nzb+1, nzt
                 IF ( w_subs(k) < 0.0_wp )  THEN    ! large-scale subsidence
                    tmp_tend = - w_subs(k) * ( var(k+1,j,i) - var(k,j,i) ) * ddzu(k+1) *            &
-                              MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                              MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
                 ELSE   ! large-scale ascent
                    tmp_tend = - w_subs(k) * ( var(k,j,i) - var(k-1,j,i) ) * ddzu(k) *              &
-                              MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                              MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
                 ENDIF
 
                 tendency(k,j,i) = tendency(k,j,i) + tmp_tend
@@ -190,7 +221,7 @@
                    sums_ls_l(k,ls_index) = sums_ls_l(k,ls_index) + tmp_tend                        &
                                            * weight_substep(intermediate_timestep_count)           &
                                            * MERGE( 1.0_wp, 0.0_wp,                                &
-                                                    BTEST( topo_flags(k,j,i), 0 ) )
+                                                    BTEST( wall_flags_total_0(k,j,i), 0 ) )
                 ENDIF
              ENDDO
 
@@ -264,7 +295,7 @@
                   nysg,                                                                            &
                   nzb,                                                                             &
                   nzt,                                                                             &
-                  topo_flags
+                  wall_flags_total_0
 
        USE kinds
 
@@ -294,10 +325,10 @@
        DO  k = nzb+1, nzt
           IF ( w_subs(k) < 0.0_wp )  THEN      ! large-scale subsidence
              tmp_tend = - w_subs(k) * ( var(k+1,j,i) - var(k,j,i) ) * ddzu(k+1)                    &
-                        * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                        * MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
           ELSE                                 ! large-scale ascent
              tmp_tend = - w_subs(k) * ( var(k,j,i) - var(k-1,j,i) ) * ddzu(k)                      &
-                        * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                        * MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
           ENDIF
 
           tendency(k,j,i) = tendency(k,j,i) + tmp_tend
@@ -305,7 +336,7 @@
           IF ( large_scale_forcing )  THEN
              sums_ls_l(k,ls_index) = sums_ls_l(k,ls_index) + tmp_tend                              &
                                      * weight_substep(intermediate_timestep_count)                 &
-                                     * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                                     * MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
           ENDIF
        ENDDO
 

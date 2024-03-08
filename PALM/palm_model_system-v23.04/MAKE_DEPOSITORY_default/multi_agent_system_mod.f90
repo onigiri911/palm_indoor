@@ -13,8 +13,59 @@
 ! You should have received a copy of the GNU General Public License along with PALM. If not, see
 ! <http://www.gnu.org/licenses/>.
 !
-! Copyright 2016-2021 Leibniz Universitaet Hannover
+! Copyright 2016-2020 Leibniz Universitaet Hannover
 !--------------------------------------------------------------------------------------------------!
+!
+! Current revisions:
+! ------------------
+!
+!
+! Former revisions:
+! -----------------
+! $Id: multi_agent_system_mod.f90 4753 2020-10-21 14:55:41Z raasch $
+! file re-formatted to follow the PALM coding standard
+!
+! 4623 2020-07-24 08:42:02Z raasch
+! some switches calculated explicitly to avoid compiler warnings
+!
+! 4481 2020-03-31 18:55:54Z maronga
+! bugfix: cpp-directives for serial mode added
+!
+! 4346 2019-12-18 11:55:56Z motisi
+! Removed wall_flags_static_0 from USE statements as it's not used within the module
+!
+! 4329 2019-12-10 15:46:36Z motisi
+! Renamed wall_flags_0 to wall_flags_static_0
+!
+! 4307 2019-11-26 14:12:36Z maronga
+! Activated output of iPT
+!
+! 4182 2019-08-22 15:20:23Z scharf
+! Corrected "Former revisions" section
+!
+! 4168 2019-08-16 13:50:17Z suehring
+! Replace function get_topography_top_index by topo_top_ind
+!
+! 3987 2019-05-22 09:52:13Z kanani
+! Introduce alternative switch for debug output during timestepping
+!
+! 3885 2019-04-11 11:29:34Z kanani
+! Changes related to global restructuring of location messages and introduction  of additional debug
+! messages
+!
+! 3876 2019-04-08 18:41:49Z knoop
+! replaced nspec by nvar: only variable species should bconsidered, fixed species are not relevant
+!
+! 3766 2019-02-26 16:23:41Z raasch
+! save attribute added to local targets to avoid outlive pointer target warning
+!
+! 3665 2019-01-10 08:28:24Z raasch
+! unused variables removed
+!
+! 3159 2018-07-20 11:20:01Z sward
+! Initial revision
+!
+!
 !
 ! Authors:
 ! --------
@@ -29,10 +80,6 @@
 
     USE, INTRINSIC ::  ISO_C_BINDING
 
-#if defined( __parallel )
-    USE MPI
-#endif
-
     USE basic_constants_and_equations_mod,                                                         &
         ONLY:  pi
 
@@ -45,29 +92,13 @@
                time_since_reference_point
 
     USE cpulog,                                                                                    &
-        ONLY:  cpu_log,                                                                            &
-               log_point,                                                                          &
-               log_point_s
+        ONLY:  cpu_log, log_point, log_point_s
 
     USE grid_variables,                                                                            &
-        ONLY:  ddx,                                                                                &
-               ddy,                                                                                &
-               dx,                                                                                 &
-               dy
+        ONLY:  ddx, ddy, dx, dy
 
     USE indices,                                                                                   &
-        ONLY:  nx,                                                                                 &
-               nxl,                                                                                &
-               nxlg,                                                                               &
-               nxr,                                                                                &
-               nxrg,                                                                               &
-               ny,                                                                                 &
-               nyn,                                                                                &
-               nyng,                                                                               &
-               nys,                                                                                &
-               nysg,                                                                               &
-               nzb,                                                                                &
-               topo_top_ind
+        ONLY:  nx, nxl, nxlg, nxr, nxrg, ny, nyn, nyng, nys, nysg, nzb, topo_top_ind
 
     USE random_function_mod,                                                                       &
         ONLY:  random_function
@@ -383,8 +414,9 @@
           IF ( first_loop_stride ) CALL mas_get_prognostic_quantities
           CALL mas_data_output_agents ( first_call )
 #else
-          WRITE( message_string, * ) 'netCDF is needed for agent output'
-          CALL message( 'multi_agent_system', 'MAS0001', 1, 2, 0, 6, 0 )
+          WRITE( message_string, * ) 'NetCDF is needed for agent output. ',                        &
+                                     'Set __netcdf in compiler options'
+          CALL message( 'multi_agent_system', 'PA0071', 1, 2, 0, 6, 0 )
 #endif
           IF(first_call) first_call = .FALSE.
           time_write_agent_data = time_write_agent_data - dt_write_agent_data
@@ -1139,19 +1171,11 @@
  SUBROUTINE mas_data_output_agents( ftest )
 
     USE control_parameters,                                                                        &
-        ONLY:  agt_time_count,                                                                     &
-               biometeorology,                                                                     &
-               end_time,                                                                           &
-               message_string,                                                                     &
-               multi_agent_system_end,                                                             &
+        ONLY:  agt_time_count, biometeorology, end_time, message_string, multi_agent_system_end,   &
                multi_agent_system_start
 
     USE netcdf_interface,                                                                          &
-        ONLY:  nc_stat,                                                                            &
-               id_set_agt,                                                                         &
-               id_var_time_agt,                                                                    &
-               id_var_agt,                                                                         &
-               netcdf_handle_error
+        ONLY:  nc_stat, id_set_agt, id_var_time_agt, id_var_agt, netcdf_handle_error
 
     USE pegrid
 
@@ -1308,7 +1332,7 @@
                                                   '&Number of agents:     ', out_noa,              &
                                                   '&Agent dimension size: ', dim_size_agtnum
 
-             CALL message( 'mas_data_output_agents', 'MAS0002', 0, 1, 0, 6, 0 )
+             CALL message( 'mas_data_output_agents', 'PA0420', 0, 1, 0, 6, 0 )
 
           ENDIF
        ENDIF
@@ -1721,7 +1745,7 @@
     trla_count_recv   = 0
     trra_count_recv   = 0
 
-    IF ( npex /= 1 )  THEN
+    IF ( pdims(1) /= 1 )  THEN
 !
 !--    First calculate the storage necessary for sending and receiving the data.
 !--    Compute only first (nxl) and last (nxr) loop iterration.
@@ -1785,7 +1809,7 @@
                       IF ( ibc_mas_lr == 0 )  THEN
 !
 !--                      Cyclic condition
-                         IF ( npex == 1 )  THEN
+                         IF ( pdims(1) == 1 )  THEN
                             agents(n)%x        = ( nx + 1 ) * dx + agents(n)%x
                             agents(n)%origin_x = ( nx + 1 ) * dx + agents(n)%origin_x
                          ELSE
@@ -1828,7 +1852,7 @@
                       IF ( ibc_mas_lr == 0 )  THEN
 !
 !--                      Cyclic condition
-                         IF ( npex == 1 )  THEN
+                         IF ( pdims(1) == 1 )  THEN
                             agents(n)%x = agents(n)%x - ( nx + 1 ) * dx
                             agents(n)%origin_x = agents(n)%origin_x - ( nx + 1 ) * dx
                          ELSE
@@ -1877,7 +1901,7 @@
 !
 !-- Send left boundary, receive right boundary (but first exchange how many and check if agent
 !-- storage must be extended).
-    IF ( npex /= 1 )  THEN
+    IF ( pdims(1) /= 1 )  THEN
 
        CALL MPI_SENDRECV( trla_count,      1, MPI_INTEGER, pleft,  0,                              &
                           trra_count_recv, 1, MPI_INTEGER, pright, 0,                              &
@@ -1935,7 +1959,7 @@
     trsa_count_recv   = 0
     trna_count_recv   = 0
 
-    IF ( npey /= 1 )  THEN
+    IF ( pdims(2) /= 1 )  THEN
 !
 !--    First calculate the storage necessary for sending and receiving the data.
        DO  ip = nxl, nxr
@@ -1998,7 +2022,7 @@
                       IF ( ibc_mas_ns == 0 )  THEN
 !
 !--                      Cyclic condition
-                         IF ( npey == 1 )  THEN
+                         IF ( pdims(2) == 1 )  THEN
                             agents(n)%y = ( ny + 1 ) * dy + agents(n)%y
                             agents(n)%origin_y = ( ny + 1 ) * dy + agents(n)%origin_y
                          ELSE
@@ -2041,7 +2065,7 @@
                       IF ( ibc_mas_ns == 0 )  THEN
 !
 !--                      Cyclic condition
-                         IF ( npey == 1 )  THEN
+                         IF ( pdims(2) == 1 )  THEN
                             agents(n)%y        = agents(n)%y        - ( ny + 1 ) * dy
                             agents(n)%origin_y = agents(n)%origin_y - ( ny + 1 ) * dy
                          ELSE
@@ -2080,7 +2104,7 @@
 !
 !-- Send front boundary, receive back boundary (but first exchange how many and check if agent
 !-- storage must be extended).
-    IF ( npey /= 1 )  THEN
+    IF ( pdims(2) /= 1 )  THEN
 
        CALL MPI_SENDRECV( trsa_count,      1, MPI_INTEGER, psouth, 0,                              &
                           trna_count_recv, 1, MPI_INTEGER, pnorth, 0,                              &
@@ -2286,7 +2310,7 @@
     ENDDO
 !
 !-- Transfer of agents from left to right and vice versa
-    IF ( npex /= 1 )  THEN
+    IF ( pdims(1) /= 1 )  THEN
 !
 !--    Reset left and right ghost layers
        ghla_count  = 0
@@ -2395,7 +2419,7 @@
 
 !
 !-- Transfer of agents from south to north and vice versa
-    IF ( npey /= 1 )  THEN
+    IF ( pdims(2) /= 1 )  THEN
 !
 !--    Reset south and north ghost layers
        ghsa_count  = 0
@@ -2645,10 +2669,7 @@
  SUBROUTINE mas_get_prognostic_quantities
 
     USE arrays_3d,                                                                                 &
-        ONLY:  exner,                                                                              &
-               pt,                                                                                 &
-               u,                                                                                  &
-               v
+        ONLY:  exner, pt, u, v
 
     IMPLICIT NONE
 
@@ -2868,15 +2889,11 @@
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE mas_init
 
-    USE arrays_3d,                                                                                 &
-        ONLY:  zu,                                                                                 &
-               zw
-
     USE control_parameters,                                                                        &
-        ONLY:  coupling_char,                                                                      &
-               initializing_actions,                                                               &
-               io_blocks,                                                                          &
-               io_group
+        ONLY:  coupling_char, initializing_actions, io_blocks, io_group
+
+    USE arrays_3d,                                                                                 &
+        ONLY:  zu, zw
 
     USE indices,                                                                                   &
         ONLY:  nzt
@@ -2904,9 +2921,9 @@
 !
 !-- Check the number of agent groups.
     IF ( number_of_agent_groups > max_number_of_agent_groups )  THEN
-       WRITE( message_string, * ) 'number_of_agent_groups =', number_of_agent_groups ,             &
+       WRITE( message_string, * ) 'max_number_of_agent_groups =', max_number_of_agent_groups ,     &
                                   '&number_of_agent_groups reset to ', max_number_of_agent_groups
-       CALL message( 'mas_init', 'MAS0003', 0, 1, 0, 6, 0 )
+       CALL message( 'mas_init', 'PA0072', 0, 1, 0, 6, 0 )
        number_of_agent_groups = max_number_of_agent_groups
     ENDIF
 
@@ -2986,7 +3003,7 @@
        CASE DEFAULT
           WRITE( message_string, * ) 'unknown boundary condition ',                                &
                                      'bc_mas_lr = "', TRIM( bc_mas_lr ), '"'
-          CALL message( 'mas_init', 'MAS0004', 1, 2, 0, 6, 0 )
+          CALL message( 'mas_init', 'PA0073', 1, 2, 0, 6, 0 )
 
     END SELECT
     SELECT CASE ( bc_mas_ns )
@@ -3000,7 +3017,7 @@
        CASE DEFAULT
           WRITE( message_string, * ) 'unknown boundary condition ',                                &
                                      'bc_mas_ns = "', TRIM( bc_mas_ns ), '"'
-          CALL message( 'mas_init', 'MAS0004', 1, 2, 0, 6, 0 )
+          CALL message( 'mas_init', 'PA0074', 1, 2, 0, 6, 0 )
 
     END SELECT
 
@@ -3025,7 +3042,7 @@
                 message_string = 'Input file NAVIGATION_DATA' //                                   &
                                   TRIM( coupling_char ) // ' for MAS missing. ' //                 &
                                   '&Please run agent_preprocessing before the job to create it.'
-                CALL message( 'mas_init', 'MAS0005', 1, 2, 0, 6, 0 )
+                CALL message( 'mas_init', 'PA0525', 1, 2, 0, 6, 0 )
              ENDIF
              OPEN ( 119, FILE='NAVIGATION_DATA'//TRIM( coupling_char ), FORM='UNFORMATTED',        &
                          IOSTAT=ioerr )
@@ -3149,7 +3166,7 @@
                                      '&Consider adjusting the INPUT parameter'//                   &
                                      '&dim_size_agtnum_manual accordingly for the next run.'
 
-    CALL message( 'mas_data_output_agents', 'MAS0006', 0, 0, 0, 6, 0 )
+    CALL message( 'mas_data_output_agents', 'PA0457', 0, 0, 0, 6, 0 )
 
  END SUBROUTINE mas_last_actions
 
@@ -3633,19 +3650,11 @@
  SUBROUTINE mas_parin
 
     USE control_parameters,                                                                        &
-        ONLY: agent_time_unlimited,                                                                &
-              multi_agent_system_end,                                                              &
-              multi_agent_system_start
+        ONLY: agent_time_unlimited, multi_agent_system_end, multi_agent_system_start
 
     IMPLICIT NONE
 
-    CHARACTER(LEN=100) ::  line  !< dummy string for current line in namelist file
-
-    INTEGER(iwp)  ::  io_status  !< status after reading the namelist file
-
-    LOGICAL ::  switch_off_module = .FALSE.  !< local namelist parameter to switch off the module
-                                             !< although the respective module namelist appears in
-                                             !< the namelist file
+    CHARACTER (LEN=80) ::  line  !<
 
     NAMELIST /agent_parameters/  a_rand_target,                                                    &
                                  adx,                                                              &
@@ -3686,31 +3695,31 @@
                                  sigma_rep_agent,                                                  &
                                  sigma_rep_wall,                                                   &
                                  step_dealloc_mas,                                                 &
-                                 switch_off_module,                                                &
                                  tau_accel_agent
 
 !
-!-- Move to the beginning of the namelist file and try to find and read the namelist.
+!-- Try to find agent package
     REWIND ( 11 )
-    READ ( 11, agent_parameters, IOSTAT=io_status )
+    line = ' '
+    DO WHILE ( INDEX( line, '&agent_parameters' ) == 0 )
+       READ ( 11, '(A)', END=20 )  line
+    ENDDO
+    BACKSPACE ( 11 )
 
 !
-!-- Action depending on the READ status
-    IF ( io_status == 0 )  THEN
-!
-!--    agent_parameters namelist was found and read correctly. Set flag that indicates that agents
-!--    are switched on.
-       IF ( .NOT. switch_off_module )  agents_active = .TRUE.
+!-- Read user-defined namelist
+    READ ( 11, agent_parameters, ERR = 10, END = 20 )
 
-    ELSEIF ( io_status > 0 )  THEN
 !
-!--    agent_parameters namelist was found but contained errors. Print an error message including
-!--    the line that caused the problem.
-       BACKSPACE( 11 )
-       READ( 11 , '(A)') line
-       CALL parin_fail_message( 'agent_parameters', line )
+!-- Set flag that indicates that agents are switched on
+    agents_active = .TRUE.
+    GOTO 20
 
-    ENDIF
+10    BACKSPACE( 11 )
+    READ( 11 , '(A)') line
+    CALL parin_fail_message( 'agent_parameters', line )
+
+20    CONTINUE
 
  END SUBROUTINE mas_parin
 

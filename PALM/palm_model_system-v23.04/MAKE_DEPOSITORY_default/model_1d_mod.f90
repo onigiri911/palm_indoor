@@ -13,8 +13,34 @@
 ! You should have received a copy of the GNU General Public License along with PALM. If not, see
 ! <http://www.gnu.org/licenses/>.
 !
-! Copyright 1997-2021 Leibniz Universitaet Hannover
+! Copyright 1997-2020 Leibniz Universitaet Hannover
 !--------------------------------------------------------------------------------------------------!
+!
+! Current revisions:
+! -----------------
+!
+!
+! Former revisions:
+! -----------------
+! $Id: model_1d_mod.f90 4677 2020-09-14 07:55:28Z raasch $
+! file re-formatted to follow the PALM coding standard
+!
+! 4586 2020-07-01 16:16:43Z gronemeier
+! renamed Richardson flux number into gradient Richardson number
+!
+! 4449 2020-03-09 14:43:16Z suehring
+! Set intermediate_timestep_count back to zero after 1D-model integration.
+! This is required e.g. for initial calls of calc_mean_profile.
+!
+! 4360 2020-01-07 11:25:50Z suehring
+! Corrected "Former revisions" section
+!
+! 3655 2019-01-07 16:51:22Z knoop
+! Modularization of all bulk cloud physics code components
+!
+! Revision 1.1  1998/03/09 16:22:10  raasch
+! Initial revision
+!
 !
 ! Description:
 ! ------------
@@ -32,53 +58,25 @@
  MODULE model_1d_mod
 
     USE arrays_3d,                                                                                 &
-        ONLY:  dd2zu,                                                                              &
-               ddzu,                                                                               &
-               ddzw,                                                                               &
-               dzu,                                                                                &
-               dzw,                                                                                &
-               pt_init,                                                                            &
-               q_init,                                                                             &
-               ug,                                                                                 &
-               u_init,                                                                             &
-               vg,                                                                                 &
-               v_init,                                                                             &
-               zu
+        ONLY:  dd2zu, ddzu, ddzw, dzu, dzw, pt_init, q_init, ug, u_init, vg, v_init, zu
 
     USE basic_constants_and_equations_mod,                                                         &
-        ONLY:  g,                                                                                  &
-               kappa,                                                                              &
-               pi
+        ONLY:  g, kappa, pi
 
     USE control_parameters,                                                                        &
-        ONLY:  constant_diffusion,                                                                 &
-               constant_flux_layer,                                                                &
-               dissipation_1d,                                                                     &
-               f,                                                                                  &
-               humidity,                                                                           &
-               ibc_e_b,                                                                            &
-               intermediate_timestep_count,                                                        &
-               intermediate_timestep_count_max,                                                    &
-               km_constant,                                                                        &
-               message_string,                                                                     &
-               mixing_length_1d,                                                                   &
-               prandtl_number,                                                                     &
-               roughness_length,                                                                   &
-               run_description_header,                                                             &
-               simulated_time_chr,                                                                 &
-               timestep_scheme,                                                                    &
-               tsc,                                                                                &
-               z0h_factor
+        ONLY:  constant_diffusion, constant_flux_layer, dissipation_1d, f, humidity, ibc_e_b,      &
+               intermediate_timestep_count, intermediate_timestep_count_max, km_constant,          &
+               message_string, mixing_length_1d, prandtl_number, roughness_length,                 &
+               run_description_header, simulated_time_chr, timestep_scheme, tsc, z0h_factor
 
     USE indices,                                                                                   &
-        ONLY:  nzb,                                                                                &
-               nzb_diff,                                                                           &
-               nzt
+        ONLY:  nzb, nzb_diff, nzt
 
     USE kinds
 
     USE pegrid,                                                                                    &
         ONLY:  myid
+
 
     IMPLICIT NONE
 
@@ -185,8 +183,7 @@
  SUBROUTINE init_1d_model
 
     USE grid_variables,                                                                            &
-        ONLY:  dx,                                                                                 &
-               dy
+        ONLY:  dx, dy
 
     IMPLICIT NONE
 
@@ -959,9 +956,9 @@
     IF ( dt_1d < ( 1.0E-15_wp * dt_max_1d ) )  THEN
        stop_dt_1d = .TRUE.
 
-       WRITE( message_string, * ) 'simulaton has been stopped since timestep has exceeded the ',   &
-                                  'lower limit dt_1d = ', dt_1d
-       CALL message( 'timestep_1d', 'PAC0248', 1, 2, 0, 6, 0 )
+       WRITE( message_string, * ) 'timestep has exceeded the lower limit&', 'dt_1d = ',dt_1d,      &
+                                  ' s   simulation stopped!'
+       CALL message( 'timestep_1d', 'PA0192', 1, 2, 0, 6, 0 )
 
     ENDIF
 

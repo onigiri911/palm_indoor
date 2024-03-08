@@ -1,5 +1,5 @@
 !> @file time_integration.f90
-!--------------------------------------------------------------------------------------------------!
+!------------------------------------------------------------------------------!
 ! This file is part of the PALM model system.
 !
 ! PALM is free software: you can redistribute it and/or modify it under the
@@ -14,189 +14,303 @@
 ! You should have received a copy of the GNU General Public License along with
 ! PALM. If not, see <http://www.gnu.org/licenses/>.
 !
-! Copyright 1997-2021 Leibniz Universitaet Hannover
-!--------------------------------------------------------------------------------------------------!
+! Copyright 1997-2020 Leibniz Universitaet Hannover
+!------------------------------------------------------------------------------!
+!
+! Current revisions:
+! ------------------
+!
+!
+! Former revisions:
+! -----------------
+! $Id: time_integration.f90 4732 2020-10-07 14:46:34Z schwenkel $
+! Add use statements for OPENACC
+!
+! 4731 2020-10-07 13:25:11Z schwenkel
+! Move exchange_horiz from time_integration to modules
+!
+! 4671 2020-09-09 20:27:58Z pavelkrc
+! Implementation of downward facing USM and LSM surfaces
+!
+! 4669 2020-09-09 13:43:47Z pavelkrc
+! - Fix missing call of radiation after spinup
+! - Fix calculation of force_radiation_call
+! - Fix calculation of radiation times
+!
+! 4668 2020-09-09 13:00:16Z pavelkrc
+! Improve debug messages during timestepping
+! 
+! 4581 2020-06-29 08:49:58Z suehring
+! Omit explicit pressure forcing via geostrophic wind components in case of
+! mesoscale nesting.
+! 
+! 4578 2020-06-25 15:43:32Z gronemeier
+! bugfix: removed unused variables
+!
+! 4573 2020-06-24 13:08:47Z oliver.maas
+! calculate pt(0) incrementally by using dt_3d instead of calculating it absolutely
+! by using time_since_reference_point, because time_since_reference_point is set
+! to zero for initializing_actions = 'cyclic_fill'
+!
+! 4565 2020-06-15 08:30:38Z oliver.maas
+! added new surface temperature forcing method for bc_pt_b = 'dirichlet':
+! surface temperature pt(0) can be linearly increased by pt_surface_heating_rate (in K/h)
+!
+! 4564 2020-06-12 14:03:36Z raasch
+! Vertical nesting method of Huq et al. (2019) removed
+!
+! 4521 2020-05-06 11:39:49Z schwenkel
+! Rename variable
+!
+! 4511 2020-04-30 12:20:40Z raasch
+! chemistry decycling replaced by explicit setting of lateral boundary conditions
+!
+! 4508 2020-04-24 13:32:20Z raasch
+! salsa decycling replaced by explicit setting of lateral boundary conditions
+!
+! 4502 2020-04-17 16:14:16Z schwenkel
+! Implementation of ice microphysics
+!
+! 4472 2020-03-24 12:21:00Z Giersch
+! OPENACC COPYIN directive for ddx and ddy added
+!
+! 4466 2020-03-20 16:14:41Z suehring
+! Add advection fluxes to ACC copyin
+!
+! 4457 2020-03-11 14:20:43Z raasch
+! use statement for exchange horiz added
+!
+! 4444 2020-03-05 15:59:50Z raasch
+! bugfix: cpp-directives for serial mode added
+!
+! 4420 2020-02-24 14:13:56Z maronga
+! Added output control for wind turbine model
+!
+! 4403 2020-02-12 13:08:46Z banzhafs
+! Allowing both existing and on-demand emission read modes
+!
+! 4360 2020-01-07 11:25:50Z suehring
+! Bugfix, hour_call_emis uninitialized at first call of time_integration
+!
+! 4346 2019-12-18 11:55:56Z motisi
+! Introduction of wall_flags_total_0, which currently sets bits based on static
+! topography information used in wall_flags_static_0
+!
+! 4329 2019-12-10 15:46:36Z motisi
+! Renamed wall_flags_0 to wall_flags_static_0
+!
+! 4281 2019-10-29 15:15:39Z schwenkel
+! Moved boundary conditions to module interface
+!
+! 4276 2019-10-28 16:03:29Z schwenkel
+! Further modularization of lpm code components
+!
+! 4275 2019-10-28 15:34:55Z schwenkel
+! Move call oft lpm to the end of intermediate timestep loop
+!
+! 4268 2019-10-17 11:29:38Z schwenkel
+! Removing module specific boundary conditions an put them into their modules
+!
+! 4227 2019-09-10 18:04:34Z gronemeier
+! implement new palm_date_time_mod
+!
+! 4226 2019-09-10 17:03:24Z suehring
+! Changes in interface for the offline nesting
+!
+! 4182 2019-08-22 15:20:23Z scharf
+! Corrected "Former revisions" section
+!
+! 4170 2019-08-19 17:12:31Z gronemeier
+! copy diss, diss_p, tdiss_m to GPU
+!
+! 4144 2019-08-06 09:11:47Z raasch
+! relational operators .EQ., .NE., etc. replaced by ==, /=, etc.
+!
+! 4126 2019-07-30 11:09:11Z gronemeier
+! renamed routine to calculate uv exposure
+!
+! 4111 2019-07-22 18:16:57Z suehring
+! advc_flags_1 / advc_flags_2 renamed to advc_flags_m / advc_flags_s
+!
+! 4069 2019-07-01 14:05:51Z Giersch
+! Masked output running index mid has been introduced as a local variable to
+! avoid runtime error (Loop variable has been modified) in time_integration
+!
+! 4064 2019-07-01 05:33:33Z gronemeier
+! Moved call to radiation module out of intermediate time loop
+!
+! 4048 2019-06-21 21:00:21Z knoop
+! Moved production_e_init call into turbulence_closure_mod
+!
+! 4047 2019-06-21 18:58:09Z knoop
+! Added remainings of swap_timelevel upon its dissolution
+!
+! 4043 2019-06-18 16:59:00Z schwenkel
+! Further LPM modularization
+!
+! 4039 2019-06-18 10:32:41Z suehring
+! Rename subroutines in module for diagnostic quantities
+!
+! 4029 2019-06-14 14:04:35Z raasch
+! exchange of ghost points and boundary conditions separated for chemical species and SALSA module,
+! bugfix: decycling of chemistry species after nesting data transfer
+!
+! 4022 2019-06-12 11:52:39Z suehring
+! Call synthetic turbulence generator at last RK3 substep right after boundary
+! conditions are updated in offline nesting in order to assure that
+! perturbations are always imposed
+!
+! 4017 2019-06-06 12:16:46Z schwenkel
+! Mass (volume) flux correction included to ensure global mass conservation for child domains.
+!
+! 3994 2019-05-22 18:08:09Z suehring
+! output of turbulence intensity added
+!
+! 3988 2019-05-22 11:32:37Z kanani
+! Implement steerable output interval for virtual measurements
+!
+! 3968 2019-05-13 11:04:01Z suehring
+! replace nspec_out with n_matched_vars
+!
+! 3929 2019-04-24 12:52:08Z banzhafs
+! Reverse changes back from revision 3878: use chem_boundary_conds instead of
+! chem_boundary_conds_decycle
+!
+!
+! 3885 2019-04-11 11:29:34Z kanani
+! Changes related to global restructuring of location messages and introduction
+! of additional debug messages
+!
+! 3879 2019-04-08 20:25:23Z knoop
+! Moved wtm_forces to module_interface_actions
+!
+! 3872 2019-04-08 15:03:06Z knoop
+! Modifications made for salsa:
+! - Call salsa_emission_update at each time step but do the checks within
+!   salsa_emission_update (i.e. skip_time_do_salsa >= time_since_reference_point
+!   and next_aero_emission_update <= time_since_reference_point ).
+! - Renamed nbins --> nbins_aerosol, ncc_tot --> ncomponents_mass and
+!   ngast --> ngases_salsa and loop indices b, c and sg to ib, ic and ig
+! - Apply nesting for salsa variables
+! - Removed cpu_log calls speciffic for salsa.
+!
+! 3833 2019-03-28 15:04:04Z forkel
+! added USE chem_gasphase_mod, replaced nspec by nspec since fixed compounds are not integrated
+!
+! 3820 2019-03-27 11:53:41Z forkel
+! renamed do_emiss to emissions_anthropogenic (ecc)
+!
+!
+! 3774 2019-03-04 10:52:49Z moh.hefny
+! rephrase if statement to avoid unallocated array in case of
+! nesting_offline is false (crashing during debug mode)
+!
+! 3761 2019-02-25 15:31:42Z raasch $
+! module section re-formatted and openacc required variables moved to separate section,
+! re-formatting to 100 char line width
+!
+! 3745 2019-02-15 18:57:56Z suehring
+! Call indoor model after first timestep
+!
+! 3744 2019-02-15 18:38:58Z suehring
+! - Moved call of bio_calculate_thermal_index_maps from biometeorology module to
+! time_integration to make sure averaged input is updated before calculating.
+!
+! 3739 2019-02-13 08:05:17Z dom_dwd_user
+! Removed everything related to "time_bio_results" as this is never used.
+!
+! 3724 2019-02-06 16:28:23Z kanani
+! Correct double-used log_point_s unit
+!
+! 3719 2019-02-06 13:10:18Z kanani
+! - removed wind_turbine cpu measurement, since same time is measured inside
+!   wtm_forces subroutine as special measures
+! - moved the numerous vnest cpulog to special measures
+! - extended radiation cpulog over entire radiation part,
+!   moved radiation_interactions cpulog to special measures
+! - moved some cpu_log calls to this routine for better overview
+!
+! 3705 2019-01-29 19:56:39Z suehring
+! Data output for virtual measurements added
+!
+! 3704 2019-01-29 19:51:41Z suehring
+! Rename subroutines for surface-data output
+!
+! 3647 2019-01-02 14:10:44Z kanani
+! Bugfix: add time_since_reference_point to IF clause for data_output calls
+! (otherwise skip_time_* values don't come into affect with dt_do* = 0.0).
+! Clean up indoor_model and biometeorology model call.
+!
+! Revision 1.1  1997/08/11 06:19:04  raasch
+! Initial revision
+!
 !
 ! Description:
 ! ------------
 !> Integration in time of the model equations, statistical analysis and graphic
 !> output
-!--------------------------------------------------------------------------------------------------!
+!------------------------------------------------------------------------------!
  SUBROUTINE time_integration
 
-
-#if defined( __parallel )
-    USE MPI
-#endif
 
     USE advec_ws,                                                                                  &
         ONLY:  ws_statistics
 
     USE arrays_3d,                                                                                 &
-        ONLY:  dzu,                                                                                &
-               prho,                                                                               &
-               pt,                                                                                 &
-               pt_init,                                                                            &
-               q,                                                                                  &
-               q_init,                                                                             &
-               ref_state,                                                                          &
-               rho_ocean,                                                                          &
-               tend,                                                                               &
-               u,                                                                                  &
-               v,                                                                                  &
-               vpt
+        ONLY:  dzu, prho, pt, pt_init, q,                                                          &
+               q_init, ref_state, rho_ocean, tend, u, v, vpt
 
     USE biometeorology_mod,                                                                        &
-        ONLY:  bio_calculate_thermal_index_maps,                                                   &
-               thermal_comfort,                                                                    &
-               bio_calculate_uv_exposure,                                                          &
+        ONLY:  bio_calculate_thermal_index_maps, thermal_comfort, bio_calculate_uv_exposure,       &
                uv_exposure
 
     USE bulk_cloud_model_mod,                                                                      &
-        ONLY: bulk_cloud_model,                                                                    &
-              calc_liquid_water_content
+        ONLY: bulk_cloud_model, calc_liquid_water_content
 
     USE calc_mean_profile_mod,                                                                     &
         ONLY:  calc_mean_profile
 
     USE chem_emissions_mod,                                                                        &
-        ONLY:  chem_emissions_setup,                                                               &
-               chem_emissions_update_on_demand
+        ONLY:  chem_emissions_setup, chem_emissions_update_on_demand
 
     USE chem_gasphase_mod,                                                                         &
         ONLY:  nvar
 
     USE chem_modules,                                                                              &
-        ONLY:  bc_cs_t_val,                                                                        &
-               chem_species,                                                                       &
-               emissions_anthropogenic,                                                            &
-               emiss_read_legacy_mode,                                                             &
-               n_matched_vars
-
-    USE chemistry_model_mod,                                                                       &
-        ONLY:  chem_actions
+        ONLY:  bc_cs_t_val, chem_species, emissions_anthropogenic,                                 &
+               emiss_read_legacy_mode, n_matched_vars
 
     USE control_parameters,                                                                        &
-        ONLY:  advected_distance_x,                                                                &
-               advected_distance_y,                                                                &
-               air_chemistry,                                                                      &
-               average_count_3d,                                                                   &
-               averaging_interval,                                                                 &
-               averaging_interval_pr,                                                              &
-               bc_lr_cyc,                                                                          &
-               bc_ns_cyc,                                                                          &
-               bc_pt_t_val,                                                                        &
-               bc_q_t_val,                                                                         &
-               biometeorology,                                                                     &
-               call_psolver_at_all_substeps,                                                       &
-               child_domain,                                                                       &
-               constant_flux_layer,                                                                &
-               constant_heatflux,                                                                  &
-               create_disturbances,                                                                &
-               constant_diffusion,                                                                 &
-               coupling_start_time,                                                                &
-               current_timestep_number,                                                            &
-               debug_output_timestep,                                                              &
-               debug_string,                                                                       &
-               dcep,                                                                               &
-               disturbance_created,                                                                &
-               disturbance_energy_limit,                                                           &
-               dist_range,                                                                         &
-               dopr_n,                                                                             &
-               do_sum,                                                                             &
-               dt_3d,                                                                              &
-               dt_averaging_input,                                                                 &
-               dt_averaging_input_pr,                                                              &
-               dt_coupling,                                                                        &
-               dt_data_output_av,                                                                  &
-               dt_disturb,                                                                         &
-               dt_do2d_xy,                                                                         &
-               dt_do2d_xz,                                                                         &
-               dt_do2d_yz,                                                                         &
-               dt_do3d,                                                                            &
-               dt_domask,                                                                          &
-               dt_dopr,                                                                            &
-               dt_dopr_listing,                                                                    &
-               dt_dots,                                                                            &
-               dt_run_control,                                                                     &
-               end_time,                                                                           &
-               first_call_mas,                                                                     &
-               galilei_transformation,                                                             &
-               humidity,                                                                           &
-               indoor_model,                                                                       &
-               initializing_actions,                                                               &
-               intermediate_timestep_count,                                                        &
-               intermediate_timestep_count_max,                                                    &
-               land_surface,                                                                       &
-               large_scale_forcing,                                                                &
-               loop_optimization,                                                                  &
-               lsf_surf,                                                                           &
-               lsf_vert,                                                                           &
-               masks,                                                                              &
-               multi_agent_system_end,                                                             &
-               multi_agent_system_start,                                                           &
-               nesting_offline,                                                                    &
-               neutral,                                                                            &
-               nr_timesteps_this_run,                                                              &
-               nudging,                                                                            &
-               ocean_mode,                                                                         &
-               pt_reference,                                                                       &
-               pt_slope_offset,                                                                    &
-               random_heatflux,                                                                    &
-               salsa,                                                                              &
-               simulated_time,                                                                     &
-               simulated_time_chr,                                                                 &
-               skip_time_do2d_xy,                                                                  &
-               skip_time_do2d_xz,                                                                  &
-               skip_time_do2d_yz,                                                                  &
-               skip_time_do3d,                                                                     &
-               skip_time_domask,                                                                   &
-               skip_time_dopr,                                                                     &
-               skip_time_data_output_av,                                                           &
-               sloping_surface,                                                                    &
-               stop_dt,                                                                            &
-               surface_output,                                                                     &
-               syn_turb_gen,                                                                       &
-               terminate_coupled,                                                                  &
-               terminate_run,                                                                      &
-               timestep_scheme,                                                                    &
-               time_coupling,                                                                      &
-               time_do2d_xy,                                                                       &
-               time_do2d_xz,                                                                       &
-               time_do2d_yz,                                                                       &
-               time_do3d,                                                                          &
-               time_domask,                                                                        &
-               time_dopr,                                                                          &
-               time_dopr_av,                                                                       &
-               time_dopr_listing,                                                                  &
-               time_dosp,                                                                          &
-               time_dosp_av,                                                                       &
-               time_dots,                                                                          &
-               time_do_av,                                                                         &
-               time_do_sla,                                                                        &
-               time_disturb,                                                                       &
-               time_run_control,                                                                   &
-               time_since_reference_point,                                                         &
-               timestep_count,                                                                     &
-               turbulent_inflow,                                                                   &
-               turbulent_outflow,                                                                  &
-               urban_surface,                                                                      &
-               use_initial_profile_as_reference,                                                   &
-               use_single_reference_value,                                                         &
-               u_gtrans,                                                                           &
-               v_gtrans,                                                                           &
-               virtual_flight,                                                                     &
-               virtual_measurement,                                                                &
-               ws_scheme_mom,                                                                      &
-               ws_scheme_sca
+        ONLY:  advected_distance_x, advected_distance_y, air_chemistry, average_count_3d,          &
+               averaging_interval, averaging_interval_pr, bc_lr_cyc, bc_ns_cyc, bc_pt_t_val,       &
+               bc_q_t_val, biometeorology, call_psolver_at_all_substeps,  child_domain,            &
+               constant_flux_layer, constant_heatflux, create_disturbances,                        &
+               dopr_n, constant_diffusion, coupling_mode, coupling_start_time,                     &
+               current_timestep_number, debug_output_timestep, debug_string,                       &
+               disturbance_created, disturbance_energy_limit, dist_range,                          &
+               do_sum, dt_3d, dt_averaging_input, dt_averaging_input_pr, dt_coupling,              &
+               dt_data_output_av, dt_disturb, dt_do2d_xy, dt_do2d_xz, dt_do2d_yz, dt_do3d,         &
+               dt_domask,dt_dopts, dt_dopr, dt_dopr_listing, dt_dots, dt_run_control,              &
+               end_time, first_call_lpm, first_call_mas, galilei_transformation, humidity,         &
+               indoor_model, intermediate_timestep_count, intermediate_timestep_count_max,         &
+               land_surface, large_scale_forcing, loop_optimization, lsf_surf, lsf_vert, masks,    &
+               multi_agent_system_end, multi_agent_system_start, nesting_offline, neutral,         &
+               nr_timesteps_this_run, nudging, ocean_mode, pt_reference,                           &
+               pt_slope_offset, pt_surface_heating_rate,                                           &
+               random_heatflux, run_coupled, salsa,                                                &
+               simulated_time, simulated_time_chr, skip_time_do2d_xy, skip_time_do2d_xz,           &
+               skip_time_do2d_yz, skip_time_do3d, skip_time_domask, skip_time_dopr,                &
+               skip_time_data_output_av, sloping_surface, stop_dt, surface_output,                 &
+               terminate_coupled, terminate_run, timestep_scheme, time_coupling, time_do2d_xy,     &
+               time_do2d_xz, time_do2d_yz, time_do3d, time_domask, time_dopr, time_dopr_av,        &
+               time_dopr_listing, time_dopts, time_dosp, time_dosp_av, time_dots, time_do_av,      &
+               time_do_sla, time_disturb, time_run_control, time_since_reference_point,            &
+               timestep_count, turbulent_inflow, turbulent_outflow, urban_surface,                 &
+               use_initial_profile_as_reference, use_single_reference_value, u_gtrans, v_gtrans,   &
+               virtual_flight, virtual_measurement, ws_scheme_mom, ws_scheme_sca
 
     USE cpulog,                                                                                    &
-        ONLY:  cpu_log,                                                                            &
-               log_point,                                                                          &
-               log_point_s
-
-    USE dcep_mod,                                                                                  &
-        ONLY:  dcep_main
+        ONLY:  cpu_log, log_point, log_point_s
 
     USE diagnostic_output_quantities_mod,                                                          &
         ONLY:  doq_calculate,                                                                      &
@@ -209,50 +323,33 @@
         ONLY:  flight_measurement
 
     USE grid_variables,                                                                            &
-        ONLY:  ddx,                                                                                &
-               ddy
+        ONLY:  ddx, ddy
 
     USE indices,                                                                                   &
-        ONLY:  nx,                                                                                 &
-               nxl,                                                                                &
-               nxlg,                                                                               &
-               nxr,                                                                                &
-               nxrg,                                                                               &
-               nzb,                                                                                &
-               nzt
+        ONLY:  nx, nxl, nxlg, nxr, nxrg, nzb, nzt
 
     USE indoor_model_mod,                                                                          &
-        ONLY:  dt_indoor,                                                                          &
-               im_main_heatcool,                                                                   &
-               time_indoor
+        ONLY:  dt_indoor, im_main_heatcool, time_indoor
 
     USE interfaces
 
     USE kinds
 
     USE land_surface_model_mod,                                                                    &
-        ONLY:  lsm_boundary_condition,                                                             &
-               lsm_energy_balance,                                                                 &
-               skip_time_do_lsm
+        ONLY:  lsm_boundary_condition, lsm_energy_balance, skip_time_do_lsm
 
     USE lagrangian_particle_model_mod,                                                             &
         ONLY:  lpm_data_output_ptseries
 
     USE lsf_nudging_mod,                                                                           &
-        ONLY:  calc_tnudge,                                                                        &
-               ls_forcing_surf,                                                                    &
-               ls_forcing_vert,                                                                    &
-               nudge_ref
+        ONLY:  calc_tnudge, ls_forcing_surf, ls_forcing_vert, nudge_ref
 
     USE module_interface,                                                                          &
-        ONLY:  module_interface_actions,                                                           &
-               module_interface_swap_timelevel,                                                    &
-               module_interface_boundary_conditions,                                               &
-               module_interface_exchange_horiz
+        ONLY:  module_interface_actions, module_interface_swap_timelevel,                          &
+               module_interface_boundary_conditions, module_interface_exchange_horiz
 
     USE multi_agent_system_mod,                                                                    &
-        ONLY:  agents_active,                                                                      &
-               multi_agent_system
+        ONLY:  agents_active, multi_agent_system
 
     USE nesting_offl_mod,                                                                          &
         ONLY:  nesting_offl_bc,                                                                    &
@@ -269,124 +366,73 @@
     USE palm_date_time_mod,                                                                        &
         ONLY:  get_date_time
 
+    USE particle_attributes,                                                                       &
+        ONLY:  particle_advection, particle_advection_start
+
     USE pegrid
 
 #if defined( __parallel )
     USE pmc_interface,                                                                             &
-        ONLY:  atmosphere_ocean_coupled_run,                                                       &
-               cpl_id,                                                                             &
-               homogeneous_initialization_child,                                                   &
-               nested_run,                                                                         &
-               nesting_mode,                                                                       &
-               pmci_adjust_dt_coupling,                                                            &
-               pmci_atmos_ocean,                                                                   &
-               pmci_boundary_conds,                                                                &
-               pmci_datatrans,                                                                     &
-               pmci_synchronize,                                                                   &
-               pmci_ensure_nest_mass_conservation,                                                 &
-               pmci_set_swaplevel
-#else
-    USE pmc_interface,                                                                             &
-        ONLY:  atmosphere_ocean_coupled_run,                                                       &
-               cpl_id
+        ONLY:  nested_run, nesting_mode, pmci_boundary_conds, pmci_datatrans, pmci_synchronize,    &
+        pmci_ensure_nest_mass_conservation, pmci_ensure_nest_mass_conservation_vertical,           &
+        pmci_set_swaplevel
 #endif
 
     USE progress_bar,                                                                              &
-        ONLY:  finish_progress_bar,                                                                &
-               output_progress_bar
+        ONLY:  finish_progress_bar, output_progress_bar
 
     USE prognostic_equations_mod,                                                                  &
-        ONLY:  prognostic_equations_cache,                                                         &
-               prognostic_equations_vector
+        ONLY:  prognostic_equations_cache, prognostic_equations_vector
 
     USE radiation_model_mod,                                                                       &
-        ONLY:  dt_radiation,                                                                       &
-               force_radiation_call,                                                               &
-               radiation,                                                                          &
-               radiation_control,                                                                  &
-               radiation_interaction,                                                              &
-               radiation_interactions,                                                             &
-               skip_time_do_radiation,                                                             &
-               time_radiation
+        ONLY: dt_radiation, force_radiation_call, radiation, radiation_control,                    &
+              radiation_interaction, radiation_interactions, skip_time_do_radiation, time_radiation
 
     USE salsa_mod,                                                                                 &
-        ONLY:  aerosol_number,                                                                     &
-               aerosol_mass,                                                                       &
-               bc_am_t_val,                                                                        &
-               bc_an_t_val,                                                                        &
-               bc_gt_t_val,                                                                        &
-               nbins_aerosol,                                                                      &
-               ncomponents_mass,                                                                   &
-               ngases_salsa,                                                                       &
-               salsa_boundary_conditions,                                                          &
-               salsa_emission_update,                                                              &
-               salsa_gas,                                                                          &
-               salsa_gases_from_chem,                                                              &
-               skip_time_do_salsa
+        ONLY: aerosol_number, aerosol_mass, bc_am_t_val, bc_an_t_val, bc_gt_t_val,                 &
+              nbins_aerosol, ncomponents_mass, ngases_salsa,                                       &
+              salsa_boundary_conditions, salsa_emission_update, salsa_gas, salsa_gases_from_chem,  &
+              skip_time_do_salsa
 
     USE spectra_mod,                                                                               &
-        ONLY:  average_count_sp,                                                                   &
-               averaging_interval_sp,                                                              &
-               calc_spectra,                                                                       &
-               dt_dosp,                                                                            &
-               skip_time_dosp
+        ONLY: average_count_sp, averaging_interval_sp, calc_spectra, dt_dosp, skip_time_dosp
 
     USE statistics,                                                                                &
-        ONLY:  flow_statistics_called,                                                             &
-               hom,                                                                                &
-               pr_palm,                                                                            &
-               sums_ls_l
+        ONLY:  flow_statistics_called, hom, pr_palm, sums_ls_l
+
 
     USE surface_layer_fluxes_mod,                                                                  &
         ONLY:  surface_layer_fluxes
 
     USE surface_data_output_mod,                                                                   &
-        ONLY:  average_count_surf,                                                                 &
-               averaging_interval_surf,                                                            &
-               dt_dosurf,                                                                          &
-               dt_dosurf_av,                                                                       &
-               surface_data_output,                                                                &
-               surface_data_output_averaging,                                                      &
-               skip_time_dosurf,                                                                   &
-               skip_time_dosurf_av,                                                                &
-               time_dosurf,                                                                        &
-               time_dosurf_av
+        ONLY:  average_count_surf, averaging_interval_surf, dt_dosurf, dt_dosurf_av,               &
+               surface_data_output, surface_data_output_averaging, skip_time_dosurf,               &
+               skip_time_dosurf_av, time_dosurf, time_dosurf_av
 
     USE surface_mod,                                                                               &
-        ONLY:  surf_def,                                                                           &
-               surf_lsm,                                                                           &
-               surf_usm
+        ONLY:  surf_def_h, surf_lsm_h, surf_usm_h
 
     USE synthetic_turbulence_generator_mod,                                                        &
-        ONLY:  stg_main
+        ONLY:  dt_stg_call, dt_stg_adjust, parametrize_inflow_turbulence, stg_adjust, stg_main,    &
+               time_stg_adjust, time_stg_call, use_syn_turb_gen
 
     USE turbulence_closure_mod,                                                                    &
         ONLY:  tcm_diffusivities
-
-    USE turbulent_inflow_mod,                                                                      &
-        ONLY:  turbulent_inflow_impose
 
     USE urban_surface_mod,                                                                         &
         ONLY:  usm_boundary_condition,                                                             &
                usm_energy_balance
 
     USE virtual_measurement_mod,                                                                   &
-        ONLY:  dt_virtual_measurement_pr,                                                          &
-               dt_virtual_measurement_ts,                                                          &
-               dt_virtual_measurement_tr,                                                          &
-               time_virtual_measurement_pr,                                                        &
-               time_virtual_measurement_ts,                                                        &
-               time_virtual_measurement_tr,                                                        &
+        ONLY:  dt_virtual_measurement,                                                             &
+               time_virtual_measurement,                                                           &
                vm_data_output,                                                                     &
                vm_sampling,                                                                        &
                vm_time_start
 
 
     USE wind_turbine_model_mod,                                                                    &
-        ONLY:  dt_data_output_wtm,                                                                 &
-               time_wtm,                                                                           &
-               wind_turbine,                                                                       &
-               wtm_data_output
+        ONLY:  dt_data_output_wtm, time_wtm, wind_turbine, wtm_data_output
 
 #if defined( _OPENACC )
     USE arrays_3d,                                                                                 &
@@ -406,87 +452,38 @@
                flux_s_u,                                                                           &
                flux_s_v,                                                                           &
                flux_s_w,                                                                           &
-               e_p,                                                                                &
                heatflux_output_conversion,                                                         &
-               kh,                                                                                 &
-               km,                                                                                 &
-               momentumflux_output_conversion,                                                     &
-               nc,                                                                                 &
-               ni,                                                                                 &
-               nr,                                                                                 &
-               p,                                                                                  &
+               e_p,                                                                                &
                pt_p,                                                                               &
-               ptdf_x,                                                                             &
-               ptdf_y,                                                                             &
-               qc,                                                                                 &
-               qi,                                                                                 &
-               qr,                                                                                 &
-               rdf,                                                                                &
-               rdf_sc,                                                                             &
-               rho_air,                                                                            &
-               rho_air_zw,                                                                         &
-               s, tdiss_m,                                                                         &
-               te_m,                                                                               &
-               tpt_m,                                                                              &
-               tu_m,                                                                               &
-               tv_m,                                                                               &
-               tw_m,                                                                               &
                u_p,                                                                                &
-               ug,                                                                                 &
-               u_init,                                                                             &
-               u_stokes_zu,                                                                        &
                v_p,                                                                                &
-               vg,                                                                                 &
-               v_init,                                                                             &
-               v_stokes_zu,                                                                        &
-               w,                                                                                  &
                w_p,                                                                                &
-               zu
+               kh, km, momentumflux_output_conversion, nc, ni, nr, p, ptdf_x, ptdf_y, qc, qi, qr, rdf,     &
+               rdf_sc, rho_air, rho_air_zw, s, tdiss_m, te_m, tpt_m, tu_m, tv_m, tw_m, ug, u_init, &
+               u_stokes_zu, vg, v_init, v_stokes_zu, w, zu
 
     USE control_parameters,                                                                        &
         ONLY:  tsc
 
     USE indices,                                                                                   &
-        ONLY:  advc_flags_m,                                                                       &
-               advc_flags_s,                                                                       &
-               nyn,                                                                                &
-               nyng,                                                                               &
-               nys,                                                                                &
-               nysg,                                                                               &
-               nz,                                                                                 &
-               nzb_max,                                                                            &
-               topo_flags
+        ONLY:  advc_flags_m, advc_flags_s, nyn, nyng, nys, nysg, nz, nzb_max, wall_flags_total_0
 
     USE statistics,                                                                                &
-        ONLY:  pr_max,                                                                             &
-               rmask,                                                                              &
-               statistic_regions,                                                                  &
-               sums_l,                                                                             &
-               sums_l_l,                                                                           &
-               sums_us2_ws_l,                                                                      &
-               sums_wsus_ws_l,                                                                     &
-               sums_vs2_ws_l,                                                                      &
-               sums_wsvs_ws_l,                                                                     &
-               sums_ws2_ws_l,                                                                      &
-               sums_wspts_ws_l,                                                                    &
-               sums_wsqs_ws_l,                                                                     &
-               sums_wssas_ws_l,                                                                    &
-               sums_wsqcs_ws_l,                                                                    &
-               sums_wsqrs_ws_l,                                                                    &
-               sums_wsncs_ws_l,                                                                    &
-               sums_wsnrs_ws_l,                                                                    &
-               sums_wsss_ws_l,                                                                     &
-               weight_substep,                                                                     &
-               sums_salsa_ws_l,                                                                    &
-               sums_wsqis_ws_l,                                                                    &
+        ONLY:  rmask, statistic_regions, sums_l, sums_l_l, sums_us2_ws_l,                          &
+               sums_wsus_ws_l, sums_vs2_ws_l, sums_wsvs_ws_l, sums_ws2_ws_l, sums_wspts_ws_l,      &
+               sums_wsqs_ws_l, sums_wssas_ws_l, sums_wsqcs_ws_l, sums_wsqrs_ws_l, sums_wsncs_ws_l, &
+               sums_wsnrs_ws_l, sums_wsss_ws_l, weight_substep, sums_salsa_ws_l, sums_wsqis_ws_l,  &
                sums_wsnis_ws_l
 
     USE surface_mod,                                                                               &
-        ONLY:  bc_hv,                                                                              &
-               enter_surface_arrays,                                                               &
-               exit_surface_arrays
+        ONLY:  bc_h, enter_surface_arrays, exit_surface_arrays
 #endif
-
+!
+!-- COVID-19 related code begins
+    USE user,                                                                                      &
+        ONLY: user_reset_scalar 
+!
+!-- COVID-19 related code ends
 
     IMPLICIT NONE
 
@@ -501,8 +498,8 @@
     INTEGER(iwp) ::  mid                 !< masked output running index
     INTEGER(iwp) ::  n                   !< loop counter for chemistry species
 
-    REAL(wp) ::  dt_3d_old                        !< temporary storage of timestep to be used for
-                                                  !< steering of run control output interval
+    REAL(wp) ::  dt_3d_old  !< temporary storage of timestep to be used for
+                            !< steering of run control output interval
     REAL(wp) ::  time_since_reference_point_save  !< original value of
                                                   !< time_since_reference_point
 
@@ -574,18 +571,18 @@
 !$ACC DATA &
 !$ACC COPYIN(advc_flags_m(nzb:nzt+1,nysg:nyng,nxlg:nxrg)) &
 !$ACC COPYIN(advc_flags_s(nzb:nzt+1,nysg:nyng,nxlg:nxrg)) &
-!$ACC COPYIN(topo_flags(nzb:nzt+1,nysg:nyng,nxlg:nxrg))
+!$ACC COPYIN(wall_flags_total_0(nzb:nzt+1,nysg:nyng,nxlg:nxrg))
 
 !
 !-- Copy data from surface_mod
 !$ACC DATA &
-!$ACC COPYIN(bc_hv) &
-!$ACC COPYIN(bc_hv%i(1:bc_hv%ns)) &
-!$ACC COPYIN(bc_hv%j(1:bc_hv%ns)) &
-!$ACC COPYIN(bc_hv%k(1:bc_hv%ns)) &
-!$ACC COPYIN(bc_hv%ioff(1:bc_hv%ns)) &
-!$ACC COPYIN(bc_hv%joff(1:bc_hv%ns)) &
-!$ACC COPYIN(bc_hv%koff(1:bc_hv%ns))
+!$ACC COPYIN(bc_h(0:1)) &
+!$ACC COPYIN(bc_h(0)%i(1:bc_h(0)%ns)) &
+!$ACC COPYIN(bc_h(0)%j(1:bc_h(0)%ns)) &
+!$ACC COPYIN(bc_h(0)%k(1:bc_h(0)%ns)) &
+!$ACC COPYIN(bc_h(1)%i(1:bc_h(1)%ns)) &
+!$ACC COPYIN(bc_h(1)%j(1:bc_h(1)%ns)) &
+!$ACC COPYIN(bc_h(1)%k(1:bc_h(1)%ns))
 
 !
 !-- Copy data from statistics
@@ -593,7 +590,7 @@
 !$ACC COPYIN(hom(0:nz+1,1:2,1:4,0)) &
 !$ACC COPYIN(rmask(nysg:nyng,nxlg:nxrg,0:statistic_regions)) &
 !$ACC COPYIN(weight_substep(1:intermediate_timestep_count_max)) &
-!$ACC COPY(sums_l(nzb:nzt+1,1:pr_max,0)) &
+!$ACC COPY(sums_l(nzb:nzt+1,1:pr_palm,0)) &
 !$ACC COPY(sums_l_l(nzb:nzt+1,0:statistic_regions,0)) &
 !$ACC COPY(sums_us2_ws_l(nzb:nzt+1,0)) &
 !$ACC COPY(sums_wsus_ws_l(nzb:nzt+1,0)) &
@@ -622,19 +619,7 @@
 #if defined( _OPENACC )
     CALL enter_surface_arrays
 #endif
-!
-!-- If child domains are initialized with domain-averaged parent profiles
-!-- run pressure solver before time integration starts.
-    IF ( TRIM( initializing_actions )  /= 'read_restart_data' )  THEN
-#if defined( __parallel )
-       IF ( nested_run )  THEN
-          IF ( child_domain  .AND.  homogeneous_initialization_child )  THEN
-             CALL pmci_ensure_nest_mass_conservation
-             CALL pres
-          ENDIF
-       ENDIF
-#endif
-    ENDIF
+
 !
 !-- At beginning determine the first time step
     CALL timestep
@@ -649,6 +634,7 @@
        CALL pmci_synchronize
     ENDIF
 #endif
+
 !
 !-- Determine and print out the run control quantities before the first time
 !-- step of this run. For the initial run, some statistics (e.g. divergence)
@@ -658,34 +644,23 @@
 !
 !-- Data exchange between coupled models in case that a call has been omitted
 !-- at the end of the previous run of a job chain.
-    IF ( atmosphere_ocean_coupled_run )  THEN
-!
-!--    Adjust the time interval after which atmosphere and ocean are coupled, to be at least
-!--    as large as the maximum timestep of the atmosphere and the ocean model.
-#if defined( __parallel )
-       CALL pmci_adjust_dt_coupling
-#endif
-
+    IF ( coupling_mode /= 'uncoupled'  .AND.  run_coupled )  THEN
 !
 !--    In case of model termination initiated by the local model the coupler
 !--    must not be called because this would again cause an MPI hang.
        DO WHILE ( time_coupling >= dt_coupling  .AND.  terminate_coupled == 0 )
-#if defined( __parallel )
-          CALL pmci_atmos_ocean
-#endif
+          CALL surface_coupler
           time_coupling = time_coupling - dt_coupling
        ENDDO
-       IF ( time_coupling == 0.0_wp  .AND.  time_since_reference_point < dt_coupling )  THEN
+       IF (time_coupling == 0.0_wp  .AND.  time_since_reference_point < dt_coupling )  THEN
           time_coupling = time_since_reference_point
        ENDIF
     ENDIF
-!
-!-- Execute necessary module actions before time-integration starts
-    CALL module_interface_actions( 'before_integration' )
+
+    CALL location_message( 'atmosphere (and/or ocean) time-stepping', 'start' )
 
 !
 !-- Start of the time loop
-    CALL location_message( 'time-stepping', 'start' )
     DO  WHILE ( simulated_time < end_time  .AND.  .NOT. stop_dt  .AND. .NOT. terminate_run )
 
        CALL cpu_log( log_point_s(10), 'timesteps', 'start' )
@@ -751,6 +726,7 @@
        DO  WHILE ( intermediate_timestep_count < intermediate_timestep_count_max )
 
           intermediate_timestep_count = intermediate_timestep_count + 1
+
 !
 !--       Set the steering factors for the prognostic equations which depend
 !--       on the timestep scheme
@@ -812,6 +788,7 @@
           ELSEIF ( loop_optimization == 'vector' )  THEN
              CALL prognostic_equations_vector
           ENDIF
+
 !
 !--       Movement of agents in multi agent system
           IF ( agents_active  .AND.  time_since_reference_point >= multi_agent_system_start  .AND. &
@@ -848,22 +825,10 @@
 #if defined( __parallel )
 !
 !--       Set the swap level for steering the pmc data transfer
-          IF ( nested_run  .OR.  atmosphere_ocean_coupled_run )  THEN
-             CALL pmci_set_swaplevel( MOD( timestep_count, 2) + 1 )  !> @todo: why the +1 ?
-          ENDIF
+          IF ( nested_run )  CALL pmci_set_swaplevel( MOD( timestep_count, 2) + 1 )  !> @todo: why the +1 ?
 #endif
 
           CALL cpu_log( log_point(28), 'swap_timelevel', 'stop' )
-
-!
-!--       Impose a turbulent inflow conditions. Depending on the chosen method, either the
-!--       turbulence signal will be recycled or a turbulent inflow from a pre-run will be imposed.
-!--       Inflow conditions should be set before nesting data exchange, because in case of pure
-!--       vertical nesting with non-cyclic boundary conditions, parents should receive the inflow
-!--       conditions from the childs. Otherwise strong horizontal flow divergence/convergence may
-!--       appear at the parent inflow. Note, boundary conditions are imposed after the last
-!--       time-integration substep and will apply in the next time-integration step.
-          IF ( turbulent_inflow )  CALL turbulent_inflow_impose
 
 #if defined( __parallel )
           IF ( nested_run )  THEN
@@ -877,7 +842,7 @@
 !--          TO_DO: why is nesting_mode given as a parameter here?
              CALL pmci_datatrans( nesting_mode )
 
-             IF ( TRIM( nesting_mode ) == 'two-way' )  THEN
+             IF ( TRIM( nesting_mode ) == 'two-way' .OR.  nesting_mode == 'vertical' )  THEN
 
                 CALL cpu_log( log_point_s(92), 'exchange-horiz-nest', 'start' )
 !
@@ -905,6 +870,17 @@
              IF ( nxl ==  0 )  pt(:,:,nxlg:nxl-1) = pt(:,:,nxlg:nxl-1) - pt_slope_offset
              IF ( nxr == nx )  pt(:,:,nxr+1:nxrg) = pt(:,:,nxr+1:nxrg) + pt_slope_offset
           ENDIF
+
+!
+!--       Increase temperature pt(0) according to pt_surface_heating_rate (convert from K/h to K/s)
+          IF ( pt_surface_heating_rate /= 0.0_wp .AND. intermediate_timestep_count == 1 ) THEN
+             pt(0,:,:) = pt(0,:,:) + dt_3d * pt_surface_heating_rate / 3600.0_wp
+          ENDIF
+
+!
+!--       Impose a turbulent inflow using the recycling method
+          IF ( turbulent_inflow )  CALL inflow_turbulence
+
 !
 !--       Set values at outflow boundary using the special outflow condition
           IF ( turbulent_outflow )  CALL outflow_turbulence
@@ -937,16 +913,19 @@
           ENDIF
 
 !
-!--       Map mesoscale model onto domain boundaries.
+!--       Map forcing data derived from larger scale model onto domain
+!--       boundaries. Further, update geostrophic wind components.
           IF ( nesting_offline  .AND.  intermediate_timestep_count ==                              &
                                        intermediate_timestep_count_max  )  THEN
-!--          Determine interpolation factor before boundary conditions are updated.
+!--          Determine interpolation factor before boundary conditions and geostrophic wind
+!--          is updated.
              CALL nesting_offl_interpolation_factor
              CALL nesting_offl_bc
+!              CALL nesting_offl_geostrophic_wind
           ENDIF
 !
 !--       Impose a turbulent inflow using synthetic generated turbulence.
-          IF ( syn_turb_gen  .AND.                                                                 &
+          IF ( use_syn_turb_gen  .AND.                                                             &
                intermediate_timestep_count == intermediate_timestep_count_max )  THEN
              CALL cpu_log( log_point(57), 'synthetic_turbulence_gen', 'start' )
              CALL stg_main
@@ -966,8 +945,12 @@
 #if defined( __parallel )
 !
 !--          Mass (volume) flux correction to ensure global mass conservation for child domains.
-             IF ( child_domain .AND. .NOT. atmosphere_ocean_coupled_run )  THEN
-                CALL pmci_ensure_nest_mass_conservation
+             IF ( child_domain )  THEN
+                IF ( nesting_mode == 'vertical' )  THEN
+                   CALL pmci_ensure_nest_mass_conservation_vertical
+                ELSE
+                   CALL pmci_ensure_nest_mass_conservation
+                ENDIF
              ENDIF
 #endif
              CALL pres
@@ -1093,6 +1076,7 @@
        IF ( radiation  .AND.  time_since_reference_point >= skip_time_do_radiation )  THEN
 
           time_radiation = time_radiation + dt_3d
+
           IF ( time_radiation >= dt_radiation  .OR.  force_radiation_call )  THEN
 
              CALL cpu_log( log_point(50), 'radiation', 'start' )
@@ -1106,7 +1090,7 @@
 !--          Needed since radiation is pre-calculated and stored only on apparent
 !--          solar positions
              time_since_reference_point_save = time_since_reference_point
-             time_since_reference_point = time_since_reference_point -                             &
+             time_since_reference_point = time_since_reference_point -                            &
                                           MODULO(time_since_reference_point, dt_radiation)
 
              CALL radiation_control
@@ -1128,36 +1112,41 @@
 
           ENDIF
        ENDIF
-!
-!--    If DCEP set, call dcep main routine.
-       IF ( dcep )  CALL dcep_main
+
 
 !
-!--    If required, consider chemical emissions.
-!--    Allows for emission update mode in legacy mode as well as on-demand mode
-!--    note that under on-demand mode emission update is no longer restricted to
-!--    an hourly frequency, but whenever the simulation time corresponds to an
-!--    increment in emission timestamp value.
-       IF ( air_chemistry  .AND.  emissions_anthropogenic )  THEN
-          IF ( emiss_read_legacy_mode )  THEN
-!
-!--          Get hourly index and updates emission data when the hour is passed.
-             CALL get_date_time( time_since_reference_point, hour = hour )
+!-- 20200203 (ECC)
+!-- allows for emission update mode in legacy mode as well as on-demand mode
+!-- note that under on-demand mode emission update is no longer restricted to
+!-- an hourly frequency, but whenever the simulation time corresponds to an
+!-- inrement in emission timestamp value
 
-             IF ( hour_call_emis /= hour )  THEN
+!
+!-- If required, consider chemical emissions
+
+       IF  ( air_chemistry .AND. emissions_anthropogenic )  THEN
+
+          IF  ( emiss_read_legacy_mode )  THEN
+!
+!-- get hourly index and updates emission data when the hour is passed
+
+             CALL get_date_time( time_since_reference_point, hour=hour )
+
+             IF  ( hour_call_emis /= hour )   THEN
+
                 CALL chem_emissions_setup( chem_emis_att, chem_emis, n_matched_vars )
                 hour_call_emis = hour
+
              ENDIF
+
           ELSE
+
              CALL chem_emissions_update_on_demand
+
           ENDIF
+
        ENDIF
 
-!
-!--    Emission module calls.
-       IF ( air_chemistry )  THEN
-          CALL chem_actions( 'update_emission_sources' )
-       ENDIF
 
 !
 !--    If required, consider aerosol emissions for the salsa model
@@ -1165,8 +1154,8 @@
 !
 !--       Call emission routine to update emissions if needed
           CALL salsa_emission_update
-       ENDIF
 
+       ENDIF
 !
 !--    If required, calculate indoor temperature, waste heat, heat flux
 !--    through wall, etc.
@@ -1179,7 +1168,7 @@
 
           IF ( time_indoor >= dt_indoor  .OR.  current_timestep_number == 0 )  THEN
 
-             IF ( time_indoor >= dt_indoor )  time_indoor = time_indoor - dt_indoor
+             time_indoor = time_indoor - dt_indoor
 
              CALL cpu_log( log_point(76), 'indoor_model', 'start' )
              CALL im_main_heatcool
@@ -1195,41 +1184,37 @@
        time_since_reference_point = simulated_time - coupling_start_time
        simulated_time_chr         = time_to_string( time_since_reference_point )
 
+
        IF ( time_since_reference_point >= skip_time_data_output_av )  THEN
           time_do_av         = time_do_av       + dt_3d
        ENDIF
-
        IF ( time_since_reference_point >= skip_time_do2d_xy )  THEN
           time_do2d_xy       = time_do2d_xy     + dt_3d
        ENDIF
-
        IF ( time_since_reference_point >= skip_time_do2d_xz )  THEN
           time_do2d_xz       = time_do2d_xz     + dt_3d
        ENDIF
-
        IF ( time_since_reference_point >= skip_time_do2d_yz )  THEN
           time_do2d_yz       = time_do2d_yz     + dt_3d
        ENDIF
-
        IF ( time_since_reference_point >= skip_time_do3d    )  THEN
           time_do3d          = time_do3d        + dt_3d
        ENDIF
-
        DO  mid = 1, masks
           IF ( time_since_reference_point >= skip_time_domask(mid) )  THEN
-             time_domask(mid) = time_domask(mid) + dt_3d
+             time_domask(mid)= time_domask(mid) + dt_3d
           ENDIF
        ENDDO
-
        IF ( time_since_reference_point >= skip_time_dosp )  THEN
           time_dosp       = time_dosp        + dt_3d
        ENDIF
        time_dots          = time_dots        + dt_3d
-
+       IF ( .NOT. first_call_lpm )  THEN
+          time_dopts      = time_dopts       + dt_3d
+       ENDIF
        IF ( time_since_reference_point >= skip_time_dopr )  THEN
           time_dopr       = time_dopr        + dt_3d
        ENDIF
-
        time_dopr_listing  = time_dopr_listing + dt_3d
        time_run_control   = time_run_control + dt_3d
 !
@@ -1238,7 +1223,6 @@
           IF ( time_since_reference_point >= skip_time_dosurf )  THEN
              time_dosurf    = time_dosurf + dt_3d
           ENDIF
-
           IF ( time_since_reference_point >= skip_time_dosurf_av )  THEN
              time_dosurf_av = time_dosurf_av + dt_3d
           ENDIF
@@ -1246,9 +1230,7 @@
 !
 !--    Increment time-counter for virtual measurements
        IF ( virtual_measurement  .AND.  vm_time_start <= time_since_reference_point )  THEN
-          time_virtual_measurement_pr = time_virtual_measurement_pr + dt_3d
-          time_virtual_measurement_ts = time_virtual_measurement_ts + dt_3d
-          time_virtual_measurement_tr = time_virtual_measurement_tr + dt_3d
+          time_virtual_measurement = time_virtual_measurement + dt_3d
        ENDIF
 
 !
@@ -1258,26 +1240,35 @@
        ENDIF
 
 !
+!--    In case of synthetic turbulence generation and parametrized turbulence
+!--    information, update the time counter and if required, adjust the
+!--    STG to new atmospheric conditions.
+       IF ( use_syn_turb_gen  )  THEN
+          IF ( parametrize_inflow_turbulence )  THEN
+             time_stg_adjust = time_stg_adjust + dt_3d
+             IF ( time_stg_adjust >= dt_stg_adjust )  THEN
+                CALL cpu_log( log_point(57), 'synthetic_turbulence_gen', 'start' )
+                CALL stg_adjust
+                CALL cpu_log( log_point(57), 'synthetic_turbulence_gen', 'stop' )
+             ENDIF
+          ENDIF
+          time_stg_call = time_stg_call + dt_3d
+       ENDIF
+
+!
 !--    Data exchange between coupled models
-       IF ( atmosphere_ocean_coupled_run )  THEN
+       IF ( coupling_mode /= 'uncoupled'  .AND.  run_coupled )  THEN
           time_coupling = time_coupling + dt_3d
+
 !
-!--       In case of model termination initiated by the atmosphere or the ocean model
+!--       In case of model termination initiated by the local model
 !--       (terminate_coupled > 0), the coupler must be skipped because it would
-!--       cause an MPI intercommunication hang.
+!--       cause an MPI intercomminucation hang.
+!--       If necessary, the coupler will be called at the beginning of the
+!--       next restart run.
           DO WHILE ( time_coupling >= dt_coupling  .AND.  terminate_coupled == 0 )
-#if defined( __parallel )
-             CALL pmci_atmos_ocean
-!
-!--          Adjust the time interval after which atmosphere and ocean are coupled, to be at least
-!--          as large as the maximum timestep of the atmosphere and the ocean model.
-             CALL pmci_adjust_dt_coupling
-#endif
+             CALL surface_coupler
              time_coupling = time_coupling - dt_coupling
-!
-!--          Check needs to be done here because it requires global communication, so it can only
-!--          be done after both atmosphere and ocean have exchanged data.
-             CALL check_for_restart
           ENDDO
        ENDIF
 
@@ -1305,7 +1296,7 @@
        ENDIF
 
 !
-!--    Execute alle other module actions routines
+!--    Execute alle other module actions routunes
        CALL module_interface_actions( 'after_integration' )
 
 !
@@ -1320,9 +1311,7 @@
 !--    Check, if restart is necessary (because cpu-time is expiring or
 !--    because it is forced by user) and set stop flag
 !--    This call is skipped if the remote model has already initiated a restart.
-!--    In case of atmosphere - ocean coupling, check_for_restart is only called at coupling step
-!--    (see further above).
-       IF ( .NOT. terminate_run  .AND.  .NOT. atmosphere_ocean_coupled_run )  CALL check_for_restart
+       IF ( .NOT. terminate_run )  CALL check_for_restart
 
 !
 !--    Carry out statistical analysis and output at the requested output times.
@@ -1346,7 +1335,6 @@
              time_dopr_av = MOD( time_dopr_av, MAX( dt_averaging_input_pr, dt_3d ) )
           ENDIF
        ENDIF
-
        IF ( do_sum )  CALL flow_statistics
 
 !
@@ -1390,43 +1378,23 @@
        ENDIF
 
 !
-!--    Call flight module and output data.
+!--    Call flight module and output data
        IF ( virtual_flight )  THEN
           CALL flight_measurement
           CALL data_output_flight
        ENDIF
 !
-!--    Take virtual measurements. Depending on the type of measurement, different output intervals
-!--    are considered.
-       IF ( virtual_measurement  .AND.  vm_time_start <= time_since_reference_point )  THEN
-!
-!--       Timeseries data for point measurements.
-          IF ( time_virtual_measurement_ts >= dt_virtual_measurement_ts )  THEN
-             CALL vm_sampling( sample_pr = .FALSE., sample_ts = .TRUE., sample_tr = .FALSE. )
-             CALL vm_data_output( output_pr = .FALSE., output_ts = .TRUE., output_tr = .FALSE. )
-             time_virtual_measurement_ts = MOD( time_virtual_measurement_ts,                       &
-                                                MAX( dt_virtual_measurement_ts, dt_3d ) )
-          ENDIF
-!
-!--       Trajectory data.
-          IF ( time_virtual_measurement_tr >= dt_virtual_measurement_tr )  THEN
-             CALL vm_sampling( sample_pr = .FALSE., sample_ts = .FALSE., sample_tr = .TRUE. )
-             CALL vm_data_output( output_pr = .FALSE., output_ts = .FALSE., output_tr = .TRUE. )
-             time_virtual_measurement_tr = MOD( time_virtual_measurement_tr,                       &
-                                                MAX( dt_virtual_measurement_tr, dt_3d ) )
-          ENDIF
-!
-!--       Profile data.
-          IF ( time_virtual_measurement_pr >= dt_virtual_measurement_pr )  THEN
-             CALL vm_sampling( sample_pr = .TRUE., sample_ts = .FALSE., sample_tr = .FALSE. )
-             CALL vm_data_output( output_pr = .TRUE., output_ts = .FALSE., output_tr = .FALSE. )
-             time_virtual_measurement_pr = MOD( time_virtual_measurement_pr,                       &
-                                                MAX( dt_virtual_measurement_pr, dt_3d ) )
-          ENDIF
+!--    Take virtual measurements
+       IF ( virtual_measurement  .AND.  time_virtual_measurement >= dt_virtual_measurement         &
+                                 .AND.  vm_time_start <= time_since_reference_point )  THEN
+          CALL vm_sampling
+          CALL vm_data_output
+          time_virtual_measurement = MOD(      time_virtual_measurement,                           &
+                                          MAX( dt_virtual_measurement, dt_3d ) )
        ENDIF
 
 !
-!--    Output wind turbine data.
+!--    Output wind turbine data
        IF ( wind_turbine  .AND.  time_wtm >= dt_data_output_wtm )  THEN
           CALL wtm_data_output
           time_wtm = MOD( time_wtm, MAX( dt_data_output_wtm, dt_3d ) )
@@ -1465,21 +1433,24 @@
 
 !
 !--    2d-data output (cross-sections)
-       IF ( time_do2d_xy >= dt_do2d_xy  .AND.  time_since_reference_point >= skip_time_do2d_xy )   &
-       THEN
-          IF ( current_timestep_number > timestep_number_at_prev_calc )  CALL doq_calculate
+       IF ( time_do2d_xy >= dt_do2d_xy  .AND.  time_since_reference_point >= skip_time_do2d_xy )  THEN
+          IF ( current_timestep_number > timestep_number_at_prev_calc )                            &
+             CALL doq_calculate
+
           CALL data_output_2d( 'xy', 0 )
           time_do2d_xy = MOD( time_do2d_xy, MAX( dt_do2d_xy, dt_3d ) )
        ENDIF
-       IF ( time_do2d_xz >= dt_do2d_xz  .AND.  time_since_reference_point >= skip_time_do2d_xz )   &
-       THEN
-          IF ( current_timestep_number > timestep_number_at_prev_calc )  CALL doq_calculate
+       IF ( time_do2d_xz >= dt_do2d_xz  .AND.  time_since_reference_point >= skip_time_do2d_xz )  THEN
+          IF ( current_timestep_number > timestep_number_at_prev_calc )                            &
+
+             CALL doq_calculate
           CALL data_output_2d( 'xz', 0 )
           time_do2d_xz = MOD( time_do2d_xz, MAX( dt_do2d_xz, dt_3d ) )
        ENDIF
-       IF ( time_do2d_yz >= dt_do2d_yz  .AND.  time_since_reference_point >= skip_time_do2d_yz )   &
-       THEN
-          IF ( current_timestep_number > timestep_number_at_prev_calc )  CALL doq_calculate
+       IF ( time_do2d_yz >= dt_do2d_yz  .AND.  time_since_reference_point >= skip_time_do2d_yz )  THEN
+          IF ( current_timestep_number > timestep_number_at_prev_calc )                            &
+             CALL doq_calculate
+
           CALL data_output_2d( 'yz', 0 )
           time_do2d_yz = MOD( time_do2d_yz, MAX( dt_do2d_yz, dt_3d ) )
        ENDIF
@@ -1529,39 +1500,49 @@
 !
 !--    Output of surface data, instantaneous and averaged data
        IF ( surface_output )  THEN
-          IF ( time_dosurf >= dt_dosurf  .AND.  time_since_reference_point >= skip_time_dosurf )   &
-          THEN
+          IF ( time_dosurf >= dt_dosurf  .AND.  time_since_reference_point >= skip_time_dosurf )  THEN
              CALL surface_data_output( 0 )
              time_dosurf = MOD( time_dosurf, MAX( dt_dosurf, dt_3d ) )
           ENDIF
-          IF ( time_dosurf_av >= dt_dosurf_av  .AND.                                               &
-               time_since_reference_point >= skip_time_dosurf_av )  THEN
+          IF ( time_dosurf_av >= dt_dosurf_av  .AND.  time_since_reference_point >= skip_time_dosurf_av )  THEN
              CALL surface_data_output( 1 )
              time_dosurf_av = MOD( time_dosurf_av, MAX( dt_dosurf_av, dt_3d ) )
           ENDIF
        ENDIF
+
+!
+!--    Output of particle time series
+       IF ( particle_advection )  THEN
+          IF ( time_dopts >= dt_dopts  .OR.                                                        &
+               ( time_since_reference_point >= particle_advection_start  .AND.                     &
+                 first_call_lpm ) )  THEN
+             CALL lpm_data_output_ptseries
+             time_dopts = MOD( time_dopts, MAX( dt_dopts, dt_3d ) )
+          ENDIF
+       ENDIF
+
 !
 !--    If required, set the heat flux for the next time step to a random value
        IF ( constant_heatflux  .AND.  random_heatflux )  THEN
-          IF ( surf_def%ns >= 1 )  THEN
+          IF ( surf_def_h(0)%ns >= 1 )  THEN
              CALL cpu_log( log_point(23), 'disturb_heatflux', 'start' )
-             CALL disturb_heatflux( surf_def )
+             CALL disturb_heatflux( surf_def_h(0) )
              CALL cpu_log( log_point(23), 'disturb_heatflux', 'stop' )
           ENDIF
-          IF ( surf_lsm%ns >= 1 )  THEN
+          IF ( surf_lsm_h(0)%ns >= 1 )  THEN
              CALL cpu_log( log_point(23), 'disturb_heatflux', 'start' )
-             CALL disturb_heatflux( surf_lsm )
+             CALL disturb_heatflux( surf_lsm_h(0) )
              CALL cpu_log( log_point(23), 'disturb_heatflux', 'stop' )
           ENDIF
-          IF ( surf_usm%ns >= 1 )  THEN
+          IF ( surf_usm_h(0)%ns >= 1 )  THEN
              CALL cpu_log( log_point(23), 'disturb_heatflux', 'start' )
-             CALL disturb_heatflux( surf_usm )
+             CALL disturb_heatflux( surf_usm_h(0) )
              CALL cpu_log( log_point(23), 'disturb_heatflux', 'stop' )
           ENDIF
        ENDIF
 
 !
-!--    Execute alle other module actions routines
+!--    Execute alle other module actions routunes
        CALL module_interface_actions( 'after_timestep' )
 
 !
@@ -1596,7 +1577,7 @@
 
 !
 !--    Output elapsed simulated time in form of a progress bar on stdout
-       IF ( myid == 0  .AND.  cpl_id == 1 )  CALL output_progress_bar
+       IF ( myid == 0 )  CALL output_progress_bar
 
        IF ( debug_output_timestep )  THEN
            WRITE( debug_string, * ) 'time_integration', simulated_time
@@ -1604,14 +1585,13 @@
        ENDIF
 
        CALL cpu_log( log_point_s(10), 'timesteps', 'stop' )
+!
+!--    COVID-19 related code begins       
+       CALL user_reset_scalar
+!
+!--    COVID-19 related code ends       
 
     ENDDO   ! time loop
-
-!
-!-- Emission module calls.
-    IF ( air_chemistry )  THEN
-       CALL chem_actions ( 'after_time_integration' )
-    ENDIF
 
 #if defined( _OPENACC )
     CALL exit_surface_arrays
@@ -1625,8 +1605,8 @@
 !$ACC END DATA
 !$ACC END DATA
 
-    IF ( myid == 0  .AND.  cpl_id == 1 )  CALL finish_progress_bar
+    IF ( myid == 0 )  CALL finish_progress_bar
 
-    CALL location_message( 'time-stepping', 'finished' )
+    CALL location_message( 'atmosphere (and/or ocean) time-stepping', 'finished' )
 
  END SUBROUTINE time_integration

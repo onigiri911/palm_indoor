@@ -13,8 +13,39 @@
 ! You should have received a copy of the GNU General Public License along with PALM. If not, see
 ! <http://www.gnu.org/licenses/>.
 !
-! Copyright 1997-2021 Leibniz Universitaet Hannover
+! Copyright 1997-2020 Leibniz Universitaet Hannover
 ! -------------------------------------------------------------------------------------------------!
+!
+! Current revisions:
+! -----------------
+!
+!
+! Former revisions:
+! -----------------
+! $Id: advec_s_bc.f90 4742 2020-10-14 15:11:02Z schwenkel $
+! Implement snow and graupel (bulk microphysics)
+! 
+! 4502 2020-04-17 16:14:16Z schwenkel
+! Implementation of ice microphysics
+! 
+! 4488 2020-04-03 11:34:29Z raasch
+! file re-formatted to follow the PALM coding standard
+!
+! 4429 2020-02-27 15:24:30Z raasch
+! bugfix: cpp-directives added for serial mode
+!
+! 4360 2020-01-07 11:25:50Z suehring
+! Corrected "Former revisions" section
+!
+! 3761 2019-02-25 15:31:42Z raasch
+! unused variables removed
+!
+! 3655 2019-01-07 16:51:22Z knoop
+! nopointer option removed
+!
+! Revision 1.1  1997/08/29 08:53:46  raasch
+! Initial revision
+!
 !
 ! Description:
 ! ------------
@@ -46,66 +77,31 @@
 !--------------------------------------------------------------------------------------------------!
     SUBROUTINE advec_s_bc( sk, sk_char )
 
-#if defined( __parallel )
-       USE MPI
-#endif
-
        USE advection,                                                                              &
-           ONLY:  aex,                                                                             &
-                  bex,                                                                             &
-                  dex,                                                                             &
-                  eex
+           ONLY:  aex, bex, dex, eex
 
        USE arrays_3d,                                                                              &
-           ONLY:  d,                                                                               &
-                  ddzw,                                                                            &
-                  dzu,                                                                             &
-                  dzw,                                                                             &
-                  tend,                                                                            &
-                  u,                                                                               &
-                  v,                                                                               &
-                  w
+           ONLY:  d, ddzw, dzu, dzw, tend, u, v, w
 
        USE control_parameters,                                                                     &
-           ONLY:  bc_pt_t_val,                                                                     &
-                  bc_q_t_val,                                                                      &
-                  bc_s_t_val,                                                                      &
-                  dt_3d,                                                                           &
-                  ibc_pt_b,                                                                        &
-                  ibc_pt_t,                                                                        &
-                  ibc_q_t,                                                                         &
-                  ibc_s_t,                                                                         &
-                  message_string,                                                                  &
-                  pt_slope_offset,                                                                 &
-                  sloping_surface,                                                                 &
-                  u_gtrans,                                                                        &
-                  v_gtrans
+           ONLY:  bc_pt_t_val, bc_q_t_val, bc_s_t_val, dt_3d, ibc_pt_b, ibc_pt_t, ibc_q_t, ibc_s_t,&
+                  message_string, pt_slope_offset, sloping_surface, u_gtrans, v_gtrans
 
        USE cpulog,                                                                                 &
-           ONLY:  cpu_log,                                                                         &
-                  log_point_s
+           ONLY:  cpu_log, log_point_s
 
        USE grid_variables,                                                                         &
-           ONLY:  ddx,                                                                             &
-                  ddy
+           ONLY:  ddx, ddy
 
        USE indices,                                                                                &
-           ONLY:  nx,                                                                              &
-                  nxl,                                                                             &
-                  nxr,                                                                             &
-                  nyn,                                                                             &
-                  nys,                                                                             &
-                  nzb,                                                                             &
-                  nzt
+           ONLY:  nx, nxl, nxr, nyn, nys, nzb, nzt
 
        USE kinds
 
        USE pegrid
 
        USE statistics,                                                                             &
-           ONLY:  rmask,                                                                           &
-                  statistic_regions,                                                               &
-                  sums_wsts_bc_l
+           ONLY:  rmask, statistic_regions, sums_wsts_bc_l
 
 
        IMPLICIT NONE
@@ -270,12 +266,13 @@
 !--    Allocate temporary arrays
        ALLOCATE( a0(nzb+1:nzt,nxl-1:nxr+1),   a1(nzb+1:nzt,nxl-1:nxr+1), a2(nzb+1:nzt,nxl-1:nxr+1),&
                  a12(nzb+1:nzt,nxl-1:nxr+1),  a22(nzb+1:nzt,nxl-1:nxr+1),                          &
-                 imme(nzb+1:nzt,nxl-1:nxr+1), impb(nzb+1:nzt,nxl-1:nxr+1),                         &
+                 immb(nzb+1:nzt,nxl-1:nxr+1), imme(nzb+1:nzt,nxl-1:nxr+1),                         &
+                 impb(nzb+1:nzt,nxl-1:nxr+1), impe(nzb+1:nzt,nxl-1:nxr+1),                         &
+                 ipmb(nzb+1:nzt,nxl-1:nxr+1), ipme(nzb+1:nzt,nxl-1:nxr+1),                         &
                  ippb(nzb+1:nzt,nxl-1:nxr+1), ippe(nzb+1:nzt,nxl-1:nxr+1),                         &
                  m1(nzb+1:nzt,nxl-2:nxr+2),   sw(nzb+1:nzt,nxl-1:nxr+1)                            &
                )
-       imme = 0.0_wp
-       ippe = 0.0_wp
+       imme = 0.0_wp; impe = 0.0_wp; ipme = 0.0_wp; ippe = 0.0_wp
 
 !
 !--    Initialise point of time measuring of the exponential portion (this would not work if done
@@ -284,6 +281,7 @@
        CALL cpu_log( log_point_s(12), 'advec_s_bc:exp', 'pause' )
 
        DO  j = nys, nyn
+
 !
 !--       Compute polynomial coefficients
           DO  i = nxl-1, nxr+1
@@ -306,7 +304,7 @@
 
 !
 !--       Fluxes using the Bott scheme
-          DO  i = nxl-1, nxr
+          DO  i = nxl, nxr
              DO  k = nzb+1, nzt
                 cip  =  MAX( 0.0_wp, ( u(k,j,i+1) - u_gtrans ) * dt_3d * ddx )
                 cim  = -MIN( 0.0_wp, ( u(k,j,i+1) - u_gtrans ) * dt_3d * ddx )
@@ -322,6 +320,21 @@
                 im   = MAX( im, 0.0_wp )
                 ippb(k,i) = ip * MIN( 1.0_wp, sk_p(k,j,i)   / (ip+im+1E-15_wp) )
                 impb(k,i) = im * MIN( 1.0_wp, sk_p(k,j,i+1) / (ip+im+1E-15_wp) )
+
+                cip  =  MAX( 0.0_wp, ( u(k,j,i) - u_gtrans ) * dt_3d * ddx )
+                cim  = -MIN( 0.0_wp, ( u(k,j,i) - u_gtrans ) * dt_3d * ddx )
+                cipf = 1.0_wp - 2.0_wp * cip
+                cimf = 1.0_wp - 2.0_wp * cim
+                ip   =   a0(k,i-1) * f2  * ( 1.0_wp - cipf )                                       &
+                       + a1(k,i-1) * f8  * ( 1.0_wp - cipf*cipf )                                  &
+                       + a2(k,i-1) * f24 * ( 1.0_wp - cipf*cipf*cipf )
+                im   =   a0(k,i)   * f2  * ( 1.0_wp - cimf )                                       &
+                       - a1(k,i)   * f8  * ( 1.0_wp - cimf*cimf )                                  &
+                       + a2(k,i)   * f24 * ( 1.0_wp - cimf*cimf*cimf )
+                ip   = MAX( ip, 0.0_wp )
+                im   = MAX( im, 0.0_wp )
+                ipmb(k,i) = ip * MIN( 1.0_wp, sk_p(k,j,i-1) / (ip+im+1E-15_wp) )
+                immb(k,i) = im * MIN( 1.0_wp, sk_p(k,j,i)   / (ip+im+1E-15_wp) )
              ENDDO
           ENDDO
 
@@ -366,32 +379,6 @@
 !
 !--       Fluxes using the exponential scheme
           CALL cpu_log( log_point_s(12), 'advec_s_bc:exp', 'continue' )
-          i = nxl-1
-          DO  k = nzb+1, nzt
-
-             IF ( sw(k,i) == 1.0_wp )  THEN
-                snenn = sk_p(k,j,i+1) - sk_p(k,j,i-1)
-                IF ( ABS( snenn ) < 1E-9_wp )  snenn = 1E-9_wp
-                sterm = ( sk_p(k,j,i) - sk_p(k,j,i-1) ) / snenn
-                sterm = MIN( sterm, 0.9999_wp )
-                sterm = MAX( sterm, 0.0001_wp )
-
-                ix = INT( sterm * 1000 ) + 1
-
-                cip =  MAX( 0.0_wp, ( u(k,j,i+1) - u_gtrans ) * dt_3d * ddx )
-
-                ippe(k,i) = sk_p(k,j,i-1) * cip + snenn * (                                     &
-                            aex(ix) * cip + bex(ix) / dex(ix) * (                               &
-                            eex(ix) -                                                           &
-                            EXP( dex(ix)*0.5_wp * ( 1.0_wp - 2.0_wp * cip ) )                   &
-                                                                )                               &
-                                                                )
-                IF ( sterm == 0.0001_wp )  ippe(k,i) = sk_p(k,j,i) * cip
-                IF ( sterm == 0.9999_wp )  ippe(k,i) = sk_p(k,j,i) * cip
-             ENDIF
-          ENDDO
-
-
           DO  i = nxl, nxr
              DO  k = nzb+1, nzt
 
@@ -435,31 +422,49 @@
                    IF ( sterm == 0.9999_wp )  imme(k,i) = sk_p(k,j,i) * cim
                 ENDIF
 
+                IF ( sw(k,i+1) == 1.0_wp )  THEN
+                   snenn = sk_p(k,j,i) - sk_p(k,j,i+2)
+                   IF ( ABS( snenn ) < 1E-9_wp )  snenn = 1E-9_wp
+                   sterm = ( sk_p(k,j,i+1) - sk_p(k,j,i+2) ) / snenn
+                   sterm = MIN( sterm, 0.9999_wp )
+                   sterm = MAX( sterm, 0.0001_wp )
+
+                   ix = INT( sterm * 1000 ) + 1
+
+                   cim = -MIN( 0.0_wp, ( u(k,j,i+1) - u_gtrans ) * dt_3d * ddx )
+
+                   impe(k,i) = sk_p(k,j,i+2) * cim + snenn * (                                     &
+                               aex(ix) * cim + bex(ix) / dex(ix) * (                               &
+                               eex(ix) -                                                           &
+                               EXP( dex(ix)*0.5_wp * ( 1.0_wp - 2.0_wp * cim ) )                   &
+                                                                   )                               &
+                                                             )
+                   IF ( sterm == 0.0001_wp )  impe(k,i) = sk_p(k,j,i+1) * cim
+                   IF ( sterm == 0.9999_wp )  impe(k,i) = sk_p(k,j,i+1) * cim
+                ENDIF
+
+                IF ( sw(k,i-1) == 1.0_wp )  THEN
+                   snenn = sk_p(k,j,i) - sk_p(k,j,i-2)
+                   IF ( ABS( snenn ) < 1E-9_wp )  snenn = 1E-9_wp
+                   sterm = ( sk_p(k,j,i-1) - sk_p(k,j,i-2) ) / snenn
+                   sterm = MIN( sterm, 0.9999_wp )
+                   sterm = MAX( sterm, 0.0001_wp )
+
+                   ix = INT( sterm * 1000 ) + 1
+
+                   cip = MAX( 0.0_wp, ( u(k,j,i) - u_gtrans ) * dt_3d * ddx )
+
+                   ipme(k,i) = sk_p(k,j,i-2) * cip + snenn * (                                     &
+                               aex(ix) * cip + bex(ix) / dex(ix) * (                               &
+                               eex(ix) -                                                           &
+                               EXP( dex(ix)*0.5_wp * ( 1.0_wp - 2.0_wp * cip ) )                   &
+                                                                   )                               &
+                                                             )
+                   IF ( sterm == 0.0001_wp )  ipme(k,i) = sk_p(k,j,i-1) * cip
+                   IF ( sterm == 0.9999_wp )  ipme(k,i) = sk_p(k,j,i-1) * cip
+                ENDIF
+
              ENDDO
-          ENDDO
-
-          i = nxr+1
-          DO  k = nzb+1, nzt
-             IF ( sw(k,i) == 1.0_wp )  THEN
-                snenn = sk_p(k,j,i-1) - sk_p(k,j,i+1)
-                IF ( ABS( snenn ) < 1E-9_wp )  snenn = 1E-9_wp
-                sterm = ( sk_p(k,j,i) - sk_p(k,j,i+1) ) / snenn
-                sterm = MIN( sterm, 0.9999_wp )
-                sterm = MAX( sterm, 0.0001_wp )
-
-                ix = INT( sterm * 1000 ) + 1
-
-                cim = -MIN( 0.0_wp, ( u(k,j,i) - u_gtrans ) * dt_3d * ddx )
-
-                imme(k,i) = sk_p(k,j,i+1) * cim + snenn * (                                        &
-                            aex(ix) * cim + bex(ix) / dex(ix) * (                                  &
-                            eex(ix) -                                                              &
-                            EXP( dex(ix)*0.5_wp * ( 1.0_wp - 2.0_wp * cim ) )                      &
-                                                                )                                  &
-                                                                )
-                IF ( sterm == 0.0001_wp )  imme(k,i) = sk_p(k,j,i) * cim
-                IF ( sterm == 0.9999_wp )  imme(k,i) = sk_p(k,j,i) * cim
-             ENDIF
           ENDDO
           CALL cpu_log( log_point_s(12), 'advec_s_bc:exp', 'pause' )
 
@@ -467,10 +472,10 @@
 !--       Prognostic equation
           DO  i = nxl, nxr
              DO  k = nzb+1, nzt
-                fplus  = ( 1.0_wp - sw(k,i) )     * ippb(k,i)   + sw(k,i)   * ippe(k,i)            &
-                         - ( 1.0_wp - sw(k,i+1) ) * impb(k,i)   - sw(k,i+1) * imme(k,i+1)
-                fminus = ( 1.0_wp - sw(k,i-1) )   * ippb(k,i-1) + sw(k,i-1) * ippe(k,i-1)          &
-                         - ( 1.0_wp - sw(k,i) )   * impb(k,i-1) - sw(k,i)   * imme(k,i)
+                fplus  = ( 1.0_wp - sw(k,i) )     * ippb(k,i) + sw(k,i)   * ippe(k,i)              &
+                         - ( 1.0_wp - sw(k,i+1) ) * impb(k,i) - sw(k,i+1) * impe(k,i)
+                fminus = ( 1.0_wp - sw(k,i-1) )   * ipmb(k,i) + sw(k,i-1) * ipme(k,i)              &
+                         - ( 1.0_wp - sw(k,i) )   * immb(k,i) - sw(k,i)   * imme(k,i)
                 tendcy = fplus - fminus
 !
 !--             Removed in order to optimize speed
@@ -488,7 +493,7 @@
 
 !
 !--    Deallocate temporary arrays
-       DEALLOCATE( a0, a1, a2, a12, a22, imme, impb, ippb, ippe, m1, sw )
+       DEALLOCATE( a0, a1, a2, a12, a22, immb, imme, impb, impe, ipmb, ipme, ippb, ippe, m1, sw )
 
 
 !
@@ -550,14 +555,16 @@
 !--    Allocate temporary arrays
        ALLOCATE( a0(nzb+1:nzt,nys-1:nyn+1),   a1(nzb+1:nzt,nys-1:nyn+1), a2(nzb+1:nzt,nys-1:nyn+1),&
                  a12(nzb+1:nzt,nys-1:nyn+1),  a22(nzb+1:nzt,nys-1:nyn+1),                          &
-                 imme(nzb+1:nzt,nys-1:nyn+1), impb(nzb+1:nzt,nys-1:nyn+1),                         &
+                 immb(nzb+1:nzt,nys-1:nyn+1), imme(nzb+1:nzt,nys-1:nyn+1),                         &
+                 impb(nzb+1:nzt,nys-1:nyn+1), impe(nzb+1:nzt,nys-1:nyn+1),                         &
+                 ipmb(nzb+1:nzt,nys-1:nyn+1), ipme(nzb+1:nzt,nys-1:nyn+1),                         &
                  ippb(nzb+1:nzt,nys-1:nyn+1), ippe(nzb+1:nzt,nys-1:nyn+1),                         &
                  m1(nzb+1:nzt,nys-2:nyn+2),   sw(nzb+1:nzt,nys-1:nyn+1)                            &
                )
-       imme = 0.0_wp
-       ippe = 0.0_wp
+       imme = 0.0_wp; impe = 0.0_wp; ipme = 0.0_wp; ippe = 0.0_wp
 
        DO  i = nxl, nxr
+
 !
 !--       Compute polynomial coefficients
           DO  j = nys-1, nyn+1
@@ -580,7 +587,7 @@
 
 !
 !--       Fluxes using the Bott scheme
-          DO  j = nys-1, nyn
+          DO  j = nys, nyn
              DO  k = nzb+1, nzt
                 cip  =  MAX( 0.0_wp, ( v(k,j+1,i) - v_gtrans ) * dt_3d * ddy )
                 cim  = -MIN( 0.0_wp, ( v(k,j+1,i) - v_gtrans ) * dt_3d * ddy )
@@ -597,6 +604,20 @@
                 ippb(k,j) = ip * MIN( 1.0_wp, sk_p(k,j,i)   / (ip+im+1E-15_wp) )
                 impb(k,j) = im * MIN( 1.0_wp, sk_p(k,j+1,i) / (ip+im+1E-15_wp) )
 
+                cip  =  MAX( 0.0_wp, ( v(k,j,i) - v_gtrans ) * dt_3d * ddy )
+                cim  = -MIN( 0.0_wp, ( v(k,j,i) - v_gtrans ) * dt_3d * ddy )
+                cipf = 1.0_wp - 2.0_wp * cip
+                cimf = 1.0_wp - 2.0_wp * cim
+                ip   =   a0(k,j-1) * f2  * ( 1.0_wp - cipf )                                       &
+                       + a1(k,j-1) * f8  * ( 1.0_wp - cipf*cipf )                                  &
+                       + a2(k,j-1) * f24 * ( 1.0_wp - cipf*cipf*cipf )
+                im   =   a0(k,j)   * f2  * ( 1.0_wp - cimf )                                       &
+                       - a1(k,j)   * f8  * ( 1.0_wp - cimf*cimf )                                  &
+                       + a2(k,j)   * f24 * ( 1.0_wp - cimf*cimf*cimf )
+                ip   = MAX( ip, 0.0_wp )
+                im   = MAX( im, 0.0_wp )
+                ipmb(k,j) = ip * MIN( 1.0_wp, sk_p(k,j-1,i) / (ip+im+1E-15_wp) )
+                immb(k,j) = im * MIN( 1.0_wp, sk_p(k,j,i)   / (ip+im+1E-15_wp) )
              ENDDO
           ENDDO
 
@@ -644,31 +665,7 @@
 !
 !--       Fluxes using exponential scheme
           CALL cpu_log( log_point_s(12), 'advec_s_bc:exp', 'continue' )
-          j = nys-1
-          DO  k = nzb+1, nzt
-             IF ( sw(k,j) == 1.0_wp )  THEN
-                snenn = sk_p(k,j+1,i) - sk_p(k,j-1,i)
-                IF ( ABS( snenn ) < 1E-9_wp )  snenn = 1E-9_wp
-                sterm = ( sk_p(k,j,i) - sk_p(k,j-1,i) ) / snenn
-                sterm = MIN( sterm, 0.9999_wp )
-                sterm = MAX( sterm, 0.0001_wp )
-
-                ix = INT( sterm * 1000 ) + 1
-
-                cip =  MAX( 0.0_wp, ( v(k,j+1,i) - v_gtrans ) * dt_3d * ddy )
-
-                ippe(k,j) = sk_p(k,j-1,i) * cip + snenn * (                                        &
-                            aex(ix) * cip + bex(ix) / dex(ix) * (                                  &
-                            eex(ix) -                                                              &
-                            EXP( dex(ix)*0.5_wp * ( 1.0_wp - 2.0_wp * cip ) )                      &
-                                                                )                                  &
-                                                          )
-                IF ( sterm == 0.0001_wp )  ippe(k,j) = sk_p(k,j,i) * cip
-                IF ( sterm == 0.9999_wp )  ippe(k,j) = sk_p(k,j,i) * cip
-             ENDIF
-          ENDDO
-
-          DO  j = nys-1, nyn
+          DO  j = nys, nyn
              DO  k = nzb+1, nzt
 
                 IF ( sw(k,j) == 1.0_wp )  THEN
@@ -711,43 +708,60 @@
                    IF ( sterm == 0.9999_wp )  imme(k,j) = sk_p(k,j,i) * cim
                 ENDIF
 
+                IF ( sw(k,j+1) == 1.0_wp )  THEN
+                   snenn = sk_p(k,j,i) - sk_p(k,j+2,i)
+                   IF ( ABS( snenn ) < 1E-9_wp )  snenn = 1E-9_wp
+                   sterm = ( sk_p(k,j+1,i) - sk_p(k,j+2,i) ) / snenn
+                   sterm = MIN( sterm, 0.9999_wp )
+                   sterm = MAX( sterm, 0.0001_wp )
+
+                   ix = INT( sterm * 1000 ) + 1
+
+                   cim = -MIN( 0.0_wp, ( v(k,j+1,i) - v_gtrans ) * dt_3d * ddy )
+
+                   impe(k,j) = sk_p(k,j+2,i) * cim + snenn * (                                     &
+                               aex(ix) * cim + bex(ix) / dex(ix) * (                               &
+                               eex(ix) -                                                           &
+                               EXP( dex(ix)*0.5_wp * ( 1.0_wp - 2.0_wp * cim ) )                   &
+                                                                   )                               &
+                                                             )
+                   IF ( sterm == 0.0001_wp )  impe(k,j) = sk_p(k,j+1,i) * cim
+                   IF ( sterm == 0.9999_wp )  impe(k,j) = sk_p(k,j+1,i) * cim
+                ENDIF
+
+                IF ( sw(k,j-1) == 1.0_wp )  THEN
+                   snenn = sk_p(k,j,i) - sk_p(k,j-2,i)
+                   IF ( ABS( snenn ) < 1E-9_wp )  snenn = 1E-9_wp
+                   sterm = ( sk_p(k,j-1,i) - sk_p(k,j-2,i) ) / snenn
+                   sterm = MIN( sterm, 0.9999_wp )
+                   sterm = MAX( sterm, 0.0001_wp )
+
+                   ix = INT( sterm * 1000 ) + 1
+
+                   cip = MAX( 0.0_wp, ( v(k,j,i) - v_gtrans ) * dt_3d * ddy )
+
+                   ipme(k,j) = sk_p(k,j-2,i) * cip + snenn * (                                     &
+                               aex(ix) * cip + bex(ix) / dex(ix) * (                               &
+                               eex(ix) -                                                           &
+                               EXP( dex(ix)*0.5_wp * ( 1.0_wp - 2.0_wp * cip ) )                   &
+                                                                   )                               &
+                                                             )
+                   IF ( sterm == 0.0001_wp )  ipme(k,j) = sk_p(k,j-1,i) * cip
+                   IF ( sterm == 0.9999_wp )  ipme(k,j) = sk_p(k,j-1,i) * cip
+                ENDIF
+
              ENDDO
           ENDDO
-
-          j = nyn+1
-          DO  k = nzb+1, nzt
-             IF ( sw(k,j) == 1.0_wp )  THEN
-                snenn = sk_p(k,j-1,i) - sk_p(k,j+1,i)
-                IF ( ABS( snenn ) < 1E-9_wp )  snenn = 1E-9_wp
-                sterm = ( sk_p(k,j,i) - sk_p(k,j+1,i) ) / snenn
-                sterm = MIN( sterm, 0.9999_wp )
-                sterm = MAX( sterm, 0.0001_wp )
-
-                ix = INT( sterm * 1000 ) + 1
-
-                cim = -MIN( 0.0_wp, ( v(k,j,i) - v_gtrans ) * dt_3d * ddy )
-
-                imme(k,j) = sk_p(k,j+1,i) * cim + snenn * (                                        &
-                            aex(ix) * cim + bex(ix) / dex(ix) * (                                  &
-                            eex(ix) -                                                              &
-                            EXP( dex(ix)*0.5_wp * ( 1.0_wp - 2.0_wp * cim ) )                      &
-                                                                )                                  &
-                                                          )
-                IF ( sterm == 0.0001_wp )  imme(k,j) = sk_p(k,j,i) * cim
-                IF ( sterm == 0.9999_wp )  imme(k,j) = sk_p(k,j,i) * cim
-             ENDIF
-          ENDDO
-
           CALL cpu_log( log_point_s(12), 'advec_s_bc:exp', 'pause' )
 
 !
 !--       Prognostic equation
           DO  j = nys, nyn
              DO  k = nzb+1, nzt
-                fplus  = ( 1.0_wp - sw(k,j) )     * ippb(k,j)   + sw(k,j)   * ippe(k,j)            &
-                         - ( 1.0_wp - sw(k,j+1) ) * impb(k,j)   - sw(k,j+1) * imme(k,j+1)
-                fminus = ( 1.0_wp - sw(k,j-1) )   * ippb(k,j-1) + sw(k,j-1) * ippe(k,j-1)          &
-                         - ( 1.0_wp - sw(k,j) )   * impb(k,j-1) - sw(k,j)   * imme(k,j)
+                fplus  = ( 1.0_wp - sw(k,j) )     * ippb(k,j) + sw(k,j)   * ippe(k,j)              &
+                         - ( 1.0_wp - sw(k,j+1) ) * impb(k,j) - sw(k,j+1) * impe(k,j)
+                fminus = ( 1.0_wp - sw(k,j-1) )   * ipmb(k,j) + sw(k,j-1) * ipme(k,j)              &
+                         - ( 1.0_wp - sw(k,j) )   * immb(k,j) - sw(k,j)   * imme(k,j)
                 tendcy = fplus - fminus
 !
 !--             Removed in order to optimise speed
@@ -769,7 +783,7 @@
 
 !
 !--    Deallocate temporary arrays
-       DEALLOCATE( a0, a1, a2, a12, a22, imme, impb, ippb, ippe, m1, sw )
+       DEALLOCATE( a0, a1, a2, a12, a22, immb, imme, impb, impe, ipmb, ipme, ippb, ippe, m1, sw )
 
 
 !
@@ -927,9 +941,9 @@
           ENDIF
 !
 !--    Specific boundary condition for bulk cloud species at the bottom boundary.
-       ELSEIF ( sk_char == 'qc'  .OR.  sk_char == 'qg'  .OR.  sk_char == 'qi'  .OR.                &
-                sk_char == 'qr'  .OR.  sk_char == 'qs'  .OR.  sk_char == 'nc'  .OR.                &
-                sk_char == 'ng'  .OR.  sk_char == 'ni'  .OR.  sk_char == 'nr'  .OR.                &
+       ELSEIF ( sk_char == 'qc'  .OR.  sk_char == 'qg'  .OR.  sk_char == 'qi'  .OR. &
+                sk_char == 'qr'  .OR.  sk_char == 'qs'  .OR.  sk_char == 'nc'  .OR. &
+                sk_char == 'ng'  .OR.  sk_char == 'ni'  .OR.  sk_char == 'nr'  .OR. &
                 sk_char == 'ns')  THEN
 !
 !--       Bulk species boundary condition at the bottom boundary:
@@ -968,7 +982,7 @@
        ELSE
 
           WRITE( message_string, * ) 'no vertical boundary condition for variable "', sk_char, '"'
-          CALL message( 'advec_s_bc', 'PAC0001', 1, 2, 0, 6, 0 )
+          CALL message( 'advec_s_bc', 'PA0158', 1, 2, 0, 6, 0 )
 
        ENDIF
 

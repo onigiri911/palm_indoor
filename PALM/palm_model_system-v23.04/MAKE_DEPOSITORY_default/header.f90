@@ -13,8 +13,76 @@
 ! You should have received a copy of the GNU General Public License along with PALM. If not, see
 ! <http://www.gnu.org/licenses/>.
 !
-! Copyright 1997-2021 Leibniz Universitaet Hannover
+! Copyright 1997-2020 Leibniz Universitaet Hannover
 !--------------------------------------------------------------------------------------------------!
+!
+! Current revisions:
+! -----------------
+!
+!
+! Former revisions:
+! -----------------
+! $Id: header.f90 4646 2020-08-24 16:02:40Z raasch $
+! file re-formatted to follow the PALM coding standard
+!
+! 4586 2020-07-01 16:16:43Z gronemeier
+! Renamed rif to Ri (gradient Richardson number, 1D model)
+! and zeta (= z_mo / ol, stability parameter, 3D model)
+!
+! 4573 2020-06-24 13:08:47Z oliver.maas
+! added statement for pt_surface_heating_rate
+!
+! 4536 2020-05-17 17:24:13Z raasch
+! output of restart data format added
+!
+! 4473 2020-03-25 21:04:07Z gronemeier
+! revised message if wall_adjustment is used
+!
+! 4444 2020-03-05 15:59:50Z raasch
+! bugfix: cpp-directives for serial mode added
+!
+! 4360 2020-01-07 11:25:50Z suehring
+! Bugfix, character length too short, caused crash on NEC.
+!
+! 4309 2019-11-26 18:49:59Z suehring
+! replaced recycling_yshift by y_shift
+!
+! 4301 2019-11-22 12:09:09Z oliver.maas
+!
+! 4297 2019-11-21 10:37:50Z oliver.maas
+! Adjusted format for simulated time and related quantities
+!
+! 4297 2019-11-21 10:37:50Z oliver.maas
+! adjusted message to the changed parameter recycling_yshift
+!
+! 4227 2019-09-10 18:04:34Z gronemeier
+! implement new palm_date_time_mod
+!
+! 4223 2019-09-10 09:20:47Z gronemeier
+! Write information about rotation angle
+!
+! 4182 2019-08-22 15:20:23Z scharf
+! Corrected "Former revisions" section
+!
+! 4168 2019-08-16 13:50:17Z suehring
+! Replace function get_topography_top_index by topo_top_ind
+!
+! 4069 2019-07-01 14:05:51Z Giersch
+! Masked output running index mid has been introduced as a local variable to avoid runtime error
+! (Loop variable has been modified) in time_integration
+!
+! 4023 2019-06-12 13:20:01Z maronga
+! Renamed "coupling start time" to "spinup time"
+!
+! 4017 2019-06-06 12:16:46Z schwenkel
+! unused variable removed
+!
+! 3655 2019-01-07 16:51:22Z knoop
+! Implementation of the PALM module interface
+!
+! Revision 1.1  1997/08/11 06:17:20  raasch
+! Initial revision
+!
 !
 ! Description:
 ! ------------
@@ -26,20 +94,12 @@
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE header
 
+
     USE arrays_3d,                                                                                 &
-        ONLY:  pt_init,                                                                            &
-               q_init,                                                                             &
-               s_init,                                                                             &
-               sa_init,                                                                            &
-               ug,                                                                                 &
-               vg,                                                                                 &
-               w_subs,                                                                             &
-               zu,                                                                                 &
-               zw
+        ONLY:  pt_init, q_init, s_init, sa_init, ug, vg, w_subs, zu, zw
 
     USE basic_constants_and_equations_mod,                                                         &
-        ONLY:  g,                                                                                  &
-               kappa
+        ONLY:  g, kappa
 
     USE bulk_cloud_model_mod,                                                                      &
         ONLY:  bulk_cloud_model
@@ -50,55 +110,29 @@
         ONLY:  log_point_s
 
     USE grid_variables,                                                                            &
-        ONLY:  dx,                                                                                 &
-               dy
+        ONLY:  dx, dy
 
     USE indices,                                                                                   &
-        ONLY:  mg_loc_ind,                                                                         &
-               nnx,                                                                                &
-               nny,                                                                                &
-               nnz,                                                                                &
-               nx,                                                                                 &
-               nxl_mg,                                                                             &
-               nxr_mg,                                                                             &
-               ny,                                                                                 &
-               nyn_mg,                                                                             &
-               nys_mg,                                                                             &
-               nzt,                                                                                &
-               nzt_mg,                                                                             &
+        ONLY:  mg_loc_ind, nnx, nny, nnz, nx, ny, nxl_mg, nxr_mg, nyn_mg, nys_mg, nzt, nzt_mg,     &
                topo_top_ind
-#if defined( __parallel )
-    USE indices,                                                                                   &
-        ONLY:  nnx_pe,                                                                             &
-               nny_pe
-#endif
+
     USE kinds
 
     USE model_1d_mod,                                                                              &
-        ONLY:  damp_level_ind_1d,                                                                  &
-               dt_pr_1d,                                                                           &
-               dt_run_control_1d,                                                                  &
-               end_time_1d
+        ONLY:  damp_level_ind_1d, dt_pr_1d, dt_run_control_1d, end_time_1d
 
     USE module_interface,                                                                          &
         ONLY:  module_interface_header
 
     USE netcdf_interface,                                                                          &
-        ONLY:  netcdf_data_format,                                                                 &
-               netcdf_data_format_string,                                                          &
-               netcdf_deflate
+        ONLY:  netcdf_data_format, netcdf_data_format_string, netcdf_deflate
 
     USE ocean_mod,                                                                                 &
-        ONLY:  ibc_sa_t,                                                                           &
-               prho_reference,                                                                     &
-               sa_surface,                                                                         &
-               sa_vertical_gradient,                                                               &
-               sa_vertical_gradient_level,                                                         &
-               sa_vertical_gradient_level_ind
+        ONLY:  ibc_sa_t, prho_reference, sa_surface, sa_vertical_gradient,                         &
+               sa_vertical_gradient_level, sa_vertical_gradient_level_ind
 
     USE palm_date_time_mod,                                                                        &
-        ONLY:  date_time_str_len,                                                                  &
-               get_date_time
+        ONLY:  get_date_time
 
     USE pegrid
 
@@ -107,23 +141,14 @@
         ONLY:  pmc_get_model_info
 
     USE pmc_interface,                                                                             &
-        ONLY:  atmosphere_ocean_coupled_run,                                                       &
-               nested_run,                                                                         &
-               nesting_bounds,                                                                     &
-               nesting_datatransfer_mode,                                                          &
-               nesting_mode
-
-#else
-    USE pmc_interface,                                                                             &
-        ONLY:  atmosphere_ocean_coupled_run
+        ONLY:  nested_run, nesting_datatransfer_mode, nesting_mode
 #endif
 
     USE surface_mod,                                                                               &
-        ONLY:  surf_def
+        ONLY:  surf_def_h
 
     USE turbulence_closure_mod,                                                                    &
-        ONLY:  rans_const_c,                                                                       &
-               rans_const_sigma
+        ONLY:  rans_const_c, rans_const_sigma
 
     IMPLICIT NONE
 
@@ -137,7 +162,7 @@
     CHARACTER (LEN=16) ::  begin_chr           !< string indication start time for the data output
     CHARACTER (LEN=16) ::  coor_chr            !< dummy string
 
-    CHARACTER (LEN=date_time_str_len) ::  date_time_str !< string for date and time information
+    CHARACTER (LEN=23) ::  date_time_str       !< string for date and time information
 
     CHARACTER (LEN=26) ::  ver_rev             !< string for run identification
 
@@ -226,25 +251,23 @@
 !-- Determine kind of model run
     IF ( TRIM( initializing_actions ) == 'read_restart_data' )  THEN
        run_classification = 'restart run'
-    ELSEIF ( cyclic_fill_initialization )  THEN
+    ELSEIF ( TRIM( initializing_actions ) == 'cyclic_fill' )  THEN
        run_classification = 'run with cyclic fill of 3D - prerun data'
     ELSEIF ( INDEX( initializing_actions, 'set_constant_profiles' ) /= 0 )  THEN
        run_classification = 'run without 1D - prerun'
     ELSEIF ( INDEX( initializing_actions, 'set_1d-model_profiles' ) /= 0 )  THEN
        run_classification = 'run with 1D - prerun'
-    ELSEIF ( INDEX( initializing_actions, 'read_from_file' ) /= 0 )  THEN
-       run_classification = 'run initialized with external data from dynamic input file'
+    ELSEIF ( INDEX( initializing_actions, 'inifor' ) /= 0 )  THEN
+       run_classification = 'run initialized with COSMO data'
     ELSEIF ( INDEX( initializing_actions, 'by_user' ) /=0 )  THEN
        run_classification = 'run initialized by user'
     ELSEIF ( INDEX( initializing_actions, 'initialize_vortex' ) /=0 )  THEN
        run_classification = 'run additionally initialized by a Rankine-vortex'
     ELSEIF ( INDEX( initializing_actions, 'initialize_ptanom' ) /=0 )  THEN
        run_classification = 'run additionally initialized by temperature anomaly'
-    ELSEIF ( INDEX( initializing_actions, 'interpolate_from_parent' ) /=0 )  THEN
-       run_classification = 'run initialized by interpolation from parent'
     ELSE
-       message_string = ' unknown initializing action(s): "' // TRIM( initializing_actions ) // '"'
-       CALL message( 'header', 'PAC0207', 0, 0, 0, 6, 0 )
+       message_string = ' unknown action(s): ' // TRIM( initializing_actions )
+       CALL message( 'header', 'PA0191', 0, 0, 0, 6, 0 )
     ENDIF
 #if defined( __parallel )
     IF ( nested_run )  run_classification = 'nested ' // run_classification(1:63)
@@ -258,17 +281,18 @@
 !
 !-- Run-identification, date, time, host
     host_chr = host(1:10)
-    ver_rev = TRIM( version_string )
+    ver_rev = TRIM( version ) // '  ' // TRIM( revision )
     WRITE ( io, 100 )  ver_rev, TRIM( run_classification )
-#if defined( __parallel )
-    IF ( atmosphere_run_coupled_to_ocean )  THEN
-       WRITE ( io, 101 )  'atmosphere coupled to ocean'
-    ELSEIF ( ocean_run_coupled_to_atmosphere )  THEN
-       WRITE ( io, 101 )  'ocean coupled to atmosphere'
+    IF ( TRIM( coupling_mode ) /= 'uncoupled' )  THEN
+       WRITE ( io, 101 )  coupling_mode
     ENDIF
-    IF ( coupling_start_time /= 0.0_wp  .AND. .NOT. spinup  .AND. atmosphere_ocean_coupled_run )   &
-    THEN
-       WRITE ( io, 114 )
+#if defined( __parallel )
+    IF ( coupling_start_time /= 0.0_wp  .AND. .NOT. spinup )  THEN
+       IF ( coupling_start_time > simulated_time_at_begin )  THEN
+          WRITE ( io, 109 )
+       ELSE
+          WRITE ( io, 114 )
+       ENDIF
     ENDIF
 #endif
     IF ( ensemble_member_nr /= 0 )  THEN
@@ -278,25 +302,21 @@
        WRITE ( io, 102 )  run_date, run_identifier, run_time, runnr, ADJUSTR( host_chr )
     ENDIF
 #if defined( __parallel )
-    IF ( pe_grid_prescribed )  THEN
-       char1 = 'prescribed'
-    ELSE
+    IF ( npex == -1  .AND.  npey == -1 )  THEN
        char1 = 'calculated'
+    ELSE
+       char1 = 'predefined'
     ENDIF
     IF ( threads_per_task == 1 )  THEN
-       IF ( serial_run )  THEN
-          WRITE ( io, 105 )
-       ELSE
-          WRITE ( io, 103 )  numprocs, npex, npey, TRIM( char1 )
-       ENDIF
+       WRITE ( io, 103 )  numprocs, pdims(1), pdims(2), TRIM( char1 )
     ELSE
-       WRITE ( io, 104 )  numprocs*threads_per_task, numprocs, threads_per_task, npex, npey,       &
-                          TRIM( char1 )
+       WRITE ( io, 104 )  numprocs*threads_per_task, numprocs, threads_per_task, pdims(1),         &
+                          pdims(2), TRIM( char1 )
     ENDIF
 
-    IF ( npey == 1 )  THEN
+    IF ( pdims(2) == 1 )  THEN
        WRITE ( io, 107 )  'x'
-    ELSEIF ( npex == 1 )  THEN
+    ELSEIF ( pdims(1) == 1 )  THEN
        WRITE ( io, 107 )  'y'
     ENDIF
     IF ( numprocs /= maximum_parallel_io_streams )  THEN
@@ -306,11 +326,10 @@
 
 #if defined( __parallel )
 !
-!-- Nesting information
-    IF ( nested_run  .OR.  atmosphere_ocean_coupled_run )  THEN
+!-- Nesting informations
+    IF ( nested_run )  THEN
 
-       WRITE ( io, 600 )  TRIM( nesting_bounds ), TRIM( nesting_mode ),                            &
-                          TRIM( nesting_datatransfer_mode )
+       WRITE ( io, 600 )  TRIM( nesting_mode ), TRIM( nesting_datatransfer_mode )
        CALL pmc_get_model_info( ncpl = ncpl, cpl_id = my_cpl_id )
 
        DO  n = 1, ncpl
@@ -344,12 +363,11 @@
     WRITE ( io, 121 )  TRIM( approximation )
     IF ( psolver(1:7) == 'poisfft' )  THEN
        WRITE ( io, 111 )  TRIM( fft_method )
-       IF ( use_sm_for_poisfft )  WRITE ( io, 117 )  npey
-       IF ( temperton_fft_vec )  WRITE( io, 115 )
+       IF ( transpose_compute_overlap )  WRITE( io, 115 )
     ELSEIF ( psolver == 'sor' )  THEN
        WRITE ( io, 112 )  nsor_ini, nsor, omega_sor
     ELSEIF ( psolver(1:9) == 'multigrid' )  THEN
-       WRITE ( io, 135 )  TRIM( psolver ), cycle_mg, maximum_grid_level, ngsrb
+       WRITE ( io, 135 )  TRIM(psolver), cycle_mg, maximum_grid_level, ngsrb
        IF ( mg_cycles == -1 )  THEN
           WRITE ( io, 140 )  residual_limit
        ELSE
@@ -417,14 +435,7 @@
           WRITE ( io, 130 )
        ENDIF
     ENDIF
-    IF ( passive_scalar )  THEN
-       WRITE ( io, 134 )
-       IF ( allow_negative_scalar_values )  THEN
-          WRITE( io, 138 )
-       ELSE
-          WRITE( io, 133 )
-       ENDIF
-    ENDIF
+    IF ( passive_scalar )  WRITE ( io, 134 )
     IF ( conserve_volume_flow )  THEN
        WRITE ( io, 150 )  conserve_volume_flow_mode
        IF ( TRIM( conserve_volume_flow_mode ) == 'bulk_velocity' )  THEN
@@ -550,18 +561,7 @@
           ENDDO
        ENDIF
     ENDIF
-
-    WRITE ( io, 254 )  nx, ny, nzt+1
-    IF ( non_uniform_subdomain )  THEN
-#if defined( __parallel )
-       WRITE ( io, 256 )  MIN( nnx_pe(npex-1), nx+1 ), MIN( nny_pe(npey-1), ny+1 ),                &
-                          MIN( nnz+2, nzt+2 ),                                                     &
-                          MIN( nnx_pe(0), nx+1 ), MIN( nny_pe(0), ny+1 ), MIN( nnz+2, nzt+2 )
-#endif
-    ELSE
-       WRITE ( io, 255 )  MIN( nnx, nx+1 ), MIN( nny, ny+1 ), MIN( nnz+2, nzt+2 )
-    ENDIF
-
+    WRITE ( io, 254 )  nx, ny, nzt+1, MIN( nnx, nx+1 ), MIN( nny, ny+1 ), MIN( nnz+2, nzt+2 )
     IF ( sloping_surface )  WRITE ( io, 260 )  alpha_surface
 
 !
@@ -768,12 +768,16 @@
           WRITE ( io, 279 )
        ENDIF
     ENDIF
-!
+
 !-- Complex terrain
-    IF ( terrain_following_mapping )  THEN
+    IF ( complex_terrain )  THEN
        WRITE( io, 280 )
-       WRITE( io, 281 )  zu(topo_top_ind(0,0,0))
-       IF ( cyclic_fill_initialization )  WRITE( io, 282 )
+       IF ( turbulent_inflow )  THEN
+          WRITE( io, 281 )  zu(topo_top_ind(0,0,0))
+       ENDIF
+       IF ( TRIM( initializing_actions ) == 'cyclic_fill' )  THEN
+          WRITE( io, 282 )
+       ENDIF
     ENDIF
 !
 !-- Boundary conditions
@@ -884,7 +888,7 @@
        WRITE ( io, 303 )
        IF ( constant_heatflux )  THEN
           IF ( large_scale_forcing .AND. lsf_surf )  THEN
-             IF ( surf_def%ns >= 1 )  WRITE ( io, 306 )  surf_def%shf(1)
+             IF ( surf_def_h(0)%ns >= 1 )  WRITE ( io, 306 )  surf_def_h(0)%shf(1)
           ELSE
              WRITE ( io, 306 )  surface_heatflux
           ENDIF
@@ -892,7 +896,7 @@
        ENDIF
        IF ( humidity  .AND.  constant_waterflux )  THEN
           IF ( large_scale_forcing .AND. lsf_surf )  THEN
-             WRITE ( io, 311 ) surf_def%qsws(1)
+             WRITE ( io, 311 ) surf_def_h(0)%qsws(1)
           ELSE
              WRITE ( io, 311 ) surface_waterflux
           ENDIF
@@ -904,12 +908,12 @@
 
     IF ( use_top_fluxes )  THEN
        WRITE ( io, 304 )
-       IF ( .NOT. atmosphere_ocean_coupled_run )  THEN
+       IF ( coupling_mode == 'uncoupled' )  THEN
           WRITE ( io, 320 )  top_momentumflux_u, top_momentumflux_v
           IF ( constant_top_heatflux )  THEN
              WRITE ( io, 306 )  top_heatflux
           ENDIF
-       ELSEIF ( ocean_run_coupled_to_atmosphere )  THEN
+       ELSEIF ( coupling_mode == 'ocean_to_atmosphere' )  THEN
           WRITE ( io, 316 )
        ENDIF
        IF ( ocean_mode  .AND.  constant_top_salinityflux )  WRITE ( io, 309 )  top_salinityflux
@@ -920,7 +924,6 @@
     IF ( constant_flux_layer )  THEN
        WRITE ( io, 305 )  (zu(1)-zu(0)), roughness_length, z0h_factor*roughness_length, kappa,     &
                           zeta_min, zeta_max
-       IF ( allow_roughness_limitation )  WRITE ( io, 319 )
        IF ( .NOT. constant_heatflux )  WRITE ( io, 308 )
        IF ( humidity  .AND.  .NOT. constant_waterflux )  THEN
           WRITE ( io, 312 )
@@ -936,7 +939,16 @@
 
     WRITE ( io, 317 )  bc_lr, bc_ns
     IF ( .NOT. bc_lr_cyc  .OR.  .NOT. bc_ns_cyc )  THEN
-       WRITE ( io, 318 )  pt_damping_width, pt_damping_factor
+       WRITE ( io, 318 )  use_cmax, pt_damping_width, pt_damping_factor
+       IF ( turbulent_inflow )  THEN
+          IF ( y_shift == 0 )  THEN
+             WRITE ( io, 319 )  recycling_width, recycling_plane,                                  &
+                                inflow_damping_height, inflow_damping_width
+          ELSE
+             WRITE ( io, 322 )  y_shift, recycling_width, recycling_plane,                         &
+                                inflow_damping_height, inflow_damping_width
+          END IF
+       ENDIF
        IF ( turbulent_outflow )  THEN
           WRITE ( io, 323 )  outflow_source_plane, INT( outflow_source_plane / dx )
        ENDIF
@@ -1092,6 +1104,7 @@
                           TRIM( slices )
     ENDIF
 
+
 !
 !-- Listing of 1D-profiles
     WRITE ( io, 325 )  dt_dopr_listing
@@ -1187,8 +1200,6 @@
           ELSE
              WRITE ( io, 354 )  TRIM( output_format ), netcdf_deflate
           ENDIF
-
-          IF ( interpolate_to_grid_center )  WRITE ( io, 358 )
 
           IF ( do2d_xy /= ''  .AND.  section(1,1) /= -9999 )  THEN
              i = 1
@@ -1342,8 +1353,6 @@
              WRITE ( io, 354 )  TRIM( output_format ), netcdf_deflate
           ENDIF
 
-          IF ( interpolate_to_grid_center )  WRITE ( io, 358 )
-
           IF ( do3d_at_begin )  THEN
              begin_chr = 'and at the start'
           ELSE
@@ -1406,8 +1415,6 @@
              ELSE
                 WRITE ( io, 354 )  TRIM( output_format ), netcdf_deflate
              ENDIF
-
-             IF ( interpolate_to_grid_center )  WRITE ( io, 358 )
 
              IF ( av == 0 )  THEN
                 WRITE ( io, 347 )  domask_chr, dt_domask(mid)
@@ -1547,12 +1554,11 @@
     IF ( pt_surface_heating_rate /= 0.0_wp )  THEN
        WRITE ( io, 476 )  pt_surface_heating_rate
     ENDIF
-    IF ( homogenize_surface_temperature )  WRITE ( io, 479 )
     IF ( humidity  .AND.  q_surface_initial_change /= 0.0_wp )  THEN
        WRITE ( io, 477 )  q_surface_initial_change
     ENDIF
-    IF ( passive_scalar  .AND.  s_surface_initial_change /= 0.0_wp )  THEN
-       WRITE ( io, 478 )  s_surface_initial_change
+    IF ( passive_scalar  .AND.  q_surface_initial_change /= 0.0_wp )  THEN
+       WRITE ( io, 478 )  q_surface_initial_change
     ENDIF
 
 !
@@ -1582,46 +1588,43 @@
 100 FORMAT (/1X,'******************************',4X,44('-')/                                       &
             1X,'* ',A,' *',4X,A/                                                                   &
             1X,'******************************',4X,44('-'))
+101 FORMAT (35X,'coupled run: ',A/                                                                 &
+            35X,42('-'))
 102 FORMAT (/' Date:               ',A10,4X,'Run:       ',A34/                                     &
             ' Time:                 ',A8,4X,'Run-No.:   ',I2.2/                                    &
             ' Run on host:        ',A10)
 #if defined( __parallel )
-101 FORMAT (35X,'coupled run: ',A/                                                                 &
-            35X,42('-'))
 103 FORMAT (' Number of PEs:',10X,I6,4X,'Processor grid (x,y): (',I4,',',I4,')',1X,A)
 104 FORMAT (' Number of PEs:',10X,I6,4X,'Tasks:',I4,'   threads per task:',I4/                     &
               35X,'Processor grid (x,y): (',I4,',',I4,')',1X,A)
-105 FORMAT (' Serial run on one core without using MPI/openMP')
 107 FORMAT (35X,'A 1d-decomposition along ',A,' is used')
 108 FORMAT (35X,'Max. # of parallel I/O streams is ',I5)
+109 FORMAT (35X,'Precursor run for coupled atmos-ocean run'/                                       &
+            35X,42('-'))
 114 FORMAT (35X,'Coupled atmosphere-ocean run following'/                                          &
             35X,'independent precursor runs'/                                                      &
             35X,42('-'))
 #endif
 110 FORMAT (/' Numerical Schemes:'/                                                                &
              ' -----------------'/)
+124 FORMAT (' --> Use the ',A,' turbulence closure (',A,' mode).')
+121 FORMAT (' --> Use the ',A,' approximation for the model equations.')
 111 FORMAT (' --> Solve perturbation pressure via FFT using ',A,' routines')
 112 FORMAT (' --> Solve perturbation pressure via SOR-Red/Black-Schema'/                           &
             '     Iterations (initial/other): ',I3,'/',I3,'  omega =',F6.3)
 113 FORMAT (' --> Momentum advection via Piascek-Williams-Scheme (Form C3)',' or Upstream')
-115 FORMAT ('     Vectorized form of Temperton-FFT is used')
+115 FORMAT ('     FFT and transpositions are overlapping')
 116 FORMAT (' --> Scalar advection via Piascek-Williams-Scheme (Form C3)',' or Upstream')
-117 FORMAT ('     shared memory on node is used (1d-decomposition for pressure)'/                  &
-            '     PEs per shared memory block: ',I5)
 118 FORMAT (' --> Scalar advection via Bott-Chlond-Scheme')
 119 FORMAT (' --> Galilei-Transform applied to horizontal advection:'/                             &
             '     translation velocity = ',A/                                                      &
             '     distance advected ',A,':  ',F8.3,' km(x)  ',F8.3,' km(y)')
-121 FORMAT (' --> Use the ',A,' approximation for the model equations.')
 122 FORMAT (' --> Time differencing scheme: ',A)
 123 FORMAT (' --> Rayleigh-Damping active, starts ',A,' z = ',F8.2,' m'/                           &
             '     maximum damping coefficient:',F6.3, ' 1/s')
-124 FORMAT (' --> Use the ',A,' turbulence closure (',A,' mode).')
 129 FORMAT (' --> Additional prognostic equation for the specific humidity')
 130 FORMAT (' --> Additional prognostic equation for the total water content')
 131 FORMAT (' --> No pt-equation solved. Neutral stratification with pt = ',F6.2,' K assumed')
-133 FORMAT ('     Negative values of passive scalars due to dispersion errors are cut, which',/    &
-            '     which may appear in results as (small) artificial source of passive scalars.')
 134 FORMAT (' --> Additional prognostic equation for a passive scalar')
 135 FORMAT (' --> Solve perturbation pressure via ',A,' method (',A,'-cycle)'/                     &
             '     number of grid levels:                   ',I2/                                   &
@@ -1630,7 +1633,6 @@
 137 FORMAT ('     level data gathered on PE0 at level:     ',I2/                                   &
             '     gridpoints of coarsest subdomain (x,y,z): (',I3,',',I3,',', I3,')'/              &
             '     gridpoints of coarsest domain (x,y,z):    (',I3,',',I3,',', I3,')')
-138 FORMAT ('     Negative scalar values due to dispersion errors are permitted!')
 139 FORMAT (' --> Loop optimization method: ',A)
 140 FORMAT ('     maximum residual allowed:                ',E10.3)
 141 FORMAT ('     fixed number of multigrid cycles:        ',I4)
@@ -1661,13 +1663,8 @@
               ' Grid length:      dx =    ',F8.3,' m    dy =    ',F8.3,' m')
 251 FORMAT (/' Domain size:       x = ',F10.3,' m     y = ',F10.3,' m  z(u) = ',F10.3,' m'/)
 253 FORMAT ('                dz(',I1,') =    ', F8.3, ' m')
-254 FORMAT (//' Number of gridpoints (x,y,z):  (0:',I4,', 0:',I4,', 0:',I4,')')
-255 FORMAT (' Subdomain size (x,y,z):        (  ',I4,',   ',I4,',   ',I4,')'/)
-#if defined( __parallel )
-256 FORMAT (' Subdomains do not have uniform size:'/                                               &
-            ' Min. subdomain size (x,y,z):   (  ',I4,',   ',I4,',   ',I4,')'/                      &
-            ' Max. subdomain size (x,y,z):   (  ',I4,',   ',I4,',   ',I4,')'/ )
-#endif
+254 FORMAT (//' Number of gridpoints (x,y,z):  (0:',I4,', 0:',I4,', 0:',I4,')'/                    &
+            ' Subdomain size (x,y,z):        (  ',I4,',   ',I4,',   ',I4,')'/)
 260 FORMAT (/' The model has a slope in x-direction. Inclination angle: ',F6.2,' degrees')
 270 FORMAT (//' Topography information:'/                                                          &
               ' ----------------------'//                                                          &
@@ -1692,7 +1689,7 @@
             ' (u in x-direction, v in y-direction))' /)
 279 FORMAT (' Topography grid definition convention:'/                                             &
             ' cell center (scalar grid points)' /)
-280 FORMAT (' Terrain-following mapping of turbulent flow fields is activated.')
+280 FORMAT (' Complex terrain simulation is activated.')
 281 FORMAT ('    --> Mean inflow profiles are adjusted.' /                                         &
             '    --> Elevation of inflow boundary: ', F7.1, ' m' )
 282 FORMAT ('    --> Initial data from 3D-precursor run is shifted' /                              &
@@ -1706,7 +1703,6 @@
 301 FORMAT (/'                     ',A//                                                           &
              ' B. bound.: ',A/                                                                     &
              ' T. bound.: ',A)
-302 FORMAT ('       Predefined constant scalarflux:   ',F9.6,' kg/(m**2 s)')
 303 FORMAT (/' Bottom surface fluxes are used in diffusion terms at k=1')
 304 FORMAT (/' Top surface fluxes are used in diffusion terms at k=nzt')
 305 FORMAT (//'    Constant flux layer between bottom surface and first ',                         &
@@ -1723,67 +1719,75 @@
 312 FORMAT ('       Predefined surface humidity')
 313 FORMAT ('       Predefined constant scalar flux: ',E10.3,' kg/(m**2 s)')
 314 FORMAT ('       Predefined scalar value at the surface')
+302 FORMAT ('       Predefined constant scalarflux:   ',F9.6,' kg/(m**2 s)')
 315 FORMAT ('       Humidity flux at top surface is 0.0')
 316 FORMAT ('       Sensible heatflux and momentum flux from coupled ', 'atmosphere model')
 317 FORMAT (//' Lateral boundaries:'/                                                              &
             '       left/right:  ',A/                                                              &
             '       north/south: ',A)
-318 FORMAT (/'       pt damping layer width = ',F8.2,' m, pt ','damping factor =',F7.4)
-319 FORMAT ('       automatic limitation of roughness lengths to 0.5 * dx/dy/dz')
+318 FORMAT (/'       use_cmax: ',L1 /                                                              &
+            '       pt damping layer width = ',F8.2,' m, pt ','damping factor =',F7.4)
+319 FORMAT ('       turbulence recycling at inflow switched on'/                                   &
+            '       width of recycling domain: ',F7.1,' m   grid index: ',I4/                      &
+            '       inflow damping height: ',F6.1,' m   width: ',F6.1,' m')
 320 FORMAT ('       Predefined constant momentumflux:  u: ',F9.6,' m**2/s**2'/                     &
             '                                          v: ',F9.6,' m**2/s**2')
 321 FORMAT (//' Initial profiles:'/                                                                &
               ' ----------------')
+322 FORMAT ('       turbulence recycling at inflow switched on'/                                   &
+            '       y-shift of the recycled inflow turbulence is',I3,' PE'/                        &
+            '       width of recycling domain: ',F7.1,' m   grid index: ',I4/                      &
+            '       inflow damping height: ',F6.1,' m   width: ',F6.1,' m'/)
 323 FORMAT ('       turbulent outflow conditon switched on'/                                       &
             '       position of outflow source plane: ',F7.1,' m   ','grid index: ', I4)
 325 FORMAT (//' List output:'/                                                                     &
              ' -----------'//                                                                      &
             '    1D-Profiles:'/                                                                    &
             '       Output every             ',F10.2,' s')
-326 FORMAT ('       Time averaged over       ',F10.2,' s'/                                         &
-            '       Averaging input every    ',F10.2,' s')
+326 FORMAT ('       Time averaged over       ',F8.2,' s'/                                          &
+            '       Averaging input every    ',F8.2,' s')
 330 FORMAT (//' Data output:'/                                                                     &
              ' -----------'/)
 331 FORMAT (/'    1D-Profiles:')
 332 FORMAT (/'       ',A)
-333 FORMAT ('       Output every             ',F10.2,' s',/                                        &
-            '       Time averaged over       ',F10.2,' s'/                                         &
-            '       Averaging input every    ',F10.2,' s')
+333 FORMAT ('       Output every             ',F8.2,' s',/                                         &
+            '       Time averaged over       ',F8.2,' s'/                                          &
+            '       Averaging input every    ',F8.2,' s')
 334 FORMAT (/'    2D-Arrays',A,':')
 335 FORMAT (/'       ',A2,'-cross-section  Arrays: ',A/                                            &
-            '       Output every             ',F10.2,' s  ',A/                                     &
+            '       Output every             ',F8.2,' s  ',A/                                      &
             '       Cross sections at ',A1,' = ',A/                                                &
             '       scalar-coordinates:   ',A,' m'/)
 336 FORMAT (/'    3D-Arrays',A,':')
 337 FORMAT (/'       Arrays: ',A/ &
-            '       Output every             ',F10.2,' s  ',A/                                     &
-            '       Upper output limit at    ',F10.2,' m  (GP ',I4,')'/)
-339 FORMAT ('       No output during initial ',F10.2,' s')
+            '       Output every             ',F8.2,' s  ',A/                                      &
+            '       Upper output limit at    ',F8.2,' m  (GP ',I4,')'/)
+339 FORMAT ('       No output during initial ',F8.2,' s')
 340 FORMAT (/'    Time series:')
-341 FORMAT ('       Output every             ',F10.2,' s'/)
+341 FORMAT ('       Output every             ',F8.2,' s'/)
 342 FORMAT (/'       ',A2,'-cross-section  Arrays: ',A/                                            &
-            '       Output every             ',F10.2,' s  ',A/                                     &
-            '       Time averaged over       ',F10.2,' s'/                                         &
-            '       Averaging input every    ',F10.2,' s'/                                         &
+            '       Output every             ',F8.2,' s  ',A/                                      &
+            '       Time averaged over       ',F8.2,' s'/                                          &
+            '       Averaging input every    ',F8.2,' s'/                                          &
             '       Cross sections at ',A1,' = ',A/                                                &
             '       scalar-coordinates:   ',A,' m'/)
 343 FORMAT (/'       Arrays: ',A/                                                                  &
-            '       Output every             ',F10.2,' s  ',A/                                     &
-            '       Time averaged over       ',F10.2,' s'/                                         &
-            '       Averaging input every    ',F10.2,' s'/                                         &
+            '       Output every             ',F8.2,' s  ',A/                                      &
+            '       Time averaged over       ',F8.2,' s'/                                          &
+            '       Averaging input every    ',F8.2,' s'/                                          &
             '       Upper output limit at    ',F8.2,' m  (GP ',I4,')'/)
-344 FORMAT ('       Output format: ',A)
+344 FORMAT ('       Output format: ',A/)
 345 FORMAT (/'    Scaling lengths for output locations of all subsequent mask IDs:',/              &
             '       mask_scale_x (in x-direction): ',F9.3, ' m',/                                  &
             '       mask_scale_y (in y-direction): ',F9.3, ' m',/                                  &
             '       mask_scale_z (in z-direction): ',F9.3, ' m' )
 346 FORMAT (/'    Masked data output',A,' for mask ID ',I2, ':')
 347 FORMAT ('       Variables: ',A/                                                                &
-            '       Output every             ',F10.2,' s')
+            '       Output every             ',F8.2,' s')
 348 FORMAT ('       Variables: ',A/ &
-            '       Output every             ',F10.2,' s'/                                         &
-            '       Time averaged over       ',F10.2,' s'/                                         &
-            '       Averaging input every    ',F10.2,' s')
+            '       Output every             ',F8.2,' s'/                                          &
+            '       Time averaged over       ',F8.2,' s'/                                          &
+            '       Averaging input every    ',F8.2,' s')
 349 FORMAT (/'       Output locations in ',A,'-direction in multiples of ',                        &
             'mask_scale_',A,' predefined by array mask_',I2.2,'_',A,':'/                           &
             13('       ',8(F8.2,',')/) )
@@ -1792,13 +1796,12 @@
 351 FORMAT (/'       Output locations in ',A,'-direction in multiples of ',                        &
             'mask_scale_',A,' constructed from array mask_',I2.2,'_',A,'_loop:'/                   &
             '          loop begin:',F8.2,', end:',F8.2,', stride:',F8.2 )
-352 FORMAT ('       Number of output time levels allowed: ',I3 )
-353 FORMAT ('       Number of output time levels allowed: unlimited')
-354 FORMAT ('       Output format: ',A, '   compressed with level: ',I1)
+352 FORMAT (/'       Number of output time levels allowed: ',I3 /)
+353 FORMAT (/'       Number of output time levels allowed: unlimited'/)
+354 FORMAT ('       Output format: ',A, '   compressed with level: ',I1/)
 355 FORMAT (/'    Restart data format(s):')
 356 FORMAT ('    Input format:  ',A)
 357 FORMAT ('    Output format: ',A)
-358 FORMAT ('       Interpolation to grid center switched on')
 400 FORMAT (//' Physical quantities:'/                                                             &
               ' -------------------'/)
 410 FORMAT ('    Geograph. latitude  :   latitude  = ',F5.1,' degr'/                               &
@@ -1870,7 +1873,7 @@
             '                         sigma_diss = ',F9.5)
 470 FORMAT (//' Actions during the simulation:'/                                                   &
               ' -----------------------------'/)
-471 FORMAT ('    Disturbance impulse (u,v) every :   ',F10.2,' s'/                                 &
+471 FORMAT ('    Disturbance impulse (u,v) every :   ',F6.2,' s'/                                  &
             '    Disturbance amplitude           :    ',F5.2, ' m/s'/                              &
             '    Lower disturbance level         : ',F8.2,' m (GP ',I4,')'/                        &
             '    Upper disturbance level         : ',F8.2,' m (GP ',I4,')')
@@ -1886,7 +1889,6 @@
 478 FORMAT ('    The scalar value is increased at the surface (or decreased, ',                    &
                  'respectively, if the'/                                                           &
             '    value is negative) by ',E8.1,' kg/m**3 at the beginning of',' the 3D-simulation'/)
-479 FORMAT ('    Surface temperature is made horizontally homogeneous at the beginning of the run.')
 500 FORMAT (//' 1D-Model parameters:'/                                                             &
               ' -------------------'//                                                             &
             '    Simulation time:                   ',F8.1,' s'/                                   &
@@ -1901,9 +1903,8 @@
             ' Time:                 ',A8,6X,'Run-No.:   ',I2.2/                                    &
             ' Run on host:        ',A10,6X,'En-No.:    ',I2.2)
 #if defined( __parallel )
-600 FORMAT (/' Nesting information:'/                                                              &
+600 FORMAT (/' Nesting informations:'/                                                             &
             ' --------------------'/                                                               &
-            ' Nesting boundary conditions:      ',A/                                               &
             ' Nesting mode:                     ',A/                                               &
             ' Nesting-datatransfer mode:        ',A//                                              &
             ' Nest id  parent  number   lower left coordinates   name'/                            &

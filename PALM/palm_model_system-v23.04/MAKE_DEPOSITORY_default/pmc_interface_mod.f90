@@ -13,16 +13,203 @@
 ! You should have received a copy of the GNU General Public License along with PALM. If not, see
 ! <http://www.gnu.org/licenses/>.
 !
-! Copyright 1997-2021 Leibniz Universitaet Hannover
+! Copyright 1997-2020 Leibniz Universitaet Hannover
 !--------------------------------------------------------------------------------------------------!
 !
+!
+! Current revisions:
+! -----------------
+!
+!
+! Former revisions:
+! -----------------
+! $Id: pmc_interface_mod.f90 4776 2020-11-06 14:35:38Z suehring $
+! Bugfix in setting up the nesting configuration for chemical and aerosol species in case of more
+! than one child domain
+!
+! 4775 2020-11-06 12:18:28Z raasch
+! Further bugfix for r4774
+!
+! 4774 2020-11-06 07:50:30Z hellstea
+! Temporary bugfix for r4771: default for anterpolation_starting_height changed.
+!
+! 4773 2020-11-04 16:30:24Z hellstea
+! Canopy-restricted anterpolation introduced. New namelist parameter anterpolation_starting_height
+! introduced for controlling canopy-restricted anterpolation.
+!
+! 4745 2020-10-15 16:37:13Z suehring
+! Adjustement of face-area calculation to 3D-topographies
+!
+! 4734 2020-10-09 13:21:06Z suehring
+! Bugfix for RANS-RANS nesting and minor revision in the TKE treatment (only logical control)
+!
+! 4665 2020-09-03 14:04:24Z hellstea
+! Interpolation and anterpolation subroutines renamed and all missing subroutine description
+! comments added. 
+!
+! 4649 2020-08-25 12:11:17Z raasch
+! File re-formatted to follow the PALM coding standard
+!
+!
+! 4629 2020-07-29 09:37:56Z raasch
+! support for MPI Fortran77 interface (mpif.h) removed
+!
+! 4508 2020-04-24 13:32:20Z raasch
+! Salsa variable name changed
+!
+! 4444 2020-03-05 15:59:50Z raasch
+! Bugfix: cpp-directives and variable declarations for serial mode added
+!
+! 4413 2020-02-19 15:52:19Z hellstea
+! All the USE-statements within subroutines moved up to the module declaration section.
+!
+! 4385 2020-01-27 08:37:37Z hellstea
+! Error messages PA0425 and PA0426 made more specific
+!
+! 4360 2020-01-07 11:25:50Z suehring
+! Introduction of wall_flags_total_0, which currently sets bits based on static topography
+! information used in wall_flags_static_0
+!
+! 4329 2019-12-10 15:46:36Z motisi
+! Renamed wall_flags_0 to wall_flags_static_0
+!
+! 4273 2019-10-24 13:40:54Z monakurppa
+! Add a logical switch nesting_chem and rename nest_salsa to nesting_salsa
+!
+! 4260 2019-10-09 14:04:03Z hellstea
+! Rest of the possibly round-off-error sensitive grid-line matching tests changed to round-off-error
+! tolerant forms throughout the module.
+!
+! 4249 2019-10-01 12:27:47Z hellstea
+! Several grid-line matching tests changed to a round-off-error tolerant form in pmci_setup_parent,
+! pmci_define_index_mapping and pmci_check_grid_matching.
+!
+! 4182 2019-08-22 15:20:23Z scharf
+! Corrected "Former revisions" section
+!
+! 4168 2019-08-16 13:50:17Z suehring
+! Replace function get_topography_top_index by topo_top_ind
+!
+! 4029 2019-06-14 14:04:35Z raasch
+! nest_chemistry switch removed
+!
+! 4026 2019-06-12 16:50:15Z suehring
+! Masked topography at boundary grid points in mass conservation, in order to
+! avoid that mean velocities within topography are imposed
+!
+! 4011 2019-05-31 14:34:03Z hellstea
+! Mass (volume) flux correction included to ensure global mass conservation for child domains.
+!
+! 3987 2019-05-22 09:52:13Z kanani
+! Introduce alternative switch for debug output during timestepping
+!
+! 3984 2019-05-16 15:17:03Z hellstea
+! Commenting improved, pmci_map_fine_to_coarse_grid renamed as pmci_map_child_grid_to_parent_grid,
+! set_child_edge_coords renamed as pmci_set_child_edge_coords, some variables renamed, etc.
+!
+! 3979 2019-05-15 13:54:29Z hellstea
+! Bugfix in pmc_interp_1sto_sn. This bug had effect only in case of 1-d domain decomposition with
+! npex = 1.
+!
+! 3976 2019-05-15 11:02:34Z hellstea
+! Child initialization also for the redundant ghost points behind the nested boundaries added
+! (2nd and 3rd ghost-point layers and corners).
+!
+! 3948 2019-05-03 14:49:57Z hellstea
+! Some variables renamed, a little cleaning up and some commenting improvements
+!
+! 3947 2019-05-03 07:56:44Z hellstea
+! The checks included in 3946 are extended for the z-direction and moved into its own subroutine
+! called from pmci_define_index_mapping.
+!
+! 3946 2019-05-02 14:18:59Z hellstea
+! Check added for child domains too small in terms of number of parent-grid cells so that
+! anterpolation is not possible. Checks added for too wide anterpolation buffer for the same reason.
+! Some minor code reformatting done.
+!
+! 3945 2019-05-02 11:29:27Z raasch
+!
+! 3932 2019-04-24 17:31:34Z suehring
+! Add missing if statements for call of pmc_set_dataarray_name for TKE and dissipation.
+!
+! 3888 2019-04-12 09:18:10Z hellstea
+! Variables renamed, commenting improved etc.
+!
+! 3885 2019-04-11 11:29:34Z kanani
+! Changes related to global restructuring of location messages and introduction of additional debug
+! messages
+!
+! 3883 2019-04-10 12:51:50Z hellstea
+! Checks and error messages improved and extended. All the child index bounds in the parent-grid
+! index space are made module variables. Function get_number_of_childs renamed
+! get_number_of_children. A number of variables renamed and qite a lot of other code reshaping made
+! all around the module.
+!
+! 3876 2019-04-08 18:41:49Z knoop
+! Implemented nesting for salsa variables.
+!
+! 3833 2019-03-28 15:04:04Z forkel
+! replaced USE chem_modules by USE chem_gasphase_mod
+!
+! 3822 2019-03-27 13:10:23Z hellstea
+! Temporary increase of the vertical dimension of the parent-grid arrays and workarrc_t is cancelled
+! as unnecessary.
+!
+! 3819 2019-03-27 11:01:36Z hellstea
+! Adjustable anterpolation buffer introduced on all nest boundaries, it is controlled by the new
+! nesting_parameters parameter anterpolation_buffer_width.
+!
+! 3804 2019-03-19 13:46:20Z hellstea
+! Anterpolation domain is lowered from kct-1 to kct-3 to avoid exessive kinetic energy from building
+! up in CBL flows.
+!
+! 3803 2019-03-19 13:44:40Z hellstea
+! A bug fixed in lateral boundary interpolations. Dimension of val changed from 5 to 3 in
+! pmci_setup_parent and pmci_setup_child.
+!
+! 3794 2019-03-15 09:36:33Z raasch
+! Two remaining unused variables removed
+!
+! 3792 2019-03-14 16:50:07Z hellstea
+! Interpolations improved. Large number of obsolete subroutines removed.
+! All unused variables removed.
+!
+! 3741 2019-02-13 16:24:49Z hellstea
+! Interpolations and child initialization adjusted to handle set ups with child pe-subdomain
+! dimension not integer divisible by the grid-spacing ratio in the respective direction. Set ups
+! with pe-subdomain dimension smaller than the grid-spacing ratio in the respective direction are
+! now forbidden.
+!
+! 3708 2019-01-30 12:58:13Z hellstea
+! Checks for parent / child grid line matching introduced.
+! Interpolation of nest-boundary-tangential velocity components revised.
+!
+! 3697 2019-01-24 17:16:13Z hellstea
+! Bugfix: upper k-bound in the child initialization interpolation pmci_interp_1sto_all corrected.
+! Copying of the nest boundary values into the redundant 2nd and 3rd ghost-node layers is added to
+! the pmci_interp_1sto_*-routines.
+!
+! 3681 2019-01-18 15:06:05Z hellstea
+! Linear interpolations are replaced by first order interpolations. The linear interpolation
+! routines are still included but not called. In the child inititialization the interpolation is
+! also changed to 1st order and the linear interpolation is not kept.
+! Subroutine pmci_map_fine_to_coarse_grid is rewritten.
+! Several changes in pmci_init_anterp_tophat.
+! Child's parent-grid arrays (uc, vc,...) are made non-overlapping on the PE-subdomain boundaries in
+! order to allow grid-spacing ratios higher than nbgp. Subroutine pmci_init_tkefactor is removed as
+! unnecessary.
+!
+! 3655 2019-01-07 16:51:22Z knoop
+! Remove unused variable simulated_time
+!
+! 1762 2016-02-25 12:31:13Z hellstea
+! Initial revision by A. Hellsten
 !
 ! Description:
 ! ------------
 ! Domain nesting interface routines. The low-level inter-domain communication is conducted by the
 ! PMC-library routines.
 !
-! @todo Improve child initializing_actions steering
 ! @todo Remove array_3d variables from USE statements thate not used in the routine
 ! @todo Data transfer of qc and nc is prepared but not activated
 !--------------------------------------------------------------------------------------------------!
@@ -37,21 +224,13 @@
 
     PUBLIC
 
-    CHARACTER(LEN=14), SAVE ::  nesting_bounds = 'none'  !< steering parameter for outer boundary conditions of child domains
-    CHARACTER(LEN=8),  SAVE ::  nesting_mode   = 'none'  !< steering parameter for 1- or 2-way nesting
+    CHARACTER(LEN=8), SAVE ::  nesting_mode = 'none'  !< steering parameter for 1- or 2-way nesting
 
     INTEGER(iwp), SAVE ::  comm_world_nesting  !< Global nesting communicator
     INTEGER(iwp), SAVE ::  cpl_id  = 1         !<
 
-    LOGICAL, SAVE ::  atmosphere_ocean_coupled_run = .FALSE. !< general switch
-    LOGICAL, SAVE ::  nested_run = .FALSE.                   !< general switch
-    LOGICAL, SAVE ::  nesting_bounds_vertical_only = .FALSE. !< general switch
-    LOGICAL, SAVE ::  particle_coupling = .FALSE.  !< switch for particle coupling (meaningful only when lpm is used)
-    LOGICAL, SAVE ::  rans_mode_parent = .FALSE.   !< parent model mode (.F.-LES mode, .T.-RANS mode)
-    LOGICAL, SAVE ::  root_model = .TRUE.          !< root model flag
-
-    REAL(wp), SAVE ::  lower_left_coord_x = 0.0_wp  !< x-coordinate of the lower left corner of the domain
-    REAL(wp), SAVE ::  lower_left_coord_y = 0.0_wp  !< y-coordinate of the lower left corner of the domain
+    LOGICAL, SAVE ::  nested_run = .FALSE.        !< general switch
+    LOGICAL, SAVE ::  rans_mode_parent = .FALSE.  !< parent model mode (.F.-LES mode, .T.-RANS mode)
 
 #else
 
@@ -90,15 +269,8 @@
                w,                                                                                  &
                w_p,                                                                                &
                w_2,                                                                                &
-               x,                                                                                  &
-               y,                                                                                  &
                zu,                                                                                 &
                zw
-
-    USE bulk_cloud_model_mod,                                                                      &
-        ONLY:  bulk_cloud_model,                                                                   &
-               microphysics_morrison,                                                              &
-               microphysics_seifert
 
     USE chem_gasphase_mod,                                                                         &
         ONLY:  nspec
@@ -113,40 +285,26 @@
 
     USE control_parameters,                                                                        &
         ONLY:  air_chemistry,                                                                      &
-               atmosphere_run_coupled_to_ocean,                                                    &
                bc_dirichlet_l,                                                                     &
                bc_dirichlet_n,                                                                     &
                bc_dirichlet_r,                                                                     &
                bc_dirichlet_s,                                                                     &
-               bc_lr_cyc,                                                                          &
-               bc_ns_cyc,                                                                          &
-               bc_radiation_l,                                                                     &
-               bc_radiation_n,                                                                     &
-               bc_radiation_r,                                                                     &
-               bc_radiation_s,                                                                     &
                child_domain,                                                                       &
                constant_diffusion,                                                                 &
                constant_flux_layer,                                                                &
                coupling_char,                                                                      &
-               coupling_start_time,                                                                &
-               debug_output,                                                                       &
                debug_output_timestep,                                                              &
-               debug_string,                                                                       &
-               dt_coupling,                                                                        &
                dt_restart,                                                                         &
                dt_3d,                                                                              &
                dz,                                                                                 &
                end_time,                                                                           &
-               homogenize_surface_temperature,                                                     &
                humidity,                                                                           &
-               humidity_remote,                                                                    &
                ibc_pt_b,                                                                           &
                ibc_q_b,                                                                            &
                ibc_s_b,                                                                            &
                ibc_uv_b,                                                                           &
                message_string,                                                                     &
                neutral,                                                                            &
-               ocean_run_coupled_to_atmosphere,                                                    &
                passive_scalar,                                                                     &
                rans_mode,                                                                          &
                rans_tke_e,                                                                         &
@@ -154,19 +312,13 @@
                roughness_length,                                                                   &
                salsa,                                                                              &
                time_restart,                                                                       &
-               time_since_reference_point,                                                         &
-               terminate_coupled,                                                                  &
                topography,                                                                         &
                volume_flow
 
 
     USE cpulog,                                                                                    &
         ONLY:  cpu_log,                                                                            &
-               log_point,                                                                          &
                log_point_s
-
-    USE exchange_horiz_mod,                                                                        &
-        ONLY:  exchange_horiz
 
     USE grid_variables,                                                                            &
         ONLY:  dx,                                                                                 &
@@ -190,13 +342,19 @@
                nzb,                                                                                &
                nzt,                                                                                &
                topo_top_ind,                                                                       &
-               topo_flags
+               wall_flags_total_0
+
+    USE bulk_cloud_model_mod,                                                                      &
+        ONLY:  bulk_cloud_model,                                                                   &
+               microphysics_morrison,                                                              &
+               microphysics_seifert
 
     USE particle_attributes,                                                                       &
         ONLY:  particle_advection
 
     USE kinds
 
+#if defined( __parallel )
     USE MPI
 
     USE pegrid,                                                                                    &
@@ -207,9 +365,8 @@
                myid,                                                                               &
                myidx,                                                                              &
                myidy,                                                                              &
-               npex,                                                                               &
-               npey,                                                                               &
                numprocs,                                                                           &
+               pdims,                                                                              &
                pleft,                                                                              &
                pnorth,                                                                             &
                pright,                                                                             &
@@ -219,7 +376,6 @@
     USE pmc_child,                                                                                 &
         ONLY:  pmc_childinit,                                                                      &
                pmc_c_clear_next_array_list,                                                        &
-               pmc_c_finalize,                                                                     &
                pmc_c_getnextarray,                                                                 &
                pmc_c_get_2d_index_list,                                                            &
                pmc_c_getbuffer,                                                                    &
@@ -235,6 +391,7 @@
     USE pmc_handle_communicator,                                                                   &
         ONLY:  pmc_get_model_info,                                                                 &
                pmc_init_model,                                                                     &
+               pmc_is_rootmodel,                                                                   &
                pmc_no_namelist_found,                                                              &
                pmc_parent_for_child,                                                               &
                m_couplers
@@ -250,13 +407,14 @@
         ONLY:  pmc_parentinit,                                                                     &
                pmc_s_clear_next_array_list,                                                        &
                pmc_s_fillbuffer,                                                                   &
-               pmc_s_finalize,                                                                     &
                pmc_s_getdata_from_buffer,                                                          &
                pmc_s_getnextarray,                                                                 &
                pmc_s_setind_and_allocmem,                                                          &
                pmc_s_set_active_data_array,                                                        &
                pmc_s_set_dataarray,                                                                &
                pmc_s_set_2d_index_list
+
+#endif
 
     USE salsa_mod,                                                                                 &
         ONLY:  aerosol_mass,                                                                       &
@@ -272,20 +430,11 @@
                salsa_gas,                                                                          &
                salsa_gases_from_chem
 
-    USE surface_coupler_mod,                                                                       &
-        ONLY:  child_recv,                                                                         &
-               child_send,                                                                         &
-               parent_recv,                                                                        &
-               parent_send,                                                                        &
-               surface_coupler_buffer_handling,                                                    &
-               surface_coupler_alloc_mem,                                                          &
-               surface_coupler_exchange_array_1,                                                   &
-               surface_coupler_exchange_array_2,                                                   &
-               surface_coupler_exchange_array_3,                                                   &
-               surface_coupler_exchange_array_4
-
     USE surface_mod,                                                                               &
-        ONLY:  bc_hv
+        ONLY:  bc_h,                                                                               &
+               surf_def_h,                                                                         &
+               surf_lsm_h,                                                                         &
+               surf_usm_h
 
     IMPLICIT NONE
 
@@ -306,27 +455,21 @@
     CHARACTER(LEN=32), SAVE ::  cpl_name  !<
 
     INTEGER(iwp), SAVE ::  comm_world_nesting  !< Global nesting communicator
-    INTEGER(iwp), SAVE ::  cpl_id  = 1         !< Model (domain) id (1 for root, 2,... for nested domains).
+    INTEGER(iwp), SAVE ::  cpl_id  = 1         !<
     INTEGER(iwp), SAVE ::  cpl_npe_total       !<
     INTEGER(iwp), SAVE ::  cpl_parent_id       !<
 
 !
 !-- Control parameters
-    CHARACTER(LEN=14), SAVE ::  nesting_bounds = '3d_nested'  !< steering parameter for outer boundary conditions of child domains
-    CHARACTER(LEN=7),  SAVE ::  nesting_datatransfer_mode = 'mixed'  !< steering parameter for data-transfer mode
-    CHARACTER(LEN=8),  SAVE ::  nesting_mode = 'two-way'             !< steering parameter for 1- or 2-way nesting
+    CHARACTER(LEN=7), SAVE ::  nesting_datatransfer_mode = 'mixed'  !< steering parameter for data-transfer mode
+    CHARACTER(LEN=8), SAVE ::  nesting_mode = 'two-way'             !< steering parameter for 1- or 2-way nesting
 
     INTEGER(iwp), SAVE ::  anterpolation_buffer_width = 2  !< Boundary buffer width for anterpolation
 
     REAL(wp), SAVE ::  anterpolation_starting_height = 9999999.9_wp  !< steering parameter for canopy restricted anterpolation
 
-    LOGICAL, SAVE ::  homogeneous_initialization_child = .FALSE. !< switch to control initialization of child domains (default .FALSE.)
-    LOGICAL, SAVE ::  atmosphere_ocean_coupled_run = .FALSE. !< general switch
-    LOGICAL, SAVE ::  nested_run = .FALSE.                   !< general switch
-    LOGICAL, SAVE ::  nesting_bounds_vertical_only = .FALSE. !< general switch
-    LOGICAL, SAVE ::  particle_coupling = .TRUE.  !< switch for particle coupling (meaningful only when lpm is used) 
+    LOGICAL, SAVE ::  nested_run = .FALSE.        !< general switch
     LOGICAL, SAVE ::  rans_mode_parent = .FALSE.  !< mode of parent model (.F. - LES mode, .T. - RANS mode)
-    LOGICAL, SAVE ::  root_model = .TRUE.         !< indicates, if model is root model
 !
 !-- Geometry
     REAL(wp), SAVE, DIMENSION(:), ALLOCATABLE, PUBLIC ::  coord_x             !< Array for the absolute x-coordinates
@@ -340,23 +483,6 @@
 
     INTEGER(idp), SAVE, DIMENSION(:,:), ALLOCATABLE, TARGET, PUBLIC ::  nr_partc   !<
     INTEGER(idp), SAVE, DIMENSION(:,:), ALLOCATABLE, TARGET, PUBLIC ::  part_adrc  !<
-
-    REAL(wp), DIMENSION(:), ALLOCATABLE ::  u_p_init             !< Parent-grid 1D profile on child domain - u-component
-    REAL(wp), DIMENSION(:), ALLOCATABLE ::  v_p_init             !< Parent-grid 1D profile on child domain - v-component
-    REAL(wp), DIMENSION(:), ALLOCATABLE ::  e_p_init             !< Parent-grid 1D profile on child domain - SGS-TKE
-    REAL(wp), DIMENSION(:), ALLOCATABLE ::  diss_p_init          !< Parent-grid 1D profile on child domain - dissipation rate
-    REAL(wp), DIMENSION(:), ALLOCATABLE ::  pt_p_init            !< Parent-grid 1D profile on child domain - pot. temperature
-    REAL(wp), DIMENSION(:), ALLOCATABLE ::  q_p_init             !< Parent-grid 1D profile on child domain - mixing ratio
-    REAL(wp), DIMENSION(:), ALLOCATABLE ::  qc_p_init            !< Parent-grid 1D profile on child domain - cloud water
-    REAL(wp), DIMENSION(:), ALLOCATABLE ::  nc_p_init            !< Parent-grid 1D profile on child domain - cloud water number conc.
-    REAL(wp), DIMENSION(:), ALLOCATABLE ::  qr_p_init            !< Parent-grid 1D profile on child domain - rain water
-    REAL(wp), DIMENSION(:), ALLOCATABLE ::  nr_p_init            !< Parent-grid 1D profile on child domain - rain water number conc.
-    REAL(wp), DIMENSION(:), ALLOCATABLE ::  s_p_init             !< Parent-grid 1D profile on child domain - passive scalar
-
-    REAL(wp), DIMENSION(:,:), ALLOCATABLE ::  chem_p_init          !< Parent-grid 1D profile on child domain - chemistry
-    REAL(wp), DIMENSION(:,:), ALLOCATABLE ::  aerosol_number_p_init!< Parent-grid 1D profile on child domain - aerosol number
-    REAL(wp), DIMENSION(:,:), ALLOCATABLE ::  aerosol_mass_p_init  !< Parent-grid 1D profile on child domain - aerosol mass
-    REAL(wp), DIMENSION(:,:), ALLOCATABLE ::  salsa_gas_p_init     !< Parent-grid 1D profile on child domain - aerosol gas
 
     REAL(wp), SAVE, DIMENSION(:,:,:), ALLOCATABLE, TARGET ::  dissc  !< Parent-grid array on child domain - dissipation rate
     REAL(wp), SAVE, DIMENSION(:,:,:), ALLOCATABLE, TARGET ::  ec     !< Parent-grid array on child domain - SGS TKE
@@ -376,12 +502,6 @@
     REAL(wp), SAVE, DIMENSION(:,:,:,:), ALLOCATABLE, TARGET ::  chem_spec_c       !< Parent-grid array on child domain
                                                                                   !< - chemical species
     REAL(wp), SAVE, DIMENSION(:,:,:,:), ALLOCATABLE, TARGET ::  salsa_gas_c       !< SALSA gases
-
-    REAL(wp), SAVE, DIMENSION(:,:), ALLOCATABLE, TARGET, PUBLIC ::  surface_coupler_exchange_array_1c  !< for atmosphere-ocean data exchange
-    REAL(wp), SAVE, DIMENSION(:,:), ALLOCATABLE, TARGET, PUBLIC ::  surface_coupler_exchange_array_2c  !< for atmosphere-ocean data exchange
-    REAL(wp), SAVE, DIMENSION(:,:), ALLOCATABLE, TARGET, PUBLIC ::  surface_coupler_exchange_array_3c  !< for atmosphere-ocean data exchange
-    REAL(wp), SAVE, DIMENSION(:,:), ALLOCATABLE, TARGET, PUBLIC ::  surface_coupler_exchange_array_4c  !< for atmosphere-ocean data exchange
-
 !
 !-- Grid-spacing ratios.
     INTEGER(iwp), SAVE ::  igsr  !< Integer grid-spacing ratio in i-direction
@@ -440,12 +560,10 @@
                                                                    !< node in anterpolation, w-grid
 !
 !-- Work arrays for interpolation and user-defined type definitions for horizontal work-array exchange
-    INTEGER(iwp) ::  workarr_lr_exchange_type   !< type definition for work-array exchange on left and right boundaries
-    INTEGER(iwp) ::  workarr_sn_exchange_type   !< type definition for work-array exchange on south and north boundaries
-    INTEGER(iwp) ::  workarr_t_exchange_type_x  !< type definition for work-array exchange on top boundary between left-right
-                                                !< neighbouring subdomains
-    INTEGER(iwp) ::  workarr_t_exchange_type_y  !< type definition for work-array exchange on top boundary between south-north
-                                                !< neighbouring subdomains
+    INTEGER(iwp) ::  workarr_lr_exchange_type   !<
+    INTEGER(iwp) ::  workarr_sn_exchange_type   !<
+    INTEGER(iwp) ::  workarr_t_exchange_type_x  !<
+    INTEGER(iwp) ::  workarr_t_exchange_type_y  !<
 
     INTEGER(iwp), DIMENSION(3) ::  parent_grid_info_int  !< Array for communicating the parent-grid dimensions to its children.
 
@@ -453,9 +571,9 @@
     REAL(wp), DIMENSION(7) ::  parent_grid_info_real  !< Array for communicating the real-type parent-grid parameters to its
                                                       !< children.
 
-    REAL(wp), DIMENSION(:,:,:), ALLOCATABLE ::  workarr_lr  !< work array for interpolation on left and right boundaries
-    REAL(wp), DIMENSION(:,:,:), ALLOCATABLE ::  workarr_sn  !< work array for interpolation on south and north boundaries
-    REAL(wp), DIMENSION(:,:,:), ALLOCATABLE ::  workarr_t   !< work array for interpolation on top boundary
+    REAL(wp), DIMENSION(:,:,:), ALLOCATABLE ::  workarr_lr  !<
+    REAL(wp), DIMENSION(:,:,:), ALLOCATABLE ::  workarr_sn  !<
+    REAL(wp), DIMENSION(:,:,:), ALLOCATABLE ::  workarr_t   !<
 
     TYPE parentgrid_def
        INTEGER(iwp) ::  nx  !<
@@ -480,53 +598,24 @@
 !
 !-- Variables for particle coupling
     TYPE, PUBLIC :: childgrid_def
-       INTEGER(iwp) ::  nx          !<
-       INTEGER(iwp) ::  ny          !<
-       INTEGER(iwp) ::  nz          !<
-       REAL(wp)     ::  dx          !<
-       REAL(wp)     ::  dy          !<
-       REAL(wp)     ::  dz          !<
-       REAL(wp)     ::  lx_coord    !< 
-       REAL(wp)     ::  rx_coord    !< 
-       REAL(wp)     ::  sy_coord    !< 
-       REAL(wp)     ::  ny_coord    !< 
-       REAL(wp)     ::  uz_coord    !< 
-       REAL(wp)     ::  lx_coord_b  !< 
-       REAL(wp)     ::  rx_coord_b  !< 
-       REAL(wp)     ::  sy_coord_b  !< 
-       REAL(wp)     ::  ny_coord_b  !< 
-       REAL(wp)     ::  uz_coord_b  !<        
+       INTEGER(iwp) ::  nx  !<
+       INTEGER(iwp) ::  ny  !<
+       INTEGER(iwp) ::  nz  !<
+       REAL(wp)     ::  dx  !<
+       REAL(wp)     ::  dy  !<
+       REAL(wp)     ::  dz  !<
+       REAL(wp)     ::  lx_coord, lx_coord_b !<   ! split onto separate lines
+       REAL(wp)     ::  rx_coord, rx_coord_b !<
+       REAL(wp)     ::  sy_coord, sy_coord_b !<
+       REAL(wp)     ::  ny_coord, ny_coord_b !<
+       REAL(wp)     ::  uz_coord, uz_coord_b !<
     END TYPE childgrid_def
 
-    TYPE(childgrid_def), SAVE, DIMENSION(:), ALLOCATABLE ::  childgrid  !<
+    TYPE(childgrid_def), SAVE, ALLOCATABLE, DIMENSION(:), PUBLIC ::  childgrid  !<
 
-    INTEGER(idp), DIMENSION(:,:), ALLOCATABLE, TARGET ::  nr_part   !<
-    INTEGER(idp), DIMENSION(:,:), ALLOCATABLE, TARGET ::  part_adr  !<
+    INTEGER(idp), ALLOCATABLE,DIMENSION(:,:), PUBLIC,TARGET ::  nr_part   !<
+    INTEGER(idp), ALLOCATABLE,DIMENSION(:,:), PUBLIC,TARGET ::  part_adr  !<
 
-
-    INTERFACE get_childid
-       MODULE PROCEDURE get_childid
-    END  INTERFACE get_childid
-
-    INTERFACE get_child_edges
-       MODULE PROCEDURE get_child_edges
-    END  INTERFACE get_child_edges
-
-    INTERFACE get_child_gridspacing
-       MODULE PROCEDURE get_child_gridspacing
-    END  INTERFACE get_child_gridspacing
-
-    INTERFACE get_number_of_children
-       MODULE PROCEDURE get_number_of_children
-    END  INTERFACE get_number_of_children
-
-    INTERFACE pmci_adjust_dt_coupling
-       MODULE PROCEDURE pmci_adjust_dt_coupling
-    END INTERFACE pmci_adjust_dt_coupling
-
-    INTERFACE pmci_atmos_ocean
-       MODULE PROCEDURE pmci_atmos_ocean
-    END INTERFACE pmci_atmos_ocean
 
     INTERFACE pmci_boundary_conds
        MODULE PROCEDURE pmci_boundary_conds
@@ -540,6 +629,10 @@
        MODULE PROCEDURE pmci_child_initialize
     END INTERFACE
 
+    INTERFACE pmci_synchronize
+       MODULE PROCEDURE pmci_synchronize
+    END INTERFACE
+
     INTERFACE pmci_datatrans
        MODULE PROCEDURE pmci_datatrans
     END INTERFACE pmci_datatrans
@@ -548,9 +641,9 @@
        MODULE PROCEDURE pmci_ensure_nest_mass_conservation
     END INTERFACE pmci_ensure_nest_mass_conservation
 
-    INTERFACE pmci_finalize
-       MODULE PROCEDURE pmci_finalize
-    END INTERFACE pmci_finalize
+    INTERFACE pmci_ensure_nest_mass_conservation_vertical
+       MODULE PROCEDURE pmci_ensure_nest_mass_conservation_vertical
+    END INTERFACE pmci_ensure_nest_mass_conservation_vertical
 
     INTERFACE pmci_init
        MODULE PROCEDURE pmci_init
@@ -564,48 +657,46 @@
        MODULE PROCEDURE pmci_parent_initialize
     END INTERFACE
 
+    INTERFACE get_number_of_children
+       MODULE PROCEDURE get_number_of_children
+    END  INTERFACE get_number_of_children
+
+    INTERFACE get_childid
+       MODULE PROCEDURE get_childid
+    END  INTERFACE get_childid
+
+    INTERFACE get_child_edges
+       MODULE PROCEDURE get_child_edges
+    END  INTERFACE get_child_edges
+
+    INTERFACE get_child_gridspacing
+       MODULE PROCEDURE get_child_gridspacing
+    END  INTERFACE get_child_gridspacing
+
     INTERFACE pmci_set_swaplevel
        MODULE PROCEDURE pmci_set_swaplevel
     END INTERFACE pmci_set_swaplevel
 
-    INTERFACE pmci_synchronize
-       MODULE PROCEDURE pmci_synchronize
-    END INTERFACE
-
-    PUBLIC atmosphere_ocean_coupled_run,                                                           &
-           childgrid,                                                                              &
-           child_to_parent,                                                                        &
+    PUBLIC child_to_parent,                                                                        &
            comm_world_nesting,                                                                     &
            cpl_id,                                                                                 &
-           homogeneous_initialization_child,                                                       &
            nested_run,                                                                             &
-           nesting_bounds,                                                                         &
            nesting_datatransfer_mode,                                                              &
            nesting_mode,                                                                           &
-           nr_part,                                                                                &
-           part_adr,                                                                               &
            parent_to_child,                                                                        &
-           particle_coupling,                                                                      &
-           rans_mode_parent,                                                                       &
-           root_model
+           rans_mode_parent
 
-    PUBLIC get_childid
-    PUBLIC get_child_edges
-    PUBLIC get_child_gridspacing
-    PUBLIC get_number_of_children
-    PUBLIC pmci_adjust_dt_coupling
-    PUBLIC pmci_atmos_ocean
     PUBLIC pmci_boundary_conds
     PUBLIC pmci_child_initialize
     PUBLIC pmci_datatrans
-    PUBLIC pmci_ensure_nest_mass_conservation
-    PUBLIC pmci_finalize
     PUBLIC pmci_init
     PUBLIC pmci_modelconfiguration
     PUBLIC pmci_parent_initialize
     PUBLIC pmci_synchronize
     PUBLIC pmci_set_swaplevel
-    PUBLIC pmc_get_model_info
+    PUBLIC get_number_of_children, get_childid, get_child_edges, get_child_gridspacing
+    PUBLIC pmci_ensure_nest_mass_conservation
+    PUBLIC pmci_ensure_nest_mass_conservation_vertical
 
  CONTAINS
 
@@ -619,42 +710,34 @@
 
     IMPLICIT NONE
 
-    INTEGER(iwp), INTENT(OUT) ::  world_comm  !< global communicator
-
+    INTEGER(iwp), INTENT(OUT) ::  world_comm  !<
 
 #if defined( __parallel )
 
-    INTEGER(iwp) ::  pmc_status  !< status parameter indicating if the nesting_parameters namelist
-                                 !< was succesfully input or not  
+    INTEGER(iwp) ::  pmc_status  !<
 
 
-    CALL pmc_init_model( world_comm, nesting_bounds, nesting_datatransfer_mode, nesting_mode,      &
-                         anterpolation_buffer_width, anterpolation_starting_height,                &
-                         homogeneous_initialization_child, particle_coupling, pmc_status )
+    CALL pmc_init_model( world_comm, nesting_datatransfer_mode, nesting_mode,                      &
+                         anterpolation_buffer_width, anterpolation_starting_height, pmc_status )
+
     IF ( pmc_status == pmc_no_namelist_found )  THEN
 !
 !--    This is not a nested run
        world_comm = MPI_COMM_WORLD
        cpl_id     = 1
-       cpl_name   = ''
+       cpl_name   = ""
 
        RETURN
 
     ENDIF
 !
 !-- Check steering parameter values
-    IF ( TRIM( nesting_bounds ) /= '3d_nested'  .AND.                                              &
-         TRIM( nesting_bounds ) /= 'cyclic_along_x'  .AND.                                         &
-         TRIM( nesting_bounds ) /= 'cyclic_along_y'  .AND.                                         &
-         TRIM( nesting_bounds ) /= 'vertical_only' )                                               &
+    IF ( TRIM( nesting_mode ) /= 'one-way'  .AND.                                                  &
+         TRIM( nesting_mode ) /= 'two-way'  .AND.                                                  &
+         TRIM( nesting_mode ) /= 'vertical' )                                                      &
     THEN
-       message_string = 'illegal nesting boundary condition: ' // TRIM( nesting_bounds )
-       CALL message( 'pmci_init', 'PMC0005', 3, 2, 0, 6, 0 )
-    ENDIF
-
-    IF ( TRIM( nesting_mode ) /= 'one-way'  .AND.  TRIM( nesting_mode ) /= 'two-way' )  THEN
        message_string = 'illegal nesting mode: ' // TRIM( nesting_mode )
-       CALL message( 'pmci_init', 'PMC0006', 3, 2, 0, 6, 0 )
+       CALL message( 'pmci_init', 'PA0417', 3, 2, 0, 6, 0 )
     ENDIF
 
     IF ( TRIM( nesting_datatransfer_mode ) /= 'cascade'  .AND.                                     &
@@ -662,42 +745,24 @@
          TRIM( nesting_datatransfer_mode ) /= 'overlap' )                                          &
     THEN
        message_string = 'illegal nesting datatransfer mode: ' // TRIM( nesting_datatransfer_mode )
-       CALL message( 'pmci_init', 'PMC0007', 3, 2, 0, 6, 0 )
+       CALL message( 'pmci_init', 'PA0418', 3, 2, 0, 6, 0 )
     ENDIF
 !
-!-- Set the steering switch for a pure vertical nesting.
-    IF ( TRIM( nesting_bounds ) == 'vertical_only' )  nesting_bounds_vertical_only = .TRUE.
+!-- Set the general steering switch which tells PALM that it is a nested run
+    nested_run = .TRUE.
 !
 !-- Get some variables required by the pmc-interface (and in some cases in the PALM code out of the
 !-- pmci) out of the pmc-core
     CALL pmc_get_model_info( comm_world_nesting = comm_world_nesting, cpl_id = cpl_id,             &
                              cpl_parent_id = cpl_parent_id, cpl_name = cpl_name,                   &
                              npe_total = cpl_npe_total, lower_left_x = lower_left_coord_x,         &
-                             lower_left_y = lower_left_coord_y,                                    &
-                             atmosphere_ocean_coupled_run = atmosphere_ocean_coupled_run,          &
-                             root_model = root_model )
+                             lower_left_y = lower_left_coord_y )
 !
 !-- Set the steering switch which tells the models that they are nested (of course the root domain
 !-- is not nested)
-    IF ( .NOT. root_model )  THEN
-       IF ( cpl_name(1:5) == 'ocean' )  THEN
-           coupling_char = '_O'
-       ELSE
-          child_domain = .TRUE.
-          WRITE( coupling_char, '(A2,I2.2)') '_N', cpl_id
-       ENDIF
-    ENDIF
-
-!
-!-- Set the general steering switch which tells PALM that it is a nested or a coupled run.
-    IF ( atmosphere_ocean_coupled_run )  THEN
-       IF ( root_model )  THEN
-          atmosphere_run_coupled_to_ocean = .TRUE.
-       ELSE
-          ocean_run_coupled_to_atmosphere = .TRUE.
-       ENDIF
-    ELSE
-       nested_run = .TRUE.
+    IF ( .NOT.  pmc_is_rootmodel() )  THEN
+       child_domain = .TRUE.
+       WRITE( coupling_char, '(A2,I2.2)') '_N', cpl_id
     ENDIF
 
 !
@@ -740,47 +805,30 @@
     CALL cpu_log( log_point_s(79), 'pmci_model_config', 'start' )
 !
 !-- Compute absolute coordinates for all models
-    CALL pmci_setup_coordinates
-!
-!-- Allocate memory for 2-D surface arrays to be coupled
-    CALL surface_coupler_alloc_mem
+    CALL pmci_setup_coordinates         ! CONTAIN THIS
 !
 !-- Determine the number of coupled arrays
-    CALL pmci_num_arrays
+    CALL pmci_num_arrays                ! CONTAIN THIS
 !
 !-- Initialize the child (must be called before pmc_setup_parent)
 !-- Klaus, extend this comment to explain why it must be called before
-    CALL pmci_setup_child
+    CALL pmci_setup_child               ! CONTAIN THIS
 !
 !-- Initialize PMC parent
-    CALL pmci_setup_parent
+    CALL pmci_setup_parent              ! CONTAIN THIS
 !
 !-- Check for mismatches between settings of master and child variables
 !-- (e.g., all children have to follow the end_time settings of the root master)
-    CALL pmci_check_setting_mismatches
+    CALL pmci_check_setting_mismatches  ! CONTAIN THIS
 !
-!-- Set flag file for combine_plot_fields for processing the nest / coupling output data
-    IF ( myid == 0 )  THEN
-       IF ( nested_run )  THEN
-          OPEN( 90, FILE = '3DNESTING', FORM = 'FORMATTED' )
-          CALL pmc_get_model_info( ncpl = ncpl )
-          WRITE( 90, '(I2)' )  ncpl
-          CLOSE( 90 )
-       ELSEIF( atmosphere_ocean_coupled_run )  THEN
-          OPEN( 90, FILE = 'COUPLED_ATMOSPHERE_OCEAN', FORM = 'FORMATTED' )
-          WRITE( 90, '(A)' )  'this is a coupled atmosphere-ocean-run'
-          CLOSE( 90 )
-       ENDIF
-    ENDIF
+!-- Set flag file for combine_plot_fields for processing the nest output data
+    OPEN( 90, FILE = '3DNESTING', FORM = 'FORMATTED' )
+    CALL pmc_get_model_info( ncpl = ncpl )
+    WRITE( 90, '(I2)' )  ncpl
+    CLOSE( 90 )
 
     CALL cpu_log( log_point_s(79), 'pmci_model_config', 'stop' )
     CALL location_message( 'setup the nested model configuration', 'finished' )
-!
-!-- Check for invalid combinations
-    IF ( nested_run  .AND.  atmosphere_ocean_coupled_run )  THEN
-       message_string = 'combination of nesting and atmosphere-ocean coupling is not allowed'
-       CALL message( 'pmci_modelconfiguration', 'PMC0008', 1, 2, 0, 6, 0 )
-    ENDIF
 #endif
 
  END SUBROUTINE pmci_modelconfiguration
@@ -814,24 +862,22 @@
 
     INTEGER(iwp), DIMENSION(3) ::  child_grid_dim  !< Array for receiving the child-grid dimensions from the children
 
-    LOGICAL ::  child_matches_parent_along_x  !< switch that tells if child matches parent along x
-    LOGICAL ::  child_matches_parent_along_y  !< switch that tells if child matches parent along y
-    LOGICAL ::  m_left_in_msib   !< Logical auxiliary parameter for the overlap test: true if the left border
-                                 !< of the child m is within the x-range of the child msib
-    LOGICAL ::  m_right_in_msib  !< Logical auxiliary parameter for the overlap test: true if the right border
-                                 !< of the child m is within the x-range of the child msib
-    LOGICAL ::  msib_left_in_m   !< Logical auxiliary parameter for the overlap test: true if the left border
-                                 !< of the child msib is within the x-range of the child m
-    LOGICAL ::  msib_right_in_m  !< Logical auxiliary parameter for the overlap test: true if the right border
-                                 !< of the child msib is within the x-range of the child m
-    LOGICAL ::  m_south_in_msib  !< Logical auxiliary parameter for the overlap test: true if the south border
-                                 !< of the child m is within the y-range of the child msib
-    LOGICAL ::  m_north_in_msib  !< Logical auxiliary parameter for the overlap test: true if the north border
-                                 !< of the child m is within the y-range of the child msib
-    LOGICAL ::  msib_south_in_m  !< Logical auxiliary parameter for the overlap test: true if the south border
-                                 !< of the child msib is within the y-range of the child m
-    LOGICAL ::  msib_north_in_m  !< Logical auxiliary parameter for the overlap test: true if the north border
-                                 !< of the child msib is within the y-range of the child m
+    LOGICAL :: m_left_in_msib   !< Logical auxiliary parameter for the overlap test: true if the left border
+                                !< of the child m is within the x-range of the child msib
+    LOGICAL :: m_right_in_msib  !< Logical auxiliary parameter for the overlap test: true if the right border
+                                !< of the child m is within the x-range of the child msib
+    LOGICAL :: msib_left_in_m   !< Logical auxiliary parameter for the overlap test: true if the left border
+                                !< of the child msib is within the x-range of the child m
+    LOGICAL :: msib_right_in_m  !< Logical auxiliary parameter for the overlap test: true if the right border
+                                !< of the child msib is within the x-range of the child m
+    LOGICAL :: m_south_in_msib  !< Logical auxiliary parameter for the overlap test: true if the south border
+                                !< of the child m is within the y-range of the child msib
+    LOGICAL :: m_north_in_msib  !< Logical auxiliary parameter for the overlap test: true if the north border
+                                !< of the child m is within the y-range of the child msib
+    LOGICAL :: msib_south_in_m  !< Logical auxiliary parameter for the overlap test: true if the south border
+                                !< of the child msib is within the y-range of the child m
+    LOGICAL :: msib_north_in_m  !< Logical auxiliary parameter for the overlap test: true if the north border
+                                !< of the child msib is within the y-range of the child m
 
     REAL(wp) ::  child_height         !< Height of the child domain defined on the child side as zw(nzt+1)
     REAL(wp) ::  dx_child             !< Child-grid spacing in the x-direction
@@ -862,7 +908,7 @@
     REAL(wp), DIMENSION(:), ALLOCATABLE ::  child_y_south  !< Minimum y-coordinate of the child domain including the ghost
                                                            !< point layers
 
-    REAL(wp), DIMENSION(5) ::  child_grid_info             !< Array for receiving the child-grid spacings etc from the children
+    REAL(wp), DIMENSION(5) ::  child_grid_info  !< Array for receiving the child-grid spacings etc from the children
 
 !
 !-- Grid-line tolerances.
@@ -941,134 +987,66 @@
           parent_grid_info_int(1)  = nx
           parent_grid_info_int(2)  = ny
           parent_grid_info_int(3)  = nz_child
-
 !
-!--       Check, if lateral boundaries of parent and child match exactly
-          IF ( ( ABS( child_coord_x(0)          - lower_left_coord_x  ) > tolex )  .OR.            &
-               ( ABS( child_coord_x(nx_child+1) - upper_right_coord_x ) > tolex ) )                &
-          THEN
-             child_matches_parent_along_x = .FALSE.
-          ELSE
-             child_matches_parent_along_x = .TRUE.
-          ENDIF
-          IF ( ( ABS( child_coord_y(0)          - lower_left_coord_y  ) > toley )  .OR.            &
-               ( ABS( child_coord_y(ny_child+1) - upper_right_coord_y ) > toley ) )                &
-          THEN
-             child_matches_parent_along_y = .FALSE.
-          ELSE
-             child_matches_parent_along_y = .TRUE.
-          ENDIF
+!--       Check that the child domain matches its parent domain.
+          IF ( nesting_mode == 'vertical' )  THEN
 !
-!--       Depending on the nesting-/coupling mode, check that the child domain matches its parent
-!--       domain respectively.
-          IF ( nesting_bounds_vertical_only  .OR.  atmosphere_ocean_coupled_run )  THEN
-!
-!--          In case of vertical nesting or atmosphere-ocean coupling, the lateral boundaries must
-!--          match exactly.
-             IF ( .NOT. child_matches_parent_along_x )  THEN
-                WRITE( message_string, '(A,I2,A)' ) 'nested child (id: ', child_id,                &
-                       ') domain boundaries along x do not match the respective parent boundaries'
-                CALL message( 'pmci_setup_parent', 'PMC0009', 3, 2, 0, 6, 0 )
+!--          In case of vertical nesting, the lateral boundaries must match exactly.
+             right_limit = upper_right_coord_x
+             north_limit = upper_right_coord_y
+             IF ( ABS( child_coord_x(nx_child+1) - right_limit ) > tolex )  THEN
+                WRITE( message_string, "(a,i2,a)" ) 'nested child (id: ',child_id,                 &
+                       ') domain right edge does not match its parent right edge'
+                CALL message( 'pmci_setup_parent', 'PA0425', 3, 2, 0, 6, 0 )
              ENDIF
-             IF ( .NOT. child_matches_parent_along_y )  THEN
-                WRITE( message_string, '(A,I2,A)' ) 'nested child (id: ', child_id,                &
-                       ') domain boundaries along y do not match the respective parent boundaries'
-                CALL message( 'pmci_setup_parent', 'PMC0009', 3, 2, 0, 6, 0 )
+             IF ( ABS( child_coord_y(ny_child+1) - north_limit ) > toley )  THEN
+                WRITE( message_string, "(a,i2,a)" ) 'nested child (id: ',child_id,                 &
+                       ') domain north edge does not match its parent north edge'
+                CALL message( 'pmci_setup_parent', 'PA0425', 3, 2, 0, 6, 0 )
              ENDIF
-
-!
-!--          In case of coupling, due to interpolation requirements, the total number of ocean grid
-!--          points along x or y must be a multiple of the total number of atmosphere grid points.
-             IF ( atmosphere_ocean_coupled_run ) THEN
-
-                IF ( MOD( nx_child+1, nx+1 ) /= 0 )  THEN
-                   message_string = 'nx+1 in ocean is not divisible by nx+1 in atmosphere ' //     &
-                                    'without remainder'
-                   CALL message( 'pmci_setup_parent', 'PMC0010', 1, 2, 0, 6, 0 )
-                ENDIF
-
-                IF ( MOD( ny_child+1, ny+1 ) /= 0 )  THEN
-                   message_string = 'ny+1 in ocean is not divisible by ny+1 in atmosphere ' //     &
-                                    'without remainder'
-                   CALL message( 'pmci_setup_parent', 'PMC0011', 1, 2, 0, 6, 0 )
-                ENDIF
-
-             ENDIF
-
           ELSE
 !
 !--          In case of 3-D nesting, check that the child domain is completely inside its parent
-!--          domain. This check  also cares for the case, where the user set cyclic conditions for
-!--          the child, but didn't care for that the child has the same extension as the parent
-!--          along that direction.
-             IF ( nesting_bounds == 'cyclic_along_x'  .AND. .NOT. child_matches_parent_along_x )   &
-             THEN
-!
-!--             Lateral boundaries along x must match exactly.
-                IF ( .NOT. child_matches_parent_along_x )  THEN
-                   WRITE( message_string, '(A,I2,A)' ) 'nested child (id: ', child_id,             &
-                         ') domain boundaries along x do not match the respective parent boundaries'
-                   CALL message( 'pmci_setup_parent', 'PMC0009', 3, 2, 0, 6, 0 )
-                ENDIF
-
-             ELSEIF ( nesting_bounds /= 'cyclic_along_x' )  THEN
-
-                xez = ( nbgp + 1 ) * dx
-                left_limit  = lower_left_coord_x + xez
-                right_limit = upper_right_coord_x - xez
-                IF ( left_limit - child_coord_x(0) > tolex )  THEN
-                   WRITE( message_string, '(A,I2,A)' ) 'nested child (id: ',child_id,              &
-                          ') domain does not fit in its parent domain, left edge is either ' //    &
-                          'too close or outside its parent left edge'
-                   CALL message( 'pmci_setup_parent', 'PMC0012', 3, 2, 0, 6, 0 )
-                ENDIF
-                IF ( child_coord_x(nx_child+1) - right_limit > tolex )  THEN
-                   WRITE( message_string, '(A,I2,A)' ) 'nested child (id: ',child_id,              &
-                          ') domain does not fit in its parent domain, right edge is either ' //   &
-                          'too close or outside its parent right edge'
-                   CALL message( 'pmci_setup_parent', 'PMC0012', 3, 2, 0, 6, 0 )
-                ENDIF
-
+!--          domain.
+             xez = ( nbgp + 1 ) * dx
+             yez = ( nbgp + 1 ) * dy
+             left_limit  = lower_left_coord_x + xez
+             right_limit = upper_right_coord_x - xez
+             south_limit = lower_left_coord_y + yez
+             north_limit = upper_right_coord_y - yez
+             IF ( left_limit - child_coord_x(0) > tolex )  THEN
+                WRITE( message_string, "(a,i2,a)" ) 'nested child (id: ',child_id,                 &
+                       ') domain does not fit in its parent domain, left edge is either too ' //   &
+                       'close or outside its parent left edge'
+                CALL message( 'pmci_setup_parent', 'PA0425', 3, 2, 0, 6, 0 )
              ENDIF
-
-             IF ( nesting_bounds == 'cyclic_along_y'  .AND. .NOT. child_matches_parent_along_y )   &
-             THEN
-!
-!--             Lateral boundaries along y must match exactly.
-                IF ( .NOT. child_matches_parent_along_y )  THEN
-                   WRITE( message_string, '(A,I2,A)' ) 'nested child (id: ', child_id,             &
-                         ') domain boundaries along y do not match the respective parent boundaries'
-                   CALL message( 'pmci_setup_parent', 'PMC0009', 3, 2, 0, 6, 0 )
-                ENDIF
-
-             ELSEIF ( nesting_bounds /= 'cyclic_along_y' )  THEN
-
-                yez = ( nbgp + 1 ) * dy
-                south_limit = lower_left_coord_y + yez
-                north_limit = upper_right_coord_y - yez
-                IF ( south_limit - child_coord_y(0) > toley )  THEN
-                   WRITE( message_string, '(A,I2,A)' ) 'nested child (id: ',child_id,              &
-                          ') domain does not fit in its parent domain, south edge is either ' //   &
-                          'too close or outside its parent south edge'
-                   CALL message( 'pmci_setup_parent', 'PMC0012', 3, 2, 0, 6, 0 )
-                ENDIF
-                IF ( child_coord_y(ny_child+1) - north_limit > toley )  THEN
-                   WRITE( message_string, '(A,I2,A)' ) 'nested child (id: ',child_id,              &
-                          ') domain does not fit in its parent domain, north edge is either ' //   &
-                          'too close or outside its parent north edge'
-                   CALL message( 'pmci_setup_parent', 'PMC0012', 3, 2, 0, 6, 0 )
-                ENDIF
+             IF ( child_coord_x(nx_child+1) - right_limit > tolex )  THEN
+                WRITE( message_string, "(a,i2,a)" ) 'nested child (id: ',child_id,                 &
+                       ') domain does not fit in its parent domain, right edge is either too ' //  &
+                       'close or outside its parent right edge'
+                CALL message( 'pmci_setup_parent', 'PA0425', 3, 2, 0, 6, 0 )
              ENDIF
-
+             IF ( south_limit - child_coord_y(0) > toley )  THEN
+                WRITE( message_string, "(a,i2,a)" ) 'nested child (id: ',child_id,                 &
+                       ') domain does not fit in its parent domain, south edge is either too ' //  &
+                       'close or outside its parent south edge'
+                CALL message( 'pmci_setup_parent', 'PA0425', 3, 2, 0, 6, 0 )
+             ENDIF
+             IF ( child_coord_y(ny_child+1) - north_limit > toley )  THEN
+                WRITE( message_string, "(a,i2,a)" ) 'nested child (id: ',child_id,                 &
+                       ') domain does not fit in its parent domain, north edge is either too ' //  &
+                       'close or outside its parent north edge'
+                CALL message( 'pmci_setup_parent', 'PA0425', 3, 2, 0, 6, 0 )
+             ENDIF
           ENDIF
 !
 !--       Child domain must be lower than the parent domain such that the top ghost layer of the
 !--       child grid does not exceed the parent domain top boundary.
-          IF ( nested_run .AND. child_height - zw(nzt) > tolez )  THEN
-             WRITE( message_string, '(A,i2,a)' ) 'nested child (id: ',child_id,                    &
+          IF ( child_height - zw(nzt) > tolez ) THEN
+             WRITE( message_string, "(a,i2,a)" ) 'nested child (id: ',child_id,                    &
                     ') domain does not fit in its parent domain, top edge is either too ' //       &
                     'close or above its parent top edge'
-             CALL message( 'pmci_setup_parent', 'PMC0012', 3, 2, 0, 6, 0 )
+             CALL message( 'pmci_setup_parent', 'PA0425', 3, 2, 0, 6, 0 )
           ENDIF
 !
 !--       If parallel child domains (siblings) do exist ( m > 1 ), check that they do not overlap.
@@ -1077,7 +1055,7 @@
           child_y_south(m) = child_coord_y(-nbgp)
           child_y_north(m) = child_coord_y(ny_child+nbgp)
 
-          IF ( .NOT. nesting_bounds_vertical_only  .AND.  .NOT. atmosphere_ocean_coupled_run )  THEN
+          IF ( nesting_mode /= 'vertical' )  THEN
 !
 !--          Note that the msib-loop is executed only if ( m > 1 ).
 !--          Also note that the tests have to be done both ways (m vs msib and msib vs m) in order
@@ -1107,9 +1085,9 @@
                      ( m_south_in_msib  .OR.  m_north_in_msib  .OR.                                &
                        msib_south_in_m  .OR.  msib_north_in_m ) )  THEN
                    sibling_id = pmc_parent_for_child(msib)
-                   WRITE( message_string, '(A,I2,A,I2,A)' ) 'nested parallel child domains (ids: ',&
+                   WRITE( message_string, "(a,i2,a,i2,a)" ) 'nested parallel child domains (ids: ',&
                           child_id, ' and ', sibling_id, ') overlap'
-                   CALL message( 'pmci_setup_parent', 'PMC0013', 3, 2, 0, 6, 0 )
+                   CALL message( 'pmci_setup_parent', 'PA0426', 3, 2, 0, 6, 0 )
                 ENDIF
 
              ENDDO
@@ -1138,16 +1116,12 @@
           CALL pmc_send_to_child( child_id, dzw, nz_child + 1, 0, 27, ierr )
           CALL pmc_send_to_child( child_id, zu,  nz_child + 2, 0, 28, ierr )
           CALL pmc_send_to_child( child_id, zw,  nz_child + 2, 0, 29, ierr )
-!
-!--       Required in case of atmosphere-ocean coupling.
-          CALL pmc_send_to_child( child_id, humidity,  1, 0, 30, ierr )
 
        ENDIF  ! ( myid == 0 )
 
        CALL MPI_BCAST( nz_child, 1, MPI_INTEGER, 0, comm2d, ierr )
 
        CALL MPI_BCAST( childgrid(m), STORAGE_SIZE( childgrid( 1 ) ) / 8, MPI_BYTE, 0, comm2d, ierr )
-
 !
 !--    Set up the index-list which is an integer array that maps the child index space on the parent
 !--    index- and subdomain spaces.
@@ -1186,6 +1160,7 @@
        DEALLOCATE( child_y_south )
        DEALLOCATE( child_y_north )
     ENDIF
+
 
  CONTAINS
 
@@ -1243,7 +1218,7 @@
        ilist = 0
 !
 !--    Loop over all children PEs
-       DO  n = 1, size_of_childs_parent_grid_bounds_all(2)
+       DO  n = 1, size_of_childs_parent_grid_bounds_all(2)           !
 !
 !--       Subspace along y required by actual child PE
           DO  jp = childs_parent_grid_bounds_all(3,n), childs_parent_grid_bounds_all(4,n)  ! jp = jps, jpn of child PE# n
@@ -1359,62 +1334,46 @@
 !
 !-- Child setup
 !-- Root model does not have a parent and is not a child, therefore no child setup on root model
-    IF ( .NOT. root_model )  THEN
+    IF ( .NOT. pmc_is_rootmodel() )  THEN
 !
 !--    KLaus, add a description here what pmc_childinit does
        CALL pmc_childinit
-
-       IF ( atmosphere_ocean_coupled_run )  THEN
-
-          CALL pmc_set_dataarray_name( 'parent', 'exchange_array_1', 'child', 'exchange_array_1',  &
-                                       ierr )
-          CALL pmc_set_dataarray_name( 'parent', 'exchange_array_2', 'child', 'exchange_array_2',  &
-                                       ierr )
-          CALL pmc_set_dataarray_name( 'parent', 'exchange_array_3', 'child', 'exchange_array_3',  &
-                                       ierr )
-          CALL pmc_set_dataarray_name( 'parent', 'exchange_array_4', 'child', 'exchange_array_4',  &
-                                       ierr )
-
-       ELSE
-
 !
-!--       The arrays, which actually will be exchanged between child and parent are defined Here AND
-!--       ONLY HERE. If a variable is removed, it only has to be removed from here. Please check, if
-!--       the arrays are in the list of POSSIBLE exchange arrays in subroutines:
-!--       pmci_set_array_pointer (for parent arrays)
-!--       pmci_create_childs_parent_grid_arrays (for child's parent-grid arrays)
-          CALL pmc_set_dataarray_name( 'parent', 'u', 'child', 'u', ierr )
-          CALL pmc_set_dataarray_name( 'parent', 'v', 'child', 'v', ierr )
-          CALL pmc_set_dataarray_name( 'parent', 'w', 'child', 'w', ierr )
+!--    The arrays, which actually will be exchanged between child and parent are defined Here AND
+!--    ONLY HERE. If a variable is removed, it only has to be removed from here. Please check, if
+!--    the arrays are in the list of POSSIBLE exchange arrays in subroutines:
+!--    pmci_set_array_pointer (for parent arrays)
+!--    pmci_create_childs_parent_grid_arrays (for child's parent-grid arrays)
+       CALL pmc_set_dataarray_name( 'parent', 'u', 'child', 'u', ierr )
+       CALL pmc_set_dataarray_name( 'parent', 'v', 'child', 'v', ierr )
+       CALL pmc_set_dataarray_name( 'parent', 'w', 'child', 'w', ierr )
 !
-!--       Set data array name for TKE. Please note, nesting of TKE is actually only done if both
-!--       parent and child are in LES or in RANS mode. Due to design of model coupler, however, data
-!--       array names must be already available at this point, though the control flag whether data
-!--       shall be interpolated / anterpolated is not available yet.
-          CALL pmc_set_dataarray_name( 'parent', 'e', 'child', 'e', ierr )
+!--    Set data array name for TKE. Please note, nesting of TKE is actually only done if both parent
+!--    and child are in LES or in RANS mode. Due to design of model coupler, however, data array
+!--    names must be already available at this point, though the control flag whether data shall
+!--    be interpolated / anterpolated is not available yet.
+       CALL pmc_set_dataarray_name( 'parent', 'e', 'child', 'e', ierr )
 !
-!--       Nesting of dissipation rate only if both parent and child are in RANS mode and TKE-epsilon
-!--       closure is applied. Please see also comment for TKE above.
-          CALL pmc_set_dataarray_name( 'parent', 'diss', 'child', 'diss', ierr )
+!--    Nesting of dissipation rate only if both parent and child are in RANS mode and TKE-epsilon
+!--    closure is applied. Please see also comment for TKE above.
+       CALL pmc_set_dataarray_name( 'parent', 'diss', 'child', 'diss', ierr )
 
-          IF ( .NOT. neutral )  THEN
-             CALL pmc_set_dataarray_name( 'parent', 'pt' ,'child', 'pt', ierr )
+       IF ( .NOT. neutral )  THEN
+          CALL pmc_set_dataarray_name( 'parent', 'pt' ,'child', 'pt', ierr )
+       ENDIF
+
+       IF ( humidity )  THEN
+
+          CALL pmc_set_dataarray_name( 'parent', 'q', 'child', 'q', ierr )
+
+          IF ( bulk_cloud_model  .AND.  microphysics_morrison )  THEN
+            CALL pmc_set_dataarray_name( 'parent', 'qc', 'child', 'qc', ierr )
+            CALL pmc_set_dataarray_name( 'parent', 'nc', 'child', 'nc', ierr )
           ENDIF
 
-          IF ( humidity )  THEN
-
-             CALL pmc_set_dataarray_name( 'parent', 'q', 'child', 'q', ierr )
-
-             IF ( bulk_cloud_model  .AND.  microphysics_morrison )  THEN
-                CALL pmc_set_dataarray_name( 'parent', 'qc', 'child', 'qc', ierr )
-                CALL pmc_set_dataarray_name( 'parent', 'nc', 'child', 'nc', ierr )
-             ENDIF
-
-             IF ( bulk_cloud_model  .AND.  microphysics_seifert )  THEN
-                CALL pmc_set_dataarray_name( 'parent', 'qr', 'child', 'qr', ierr )
-                CALL pmc_set_dataarray_name( 'parent', 'nr', 'child', 'nr', ierr )
-             ENDIF
-
+          IF ( bulk_cloud_model  .AND.  microphysics_seifert )  THEN
+             CALL pmc_set_dataarray_name( 'parent', 'qr', 'child', 'qr', ierr )
+             CALL pmc_set_dataarray_name( 'parent', 'nr', 'child', 'nr', ierr )
           ENDIF
 
        ENDIF
@@ -1510,7 +1469,6 @@
           CALL pmc_recv_from_parent( pg%dzw, pg%nz+1, 0, 27, ierr )
           CALL pmc_recv_from_parent( pg%zu, pg%nz+2, 0, 28, ierr )
           CALL pmc_recv_from_parent( pg%zw, pg%nz+2, 0, 29, ierr )
-          CALL pmc_recv_from_parent( humidity_remote, 1, 0, 30, ierr )
        ENDIF
 !
 !--    Broadcast this information
@@ -1521,7 +1479,6 @@
        CALL MPI_BCAST( pg%zu, pg%nz+2,  MPI_REAL, 0, comm2d, ierr )
        CALL MPI_BCAST( pg%zw, pg%nz+2,  MPI_REAL, 0, comm2d, ierr )
        CALL MPI_BCAST( rans_mode_parent, 1, MPI_LOGICAL, 0, comm2d, ierr )
-       CALL MPI_BCAST( humidity_remote, 1, MPI_LOGICAL, 0, comm2d, ierr )
 !
 !--    Find the index bounds for the nest domain in the parent-grid index space
        CALL pmci_map_child_grid_to_parent_grid
@@ -1547,19 +1504,19 @@
 !--       is a chemical species or a SALSA variable. If so, pass index id of respective sub-variable
 !--       (species or bin) and increment this subsequently.
           IF ( INDEX( TRIM( myname ), 'chem_' ) /= 0 )  THEN
-             CALL pmci_create_childs_parent_grid_arrays( myname, ipl, ipr, jps, jpn, pg%nz, n )
+             CALL pmci_create_childs_parent_grid_arrays ( myname, ipl, ipr, jps, jpn, pg%nz, n )
              n = n + 1
           ELSEIF ( INDEX( TRIM( myname ), 'an_' ) /= 0 )  THEN
-             CALL pmci_create_childs_parent_grid_arrays( myname, ipl, ipr, jps, jpn, pg%nz, lb )
+             CALL pmci_create_childs_parent_grid_arrays ( myname, ipl, ipr, jps, jpn, pg%nz, lb )
              lb = lb + 1
           ELSEIF ( INDEX( TRIM( myname ), 'am_' ) /= 0 )  THEN
-             CALL pmci_create_childs_parent_grid_arrays( myname, ipl, ipr, jps, jpn, pg%nz, lc )
+             CALL pmci_create_childs_parent_grid_arrays ( myname, ipl, ipr, jps, jpn, pg%nz, lc )
              lc = lc + 1
           ELSEIF ( INDEX( TRIM( myname ), 'sg_' ) /= 0  .AND.  .NOT.  salsa_gases_from_chem )  THEN
-             CALL pmci_create_childs_parent_grid_arrays( myname, ipl, ipr, jps, jpn, pg%nz, lg )
+             CALL pmci_create_childs_parent_grid_arrays ( myname, ipl, ipr, jps, jpn, pg%nz, lg )
              lg = lg + 1
           ELSE
-             CALL pmci_create_childs_parent_grid_arrays( myname, ipl, ipr, jps, jpn, pg%nz )
+             CALL pmci_create_childs_parent_grid_arrays ( myname, ipl, ipr, jps, jpn, pg%nz )
           ENDIF
        ENDDO
        CALL pmc_c_setind_and_allocmem
@@ -1567,17 +1524,14 @@
 !--    Precompute the index-mapping arrays
        CALL pmci_define_index_mapping
 !
-!--    Check that the child and parent grid lines do match.
-!--    Atmosphere-ocean coupled runs use same size model domains and don't require checking.
-       IF ( .NOT. atmosphere_ocean_coupled_run )  THEN
-          CALL pmci_check_grid_matching
+!--    Check that the child and parent grid lines do match
+       CALL pmci_check_grid_matching
 !
-!--       Compute surface areas of the nest-boundary faces
-          CALL pmci_compute_face_areas
+!--    Compute surface areas of the nest-boundary faces
+       CALL pmci_compute_face_areas
 !       
-!--       Compute anterpolation lower kp-index bounds if necessary
-          CALL pmci_compute_kpb_anterp
-       ENDIF
+!--    Compute anterpolation lower kp-index bounds if necessary
+       CALL pmci_compute_kpb_anterp 
     ENDIF
 
  CONTAINS
@@ -1636,7 +1590,7 @@
 !
 !-- Left boundary.
 !-- Extension by two parent-grid cells behind the boundary, see the comment block above.
-    IF ( bc_dirichlet_l  .AND.  .NOT. nesting_bounds_vertical_only )  THEN
+    IF ( bc_dirichlet_l )  THEN
        xexl  = 2.0_wp * pg%dx
        iauxl = 0
     ELSE
@@ -1653,7 +1607,7 @@
 !
 !-- Right boundary.
 !-- Extension by two parent-grid cells behind the boundary, see the comment block above.
-    IF ( bc_dirichlet_r  .AND.  .NOT. nesting_bounds_vertical_only )  THEN
+    IF ( bc_dirichlet_r )  THEN
        xexr  = 2.0_wp * pg%dx
        iauxr = 0
     ELSE
@@ -1670,7 +1624,7 @@
 !
 !-- South boundary.
 !-- Extension by two parent-grid cells behind the boundary, see the comment block above.
-    IF ( bc_dirichlet_s  .AND.  .NOT. nesting_bounds_vertical_only )  THEN
+    IF ( bc_dirichlet_s )  THEN
        yexs  = 2.0_wp * pg%dy
        jauxs = 0
     ELSE
@@ -1687,7 +1641,7 @@
 !
 !-- North boundary.
 !-- Extension by two parent-grid cells behind the boundary, see the comment block above.
-    IF  ( bc_dirichlet_n  .AND.  .NOT. nesting_bounds_vertical_only )  THEN
+    IF  ( bc_dirichlet_n )  THEN
        yexn  = 2.0_wp * pg%dy
        jauxn = 0
     ELSE
@@ -1701,53 +1655,39 @@
           EXIT
        ENDIF
     ENDDO
-
 !
-!-- For ocean coupling, one more parent cell is required at right and north boundary
-!-- to enable bilinear interpolation.
-    IF( atmosphere_ocean_coupled_run )  THEN
-
-       ipr = ipr + 1
-       jpn = jpn + 1
-
-    ELSE
-
-!
-!--    Make sure that the indexing is contiguous (no gaps, no overlaps). This is a safety measure
-!--    mainly for cases with high grid-spacing ratio and narrow child subdomains.
-       IF ( npex > 1 )  THEN
-          IF ( nxl == 0 )  THEN
-             CALL MPI_SEND( ipr, 1, MPI_INTEGER, pright, 717, comm2d, ierr )
-          ELSE IF ( nxr == nx )  THEN
-             CALL MPI_RECV( ijaux, 1, MPI_INTEGER, pleft, 717, comm2d, status, ierr )
-             ipl = ijaux + 1
-          ELSE
-             CALL MPI_SEND( ipr, 1, MPI_INTEGER, pright, 717, comm2d, ierr )
-             CALL MPI_RECV( ijaux, 1, MPI_INTEGER, pleft, 717, comm2d, status, ierr )
-             ipl = ijaux + 1
-          ENDIF
-       ENDIF
-
-       IF ( npey > 1 )  THEN
-          IF ( nys == 0 )  THEN
-             CALL MPI_SEND( jpn, 1, MPI_INTEGER, pnorth, 719, comm2d, ierr )
-          ELSE IF ( nyn == ny )  THEN
-             CALL MPI_RECV( ijaux, 1, MPI_INTEGER, psouth, 719, comm2d, status, ierr )
-             jps = ijaux + 1
-          ELSE
-             CALL MPI_SEND( jpn, 1, MPI_INTEGER, pnorth, 719, comm2d, ierr )
-             CALL MPI_RECV( ijaux, 1, MPI_INTEGER, psouth, 719, comm2d, status, ierr )
-             jps = ijaux + 1
-          ENDIF
+!-- Make sure that the indexing is contiguous (no gaps, no overlaps). This is a safety measure
+!-- mainly for cases with high grid-spacing ratio and narrow child subdomains.
+    IF ( pdims(1) > 1 )  THEN
+       IF ( nxl == 0 )  THEN
+          CALL MPI_SEND( ipr, 1, MPI_INTEGER, pright, 717, comm2d, ierr )
+       ELSE IF ( nxr == nx )  THEN
+          CALL MPI_RECV( ijaux, 1, MPI_INTEGER, pleft, 717, comm2d, status, ierr )
+          ipl = ijaux + 1
+       ELSE
+          CALL MPI_SEND( ipr, 1, MPI_INTEGER, pright, 717, comm2d, ierr )
+          CALL MPI_RECV( ijaux, 1, MPI_INTEGER, pleft, 717, comm2d, status, ierr )
+          ipl = ijaux + 1
        ENDIF
     ENDIF
 
-    IF ( debug_output )  THEN
-       WRITE( debug_string,                                                                        &
-              '("pmci_map_child_grid_to_parent_grid. Parent-grid array bounds: ",4(I4,2X))' )      &
-            ipl, ipr, jps, jpn
-       CALL debug_message( debug_string, 'info' )
+    IF ( pdims(2) > 1 )  THEN
+       IF ( nys == 0 )  THEN
+          CALL MPI_SEND( jpn, 1, MPI_INTEGER, pnorth, 719, comm2d, ierr )
+       ELSE IF ( nyn == ny )  THEN
+          CALL MPI_RECV( ijaux, 1, MPI_INTEGER, psouth, 719, comm2d, status, ierr )
+          jps = ijaux + 1
+       ELSE
+          CALL MPI_SEND( jpn, 1, MPI_INTEGER, pnorth, 719, comm2d, ierr )
+          CALL MPI_RECV( ijaux, 1, MPI_INTEGER, psouth, 719, comm2d, status, ierr )
+          jps = ijaux + 1
+       ENDIF
     ENDIF
+
+    WRITE( 9,"('pmci_map_child_grid_to_parent_grid. Parent-grid array bounds: ',4(i4,2x))" )       &
+           ipl, ipr, jps, jpn
+    FLUSH(9)
+
     parent_bound(1) = ipl
     parent_bound(2) = ipr
     parent_bound(3) = jps
@@ -1788,13 +1728,9 @@
     iprg = parent_bound_global(2)
     jpsg = parent_bound_global(3)
     jpng = parent_bound_global(4)
-
-    IF ( debug_output )  THEN
-       WRITE( debug_string,                                                                        &
-              '("pmci_map_child_grid_to_parent_grid: global parent-grid index bounds ",            &
-              & "iplg, iprg, jpsg, jpng: ",4(I4,2X))' )  iplg, iprg, jpsg, jpng
-       CALL debug_message( debug_string, 'info' )
-    ENDIF
+    WRITE( 9, "('pmci_map_child_grid_to_parent_grid. Global parent-grid index bounds iplg, iprg, jpsg, jpng: ',4(i4,2x))" ) &
+                iplg, iprg, jpsg, jpng
+    FLUSH( 9 )
 
  END SUBROUTINE pmci_map_child_grid_to_parent_grid
 
@@ -1808,24 +1744,24 @@
 
     IMPLICIT NONE
 
-    INTEGER(iwp) ::  i       !< child-grid index in the x-direction
-    INTEGER(iwp) ::  ii      !< parent-grid index in the x-direction
-    INTEGER(iwp) ::  istart  !< starting index for the index-mapping search loop in the x-direction 
-    INTEGER(iwp) ::  ir      !< search-loop running index in the x-direction
-    INTEGER(iwp) ::  iw      !< child-grid index limited to -1 <= iw <= nx+1 for topo_flags
-    INTEGER(iwp) ::  j       !< child-grid index in the y-direction
-    INTEGER(iwp) ::  jj      !< parent-grid index in the y-direction
-    INTEGER(iwp) ::  jstart  !< starting index for the index-mapping search loop in the y-direction
-    INTEGER(iwp) ::  jr      !< search-loop running index in the y-direction
-    INTEGER(iwp) ::  jw      !< child-grid index limited to -1 <= jw <= ny+1 for topo_flags
-    INTEGER(iwp) ::  k       !< child-grid index in the z-direction
-    INTEGER(iwp) ::  kk      !< parent-grid index in the z-direction
-    INTEGER(iwp) ::  kstart  !< starting index for the index-mapping search loop in the z-direction
-    INTEGER(iwp) ::  kw      !< child-grid index limited to kw <= nzt+1 for topo_flags
+    INTEGER(iwp) ::  i       !< Child-grid index in the x-direction
+    INTEGER(iwp) ::  ii      !< Parent-grid index in the x-direction
+    INTEGER(iwp) ::  istart  !<
+    INTEGER(iwp) ::  ir      !<
+    INTEGER(iwp) ::  iw      !< Child-grid index limited to -1 <= iw <= nx+1 for wall_flags_total_0
+    INTEGER(iwp) ::  j       !< Child-grid index in the y-direction
+    INTEGER(iwp) ::  jj      !< Parent-grid index in the y-direction
+    INTEGER(iwp) ::  jstart  !<
+    INTEGER(iwp) ::  jr      !<
+    INTEGER(iwp) ::  jw      !< Child-grid index limited to -1 <= jw <= ny+1 for wall_flags_total_0
+    INTEGER(iwp) ::  k       !< Child-grid index in the z-direction
+    INTEGER(iwp) ::  kk      !< Parent-grid index in the z-direction
+    INTEGER(iwp) ::  kstart  !<
+    INTEGER(iwp) ::  kw      !< Child-grid index limited to kw <= nzt+1 for wall_flags_total_0
 
-    REAL(wp) ::  tolex  !< tolerance for grid-line matching in x-direction
-    REAL(wp) ::  toley  !< tolerance for grid-line matching in y-direction
-    REAL(wp) ::  tolez  !< tolerance for grid-line matching in z-direction
+    REAL(wp) ::  tolex  !< Tolerance for grid-line matching in x-direction
+    REAL(wp) ::  toley  !< Tolerance for grid-line matching in y-direction
+    REAL(wp) ::  tolez  !< Tolerance for grid-line matching in z-direction
 
 !
 !-- Grid-line tolerances.
@@ -1837,16 +1773,14 @@
     igsr = NINT( pg%dx / dx, iwp )
     jgsr = NINT( pg%dy / dy, iwp )
     kgsr = NINT( pg%dzw(1) / dzw(1), iwp )
+    WRITE(9,"('igsr, jgsr, kgsr: ',3(i3,2x))") igsr, jgsr, kgsr
+    FLUSH(9)
 !
 !-- Determine index bounds for the parent-grid work arrays for interpolation and allocate them.
     CALL pmci_allocate_workarrays
 !
 !-- Define the MPI-datatypes for parent-grid work array exchange between the PE-subdomains.
     CALL pmci_create_workarray_exchange_datatypes
-!
-!-- The setups further below are for nesting only, therefore return here in case of coupling.
-    IF ( atmosphere_ocean_coupled_run )  RETURN
-
 !
 !-- First determine kcto and kctw which refer to the uppermost parent-grid levels below the child
 !-- top-boundary level. Note that these comparison tests are not round-off-error sensitive and
@@ -1863,14 +1797,12 @@
     ENDDO
     kctw = kk - 1
 
-    IF ( debug_output )  THEN
-       WRITE( debug_string, '("kcto, kctw = ", 2(I3,2X))' )  kcto, kctw
-       CALL debug_message( debug_string, 'info' )
-    ENDIF
+    WRITE( 9, "('kcto, kctw = ', 2(i3,2x))" ) kcto, kctw
+    FLUSH( 9 )
 !
 !-- In case of two-way coupling, check that the child domain is sufficiently large in terms of the
 !-- number of parent-grid cells covered. Otherwise anterpolation is not possible.
-    IF ( nesting_mode == 'two-way' )  THEN
+    IF ( nesting_mode == 'two-way')  THEN
        CALL pmci_check_child_domain_size
     ENDIF
 
@@ -1914,12 +1846,11 @@
        istart   = iflu(ii)
 !
 !--    Print out the index bounds for checking and debugging purposes
-       IF ( debug_output )  THEN
-          WRITE( debug_string, '("pmci_define_index_mapping, ii, iflu, ifuu: ", 3(I4,2X))' )       &
-                 ii, iflu(ii), ifuu(ii)
-          CALL debug_message( debug_string, 'info' )
-       ENDIF
+       WRITE( 9, "('pmci_define_index_mapping, ii, iflu, ifuu: ', 3(i4,2x))" ) ii, iflu(ii),       &
+                                                                               ifuu(ii)
+       FLUSH( 9 )
     ENDDO
+    WRITE( 9, * )
 !
 !-- i-indices of others for each ii-index value. Note that these comparison tests are not
 !-- round-off-error sensitive and therefore tolerance buffering is not needed here.
@@ -1939,12 +1870,11 @@
        istart = iflo(ii)
 !
 !--    Print out the index bounds for checking and debugging purposes
-       IF ( debug_output )  THEN
-          WRITE( debug_string, '("pmci_define_index_mapping, ii, iflo, ifuo: ", 3(I4,2X))' )       &
-                 ii, iflo(ii), ifuo(ii)
-          CALL debug_message( debug_string, 'info' )
-       ENDIF
+       WRITE( 9, "('pmci_define_index_mapping, ii, iflo, ifuo: ', 3(i4,2x))" ) ii, iflo(ii),       &
+                                                                               ifuo(ii)
+       FLUSH( 9 )
     ENDDO
+    WRITE( 9, * )
 !
 !-- j-indices of v for each jj-index value
     jstart = nysg
@@ -1964,12 +1894,11 @@
        jstart   = jflv(jj)
 !
 !--    Print out the index bounds for checking and debugging purposes
-       IF ( debug_output )  THEN
-          WRITE( debug_string, '("pmci_define_index_mapping, jj, jflv, jfuv: ", 3(I4,2X))' )       &
-                 jj, jflv(ii), jfuv(ii)
-          CALL debug_message( debug_string, 'info' )
-       ENDIF
+       WRITE( 9, "('pmci_define_index_mapping, jj, jflv, jfuv: ', 3(i4,2x))" ) jj, jflv(jj),       &
+                                                                               jfuv(jj)
+       FLUSH(9)
     ENDDO
+    WRITE( 9, * )
 !
 !-- j-indices of others for each jj-index value
 !-- Note that these comparison tests are not round-off-error sensitive and therefore tolerance
@@ -1990,12 +1919,11 @@
        jstart = jflo(jj)
 !
 !--    Print out the index bounds for checking and debugging purposes
-       IF ( debug_output )  THEN
-          WRITE( debug_string, '("pmci_define_index_mapping, jj, jflo, jfuo: ", 3(I4,2X))' )       &
-                 jj, jflo(ii), jfuo(ii)
-          CALL debug_message( debug_string, 'info' )
-       ENDIF
+       WRITE( 9, "('pmci_define_index_mapping, jj, jflo, jfuo: ', 3(i4,2x))" ) jj, jflo(jj),       &
+                                                                               jfuo(jj)
+       FLUSH( 9 )
     ENDDO
+    WRITE( 9, * )
 !
 !-- k-indices of w for each kk-index value
 !-- Note that anterpolation index limits are needed also for the top boundary ghost cell level
@@ -2019,12 +1947,11 @@
        kstart   = kflw(kk)
 !
 !--    Print out the index bounds for checking and debugging purposes
-       IF ( debug_output )  THEN
-          WRITE( debug_string, '("pmci_define_index_mapping, kk, kflw, kfuw: ", 4(I4,2X),          &
-                 & 2(E12.5,2X))' )  kk, kflw(kk), kfuw(kk), nzt,  pg%zu(kk), pg%zw(kk)
-          CALL debug_message( debug_string, 'info' )
-       ENDIF
+       WRITE( 9, "('pmci_define_index_mapping, kk, kflw, kfuw: ', 4(i4,2x), 2(e12.5,2x))" )        &
+              kk, kflw(kk), kfuw(kk), nzt,  pg%zu(kk), pg%zw(kk)
+       FLUSH( 9 )
     ENDDO
+    WRITE( 9, * )
 !
 !-- k-indices of others for each kk-index value
     kstart  = 0
@@ -2049,17 +1976,16 @@
     ENDDO
 !
 !-- Print out the index bounds for checking and debugging purposes
-    IF ( debug_output )  THEN
-       DO  kk = 1, pg%nz+1
-          WRITE( debug_string, '("pmci_define_index_mapping, kk, kflo, kfuo: ", 4(I4,2X),          &
-                 & 2(E12.5,2X))' )  kk, kflo(kk), kfuo(kk), nzt,  pg%zu(kk), pg%zw(kk)
-          CALL debug_message( debug_string, 'info' )
-       ENDDO
-    ENDIF
+    DO  kk = 1, pg%nz+1
+       WRITE( 9, "('pmci_define_index_mapping, kk, kflo, kfuo: ', 4(i4,2x), 2(e12.5,2x))" )        &
+              kk, kflo(kk), kfuo(kk), nzt,  pg%zu(kk), pg%zw(kk)
+       FLUSH( 9 )
+    ENDDO
+    WRITE( 9, * )
 !
 !-- Precomputation of number of child-grid nodes inside parent-grid cells. Note that ii, jj, and kk
 !-- are parent-grid indices. This information is needed in the anterpolation. The indices for
-!-- topo_flags (kw,jw,iw) must be limited to the range [-1,...,nx/ny/nzt+1] in order to
+!-- wall_flags_total_0 (kw,jw,iw) must be limited to the range [-1,...,nx/ny/nzt+1] in order to
 !-- avoid zero values on the outer ghost nodes.
     DO  ii = ipla, ipra
        DO  jj = jpsa, jpna
@@ -2073,7 +1999,7 @@
                    DO  k = kflo(kk), kfuo(kk)
                       kw = MIN( k, nzt+1 )
                       ijkfc_u(kk,jj,ii) = ijkfc_u(kk,jj,ii)                                        &
-                                          + MERGE( 1, 0, BTEST( topo_flags(kw,jw,iw), 1 ) )
+                                          + MERGE( 1, 0, BTEST( wall_flags_total_0(kw,jw,iw), 1 ) )
                    ENDDO
                 ENDDO
              ENDDO
@@ -2086,7 +2012,7 @@
                    DO  k = kflo(kk), kfuo(kk)
                       kw = MIN( k, nzt+1 )
                       ijkfc_v(kk,jj,ii) = ijkfc_v(kk,jj,ii)                                        &
-                                          + MERGE( 1, 0, BTEST( topo_flags(kw,jw,iw), 2 ) )
+                                          + MERGE( 1, 0, BTEST( wall_flags_total_0(kw,jw,iw), 2 ) )
                    ENDDO
                 ENDDO
              ENDDO
@@ -2099,7 +2025,7 @@
                    DO  k = kflo(kk), kfuo(kk)
                       kw = MIN( k, nzt+1 )
                       ijkfc_s(kk,jj,ii) = ijkfc_s(kk,jj,ii)                                        &
-                                          + MERGE( 1, 0, BTEST( topo_flags(kw,jw,iw), 0 ) )
+                                          + MERGE( 1, 0, BTEST( wall_flags_total_0(kw,jw,iw), 0 ) )
                    ENDDO
                 ENDDO
              ENDDO
@@ -2112,7 +2038,7 @@
                    DO  k = kflw(kk), kfuw(kk)
                       kw = MIN( k, nzt+1 )
                       ijkfc_w(kk,jj,ii) = ijkfc_w(kk,jj,ii)                                        &
-                                          + MERGE( 1, 0, BTEST( topo_flags(kw,jw,iw), 3 ) )
+                                          + MERGE( 1, 0, BTEST( wall_flags_total_0(kw,jw,iw), 3 ) )
                    ENDDO
                 ENDDO
              ENDDO
@@ -2142,19 +2068,20 @@
        IF ( iprg - iplg + 1 < 7 )  THEN
 !
 !--       Error
-          message_string = 'child domain too narrow for anterpolation in x-direction'
-          CALL message( 'pmci_check_child_domain_size', 'PMC0014', 3, 2, 0, 6, 0 )
+          WRITE( message_string, * ) 'child domain too narrow for anterpolation in x-direction'
+          CALL message( 'pmci_check_child_domain_size', 'PA0652', 3, 2, 0, 6, 0 )
        ELSE IF ( iprg - iplg + 1 < 11 )  THEN
 !
 !--       Warning
-          message_string = 'anterpolation_buffer_width value too high, reset to 0'
-          CALL message( 'pmci_check_child_domain_size', 'PMC0015', 0, 1, 0, 6, 0 )
+          WRITE( message_string, * ) 'anterpolation_buffer_width value too high, reset to 0'
+          CALL message( 'pmci_check_child_domain_size', 'PA0653', 0, 1, 0, 6, 0 )
           anterpolation_buffer_width = 0
        ELSE
 !
 !--       Informative message
-          message_string = 'anterpolation_buffer_width value too high, reset to default value 2'
-          CALL message( 'pmci_check_child_domain_size', 'PMC0016', 0, 0, 0, 6, 0 )
+          WRITE( message_string, * ) 'anterpolation_buffer_width value too high, reset to ' //     &
+                                     'default value 2'
+          CALL message( 'pmci_check_child_domain_size', 'PA0654', 0, 0, 0, 6, 0 )
           anterpolation_buffer_width = 2
        ENDIF
     ENDIF
@@ -2164,19 +2091,20 @@
        IF ( jpng - jpsg + 1 < 7 )  THEN
 !
 !--       Error
-          message_string = 'child domain too narrow for anterpolation in y-direction'
-          CALL message( 'pmci_check_child_domain_size', 'PMC0014', 3, 2, 0, 6, 0 )
+          WRITE( message_string, * ) 'child domain too narrow for anterpolation in y-direction'
+          CALL message( 'pmci_check_child_domain_size', 'PA0652', 3, 2, 0, 6, 0 )
        ELSE IF ( jpng - jpsg + 1 < 11 )  THEN
 !
 !--       Warning
-          message_string = 'anterpolation_buffer_width value too high, reset to 0'
-          CALL message( 'pmci_check_child_domain_size', 'PMC0015', 0, 1, 0, 6, 0 )
+          WRITE( message_string, * ) 'anterpolation_buffer_width value too high, reset to 0'
+          CALL message( 'pmci_check_child_domain_size', 'PA0653', 0, 1, 0, 6, 0 )
           anterpolation_buffer_width = 0
        ELSE
 !
 !--       Informative message
-          message_string = 'anterpolation_buffer_width value too high, reset to default value 2'
-          CALL message( 'pmci_check_child_domain_size', 'PMC0016', 0, 0, 0, 6, 0 )
+          WRITE( message_string, * ) 'anterpolation_buffer_width value too high, reset to ' //     &
+                                     'default value 2'
+          CALL message( 'pmci_check_child_domain_size', 'PA0654', 0, 0, 0, 6, 0 )
           anterpolation_buffer_width = 2
        ENDIF
     ENDIF
@@ -2186,19 +2114,20 @@
        IF ( kctw - 1 < 1 )  THEN
 !
 !--       Error
-          message_string = 'child domain too shallow for anterpolation in z-direction'
-          CALL message( 'pmci_check_child_domain_size', 'PMC0014', 3, 2, 0, 6, 0 )
+          WRITE( message_string, * ) 'child domain too shallow for anterpolation in z-direction'
+          CALL message( 'pmci_check_child_domain_size', 'PA0652', 3, 2, 0, 6, 0 )
        ELSE IF ( kctw - 3 < 1 )  THEN
 !
 !--       Warning
-          message_string = 'anterpolation_buffer_width value too high, reset to 0'
-          CALL message( 'pmci_check_child_domain_size', 'PMC0015', 0, 1, 0, 6, 0 )
+          WRITE( message_string, * ) 'anterpolation_buffer_width value too high, reset to 0'
+          CALL message( 'pmci_check_child_domain_size', 'PA0653', 0, 1, 0, 6, 0 )
           anterpolation_buffer_width = 0
        ELSE
 !
 !--       Informative message
-          message_string = 'anterpolation_buffer_width value too high, reset to default value 2'
-          CALL message( 'pmci_check_child_domain_size', 'PMC0016', 0, 0, 0, 6, 0 )
+          WRITE( message_string, * ) 'anterpolation_buffer_width value too high, reset to ' //     &
+                                     'default value 2'
+          CALL message( 'pmci_check_child_domain_size', 'PA0654', 0, 0, 0, 6, 0 )
           anterpolation_buffer_width = 2
        ENDIF
     ENDIF
@@ -2212,30 +2141,30 @@
 !> Allocate parent-grid work-arrays for interpolation.
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE pmci_allocate_workarrays
-
+ 
     IMPLICIT NONE
 
 !
 !-- Determine and store the PE-subdomain dependent index bounds
-    IF ( bc_dirichlet_l  .AND.  .NOT. nesting_bounds_vertical_only )  THEN
+    IF ( bc_dirichlet_l )  THEN
        iplw = ipl + 1
     ELSE
        iplw = ipl - 1
     ENDIF
 
-    IF ( bc_dirichlet_r  .AND.  .NOT. nesting_bounds_vertical_only )  THEN
+    IF ( bc_dirichlet_r )  THEN
        iprw = ipr - 1
     ELSE
        iprw = ipr + 1
     ENDIF
 
-    IF ( bc_dirichlet_s  .AND.  .NOT. nesting_bounds_vertical_only )  THEN
+    IF ( bc_dirichlet_s )  THEN
        jpsw = jps + 1
     ELSE
        jpsw = jps - 1
     ENDIF
 
-    IF ( bc_dirichlet_n  .AND.  .NOT. nesting_bounds_vertical_only )  THEN
+    IF ( bc_dirichlet_n )  THEN
        jpnw = jpn - 1
     ELSE
        jpnw = jpn + 1
@@ -2312,7 +2241,6 @@
                                                           !< converted to REAL(wp)
     REAL(wp) ::  gridline_mismatch_x                      !< Mismatch between the parent and child gridlines in the x-direction
     REAL(wp) ::  gridline_mismatch_y                      !< Mismatch between the parent and child gridlines in the y-direction
-    REAL(wp) ::  gridline_mismatch_z                      !< Mismatch between the parent and child gridlines in the z-direction
     REAL(wp) ::  gsr_mismatch_x                           !< Deviation of the grid-spacing ratio from the nearest integer value,
                                                           !< the x-direction
     REAL(wp) ::  gsr_mismatch_y                           !< Deviation of the grid-spacing ratio from the nearest integer value, the
@@ -2341,12 +2269,11 @@
        upper_right_coord_y = lower_left_coord_y + ( ny + 1 ) * dy
        gridline_mismatch_x = ABS( NINT( upper_right_coord_x / pg%dx ) * pg%dx - upper_right_coord_x )
        gridline_mismatch_y = ABS( NINT( upper_right_coord_y / pg%dy ) * pg%dy - upper_right_coord_y )
-       IF ( gridline_mismatch_x > tolex )  non_matching_upper_right_corner = 1
-       IF ( gridline_mismatch_y > toley )  non_matching_upper_right_corner = 1
+       IF ( gridline_mismatch_x > tolex ) non_matching_upper_right_corner = 1
+       IF ( gridline_mismatch_y > toley ) non_matching_upper_right_corner = 1
 !
-!--    Also check that the child domain height matches the parent grid lines.
-       gridline_mismatch_z = ABS( NINT( zw(nzt) / pg%dz ) * pg%dz - zw(nzt) )
-       IF ( gridline_mismatch_z > tolez )  non_matching_height = 1
+!--    Also check that the cild domain height matches the parent grid lines.
+       IF ( MOD( zw(nzt), pg%dz ) > tolez ) non_matching_height = 1
 !
 !--    Check that the grid-spacing ratios in each direction are integer valued.
        gsr_mismatch_x = ABS( NINT( pg%dx / dx ) * dx - pg%dx )
@@ -2366,50 +2293,53 @@
        IF ( child_ngp_y_l / REAL( jgsr, KIND=wp ) < 1.0_wp )  too_narrow_pesd_y = 1
 
        IF ( non_matching_height > 0 )  THEN
-          message_string = 'nested child domain height must match its parent grid lines'
-          CALL message( 'pmci_check_grid_matching', 'PMC0017', 3, 2, 0, 6, 0 )
+          WRITE( message_string, * ) 'nested child domain height must match ',                     &
+                                     'its parent grid lines'
+          CALL message( 'pmci_check_grid_matching', 'PA0414', 3, 2, 0, 6, 0 )
        ENDIF
 
        IF ( non_matching_lower_left_corner > 0 )  THEN
-          message_string = 'nested child domain lower left corner must match its parent grid lines'
-          CALL message( 'pmci_check_grid_matching', 'PMC0017', 3, 2, 0, 6, 0 )
+          WRITE( message_string, * ) 'nested child domain lower left ',                            &
+                                     'corner must match its parent grid lines'
+          CALL message( 'pmci_check_grid_matching', 'PA0414', 3, 2, 0, 6, 0 )
        ENDIF
 
        IF ( non_matching_upper_right_corner > 0 )  THEN
-          message_string = 'nested child domain upper right corner must match its parent grid lines'
-          CALL message( 'pmci_check_grid_matching', 'PMC0017', 3, 2, 0, 6, 0 )
+          WRITE( message_string, * ) 'nested child domain upper right ',                           &
+                                     'corner must match its parent grid lines'
+          CALL message( 'pmci_check_grid_matching', 'PA0414', 3, 2, 0, 6, 0 )
        ENDIF
 
        IF ( non_int_gsr_x > 0 )  THEN
-          message_string = 'nesting grid-spacing ratio ( parent dx / child dx ) ' //               &
-                           'must have an integer value'
-          CALL message( 'pmci_check_grid_matching', 'PMC0018', 3, 2, 0, 6, 0 )
+          WRITE( message_string, * ) 'nesting grid-spacing ratio ( parent dx / child dx ) ',       &
+                                     'must have an integer value'
+          CALL message( 'pmci_check_grid_matching', 'PA0416', 3, 2, 0, 6, 0 )
        ENDIF
 
        IF ( non_int_gsr_y > 0 )  THEN
-          message_string = 'nesting grid-spacing ratio ( parent dy / child dy ) ' //               &
-                           'must have an integer value'
-          CALL message( 'pmci_check_grid_matching', 'PMC0018', 3, 2, 0, 6, 0 )
+          WRITE( message_string, * ) 'nesting grid-spacing ratio ( parent dy / child dy ) ',       &
+                                     'must have an integer value'
+          CALL message( 'pmci_check_grid_matching', 'PA0416', 3, 2, 0, 6, 0 )
        ENDIF
 
        IF ( non_int_gsr_z > 0 )  THEN
-          message_string = 'nesting grid-spacing ratio ( parent dz / child dz ) ' //               &
-                           'must have an integer value for each z-level'
-          CALL message( 'pmci_check_grid_matching', 'PMC0018', 3, 2, 0, 6, 0 )
+          WRITE( message_string, * ) 'nesting grid-spacing ratio ( parent dz / child dz ) ',       &
+                                     'must have an integer value for each z-level'
+          CALL message( 'pmci_check_grid_matching', 'PA0416', 3, 2, 0, 6, 0 )
        ENDIF
 
        IF ( too_narrow_pesd_x > 0 )  THEN
-          message_string = 'child subdomain width in x-direction must not be smaller than its ' // &
-                           'parent grid dx. &Change the PE-grid setting (npex, npey) to satisfy' //&
-                           ' this requirement.'
-          CALL message( 'pmci_check_grid_matching', 'PMC0019', 3, 2, 0, 6, 0 )
+         WRITE( message_string, * ) 'child subdomain width in x-direction must not be ',           &
+                                     'smaller than its parent grid dx. Change the PE-grid ',       &
+                                     'setting (npex, npey) to satisfy this requirement.'
+          CALL message( 'pmci_check_grid_matching', 'PA0587', 3, 2, 0, 6, 0 )
        ENDIF
 
        IF ( too_narrow_pesd_y > 0 )  THEN
-          message_string = 'child subdomain width in y-direction must not be smaller than its ' // &
-                           'parent grid dy. &Change the PE-grid setting (npex, npey) to satisfy' //&
-                           ' this requirement.'
-          CALL message( 'pmci_check_grid_matching', 'PMC0019', 3, 2, 0, 6, 0 )
+          WRITE( message_string, * ) 'child subdomain width in y-direction must not be ',          &
+                                     'smaller than its parent grid dy. Change the PE-grid ',       &
+                                     'setting (npex, npey) to satisfy this requirement.'
+          CALL message( 'pmci_check_grid_matching', 'PA0587', 3, 2, 0, 6, 0 )
        ENDIF
 
     ENDIF  !  ( myid == 0 )
@@ -2421,7 +2351,6 @@
 ! Description:
 ! ------------
 !> Compute the areas of the domain boundary faces: left, right, south, north and top.
-!> For cyclic boundaries face areas are zero along the respective direction.
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE pmci_compute_face_areas
 
@@ -2439,12 +2368,12 @@
 !-- Sum up the volume flow through the left boundary
     face_area(1) = 0.0_wp
     face_area_local = 0.0_wp
-    IF ( bc_dirichlet_l  .OR.  bc_radiation_l )  THEN
+    IF ( bc_dirichlet_l )  THEN
        i = 0
        DO  j = nys, nyn
           sub_sum = 0.0_wp
           DO  k = nzb + 1, nzt
-             sub_sum = sub_sum + dzw(k) * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 1 ) )
+             sub_sum = sub_sum + dzw(k) * MERGE( 1.0_wp, 0.0_wp, BTEST(wall_flags_total_0(k,j,i), 1 ) )
           ENDDO
           face_area_local =  face_area_local + dy * sub_sum
        ENDDO
@@ -2460,12 +2389,12 @@
 !-- Sum up the volume flow through the right boundary
     face_area(2) = 0.0_wp
     face_area_local = 0.0_wp
-    IF ( bc_dirichlet_r  .OR.  bc_radiation_r )  THEN
+    IF ( bc_dirichlet_r )  THEN
        i = nx
        DO  j = nys, nyn
           sub_sum = 0.0_wp
           DO  k = nzb + 1, nzt
-             sub_sum = sub_sum + dzw(k) * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 1 ) )
+             sub_sum = sub_sum + dzw(k) * MERGE( 1.0_wp, 0.0_wp, BTEST(wall_flags_total_0(k,j,i), 1 ) )
           ENDDO
           face_area_local =  face_area_local + dy * sub_sum
        ENDDO
@@ -2481,12 +2410,12 @@
 !-- Sum up the volume flow through the south boundary
     face_area(3) = 0.0_wp
     face_area_local = 0.0_wp
-    IF ( bc_dirichlet_s  .OR.  bc_radiation_s )  THEN
+    IF ( bc_dirichlet_s )  THEN
        j = 0
        DO  i = nxl, nxr
           sub_sum = 0.0_wp
           DO  k = nzb + 1, nzt
-             sub_sum = sub_sum + dzw(k) * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 2 ) )
+             sub_sum = sub_sum + dzw(k) * MERGE( 1.0_wp, 0.0_wp, BTEST(wall_flags_total_0(k,j,i), 2 ) )
           ENDDO
           face_area_local = face_area_local + dx * sub_sum
        ENDDO
@@ -2502,12 +2431,12 @@
 !-- Sum up the volume flow through the north boundary
     face_area(4) = 0.0_wp
     face_area_local = 0.0_wp
-    IF ( bc_dirichlet_n  .OR.  bc_radiation_n )  THEN
+    IF ( bc_dirichlet_n )  THEN
        j = ny
        DO  i = nxl, nxr
           sub_sum = 0.0_wp
           DO  k = nzb + 1, nzt
-             sub_sum = sub_sum + dzw(k) * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 2 ) )
+             sub_sum = sub_sum + dzw(k) * MERGE( 1.0_wp, 0.0_wp, BTEST(wall_flags_total_0(k,j,i), 2 ) )
           ENDDO
           face_area_local = face_area_local + dx * sub_sum
        ENDDO
@@ -2528,6 +2457,9 @@
     DO  n = 1, 5
        face_area(6) = face_area(6) + face_area(n)
     ENDDO
+
+!    write( 9, "(6(e12.5,2x))") ( face_area(n), n = 1, 6 )
+!    flush( 9 )
 
  END SUBROUTINE pmci_compute_face_areas
 
@@ -2575,14 +2507,13 @@
              terrain_surf_k_parent = 0
              DO  ic = iflo(ip), ifuo(ip)
                 DO  jc = jflo(jp), jfuo(jp)
-                   terrain_surf_k_child = MINLOC(                                                  &
-                                       MERGE( 1, 0, BTEST( topo_flags(:,jc,ic), 5 ) ), DIM = 1 ) - 1
+                   terrain_surf_k_child = MINLOC(                                                   &
+                        MERGE( 1, 0, BTEST( wall_flags_total_0(:,jc,ic), 5 ) ), DIM = 1 ) - 1
                    terrain_surf_k_parent = MAX( terrain_surf_k_child, terrain_surf_k_parent )
                 ENDDO
              ENDDO
              terrain_surf_k_parent = NINT( terrain_surf_k_parent / REAL( kgsr, wp ) )
-             kpb_anterp(jp,ip) = terrain_surf_k_parent +                                           &
-                                 NINT( anterpolation_starting_height / pg%dz )
+             kpb_anterp(jp,ip) = terrain_surf_k_parent + NINT( anterpolation_starting_height / pg%dz )
           ENDDO
        ENDDO
 
@@ -2637,7 +2568,7 @@
     num_building_nodes   = 0
     DO  ic = nxl, nxr
        DO  jc = nys, nyn
-          terrain_surf_k  = MINLOC( MERGE( 1, 0, BTEST( topo_flags(:,jc,ic), 5 ) ),                &
+          terrain_surf_k  = MINLOC( MERGE( 1, 0, BTEST( wall_flags_total_0(:,jc,ic), 5 ) ),         &
                                     DIM = 1 ) - 1
           IF ( topo_top_ind(jc,ic,5) > terrain_surf_k )  THEN                      
              building_height(jc,ic) = dz(1) * ( topo_top_ind(jc,ic,5) - terrain_surf_k + 1 )
@@ -2646,8 +2577,7 @@
        ENDDO
     ENDDO
     
-    CALL MPI_ALLREDUCE( num_building_nodes_l, num_building_nodes, 1, MPI_INT, MPI_SUM, comm2d,     &
-                        ierr )
+    CALL MPI_ALLREDUCE( num_building_nodes_l, num_building_nodes, 1, MPI_INT, MPI_SUM, comm2d, ierr )
     
     num_highest_nodes = MAX( 1, NINT( num_building_nodes * ( 100 - percentile_level ) / 100.0_wp ) )
 !    
@@ -2680,11 +2610,10 @@
 !-- cuboid-array test cases.
     anterpolation_starting_height = global_currently_highest + 2.0_wp * pg%dz
 
-    IF ( debug_output )  THEN
-       WRITE( debug_string, '(A,A,F5.1,A)' )  'A default value is defined and set for ',           &
-              'anterpolation_starting_height = ', anterpolation_starting_height, ' m.'
-       CALL debug_message( debug_string, 'info' )
-    ENDIF
+    WRITE( 9, * )
+    WRITE( 9, "('A default value is defined and set for anterpolation_starting_height = ', f4.1, ' m.' )" )  &
+         anterpolation_starting_height
+    WRITE( 9, * )
 
     DEALLOCATE( max_height_l )
     DEALLOCATE( max_height )
@@ -2708,8 +2637,8 @@
 #if defined( __parallel )
     IMPLICIT NONE
 
-    INTEGER(iwp) ::  i  !< grid index in the x-direction
-    INTEGER(iwp) ::  j  !< grid index in the y-direction
+    INTEGER(iwp) ::  i  !<
+    INTEGER(iwp) ::  j  !<
 
 !
 !-- Create coordinate arrays.
@@ -2736,13 +2665,6 @@
 
 #if defined( __parallel )
     IMPLICIT NONE
-
-
-    IF ( atmosphere_ocean_coupled_run )  THEN
-       pmc_max_array = 4
-       RETURN
-    ENDIF
-
 !
 !-- The number of coupled arrays depends on the model settings. At least 5 arrays need to be
 !-- coupled (u, v, w, e, diss).  Please note, actually e and diss (TKE and dissipation rate) are
@@ -2823,53 +2745,45 @@
 !
 !-- List of array names, which can be coupled.
 !-- In case of 3D please change also the second array for the pointer version
-    IF ( TRIM(name) == 'u'          )  p_3d => u
-    IF ( TRIM(name) == 'v'          )  p_3d => v
-    IF ( TRIM(name) == 'w'          )  p_3d => w
-    IF ( TRIM(name) == 'e'          )  p_3d => e
-    IF ( TRIM(name) == 'pt'         )  p_3d => pt
-    IF ( TRIM(name) == 'q'          )  p_3d => q
-    IF ( TRIM(name) == 'qc'         )  p_3d => qc
-    IF ( TRIM(name) == 'qr'         )  p_3d => qr
-    IF ( TRIM(name) == 'nr'         )  p_3d => nr
-    IF ( TRIM(name) == 'nc'         )  p_3d => nc
-    IF ( TRIM(name) == 's'          )  p_3d => s
-    IF ( TRIM(name) == 'diss'       )  p_3d => diss
-    IF ( TRIM(name) == 'nr_part'    )  i_2d => nr_part
-    IF ( TRIM(name) == 'part_adr'   )  i_2d => part_adr
-    IF ( INDEX( TRIM(name), 'chem_' ) /= 0 )  p_3d => chem_species(n)%conc
-    IF ( INDEX( TRIM(name), 'an_' ) /= 0 )  p_3d => aerosol_number(n)%conc
-    IF ( INDEX( TRIM(name), 'am_' ) /= 0 )  p_3d => aerosol_mass(n)%conc
-    IF ( INDEX( TRIM(name), 'sg_' ) /= 0  .AND.  .NOT. salsa_gases_from_chem )                     &
+    IF ( TRIM(name) == "u"          )  p_3d => u
+    IF ( TRIM(name) == "v"          )  p_3d => v
+    IF ( TRIM(name) == "w"          )  p_3d => w
+    IF ( TRIM(name) == "e"          )  p_3d => e
+    IF ( TRIM(name) == "pt"         )  p_3d => pt
+    IF ( TRIM(name) == "q"          )  p_3d => q
+    IF ( TRIM(name) == "qc"         )  p_3d => qc
+    IF ( TRIM(name) == "qr"         )  p_3d => qr
+    IF ( TRIM(name) == "nr"         )  p_3d => nr
+    IF ( TRIM(name) == "nc"         )  p_3d => nc
+    IF ( TRIM(name) == "s"          )  p_3d => s
+    IF ( TRIM(name) == "diss"       )  p_3d => diss
+    IF ( TRIM(name) == "nr_part"    )  i_2d => nr_part
+    IF ( TRIM(name) == "part_adr"   )  i_2d => part_adr
+    IF ( INDEX( TRIM(name), "chem_" ) /= 0 )  p_3d => chem_species(n)%conc
+    IF ( INDEX( TRIM(name), "an_" ) /= 0 )  p_3d => aerosol_number(n)%conc
+    IF ( INDEX( TRIM(name), "am_" ) /= 0 )  p_3d => aerosol_mass(n)%conc
+    IF ( INDEX( TRIM(name), "sg_" ) /= 0  .AND.  .NOT. salsa_gases_from_chem )                     &
        p_3d => salsa_gas(n)%conc
-
-!
-!-- Ocean coupling
-    IF ( TRIM(name) == 'exchange_array_1' )  p_2d => surface_coupler_exchange_array_1
-    IF ( TRIM(name) == 'exchange_array_2' )  p_2d => surface_coupler_exchange_array_2
-    IF ( TRIM(name) == 'exchange_array_3' )  p_2d => surface_coupler_exchange_array_3
-    IF ( TRIM(name) == 'exchange_array_4' )  p_2d => surface_coupler_exchange_array_4
-
 !
 !-- Next line is just an example for a 2D array (not active for coupling!)
 !-- Please note, that z0 has to be declared as TARGET array in modules.f90.
-!    IF ( TRIM(name) == 'z0' )    p_2d => z0
-    IF ( TRIM(name) == 'u'    )  p_3d_sec => u_2
-    IF ( TRIM(name) == 'v'    )  p_3d_sec => v_2
-    IF ( TRIM(name) == 'w'    )  p_3d_sec => w_2
-    IF ( TRIM(name) == 'e'    )  p_3d_sec => e_2
-    IF ( TRIM(name) == 'pt'   )  p_3d_sec => pt_2
-    IF ( TRIM(name) == 'q'    )  p_3d_sec => q_2
-    IF ( TRIM(name) == 'qc'   )  p_3d_sec => qc_2
-    IF ( TRIM(name) == 'qr'   )  p_3d_sec => qr_2
-    IF ( TRIM(name) == 'nr'   )  p_3d_sec => nr_2
-    IF ( TRIM(name) == 'nc'   )  p_3d_sec => nc_2
-    IF ( TRIM(name) == 's'    )  p_3d_sec => s_2
-    IF ( TRIM(name) == 'diss' )  p_3d_sec => diss_2
-    IF ( INDEX( TRIM(name), 'chem_' ) /= 0 )  p_3d_sec => spec_conc_2(:,:,:,n)
-    IF ( INDEX( TRIM(name), 'an_' )   /= 0 )  p_3d_sec => nconc_2(:,:,:,n)
-    IF ( INDEX( TRIM(name), 'am_' )   /= 0 )  p_3d_sec => mconc_2(:,:,:,n)
-    IF ( INDEX( TRIM(name), 'sg_' )   /= 0  .AND.  .NOT.  salsa_gases_from_chem )                  &
+!    IF ( TRIM(name) == "z0" )    p_2d => z0
+    IF ( TRIM(name) == "u"    )  p_3d_sec => u_2
+    IF ( TRIM(name) == "v"    )  p_3d_sec => v_2
+    IF ( TRIM(name) == "w"    )  p_3d_sec => w_2
+    IF ( TRIM(name) == "e"    )  p_3d_sec => e_2
+    IF ( TRIM(name) == "pt"   )  p_3d_sec => pt_2
+    IF ( TRIM(name) == "q"    )  p_3d_sec => q_2
+    IF ( TRIM(name) == "qc"   )  p_3d_sec => qc_2
+    IF ( TRIM(name) == "qr"   )  p_3d_sec => qr_2
+    IF ( TRIM(name) == "nr"   )  p_3d_sec => nr_2
+    IF ( TRIM(name) == "nc"   )  p_3d_sec => nc_2
+    IF ( TRIM(name) == "s"    )  p_3d_sec => s_2
+    IF ( TRIM(name) == "diss" )  p_3d_sec => diss_2
+    IF ( INDEX( TRIM(name), "chem_" ) /= 0 )  p_3d_sec => spec_conc_2(:,:,:,n)
+    IF ( INDEX( TRIM(name), "an_" )   /= 0 )  p_3d_sec => nconc_2(:,:,:,n)
+    IF ( INDEX( TRIM(name), "am_" )   /= 0 )  p_3d_sec => mconc_2(:,:,:,n)
+    IF ( INDEX( TRIM(name), "sg_" )   /= 0  .AND.  .NOT.  salsa_gases_from_chem )                  &
        p_3d_sec => gconc_2(:,:,:,n)
 
     IF ( ASSOCIATED( p_3d ) )  THEN
@@ -2881,10 +2795,9 @@
     ELSE
 !
 !--    Give only one message for the root domain
-       IF ( root_model  .AND.  myid == 0 )  THEN
-          message_string = 'pointer for array "' // TRIM( name ) // '" can''t be associated ' //   &
-                           'for root domain'
-          CALL message( 'pmci_set_array_pointer', 'PMC0020', 3, 2, 0, 6, 0 )
+       IF ( pmc_is_rootmodel()  .AND.  myid == 0 )  THEN
+          message_string = 'pointer for array "' // TRIM( name ) // '" can''t be associated'
+          CALL message( 'pmci_set_array_pointer', 'PA0117', 3, 2, 0, 6, 0 )
        ELSE
 !
 !--       Avoid others to continue
@@ -3037,84 +2950,64 @@
     NULLIFY( i_2d )
 !
 !-- List of array names, which can be coupled
-    IF ( TRIM( name ) == 'u' )  THEN
+    IF ( TRIM( name ) == "u" )  THEN
        IF ( .NOT. ALLOCATED( uc ) )  ALLOCATE( uc(0:nzc+1,js:je,is:ie) )
        p_3d => uc
-    ELSEIF ( TRIM( name ) == 'v' )  THEN
+    ELSEIF ( TRIM( name ) == "v" )  THEN
        IF ( .NOT. ALLOCATED( vc ) )  ALLOCATE( vc(0:nzc+1,js:je,is:ie) )
        p_3d => vc
-    ELSEIF ( TRIM( name ) == 'w' )  THEN
+    ELSEIF ( TRIM( name ) == "w" )  THEN
        IF ( .NOT. ALLOCATED( wc ) )  ALLOCATE( wc(0:nzc+1,js:je,is:ie) )
        p_3d => wc
-    ELSEIF ( TRIM( name ) == 'e' )  THEN
+    ELSEIF ( TRIM( name ) == "e" )  THEN
        IF ( .NOT. ALLOCATED( ec ) )  ALLOCATE( ec(0:nzc+1,js:je,is:ie) )
        p_3d => ec
-    ELSEIF ( TRIM( name ) == 'diss' )  THEN
+    ELSEIF ( TRIM( name ) == "diss" )  THEN
        IF ( .NOT. ALLOCATED( dissc ) )  ALLOCATE( dissc(0:nzc+1,js:je,is:ie) )
        p_3d => dissc
-    ELSEIF ( TRIM( name ) == 'pt')  THEN
+    ELSEIF ( TRIM( name ) == "pt")  THEN
        IF ( .NOT. ALLOCATED( ptc ) )  ALLOCATE( ptc(0:nzc+1,js:je,is:ie) )
        p_3d => ptc
-    ELSEIF ( TRIM( name ) == 'q')  THEN
+    ELSEIF ( TRIM( name ) == "q")  THEN
        IF ( .NOT. ALLOCATED( q_c ) )  ALLOCATE( q_c(0:nzc+1,js:je,is:ie) )
        p_3d => q_c
-    ELSEIF ( TRIM( name ) == 'qc')  THEN
+    ELSEIF ( TRIM( name ) == "qc")  THEN
        IF ( .NOT. ALLOCATED( qcc ) )  ALLOCATE( qcc(0:nzc+1,js:je,is:ie) )
        p_3d => qcc
-    ELSEIF ( TRIM( name ) == 'qr')  THEN
+    ELSEIF ( TRIM( name ) == "qr")  THEN
        IF ( .NOT. ALLOCATED( qrc ) )  ALLOCATE( qrc(0:nzc+1,js:je,is:ie) )
        p_3d => qrc
-    ELSEIF ( TRIM( name ) == 'nr')  THEN
+    ELSEIF ( TRIM( name ) == "nr")  THEN
        IF ( .NOT. ALLOCATED( nrc ) )  ALLOCATE( nrc(0:nzc+1,js:je,is:ie) )
        p_3d => nrc
-    ELSEIF ( TRIM( name ) == 'nc')  THEN
+    ELSEIF ( TRIM( name ) == "nc")  THEN
        IF ( .NOT. ALLOCATED( ncc ) )  ALLOCATE( ncc(0:nzc+1,js:je,is:ie) )
        p_3d => ncc
-    ELSEIF ( TRIM( name ) == 's')  THEN
+    ELSEIF ( TRIM( name ) == "s")  THEN
        IF ( .NOT. ALLOCATED( sc ) )  ALLOCATE( sc(0:nzc+1,js:je,is:ie) )
        p_3d => sc
-    ELSEIF ( TRIM( name ) == 'nr_part') THEN
+    ELSEIF ( TRIM( name ) == "nr_part") THEN
        IF ( .NOT. ALLOCATED( nr_partc ) )  ALLOCATE( nr_partc(js:je,is:ie) )
        i_2d => nr_partc
-    ELSEIF ( TRIM( name ) == 'part_adr') THEN
+    ELSEIF ( TRIM( name ) == "part_adr") THEN
        IF ( .NOT. ALLOCATED( part_adrc ) )  ALLOCATE( part_adrc(js:je,is:ie) )
        i_2d => part_adrc
-    ELSEIF ( TRIM( name ) == 'exchange_array_1' )  THEN
-       IF ( .NOT. ALLOCATED( surface_coupler_exchange_array_1c ) )  THEN
-          ALLOCATE( surface_coupler_exchange_array_1c(js:je,is:ie) )
-       ENDIF
-       p_2d => surface_coupler_exchange_array_1c
-    ELSEIF ( TRIM( name ) == 'exchange_array_2' )  THEN
-       IF ( .NOT. ALLOCATED( surface_coupler_exchange_array_2c ) )  THEN
-          ALLOCATE( surface_coupler_exchange_array_2c(js:je,is:ie) )
-       ENDIF
-       p_2d => surface_coupler_exchange_array_2c
-    ELSEIF ( TRIM( name ) == 'exchange_array_3' )  THEN
-       IF ( .NOT. ALLOCATED( surface_coupler_exchange_array_3c ) )  THEN
-          ALLOCATE( surface_coupler_exchange_array_3c(js:je,is:ie) )
-       ENDIF
-       p_2d => surface_coupler_exchange_array_3c
-    ELSEIF ( TRIM( name ) == 'exchange_array_4' )  THEN
-       IF ( .NOT. ALLOCATED( surface_coupler_exchange_array_4c ) )  THEN
-          ALLOCATE( surface_coupler_exchange_array_4c(js:je,is:ie) )
-       ENDIF
-       p_2d => surface_coupler_exchange_array_4c
-    ELSEIF ( TRIM( name(1:5) ) == 'chem_' )  THEN
+    ELSEIF ( TRIM( name(1:5) ) == "chem_" )  THEN
        IF ( .NOT. ALLOCATED( chem_spec_c ) ) ALLOCATE( chem_spec_c(0:nzc+1,js:je,is:ie,1:nspec) )
        p_3d => chem_spec_c(:,:,:,n)
-    ELSEIF ( TRIM( name(1:3) ) == 'an_' )  THEN
+    ELSEIF ( TRIM( name(1:3) ) == "an_" )  THEN
        IF ( .NOT. ALLOCATED( aerosol_number_c ) )                                                  &
           ALLOCATE( aerosol_number_c(0:nzc+1,js:je,is:ie,1:nbins_aerosol) )
        p_3d => aerosol_number_c(:,:,:,n)
-    ELSEIF ( TRIM( name(1:3) ) == 'am_' )  THEN
+    ELSEIF ( TRIM( name(1:3) ) == "am_" )  THEN
        IF ( .NOT. ALLOCATED( aerosol_mass_c ) )                                                    &
           ALLOCATE( aerosol_mass_c(0:nzc+1,js:je,is:ie,1:(nbins_aerosol*ncomponents_mass) ) )
        p_3d => aerosol_mass_c(:,:,:,n)
-    ELSEIF ( TRIM( name(1:3) ) == 'sg_'  .AND.  .NOT. salsa_gases_from_chem )  THEN
+    ELSEIF ( TRIM( name(1:3) ) == "sg_"  .AND.  .NOT. salsa_gases_from_chem )  THEN
        IF ( .NOT. ALLOCATED( salsa_gas_c ) )                                                       &
           ALLOCATE( salsa_gas_c(0:nzc+1,js:je,is:ie,1:ngases_salsa) )
        p_3d => salsa_gas_c(:,:,:,n)
-    !ELSEIF (trim(name) == 'z0') then
+    !ELSEIF (trim(name) == "z0") then
        !IF (.not.allocated(z0c))  allocate(z0c(js:je, is:ie))
        !p_2d => z0c
     ENDIF
@@ -3129,9 +3022,8 @@
 !
 !--    Give only one message for the first child domain.
        IF ( cpl_id == 2  .AND.  myid == 0 )  THEN
-          message_string = 'pointer for array "' // TRIM( name ) // '" can''t be associated ' //   &
-                           'for child domain'
-          CALL message( 'pmci_create_childs_parent_grid_arrays', 'PMC0020', 3, 2, 0, 6, 0 )
+          message_string = 'pointer for array "' // TRIM( name ) // '" can''t be associated'
+          CALL message( 'pmci_create_childs_parent_grid_arrays', 'PA0170', 3, 2, 0, 6, 0 )
        ELSE
 !
 !--          Prevent others from continuing in case the abort is to come.
@@ -3156,251 +3048,16 @@
 #if defined( __parallel )
     IMPLICIT NONE
 
-    INTEGER(iwp) ::  child_id  !< interal ID of the corresponding child domain
-    INTEGER(iwp) ::  m         !< running index over all child domains
+    INTEGER(iwp) ::  child_id  !<
+    INTEGER(iwp) ::  m         !<
 
     REAL(wp) ::  waittime  !<
 
 
-    IF ( atmosphere_ocean_coupled_run )  RETURN
-
     DO  m = 1, SIZE( pmc_parent_for_child ) - 1
-       IF ( homogeneous_initialization_child )  THEN
-!
-!--       Compute domain-averaged profiles in the parent and send them to the child.
-!--       These are later used to initialize the corresponding variable in the child-domain.
-          child_id = pmc_parent_for_child(m)
-          CALL pmci_send_domain_averaged_profiles( child_id )
-       ELSE
-          child_id = pmc_parent_for_child(m)
-          CALL pmc_s_fillbuffer( child_id, waittime=waittime )
-       ENDIF
+       child_id = pmc_parent_for_child(m)
+       CALL pmc_s_fillbuffer( child_id, waittime=waittime )
     ENDDO
-
- CONTAINS
-
-!--------------------------------------------------------------------------------------------------!
-! Description:
-! ------------
-!> Compute and send domain-averaged profiles of prognostic variables within the parent domain and
-!> send these to the respective child domain.
-!> Attention: If the order of the send operations is altered it needs to be altered in
-!>            pmci_recv_domain_averaged_profiles the same way!
-!--------------------------------------------------------------------------------------------------!
- SUBROUTINE pmci_send_domain_averaged_profiles( child_id )
-
-    INTEGER(iwp) ::  child_id !< interal ID of the corresponding child domain
-    INTEGER(iwp) ::  ierr     !< MPI error code
-    INTEGER(iwp) ::  n        !< running index for species (chemistry or aerosols)
-    INTEGER(iwp) ::  nz_child !< number of vertical grid points in parent covering vertical depth of child domain
-    INTEGER(iwp) ::  tag_nr   !< tag number to identify send/receive operations
-
-    REAL(wp), DIMENSION(:), ALLOCATABLE ::  mean_profile !< domain-averaged profile in the parent domain
-
-    nz_child = childgrid(m)%nz
-!
-!-- Compute domain-average u/v-profile in the parent. These are later used to initialize u/v in the
-!-- child-domain.
-!-- u-component
-    ALLOCATE( mean_profile(nzb:nz_child+1) )
-!
-!-- Start with tag number 50 (far beyond other used tag numbers).
-    tag_nr = 50
-    CALL pmci_compute_average( u, m, 1, nz_child, mean_profile, 'u' )
-    IF ( myid == 0 )  CALL pmc_send_to_child( child_id, mean_profile, nz_child+2, 0, tag_nr, ierr )
-    tag_nr = tag_nr + 1
-!
-!-- v-component
-    CALL pmci_compute_average( v, m, 2, nz_child, mean_profile, 'v' )
-    IF ( myid == 0 )  CALL pmc_send_to_child( child_id, mean_profile, nz_child+2, 0, tag_nr, ierr )
-    tag_nr = tag_nr + 1
-!
-!-- SGS-TKE
-    IF ( ( rans_mode_parent  .AND.         rans_mode )  .OR.                                       &
-         ( .NOT. rans_mode_parent  .AND.  .NOT.  rans_mode  .AND.                                  &
-           .NOT. constant_diffusion ) )  THEN
-       CALL pmci_compute_average( e, m, 0, nz_child, mean_profile, 's' )
-       IF ( myid == 0 )  CALL pmc_send_to_child( child_id, mean_profile, nz_child+2, 0, tag_nr, ierr )
-       tag_nr = tag_nr + 1
-    ENDIF
-!
-!-- dissipation rate
-    IF ( rans_mode_parent  .AND.  rans_mode  .AND.  rans_tke_e )  THEN
-       CALL pmci_compute_average( diss, m, 0, nz_child, mean_profile, 's' )
-       IF ( myid == 0 )  CALL pmc_send_to_child( child_id, mean_profile, nz_child+2, 0, tag_nr, ierr )
-       tag_nr = tag_nr + 1
-    ENDIF
-!
-!-- potential temperature
-    IF ( .NOT. neutral )  THEN
-       CALL pmci_compute_average( pt, m, 0, nz_child, mean_profile, 'pt' )
-       IF ( myid == 0 )  CALL pmc_send_to_child( child_id, mean_profile, nz_child+2, 0, tag_nr, ierr )
-       tag_nr = tag_nr + 1
-    ENDIF
-
-    IF ( humidity )  THEN
-!
-!--    mixing ratio
-       CALL pmci_compute_average( q, m, 0, nz_child, mean_profile, 'q' )
-       IF ( myid == 0 )  CALL pmc_send_to_child( child_id, mean_profile, nz_child+2, 0, tag_nr, ierr )
-       tag_nr = tag_nr + 1
-!
-!--    qc and nc
-       IF ( bulk_cloud_model  .AND.  microphysics_morrison )  THEN
-!
-!--       qc
-          CALL pmci_compute_average( qc, m, 0, nz_child, mean_profile, 's' )
-          IF ( myid == 0 )  CALL pmc_send_to_child( child_id, mean_profile, nz_child+2, 0, tag_nr, ierr )
-          tag_nr = tag_nr + 1
-!
-!--       nc
-          CALL pmci_compute_average( nc, m, 0, nz_child, mean_profile, 's' )
-          IF ( myid == 0 )  CALL pmc_send_to_child( child_id, mean_profile, nz_child+2, 0, tag_nr, ierr )
-          tag_nr = tag_nr + 1
-       ENDIF
-!
-!--    qr and nr
-       IF ( bulk_cloud_model  .AND.  microphysics_seifert )  THEN
-!
-!--       qr
-          CALL pmci_compute_average( qr, m, 0, nz_child, mean_profile, 's' )
-          IF ( myid == 0 )  CALL pmc_send_to_child( child_id, mean_profile, nz_child+2, 0, tag_nr, ierr )
-          tag_nr = tag_nr + 1
-!
-!--       nr
-          CALL pmci_compute_average( nr, m, 0, nz_child, mean_profile, 's' )
-          IF ( myid == 0 )  CALL pmc_send_to_child( child_id, mean_profile, nz_child+2, 0, tag_nr, ierr )
-          tag_nr = tag_nr + 1
-       ENDIF
-    ENDIF
-!
-!-- passive scalar
-    IF ( passive_scalar )  THEN
-       CALL pmci_compute_average( s, m, 0, nz_child, mean_profile, 's' )
-       IF ( myid == 0 )  CALL pmc_send_to_child( child_id, mean_profile, nz_child+2, 0, tag_nr, ierr )
-       tag_nr = tag_nr + 1
-    ENDIF
-!
-!-- chemistry
-    IF ( air_chemistry  .AND.  nesting_chem )  THEN
-       DO  n = 1, nspec
-          CALL pmci_compute_average( chem_species(n)%conc, m, 0, nz_child, mean_profile, 's' )
-          IF ( myid == 0 )  CALL pmc_send_to_child( child_id, mean_profile, nz_child+2, 0, tag_nr, ierr )
-          tag_nr = tag_nr + 1
-       ENDDO
-    ENDIF
-!
-!-- aerosols
-    IF ( salsa  .AND.  nesting_salsa )  THEN
-       DO  n = 1, nbins_aerosol
-          CALL pmci_compute_average( aerosol_number(n)%conc, m, 0, nz_child, mean_profile, 's' )
-          IF ( myid == 0 )  CALL pmc_send_to_child( child_id, mean_profile, nz_child+2, 0, tag_nr, ierr )
-          tag_nr = tag_nr + 1
-       ENDDO
-       DO  n = 1, nbins_aerosol * ncomponents_mass
-          CALL pmci_compute_average( aerosol_mass(n)%conc, m, 0, nz_child, mean_profile, 's' )
-          IF ( myid == 0 )  CALL pmc_send_to_child( child_id, mean_profile, nz_child+2, 0, tag_nr, ierr )
-          tag_nr = tag_nr + 1
-       ENDDO
-       IF ( .NOT. salsa_gases_from_chem )  THEN
-          DO  n = 1, ngases_salsa
-             CALL pmci_compute_average( salsa_gas(n)%conc, m, 0, nz_child, mean_profile, 's' )
-             IF ( myid == 0 )  CALL pmc_send_to_child( child_id, mean_profile, nz_child+2, 0, tag_nr, ierr )
-             tag_nr = tag_nr + 1
-          ENDDO
-       ENDIF
-
-    ENDIF
-
-    DEALLOCATE( mean_profile )
-
-    END SUBROUTINE pmci_send_domain_averaged_profiles
-
-!--------------------------------------------------------------------------------------------------!
-! Description:
-! ------------
-!> Compute domain-averaged profile of of the given array.
-!--------------------------------------------------------------------------------------------------!
-    SUBROUTINE pmci_compute_average( ar, m, bit_nr, nz_child, mean_profile, var )
-
-       CHARACTER(LEN=*) ::  var  !< variable string.
-
-       INTEGER(iwp) ::  bit_nr   !< bit position used to masked topography for the respective variable
-       INTEGER(iwp) ::  i        !< running index in x-direction
-       INTEGER(iwp) ::  ierr     !< MPI error code
-       INTEGER(iwp) ::  j        !< running index in y-direction
-       INTEGER(iwp) ::  k        !< running index in z-direction
-       INTEGER(iwp) ::  m        !< index for current child in childgrid
-       INTEGER(iwp) ::  nz_child !< number of vertical grid points in parent covering vertical depth of child domain
-
-       INTEGER(iwp), DIMENSION(nzb:nz_child+1) ::  num_gp !< domain-averaged profile in the parent domain
-
-       LOGICAL ::  within_child_area !< flag indicating that current grid point location also belongs to a child domain
-
-       REAL(wp), DIMENSION(nzb:nz_child+1), INTENT(INOUT)             ::  mean_profile !< domain-averaged profile in the parent domain
-
-       REAL(wp), DIMENSION(nzb:nzt+1,nysg:nyng,nxlg:nxrg), INTENT(IN) ::  ar           !< array that will be domain-averaged
-
-!
-!--    Branch with masking of topography for all quantities except for potential temperature and
-!--    mixing ratio.
-       mean_profile = 0.0_wp
-       num_gp = 0_iwp
-       IF ( var /= 'pt'  .AND.  var /= 'q' )  THEN
-          DO  i = nxl, nxr
-             DO  j = nys, nyn
-                within_child_area = x(i) + lower_left_coord_x >= childgrid(m)%lx_coord  .AND.      &
-                                    x(i) + lower_left_coord_x <= childgrid(m)%rx_coord  .AND.      &
-                                    y(j) + lower_left_coord_y >= childgrid(m)%sy_coord  .AND.      &
-                                    y(j) + lower_left_coord_y <= childgrid(m)%ny_coord
-
-                DO  k = nzb, nz_child+1
-                   mean_profile(k) = mean_profile(k) + ar(k,j,i)                                   &
-                           * MERGE( 1.0_wp, 0.0_wp,  BTEST( topo_flags(k,j,i), bit_nr ) )          &
-                           * MERGE( 1.0_wp, 0.0_wp, within_child_area )
-
-                   num_gp(k) =  num_gp(k)                                                          &
-                           + MERGE( 1_iwp, 0_iwp, BTEST( topo_flags(k,j,i), bit_nr ) )             &
-                           * MERGE( 1_iwp, 0_iwp, within_child_area )
-                ENDDO
-             ENDDO
-          ENDDO
-!
-!--    No masking of topography for potential temperature and mixing ratio. This is to avoid zero
-!--    values in the profiles when the parent's domain lowest prognostic level is higher than nzb+1.
-!--    Especially for potential temperature and humidity this can become critical since zero
-!--    values will cause divisions by zero in the buoyancy term. Anyhow, since both quantities
-!--    have been defined also within topography, this will have no consequence at all.
-       ELSE
-          DO  i = nxl, nxr
-             DO  j = nys, nyn
-                within_child_area = x(i) + lower_left_coord_x >= childgrid(m)%lx_coord  .AND.      &
-                                    x(i) + lower_left_coord_x <= childgrid(m)%rx_coord  .AND.      &
-                                    y(j) + lower_left_coord_y >= childgrid(m)%sy_coord  .AND.      &
-                                    y(j) + lower_left_coord_y <= childgrid(m)%ny_coord
-
-                DO  k = nzb, nz_child+1
-                   mean_profile(k) = mean_profile(k) + ar(k,j,i)                                   &
-                           * MERGE( 1.0_wp, 0.0_wp, within_child_area )
-
-                   num_gp(k) =  num_gp(k)                                                          &
-                           + MERGE( 1_iwp, 0_iwp, within_child_area )
-                ENDDO
-             ENDDO
-          ENDDO
-       ENDIF
-
-       IF ( collective_wait )  CALL MPI_BARRIER( comm2d, ierr )
-       CALL MPI_ALLREDUCE( MPI_IN_PLACE, mean_profile, nz_child+1-nzb+1, MPI_REAL,    MPI_SUM,     &
-                           comm2d, ierr )
-       CALL MPI_ALLREDUCE( MPI_IN_PLACE, num_gp,       nz_child+1-nzb+1, MPI_INTEGER, MPI_SUM,     &
-                           comm2d, ierr )
-!
-!--    Divide by number of grid points. Avoid division by zero.
-       num_gp = MERGE( num_gp, 1_iwp, num_gp >= 1_iwp )
-       mean_profile = mean_profile / REAL( num_gp, KIND = wp )
-
-    END SUBROUTINE pmci_compute_average
 
 #endif
  END SUBROUTINE pmci_parent_initialize
@@ -3427,188 +3084,93 @@
     REAL(wp) ::  waittime  !< Waiting time
 
 !
-!-- Root model is never anyone's child.
-    IF ( .NOT.  root_model .AND. .NOT. atmosphere_ocean_coupled_run )  THEN
+!-- Root model is never anyone's child
+    IF ( .NOT.  pmc_is_rootmodel() )  THEN
 !
-!--    1d initialization with domain-averaged profiles from the parent domain.
-       IF ( homogeneous_initialization_child )  THEN
+!--    Get data from the parent
+       CALL pmc_c_getbuffer( waittime = waittime )
 !
-!--       Receive domain-adveraged u-/v-profiles from the parent domain and distribute them
-!--       among comm2d.
-          CALL pmci_recv_domain_averaged_profiles
-!
-!--       Initialize variables with 1d profiles.
-!--       u- and v-component.
-          CALL pmci_interp_1d( u, u_p_init, kcto, kflo, kfuo )
-          CALL pmci_interp_1d( v, v_p_init, kcto, kflo, kfuo )
-!
-!--       With homogeneous initialization set w = 0.0
-          w = 0.0_wp
-!
-!--       SGS-TKE
-          IF ( (    rans_mode_parent  .AND.         rans_mode )  .OR.                              &
+!--    The interpolation.
+       CALL pmci_interp_all ( u, uc, kcto, iflu, ifuu, jflo, jfuo, kflo, kfuo, 'u' )
+       CALL pmci_interp_all ( v, vc, kcto, iflo, ifuo, jflv, jfuv, kflo, kfuo, 'v' )
+       CALL pmci_interp_all ( w, wc, kctw, iflo, ifuo, jflo, jfuo, kflw, kfuw, 'w' )
+
+       IF ( (       rans_mode_parent  .AND.         rans_mode )  .OR.                              &
             ( .NOT. rans_mode_parent  .AND.  .NOT.  rans_mode  .AND.                               &
               .NOT. constant_diffusion ) )  THEN
-             CALL pmci_interp_1d( e, e_p_init, kcto, kflo, kfuo )
-          ENDIF
-!
-!--       dissipation rate
-          IF ( rans_mode_parent  .AND.  rans_mode  .AND.  rans_tke_e )  THEN
-             CALL pmci_interp_1d( diss, diss_p_init, kcto, kflo, kfuo )
-          ENDIF
-!
-!--       potential temperature
-          IF ( .NOT. neutral )  THEN
-             CALL pmci_interp_1d( pt, pt_p_init, kcto, kflo, kfuo )
+          CALL pmci_interp_all ( e, ec, kcto, iflo, ifuo, jflo, jfuo, kflo, kfuo, 'e' )
+       ENDIF
+
+       IF ( rans_mode_parent  .AND.  rans_mode  .AND.  rans_tke_e )  THEN
+          CALL pmci_interp_all ( diss, dissc, kcto, iflo, ifuo, jflo, jfuo, kflo, kfuo, 's' )
+       ENDIF
+
+       IF ( .NOT. neutral )  THEN
+          CALL pmci_interp_all ( pt, ptc, kcto, iflo, ifuo, jflo, jfuo, kflo, kfuo, 's' )
+       ENDIF
+
+       IF ( humidity )  THEN
+
+          CALL pmci_interp_all ( q, q_c, kcto, iflo, ifuo, jflo, jfuo, kflo, kfuo, 's' )
+
+          IF ( bulk_cloud_model  .AND.  microphysics_morrison )  THEN
+             CALL pmci_interp_all ( qc, qcc, kcto, iflo, ifuo, jflo, jfuo, kflo, kfuo, 's' )
+             CALL pmci_interp_all ( nc, ncc, kcto, iflo, ifuo, jflo, jfuo, kflo, kfuo, 's' )
           ENDIF
 
-          IF ( humidity )  THEN
-!
-!--          mixing ratio
-             CALL pmci_interp_1d( q, q_p_init, kcto, kflo, kfuo )
-!
-!--          qc, nc
-             IF ( bulk_cloud_model  .AND.  microphysics_morrison )  THEN
-                 CALL pmci_interp_1d( qc, qc_p_init, kcto, kflo, kfuo )
-                 CALL pmci_interp_1d( nc, nc_p_init, kcto, kflo, kfuo )
-             ENDIF
-!
-!--          qr, nr
-             IF ( bulk_cloud_model  .AND.  microphysics_seifert )  THEN
-                 CALL pmci_interp_1d( qr, qr_p_init, kcto, kflo, kfuo )
-                 CALL pmci_interp_1d( nr, nr_p_init, kcto, kflo, kfuo )
-             ENDIF
+          IF ( bulk_cloud_model  .AND.  microphysics_seifert )  THEN
+             CALL pmci_interp_all ( qr, qrc, kcto, iflo, ifuo, jflo, jfuo, kflo, kfuo, 's' )
+             CALL pmci_interp_all ( nr, nrc, kcto, iflo, ifuo, jflo, jfuo, kflo, kfuo, 's' )
           ENDIF
-!
-!--       passive scalar
-          IF ( passive_scalar )  THEN
-             CALL pmci_interp_1d( s, s_p_init, kcto, kflo, kfuo )
-          ENDIF
-!
-!--       chemistry
-          IF ( air_chemistry  .AND.  nesting_chem )  THEN
-             DO  n = 1, nspec
-                CALL pmci_interp_1d( chem_species(n)%conc, chem_p_init(:,n), kcto, kflo, kfuo )
+
+       ENDIF
+
+       IF ( passive_scalar )  THEN
+          CALL pmci_interp_all ( s, sc, kcto, iflo, ifuo, jflo, jfuo, kflo, kfuo, 's' )
+       ENDIF
+
+       IF ( air_chemistry  .AND.  nesting_chem )  THEN
+          DO  n = 1, nspec
+             CALL pmci_interp_all ( chem_species(n)%conc, chem_spec_c(:,:,:,n),               &
+                                         kcto, iflo, ifuo, jflo, jfuo, kflo, kfuo, 's' )
+          ENDDO
+       ENDIF
+
+       IF ( salsa  .AND.  nesting_salsa )  THEN
+          DO  lb = 1, nbins_aerosol
+             CALL pmci_interp_all ( aerosol_number(lb)%conc, aerosol_number_c(:,:,:,lb),      &
+                                         kcto, iflo, ifuo, jflo, jfuo, kflo, kfuo, 's' )
+          ENDDO
+          DO  lc = 1, nbins_aerosol * ncomponents_mass
+             CALL pmci_interp_all ( aerosol_mass(lc)%conc, aerosol_mass_c(:,:,:,lc),          &
+                                         kcto, iflo, ifuo, jflo, jfuo, kflo, kfuo, 's' )
+          ENDDO
+          IF ( .NOT. salsa_gases_from_chem )  THEN
+             DO  lg = 1, ngases_salsa
+                CALL pmci_interp_all ( salsa_gas(lg)%conc, salsa_gas_c(:,:,:,lg),             &
+                                            kcto, iflo, ifuo, jflo, jfuo, kflo, kfuo, 's' )
              ENDDO
-          ENDIF
-!
-!--       aerosols
-          IF ( salsa  .AND.  nesting_salsa )  THEN
-             DO  lb = 1, nbins_aerosol
-                CALL pmci_interp_1d( aerosol_number(lb)%conc, aerosol_number_p_init(:,lb), kcto,   &
-                                     kflo, kfuo )
-             ENDDO
-             DO  lc = 1, nbins_aerosol * ncomponents_mass
-                CALL pmci_interp_1d( aerosol_mass(lc)%conc, aerosol_mass_p_init(:,lc), kcto, kflo, &
-                                     kfuo )
-             ENDDO
-             IF ( .NOT. salsa_gases_from_chem )  THEN
-                DO  lg = 1, ngases_salsa
-                   CALL pmci_interp_1d( salsa_gas(lg)%conc, salsa_gas_p_init(:,lg), kcto, kflo,    &
-                                        kfuo )
-                ENDDO
-             ENDIF
-          ENDIF
-!
-!--    3d initialization from parent.
-       ELSE
-!
-!--       Get 3d data from the parent.
-          CALL pmc_c_getbuffer( waittime = waittime )
-!
-!--       Initialize child with 3d parent arrays.
-          CALL pmci_interp_all( u, uc, kcto, iflu, ifuu, jflo, jfuo, kflo, kfuo, 'u' )
-          CALL pmci_interp_all( v, vc, kcto, iflo, ifuo, jflv, jfuv, kflo, kfuo, 'v' )
-
-          CALL pmci_interp_all( w, wc, kctw, iflo, ifuo, jflo, jfuo, kflw, kfuw, 'w' )
-          CALL exchange_horiz( u, nbgp )
-          CALL exchange_horiz( v, nbgp )
-          CALL exchange_horiz( w, nbgp )
-
-          IF ( (       rans_mode_parent  .AND.         rans_mode )  .OR.                           &
-               ( .NOT. rans_mode_parent  .AND.  .NOT.  rans_mode  .AND.                            &
-                 .NOT. constant_diffusion ) )  THEN
-             CALL pmci_interp_all( e, ec, kcto, iflo, ifuo, jflo, jfuo, kflo, kfuo, 'e' )
-             CALL exchange_horiz( e, nbgp )
-          ENDIF
-
-          IF ( rans_mode_parent  .AND.  rans_mode  .AND.  rans_tke_e )  THEN
-             CALL pmci_interp_all( diss, dissc, kcto, iflo, ifuo, jflo, jfuo, kflo, kfuo, 's' )
-             CALL exchange_horiz( diss, nbgp )
-          ENDIF
-
-          IF ( .NOT. neutral )  THEN
-             CALL pmci_interp_all( pt, ptc, kcto, iflo, ifuo, jflo, jfuo, kflo, kfuo, 's' )
-             CALL exchange_horiz( pt, nbgp )
-          ENDIF
-
-          IF ( humidity )  THEN
-
-             CALL pmci_interp_all( q, q_c, kcto, iflo, ifuo, jflo, jfuo, kflo, kfuo, 's' )
-             CALL exchange_horiz( q, nbgp )
-
-             IF ( bulk_cloud_model  .AND.  microphysics_morrison )  THEN
-                CALL pmci_interp_all( qc, qcc, kcto, iflo, ifuo, jflo, jfuo, kflo, kfuo, 's' )
-                CALL pmci_interp_all( nc, ncc, kcto, iflo, ifuo, jflo, jfuo, kflo, kfuo, 's' )
-                CALL exchange_horiz( qc, nbgp )
-                CALL exchange_horiz( nc, nbgp )
-             ENDIF
-
-             IF ( bulk_cloud_model  .AND.  microphysics_seifert )  THEN
-                CALL pmci_interp_all( qr, qrc, kcto, iflo, ifuo, jflo, jfuo, kflo, kfuo, 's' )
-                CALL pmci_interp_all( nr, nrc, kcto, iflo, ifuo, jflo, jfuo, kflo, kfuo, 's' )
-                CALL exchange_horiz( qr, nbgp )
-                CALL exchange_horiz( nr, nbgp )
-             ENDIF
-
-          ENDIF
-
-          IF ( passive_scalar )  THEN
-             CALL pmci_interp_all( s, sc, kcto, iflo, ifuo, jflo, jfuo, kflo, kfuo, 's' )
-             CALL exchange_horiz( s, nbgp )
-          ENDIF
-
-          IF ( air_chemistry  .AND.  nesting_chem )  THEN
-             DO  n = 1, nspec
-                CALL pmci_interp_all ( chem_species(n)%conc, chem_spec_c(:,:,:,n), kcto, iflo,     &
-                                       ifuo, jflo, jfuo, kflo, kfuo, 's' )
-                CALL exchange_horiz( chem_species(n)%conc, nbgp )
-             ENDDO
-          ENDIF
-
-          IF ( salsa  .AND.  nesting_salsa )  THEN
-             DO  lb = 1, nbins_aerosol
-                CALL pmci_interp_all ( aerosol_number(lb)%conc, aerosol_number_c(:,:,:,lb), kcto,  &
-                                       iflo, ifuo, jflo, jfuo, kflo, kfuo, 's' )
-                CALL exchange_horiz( aerosol_number(lb)%conc, nbgp )
-             ENDDO
-             DO  lc = 1, nbins_aerosol * ncomponents_mass
-                CALL pmci_interp_all ( aerosol_mass(lc)%conc, aerosol_mass_c(:,:,:,lc), kcto, iflo,&
-                                       ifuo, jflo, jfuo, kflo, kfuo, 's' )
-                CALL exchange_horiz( aerosol_mass(lc)%conc, nbgp )
-             ENDDO
-             IF ( .NOT. salsa_gases_from_chem )  THEN
-                DO  lg = 1, ngases_salsa
-                   CALL pmci_interp_all ( salsa_gas(lg)%conc, salsa_gas_c(:,:,:,lg), kcto, iflo,   &
-                                          ifuo, jflo, jfuo, kflo, kfuo, 's' )
-                   CALL exchange_horiz( salsa_gas(lg)%conc, nbgp )
-                ENDDO
-             ENDIF
           ENDIF
        ENDIF
 
-       IF ( topography /= 'flat' .AND. .NOT. atmosphere_ocean_coupled_run )  THEN
+       IF ( topography /= 'flat' )  THEN
 !
 !--       Inside buildings set velocities back to zero.
           DO  ic = nxlg, nxrg
              DO  jc = nysg, nyng
                 DO  kc = nzb, nzt
-                   u(kc,jc,ic)   = MERGE( u(kc,jc,ic), 0.0_wp, BTEST( topo_flags(kc,jc,ic), 1 ) )
-                   v(kc,jc,ic)   = MERGE( v(kc,jc,ic), 0.0_wp, BTEST( topo_flags(kc,jc,ic), 2 ) )
-                   w(kc,jc,ic)   = MERGE( w(kc,jc,ic), 0.0_wp, BTEST( topo_flags(kc,jc,ic), 3 ) )
-                   u_p(kc,jc,ic) = MERGE( u_p(kc,jc,ic), 0.0_wp, BTEST( topo_flags(kc,jc,ic), 1 ) )
-                   v_p(kc,jc,ic) = MERGE( v_p(kc,jc,ic), 0.0_wp, BTEST( topo_flags(kc,jc,ic), 2 ) )
-                   w_p(kc,jc,ic) = MERGE( w_p(kc,jc,ic), 0.0_wp, BTEST( topo_flags(kc,jc,ic), 3 ) )
+                   u(kc,jc,ic)   = MERGE( u(kc,jc,ic), 0.0_wp,                                     &
+                                   BTEST( wall_flags_total_0(kc,jc,ic), 1 ) )
+                   v(kc,jc,ic)   = MERGE( v(kc,jc,ic), 0.0_wp,                                     &
+                                   BTEST( wall_flags_total_0(kc,jc,ic), 2 ) )
+                   w(kc,jc,ic)   = MERGE( w(kc,jc,ic), 0.0_wp,                                     &
+                                   BTEST( wall_flags_total_0(kc,jc,ic), 3 ) )
+                   u_p(kc,jc,ic) = MERGE( u_p(kc,jc,ic), 0.0_wp,                                   &
+                                   BTEST( wall_flags_total_0(kc,jc,ic), 1 ) )
+                   v_p(kc,jc,ic) = MERGE( v_p(kc,jc,ic), 0.0_wp,                                   &
+                                   BTEST( wall_flags_total_0(kc,jc,ic), 2 ) )
+                   w_p(kc,jc,ic) = MERGE( w_p(kc,jc,ic), 0.0_wp,                                   &
+                                   BTEST( wall_flags_total_0(kc,jc,ic), 3 ) )
                 ENDDO
              ENDDO
           ENDDO
@@ -3618,34 +3180,6 @@
 
  CONTAINS
 
-!--------------------------------------------------------------------------------------------------!
-! Description:
-! ------------
-!> Interpolation of the internal values for the child-domain initialization.
-!--------------------------------------------------------------------------------------------------!
- SUBROUTINE pmci_interp_1d( child_array, parent_profile, kct, kfl, kfu )
-
-    INTEGER(iwp) ::  kc               !< Running child-grid index in the z-direction
-    INTEGER(iwp) ::  kp               !< Running parent-grid index in the z-direction
-    INTEGER(iwp), INTENT(IN) ::  kct  !< The parent-grid index in z-direction just below the boundary value node
-
-    INTEGER(iwp), DIMENSION(0:pg%nz+1), INTENT(IN) ::  kfl  !<  Indicates start index of child cells belonging to certain
-                                                            !<  parent cell - z direction
-    INTEGER(iwp), DIMENSION(0:pg%nz+1), INTENT(IN) ::  kfu  !<  Indicates end index of child cells belonging to certain
-                                                            !<  parent cell - z direction
-    REAL(wp), DIMENSION(nzb:nzt+1,nysg:nyng,nxlg:nxrg), INTENT(INOUT) ::  child_array  !<  Child-grid 3D array
-    REAL(wp), DIMENSION(0:pg%nz+1), INTENT(IN) ::  parent_profile                      !<  Parent-grid 1D array
-
-
-
-    child_array(:,:,:) = 0.0_wp
-    DO  kp = 0, kct + 1
-       DO  kc = kfl(kp), MIN( kfu(kp), nzt+1 )
-          child_array(kc,:,:) = parent_profile(kp)
-       ENDDO
-    ENDDO
-
- END SUBROUTINE pmci_interp_1d
 
 !--------------------------------------------------------------------------------------------------!
 ! Description:
@@ -3725,33 +3259,35 @@
        jcb  = -1
     ENDIF
 
-    IF ( bc_dirichlet_l  .OR.  bc_radiation_l )  THEN
-       ipl_init = ipl + 1
-       icl_init = nxl - 1
+    IF ( nesting_mode /= 'vertical' )  THEN
+       IF ( bc_dirichlet_l )  THEN
+          ipl_init = ipl + 1
+          icl_init = nxl - 1
 !
-!--    For u, nxl is a ghost node, but not for the other variables
-       IF ( var == 'u' )  THEN
-          ipl_init = ipl + 2
-          icl_init = nxl
+!--       For u, nxl is a ghost node, but not for the other variables
+          IF ( var == 'u' )  THEN
+             ipl_init = ipl + 2
+             icl_init = nxl
+          ENDIF
        ENDIF
-    ENDIF
-    IF ( bc_dirichlet_s  .OR.  bc_radiation_s )  THEN
-       jps_init = jps + 1
-       jcs_init = nys - 1
+       IF ( bc_dirichlet_s )  THEN
+          jps_init = jps + 1
+          jcs_init = nys - 1
 !
-!--    For v, nys is a ghost node, but not for the other variables
-       IF ( var == 'v' )  THEN
-          jps_init = jps + 2
-          jcs_init = nys
+!--       For v, nys is a ghost node, but not for the other variables
+          IF ( var == 'v' )  THEN
+             jps_init = jps + 2
+             jcs_init = nys
+          ENDIF
        ENDIF
-    ENDIF
-    IF ( bc_dirichlet_r  .OR.  bc_radiation_r )  THEN
-       ipr_init = ipr - 1
-       icr_init = nxr + 1
-    ENDIF
-    IF ( bc_dirichlet_n  .OR.  bc_radiation_n )  THEN
-       jpn_init = jpn - 1
-       jcn_init = nyn + 1
+       IF ( bc_dirichlet_r )  THEN
+          ipr_init = ipr - 1
+          icr_init = nxr + 1
+       ENDIF
+       IF ( bc_dirichlet_n )  THEN
+          jpn_init = jpn - 1
+          jcn_init = nyn + 1
+       ENDIF
     ENDIF
 
     child_array(:,:,:) = 0.0_wp
@@ -3899,164 +3435,6 @@
 
  END SUBROUTINE pmci_interp_all
 
-!--------------------------------------------------------------------------------------------------!
-! Description:
-! ------------
-!> Receive domain-averaged profiles of the parent domain and broadcast them among all child cores.
-!> Attention: If the order of the receive operations is altered it needs to be altered in
-!>            pmci_send_domain_averaged_profiles the same way!
-!--------------------------------------------------------------------------------------------------!
- SUBROUTINE pmci_recv_domain_averaged_profiles
-
-    INTEGER(iwp) ::  ierr   !< MPI error code
-    INTEGER(iwp) ::  tag_nr !< tag number to identify send/receive operations
-!
-!-- u- and v-component
-    ALLOCATE( u_p_init(0:pg%nz+1) )
-    ALLOCATE( v_p_init(0:pg%nz+1) )
-    IF ( myid == 0 )  THEN
-       tag_nr = 50
-       CALL pmc_recv_from_parent( u_p_init, pg%nz+2, 0, tag_nr, ierr )
-       tag_nr = tag_nr + 1
-
-       CALL pmc_recv_from_parent( v_p_init, pg%nz+2, 0, tag_nr, ierr )
-       tag_nr = tag_nr + 1
-    ENDIF
-!
-!-- SGS-TKE
-    IF ( ( rans_mode_parent  .AND.         rans_mode )  .OR.                                    &
-         ( .NOT. rans_mode_parent  .AND.  .NOT.  rans_mode  .AND.                               &
-           .NOT. constant_diffusion ) )  THEN
-       ALLOCATE( e_p_init(0:pg%nz+1) )
-       IF ( myid == 0 )  THEN
-          CALL pmc_recv_from_parent( e_p_init, pg%nz+2, 0, tag_nr, ierr )
-          tag_nr = tag_nr + 1
-       ENDIF
-    ENDIF
-!
-!-- dissipation rate
-    IF ( rans_mode_parent  .AND.  rans_mode  .AND.  rans_tke_e )  THEN
-       ALLOCATE( diss_p_init(0:pg%nz+1) )
-       IF ( myid == 0 )  THEN
-          CALL pmc_recv_from_parent( diss_p_init, pg%nz+2, 0, tag_nr, ierr )
-          tag_nr = tag_nr + 1
-       ENDIF
-    ENDIF
-!
-!-- potential temperature
-    IF ( .NOT. neutral )  THEN
-       ALLOCATE( pt_p_init(0:pg%nz+1) )
-       IF ( myid == 0 )  THEN
-          CALL pmc_recv_from_parent( pt_p_init, pg%nz+2, 0, tag_nr, ierr )
-          tag_nr = tag_nr + 1
-       ENDIF
-    ENDIF
-
-    IF ( humidity )  THEN
-!
-!--    mixing ratio
-       ALLOCATE( q_p_init(0:pg%nz+1) )
-       IF ( myid == 0 )  THEN
-          CALL pmc_recv_from_parent( q_p_init, pg%nz+2, 0, tag_nr, ierr )
-          tag_nr = tag_nr + 1
-       ENDIF
-!
-!--    qc and nc
-       IF ( bulk_cloud_model  .AND.  microphysics_morrison )  THEN
-          ALLOCATE( qc_p_init(0:pg%nz+1) )
-          ALLOCATE( nc_p_init(0:pg%nz+1) )
-          IF ( myid == 0 )  THEN
-             CALL pmc_recv_from_parent( qc_p_init, pg%nz+2, 0, tag_nr, ierr )
-             tag_nr = tag_nr + 1
-
-             CALL pmc_recv_from_parent( nc_p_init, pg%nz+2, 0, tag_nr, ierr )
-             tag_nr = tag_nr + 1
-          ENDIF
-       ENDIF
-!
-!--    qr and nr
-       IF ( bulk_cloud_model  .AND.  microphysics_morrison )  THEN
-          ALLOCATE( qr_p_init(0:pg%nz+1) )
-          ALLOCATE( nr_p_init(0:pg%nz+1) )
-          IF ( myid == 0 )  THEN
-             CALL pmc_recv_from_parent( qr_p_init, pg%nz+2, 0, tag_nr, ierr )
-             tag_nr = tag_nr + 1
-
-             CALL pmc_recv_from_parent( nr_p_init, pg%nz+2, 0, tag_nr, ierr )
-             tag_nr = tag_nr + 1
-          ENDIF
-       ENDIF
-    ENDIF
-!
-!-- passive scalar
-    IF ( passive_scalar )  THEN
-       ALLOCATE( s_p_init(0:pg%nz+1) )
-       IF ( myid == 0 )  THEN
-          CALL pmc_recv_from_parent( s_p_init, pg%nz+2, 0, tag_nr, ierr )
-          tag_nr = tag_nr + 1
-       ENDIF
-    ENDIF
-!
-!-- chemistry
-    IF ( air_chemistry  .AND.  nesting_chem )  THEN
-       ALLOCATE( chem_p_init(0:pg%nz+1,1:nspec) )
-       IF ( myid == 0 )  THEN
-          DO  n = 1, nspec
-             CALL pmc_recv_from_parent( chem_p_init(:,n), pg%nz+2, 0, tag_nr, ierr )
-             tag_nr = tag_nr + 1
-          ENDDO
-       ENDIF
-    ENDIF
-!
-!-- aerosols
-    IF ( salsa  .AND.  nesting_salsa )  THEN
-       ALLOCATE( aerosol_number_p_init(0:pg%nz+1,1:nbins_aerosol)                  )
-       ALLOCATE( aerosol_mass_p_init(0:pg%nz+1,1:nbins_aerosol * ncomponents_mass) )
-       ALLOCATE( salsa_gas_p_init(0:pg%nz+1,1:ngases_salsa)                        )
-       IF ( myid == 0 )  THEN
-          DO  n = 1, nbins_aerosol
-             CALL pmc_recv_from_parent( aerosol_number_p_init(:,n), pg%nz+2, 0, tag_nr, ierr )
-             tag_nr = tag_nr + 1
-          ENDDO
-          DO  n = 1, nbins_aerosol * ncomponents_mass
-             CALL pmc_recv_from_parent( aerosol_mass_p_init(:,n), pg%nz+2, 0, tag_nr, ierr )
-             tag_nr = tag_nr + 1
-          ENDDO
-          DO  n = 1, ngases_salsa
-             CALL pmc_recv_from_parent( salsa_gas_p_init(:,n), pg%nz+2, 0, tag_nr, ierr )
-             tag_nr = tag_nr + 1
-          ENDDO
-       ENDIF
-    ENDIF
-!
-!-- Broadcast the initial profiles among all child cores.
-    IF ( ALLOCATED( u_p_init    ) )  CALL MPI_BCAST( u_p_init,    pg%nz+2, MPI_REAL, 0, comm2d, ierr )
-    IF ( ALLOCATED( v_p_init    ) )  CALL MPI_BCAST( v_p_init,    pg%nz+2, MPI_REAL, 0, comm2d, ierr )
-    IF ( ALLOCATED( e_p_init    ) )  CALL MPI_BCAST( e_p_init,    pg%nz+2, MPI_REAL, 0, comm2d, ierr )
-    IF ( ALLOCATED( diss_p_init ) )  CALL MPI_BCAST( diss_p_init, pg%nz+2, MPI_REAL, 0, comm2d, ierr )
-    IF ( ALLOCATED( pt_p_init   ) )  CALL MPI_BCAST( pt_p_init,   pg%nz+2, MPI_REAL, 0, comm2d, ierr )
-    IF ( ALLOCATED( q_p_init    ) )  CALL MPI_BCAST( q_p_init,    pg%nz+2, MPI_REAL, 0, comm2d, ierr )
-    IF ( ALLOCATED( qc_p_init   ) )  CALL MPI_BCAST( qc_p_init,   pg%nz+2, MPI_REAL, 0, comm2d, ierr )
-    IF ( ALLOCATED( nc_p_init   ) )  CALL MPI_BCAST( nc_p_init,   pg%nz+2, MPI_REAL, 0, comm2d, ierr )
-    IF ( ALLOCATED( qr_p_init   ) )  CALL MPI_BCAST( qr_p_init,   pg%nz+2, MPI_REAL, 0, comm2d, ierr )
-    IF ( ALLOCATED( nr_p_init   ) )  CALL MPI_BCAST( nr_p_init,   pg%nz+2, MPI_REAL, 0, comm2d, ierr )
-    IF ( ALLOCATED( s_p_init    ) )  CALL MPI_BCAST( s_p_init,    pg%nz+2, MPI_REAL, 0, comm2d, ierr )
-
-    IF ( ALLOCATED( chem_p_init ) )                                                                &
-       CALL MPI_BCAST( chem_p_init, (pg%nz+2)*nspec, MPI_REAL, 0, comm2d, ierr )
-
-    IF ( ALLOCATED( aerosol_number_p_init ) )                                                      &
-       CALL MPI_BCAST( aerosol_number_p_init, (pg%nz+2)*nbins_aerosol, MPI_REAL, 0, comm2d, ierr )
-
-    IF ( ALLOCATED( aerosol_mass_p_init ) )                                                        &
-       CALL MPI_BCAST( aerosol_mass_p_init, (pg%nz+2)*nbins_aerosol*ncomponents_mass, MPI_REAL, 0, &
-                       comm2d, ierr )
-
-    IF ( ALLOCATED( salsa_gas_p_init ) )                                                           &
-       CALL MPI_BCAST( salsa_gas_p_init, (pg%nz+2)*ngases_salsa, MPI_REAL, 0, comm2d, ierr )
-
- END SUBROUTINE pmci_recv_domain_averaged_profiles
-
 #endif
  END SUBROUTINE pmci_child_initialize
 
@@ -4075,152 +3453,73 @@
 
     INTEGER ::  ierr  !<  MPI error code
 
-    LOGICAL ::  homogenize_surface_temperature_root  !< root value of variable
-
-    REAL(wp) ::  dt_coupling_root          !< root value of variable
-    REAL(wp) ::  dt_restart_root           !< root value of variable
-    REAL(wp) ::  dx_root                   !< root value of variable
-    REAL(wp) ::  dy_root                   !< root value of variable
-    REAL(wp) ::  end_time_root             !< root value of variable
-    REAL(wp) ::  restart_time_root         !< root value of variable
-    REAL(wp) ::  time_from_ref_point       !< root value of variable
-    REAL(wp) ::  time_from_ref_point_root  !< root value of variable
-    REAL(wp) ::  time_restart_root         !< root value of variable
-
+    REAL(wp) ::  dt_restart_root    !<
+    REAL(wp) ::  end_time_root      !<
+    REAL(wp) ::  restart_time_root  !<
+    REAL(wp) ::  time_restart_root  !<
 
 !
 !-- Check the time to be simulated. Here, and in the following, the root process communicates the
 !-- respective variable to all others, and its value will then be compared with the local values.
-    IF ( root_model )  end_time_root = end_time
+    IF ( pmc_is_rootmodel() )  end_time_root = end_time
     CALL MPI_BCAST( end_time_root, 1, MPI_REAL, 0, comm_world_nesting, ierr )
 
-    IF ( .NOT. root_model )  THEN
+    IF ( .NOT. pmc_is_rootmodel() )  THEN
        IF ( end_time /= end_time_root )  THEN
           WRITE( message_string, * )  'mismatch between root model and child settings:& ' //       &
                                       'end_time(root) = ', end_time_root,                          &
                                       '& end_time(child) = ', end_time, '& child value is set',    &
                                       ' to root value'
-          CALL message( 'pmci_check_setting_mismatches', 'PMC0021', 0, 1, 0, 6, 0 )
+          CALL message( 'pmci_check_setting_mismatches', 'PA0419', 0, 1, 0, 6, 0 )
           end_time = end_time_root
        ENDIF
     ENDIF
 !
 !-- Same for restart time
-    IF ( root_model )  restart_time_root = restart_time
+    IF ( pmc_is_rootmodel() )  restart_time_root = restart_time
     CALL MPI_BCAST( restart_time_root, 1, MPI_REAL, 0, comm_world_nesting, ierr )
 
-    IF ( .NOT. root_model )  THEN
+    IF ( .NOT. pmc_is_rootmodel() )  THEN
        IF ( restart_time /= restart_time_root )  THEN
           WRITE( message_string, * )  'mismatch between root model and child settings: & ' //      &
                                       'restart_time(root) = ', restart_time_root,                  &
                                       '& restart_time(child) = ', restart_time, '& child ',        &
                                       'value is set to root value'
-          CALL message( 'pmci_check_setting_mismatches', 'PMC0021', 0, 1, 0, 6, 0 )
+          CALL message( 'pmci_check_setting_mismatches', 'PA0419', 0, 1, 0, 6, 0 )
           restart_time = restart_time_root
        ENDIF
     ENDIF
 !
 !-- Same for dt_restart
-    IF ( root_model )  dt_restart_root = dt_restart
+    IF ( pmc_is_rootmodel() )  dt_restart_root = dt_restart
     CALL MPI_BCAST( dt_restart_root, 1, MPI_REAL, 0, comm_world_nesting, ierr )
 
-    IF ( .NOT. root_model )  THEN
+    IF ( .NOT. pmc_is_rootmodel() )  THEN
        IF ( dt_restart /= dt_restart_root )  THEN
           WRITE( message_string, * )  'mismatch between root model and ',                          &
                                       'child settings: & dt_restart(root) = ', dt_restart_root,    &
                                       '& dt_restart(child) = ', dt_restart, '& child ',            &
                                       'value is set to root value'
-          CALL message( 'pmci_check_setting_mismatches', 'PMC0021', 0, 1, 0, 6, 0 )
+          CALL message( 'pmci_check_setting_mismatches', 'PA0419', 0, 1, 0, 6, 0 )
           dt_restart = dt_restart_root
        ENDIF
     ENDIF
 !
 !-- Same for time_restart
-    IF ( root_model )  time_restart_root = time_restart
+    IF ( pmc_is_rootmodel() )  time_restart_root = time_restart
     CALL MPI_BCAST( time_restart_root, 1, MPI_REAL, 0, comm_world_nesting, ierr )
 
-    IF ( .NOT. root_model )  THEN
+    IF ( .NOT. pmc_is_rootmodel() )  THEN
        IF ( time_restart /= time_restart_root )  THEN
           WRITE( message_string, * )  'mismatch between root model and child settings: & ' //      &
                                       'time_restart(root) = ', time_restart_root,                  &
                                       '& time_restart(child) = ', time_restart, '& child ',        &
                                       'value is set to root value'
-          CALL message( 'pmci_check_setting_mismatches', 'PMC0021', 0, 1, 0, 6, 0 )
+          CALL message( 'pmci_check_setting_mismatches', 'PA0419', 0, 1, 0, 6, 0 )
           time_restart = time_restart_root
        ENDIF
     ENDIF
 
-!
-!-- Homogenize_surface_temperature must be set in all domains.
-    IF ( root_model )  homogenize_surface_temperature_root = homogenize_surface_temperature
-    CALL MPI_BCAST( homogenize_surface_temperature_root, 1, MPI_REAL, 0, comm_world_nesting, ierr )
-
-    IF ( .NOT. root_model )  THEN
-       IF ( homogenize_surface_temperature .NEQV. homogenize_surface_temperature_root )  THEN
-          message_string = 'mismatch between root model and child settings: & ' //                 &
-                           'homogenize_surface_temperature must be set the same for all models' // &
-                           '. &child value is set to root value'
-          CALL message( 'pmci_check_setting_mismatches', 'PMC0022', 0, 1, 0, 6, 0 )
-          homogenize_surface_temperature = homogenize_surface_temperature_root
-       ENDIF
-    ENDIF
-
-
-!
-!-- Further checks in case of atmosphere-ocean coupled runs.
-    IF ( atmosphere_ocean_coupled_run )  THEN
-
-       IF ( root_model  .AND.  dt_coupling == 9999999.9_wp )  THEN
-          message_string = 'dt_coupling is required to be set in atmosphere runtime parameters' // &
-                           ' namelist'
-          CALL message( 'pmci_check_setting_mismatches', 'PMC0023', 1, 2, 0, 6, 0 )
-       ENDIF
-
-       IF ( root_model  .AND.  dt_coupling < 0.0_wp )  THEN
-          message_string = 'dt_coupling < 0.0 is not allowed'
-          CALL message( 'pmci_check_setting_mismatches', 'PMC0024', 1, 2, 0, 6, 0 )
-       ENDIF
-
-       IF ( root_model )  dt_coupling_root = dt_coupling
-       CALL MPI_BCAST( dt_coupling_root, 1, MPI_REAL, 0, comm_world_nesting, ierr )
-
-       IF ( dt_coupling /= dt_coupling_root )  THEN
-          WRITE( message_string, * )  'mismatch between atmosphere and ocean model: & ' //         &
-                                      'dt_coupling (atmosphere) = ', dt_coupling_root,             &
-                                      '& dt_coupling (ocean) = ', dt_coupling,                     &
-                                      '& ocean value is set to atmosphere value'
-          CALL message( 'pmci_check_setting_mismatches', 'PMC0025', 0, 1, 0, 6, 0 )
-          dt_coupling = dt_coupling_root
-       ENDIF
-
-       time_from_ref_point = end_time - coupling_start_time
-       IF ( root_model )  time_from_ref_point_root = time_from_ref_point
-       CALL MPI_BCAST( time_from_ref_point_root, 1, MPI_REAL, 0, comm_world_nesting, ierr )
-
-       IF ( time_from_ref_point /= time_from_ref_point_root )  THEN
-          WRITE( message_string, * )  'mismatch between atmosphere and ocean model: & ' //         &
-                            'time from reference point (atmosphere) = ', time_from_ref_point_root, &
-                            '& time_from reference point (ocean) = ', time_from_ref_point
-          CALL message( 'pmci_check_setting_mismatches', 'PMC0026', 1, 2, 0, 6, 0 )
-       ENDIF
-
-       IF ( root_model )  dx_root = dx
-       CALL MPI_BCAST( dx_root, 1, MPI_REAL, 0, comm_world_nesting, ierr )
-
-       IF ( dx_root < dx )  THEN
-          message_string = 'dx in atmosphere is smaller than dx in ocean'
-          CALL message( 'pmci_check_setting_mismatches', 'PMC0027', 1, 2, 0, 6, 0 )
-       ENDIF
-
-       IF ( root_model )  dy_root = dy
-       CALL MPI_BCAST( dy_root, 1, MPI_REAL, 0, comm_world_nesting, ierr )
-
-       IF ( dy_root < dy )  THEN
-          message_string = 'dy in atmosphere is smaller than dy in ocean'
-          CALL message( 'pmci_check_setting_mismatches', 'PMC0027', 1, 2, 0, 6, 0 )
-       ENDIF
-
-    ENDIF
 #endif
 
  END SUBROUTINE pmci_check_setting_mismatches
@@ -4277,231 +3576,6 @@
     ENDDO
 #endif
  END SUBROUTINE pmci_set_swaplevel
-
-
-!--------------------------------------------------------------------------------------------------!
-! Description:
-! ------------
-!> This subroutine ...
-!--------------------------------------------------------------------------------------------------!
- SUBROUTINE pmci_atmos_ocean( )
-
-    IMPLICIT NONE
-
-#if defined( __parallel )
-    CALL cpu_log( log_point(39), 'atmos_ocean_coupler', 'start' )
-
-!
-!-- Copy 1d-surface data to 2d-xy-arrays (sensible/latent heat- and momentum-fluxes).
-    IF ( root_model )  CALL surface_coupler_buffer_handling( parent_send )
-!
-!-- Transfer data from atmosphere to ocean.
-    CALL pmci_child_datatrans( parent_to_child )
-    CALL pmci_parent_datatrans( parent_to_child )
-!
-!-- Interpolation from atmosphere to ocean grid (and backwards) is done in the ocean model.
-    IF ( .NOT.  root_model )  THEN
-!
-!--    Interpolate the fluxes.
-       CALL pmc_interpolate_to_ocean( surface_coupler_exchange_array_1c,                           &
-                                      surface_coupler_exchange_array_1 )
-       CALL pmc_interpolate_to_ocean( surface_coupler_exchange_array_2c,                           &
-                                      surface_coupler_exchange_array_2 )
-       CALL pmc_interpolate_to_ocean( surface_coupler_exchange_array_3c,                           &
-                                      surface_coupler_exchange_array_3 )
-       CALL pmc_interpolate_to_ocean( surface_coupler_exchange_array_4c,                           &
-                                      surface_coupler_exchange_array_4 )
-!
-!--    Copy interpolated 2d-xy-arrays (sensible/latent heat- and momentum-fluxes) to 1d-surface-data
-       CALL surface_coupler_buffer_handling( child_recv )
-!
-!--    Copy pt, u, v at ocean surface to 2d-xy-arrays.
-       CALL surface_coupler_buffer_handling( child_send )
-!
-!--    Anterpolate pt, u, and v
-       CALL pmc_interpolate_to_atmos( surface_coupler_exchange_array_1,                            &
-                                      surface_coupler_exchange_array_1c )
-       CALL pmc_interpolate_to_atmos( surface_coupler_exchange_array_2,                            &
-                                      surface_coupler_exchange_array_2c )
-       CALL pmc_interpolate_to_atmos( surface_coupler_exchange_array_3,                            &
-                                      surface_coupler_exchange_array_3c )
-    ENDIF
-
-    CALL pmci_parent_datatrans( child_to_parent )
-    CALL pmci_child_datatrans( child_to_parent )
-    IF ( root_model )  CALL surface_coupler_buffer_handling( parent_recv )
-
-    CALL cpu_log( log_point(39), 'atmos_ocean_coupler', 'stop' )
-
- CONTAINS
-
- SUBROUTINE pmc_interpolate_to_ocean( surface_coupler_exchange_array_parent,                       &
-                                      surface_coupler_exchange_array )
-
-    IMPLICIT NONE
-
-    INTEGER(iwp) ::  dx_nr  !<
-    INTEGER(iwp) ::  dy_nr  !<
-    INTEGER(iwp) ::  i      !<
-    INTEGER(iwp) ::  ii     !<
-    INTEGER(iwp) ::  ix     !<
-    INTEGER(iwp) ::  j      !<
-    INTEGER(iwp) ::  jj     !<
-    INTEGER(iwp) ::  jy     !<
-
-    REAL(wp), PARAMETER ::  tolerance = 1.0E-10  !<
-
-    REAL(wp) :: dx_fact  !<
-    REAL(wp) :: dy_fact  !<
-    REAL(wp) :: fyx      !<
-    REAL(wp) :: f00      !<
-    REAL(wp) :: f01      !<
-    REAL(wp) :: f10      !<
-    REAL(wp) :: f11      !<
-    REAL(wp) :: x        !<
-    REAL(wp) :: y        !<
-
-    REAL(wp), INTENT(IN), DIMENSION(jps:jpn,ipl:ipr)      ::  surface_coupler_exchange_array_parent  !<
-    REAL(wp), INTENT(OUT), DIMENSION(nysg:nyng,nxlg:nxrg) ::  surface_coupler_exchange_array         !<
-
-
-    surface_coupler_exchange_array = 0.0_wp
-    dx_fact = pg%dx / dx
-    dy_fact = pg%dy / dy
-    dx_nr   = INT( dx_fact + 0.01_wp )
-    dy_nr   = INT( dy_fact + 0.01_wp )
-
-    IF ( ABS( pg%dx - dx ) <= tolerance  .AND.  ABS( pg%dy - dy ) <= tolerance )  THEN
-!
-!--    No interpolation.
-       surface_coupler_exchange_array(jps:jpn,ipl:ipr) =                                           &
-                                             surface_coupler_exchange_array_parent(jps:jpn,ipl:ipr)
-    ELSE
-!
-!--    Interpolation from atmosphere-grid to ocean-grid.
-       DO  i = ipl, ipr-1
-          DO  j = jps, jpn-1
-              f00 = surface_coupler_exchange_array_parent(j,i)
-              f01 = surface_coupler_exchange_array_parent(j,i+1)
-              f10 = surface_coupler_exchange_array_parent(j+1,i)
-              f11 = surface_coupler_exchange_array_parent(j+1,i+1)
-              DO  ix =0, dx_nr-1
-                 ii  = i * dx_nr + ix
-                 DO  jy = 0, dy_nr-1
-                    x = ix / dx_fact
-                    y = jy / dy_fact
-                    fyx = f00 * (1-y) * (1-x) + f10 * y * (1-x) + f01 * (1-y) * x + f11 * y * x
-                    jj = j * dy_nr + jy
-                    surface_coupler_exchange_array(jj,ii) = fyx
-                 ENDDO
-             ENDDO
-          ENDDO
-       ENDDO
-
-    ENDIF
-
- END SUBROUTINE pmc_interpolate_to_ocean
-
-
- SUBROUTINE pmc_interpolate_to_atmos( surface_coupler_exchange_array,                              &
-                                      surface_coupler_exchange_array_parent )
-
-    IMPLICIT NONE
-
-    INTEGER(iwp) :: dx_nr  !<
-    INTEGER(iwp) :: dy_nr  !<
-    INTEGER(iwp) :: i      !<
-    INTEGER(iwp) :: ii     !<
-    INTEGER(iwp) :: j      !<
-    INTEGER(iwp) :: jj     !<
-
-    REAL(wp), PARAMETER :: tolerance = 1.0E-10  !<
-
-    REAL(wp) ::  dx_fact  !<
-    REAL(wp) ::  dy_fact  !<
-
-    REAL(wp), INTENT(IN), DIMENSION(nysg:nyng,nxlg:nxrg) ::  surface_coupler_exchange_array         !<
-    REAL(wp), INTENT(OUT), DIMENSION(jps:jpn,ipl:ipr)    ::  surface_coupler_exchange_array_parent  !<
-
-
-    dx_fact = pg%dx / dx
-    dy_fact = pg%dy / dy
-    dx_nr   = INT( dx_fact + 0.01_wp )
-    dy_nr   = INT( dy_fact + 0.01_wp )
-
-    surface_coupler_exchange_array_parent = 0.0_wp
-
-    IF ( ABS( pg%dx - dx ) <= tolerance  .AND.  ABS( pg%dy - dy ) <= tolerance )  THEN
-!
-!--    No Interpolation.
-       surface_coupler_exchange_array_parent(jps:jpn,ipl:ipr) =                                    &
-                                                    surface_coupler_exchange_array(jps:jpn,ipl:ipr)
-    ELSE
-!
-!--    Interpolation from ocean-grid to atmosphere-grid.
-       DO  i = ipl, ipr
-          DO  j = jps, jpn
-             DO  ii = i*dx_nr, (i+1)*dx_nr-1
-                DO  jj = j*dy_nr, (j+1)*dy_nr-1
-                   surface_coupler_exchange_array_parent(j,i) =                                    &
-                                                      surface_coupler_exchange_array_parent(j,i) + &
-                                                      surface_coupler_exchange_array(jj,ii)
-                ENDDO
-             ENDDO
-             surface_coupler_exchange_array_parent(j,i) =                                          &
-                                                      surface_coupler_exchange_array_parent(j,i) / &
-                                                      ( dx_fact * dy_fact )
-          ENDDO
-       ENDDO
-    ENDIF
-
- END SUBROUTINE pmc_interpolate_to_atmos
-#endif
-
- END SUBROUTINE pmci_atmos_ocean
-
-
-!--------------------------------------------------------------------------------------------------!
-! Description:
-! ------------
-!> Adjust the time interval after which atmosphere and ocean are coupled, to be at least
-!> as large as the maximum timestep of the atmosphere and the ocean model.
-!--------------------------------------------------------------------------------------------------!
- SUBROUTINE pmci_adjust_dt_coupling
-
-#if defined( __parallel )
-    IMPLICIT NONE
-
-    INTEGER(iwp) ::  ierr  !< MPI error code
-
-    REAL(wp), SAVE ::  dt_coupling_org = -1.0_wp  !< original value of dt_coupling as specified in namelist
-
-    REAL(wp), DIMENSION(2) ::  maxvalue  !< local variable to store global maximum values
-
-!
-!-- At first call, save the coupling interval that has been set by the user. If the maximum of the
-!-- atmosphere/ocean timestep is smaller, then this interval will be used. Otherwise, the coupling
-!-- interval will be adjusted (decreased).
-    IF ( dt_coupling_org < 0.0_wp )  dt_coupling_org = dt_coupling
-
-    maxvalue(1) = dt_3d
-!
-!-- Set flag to terminate the run, if either the atmosphere or the ocean model has reached its end.
-    IF ( time_since_reference_point >= end_time )  THEN
-       maxvalue(2) = 1.0_wp
-    ELSE
-       maxvalue(2) = 0.0_wp
-    ENDIF
-    CALL MPI_ALLREDUCE( MPI_IN_PLACE, maxvalue, 2, MPI_REAL, MPI_MAX, MPI_COMM_WORLD, ierr )
-    terminate_coupled = maxvalue(2)
-
-!
-!-- The new coupling interval is taken as the maximum of the original interval (as set by the user)
-!-- and the maximum timestep of the atmosphere/ocean model.
-    dt_coupling = MAX( dt_coupling_org, maxvalue(1) )
-#endif
-
- END SUBROUTINE pmci_adjust_dt_coupling
 
 
 !--------------------------------------------------------------------------------------------------!
@@ -4565,31 +3639,6 @@
  END SUBROUTINE pmci_datatrans
 
 
-!--------------------------------------------------------------------------------------------------!
-! Description:
-! ------------
-!> Last action in pmc: currently only freeing of MPI windows
-!--------------------------------------------------------------------------------------------------!
- SUBROUTINE pmci_finalize
-
-#if defined( __parallel )
-    INTEGER(iwp) ::  child_id
-    INTEGER(iwp) ::  m
-
-!
-!-- Free windows for transfer to/from parent
-    IF ( .NOT. root_model )  THEN
-       CALL pmc_c_finalize()
-    ENDIF
-!
-!-- Free windows for transfer to/from child(s)
-    DO  m = 1, SIZE( pmc_parent_for_child ) - 1
-       child_id = pmc_parent_for_child(m)
-       CALL pmc_s_finalize( child_id )
-    ENDDO
-#endif
-
- END SUBROUTINE pmci_finalize
 
 !--------------------------------------------------------------------------------------------------!
 ! Description:
@@ -4625,7 +3674,7 @@
           CALL cpu_log( log_point_s(72), 'pmc parent recv', 'stop' )
 !
 !--       The anterpolated data is now available in u etc
-          IF ( topography /= 'flat' .AND. .NOT. atmosphere_ocean_coupled_run )  THEN
+          IF ( topography /= 'flat' )  THEN
 !
 !--          Inside buildings/topography reset velocities back to zero.
 !--          Scalars (pt, q, s, km, kh, p, sa, ...) are ignored at present, maybe revise later.
@@ -4634,9 +3683,9 @@
              DO   i = nxlg, nxrg
                 DO   j = nysg, nyng
                    DO  k = nzb, nzt+1
-                      u(k,j,i) = MERGE( u(k,j,i), 0.0_wp, BTEST( topo_flags(k,j,i), 1 ) )
-                      v(k,j,i) = MERGE( v(k,j,i), 0.0_wp, BTEST( topo_flags(k,j,i), 2 ) )
-                      w(k,j,i) = MERGE( w(k,j,i), 0.0_wp, BTEST( topo_flags(k,j,i), 3 ) )
+                      u(k,j,i) = MERGE( u(k,j,i), 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 1 ) )
+                      v(k,j,i) = MERGE( v(k,j,i), 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 2 ) )
+                      w(k,j,i) = MERGE( w(k,j,i), 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 3 ) )
 !
 !--                 TO_DO: zero setting of temperature within topography creates wrong results
 !                   pt(nzb:nzb_s_inner(j,i),j,i) = 0.0_wp
@@ -4663,15 +3712,15 @@
 
     IMPLICIT NONE
 
-    INTEGER(iwp), INTENT(IN) ::  direction  !< transfer direction: parent_to_child or child_to_parent
+    INTEGER(iwp), INTENT(IN) ::  direction  !< Transfer direction: parent_to_child or child_to_parent
 
 #if defined( __parallel )
 
-    REAL(wp), DIMENSION(1) ::  dtl  !< time step size
+    REAL(wp), DIMENSION(1) ::  dtl  !< Time step size
 
 
     dtl = dt_3d
-    IF ( .NOT.  root_model )  THEN
+    IF ( .NOT.  pmc_is_rootmodel() )  THEN
 
        IF ( direction == parent_to_child )  THEN
 
@@ -4679,20 +3728,16 @@
           CALL pmc_c_getbuffer( )
           CALL cpu_log( log_point_s(73), 'pmc child recv', 'stop' )
 
-          IF ( .NOT. atmosphere_ocean_coupled_run )  THEN
-             CALL cpu_log( log_point_s(75), 'pmc interpolation', 'start' )
-             CALL pmci_interpolation
-             CALL cpu_log( log_point_s(75), 'pmc interpolation', 'stop' )
-          ENDIF
+          CALL cpu_log( log_point_s(75), 'pmc interpolation', 'start' )
+          CALL pmci_interpolation
+          CALL cpu_log( log_point_s(75), 'pmc interpolation', 'stop' )
 
        ELSE
 !
 !--       direction == child_to_parent
-          IF ( .NOT. atmosphere_ocean_coupled_run )  THEN
-             CALL cpu_log( log_point_s(76), 'pmc anterpolation', 'start' )
-             CALL pmci_anterpolation
-             CALL cpu_log( log_point_s(76), 'pmc anterpolation', 'stop' )
-          ENDIF
+          CALL cpu_log( log_point_s(76), 'pmc anterpolation', 'start' )
+          CALL pmci_anterpolation
+          CALL cpu_log( log_point_s(76), 'pmc anterpolation', 'stop' )
 
           CALL cpu_log( log_point_s(74), 'pmc child send', 'start' )
           CALL pmc_c_putbuffer( )
@@ -4721,293 +3766,293 @@
     INTEGER(iwp) ::  n     !< Running index for number of chemical species
 
 !
-!-- Interpolation is only needed for the lateral child boundaries, if they are non-cyclic.
-!-- Start with boundary on the left border pe:
-    IF ( bc_dirichlet_l  .AND.  .NOT. nesting_bounds_vertical_only )  THEN
-
-       CALL pmci_interp_lr( u, uc, kcto, jflo, jfuo, kflo, kfuo, 'l', 'u' )
-       CALL pmci_interp_lr( v, vc, kcto, jflv, jfuv, kflo, kfuo, 'l', 'v' )
-       CALL pmci_interp_lr( w, wc, kctw, jflo, jfuo, kflw, kfuw, 'l', 'w' )
+!-- In case of vertical nesting no interpolation is needed for the horizontal boundaries
+    IF ( nesting_mode /= 'vertical' )  THEN
 !
-!--    Treatment of TKE. Interpolation is only required if parent and child operate in RANS mode,
-!--    else, interpolation is replaced by a Neumann condition.
-       IF ( rans_mode_parent  .AND.  rans_mode )  THEN
-           CALL pmci_interp_lr( e, ec, kcto, jflo, jfuo, kflo, kfuo, 'l', 'e' )
-       ELSE
-          DO  ibgp = -nbgp, -1
-             e(nzb:nzt,nys:nyn,ibgp) = e(nzb:nzt,nys:nyn,0)
-          ENDDO
-       ENDIF
+!--    Left border pe:
+       IF ( bc_dirichlet_l )  THEN
 
-       IF ( rans_mode_parent  .AND.  rans_mode  .AND.  rans_tke_e )  THEN
-          CALL pmci_interp_lr( diss, dissc, kcto, jflo, jfuo, kflo, kfuo, 'l', 's' )
-       ENDIF
-
-       IF ( .NOT. neutral )  THEN
-          CALL pmci_interp_lr( pt, ptc, kcto, jflo, jfuo, kflo, kfuo, 'l', 's' )
-       ENDIF
-
-       IF ( humidity )  THEN
-
-          CALL pmci_interp_lr( q, q_c, kcto, jflo, jfuo, kflo, kfuo, 'l', 's' )
-
-          IF ( bulk_cloud_model  .AND.  microphysics_morrison )  THEN
-             CALL pmci_interp_lr( qc, qcc, kcto, jflo, jfuo, kflo, kfuo, 'l', 's' )
-             CALL pmci_interp_lr( nc, ncc, kcto, jflo, jfuo, kflo, kfuo, 'l', 's' )
-          ENDIF
-
-          IF ( bulk_cloud_model  .AND.  microphysics_seifert )  THEN
-             CALL pmci_interp_lr( qr, qrc, kcto, jflo, jfuo, kflo, kfuo, 'l', 's' )
-             CALL pmci_interp_lr( nr, nrc, kcto, jflo, jfuo, kflo, kfuo, 'l', 's' )
-          ENDIF
-
-       ENDIF
-
-       IF ( passive_scalar )  THEN
-          CALL pmci_interp_lr( s, sc, kcto, jflo, jfuo, kflo, kfuo, 'l', 's' )
-       ENDIF
-
-       IF ( air_chemistry  .AND.  nesting_chem )  THEN
-          DO  n = 1, nspec
-             CALL pmci_interp_lr( chem_species(n)%conc, chem_spec_c(:,:,:,n), kcto, jflo, jfuo,    &
-                                  kflo, kfuo, 'l', 's' )
-          ENDDO
-       ENDIF
-
-       IF ( salsa  .AND.  nesting_salsa )  THEN
-          DO  lb = 1, nbins_aerosol
-             CALL pmci_interp_lr( aerosol_number(lb)%conc, aerosol_number_c(:,:,:,lb), kcto, jflo, &
-                                  jfuo, kflo, kfuo, 'l', 's')
-          ENDDO
-          DO  lc = 1, nbins_aerosol * ncomponents_mass
-             CALL pmci_interp_lr( aerosol_mass(lc)%conc, aerosol_mass_c(:,:,:,lc), kcto, jflo,     &
-                                  jfuo, kflo, kfuo, 'l', 's')
-          ENDDO
-          IF ( .NOT. salsa_gases_from_chem )  THEN
-             DO  lg = 1, ngases_salsa
-                CALL pmci_interp_lr( salsa_gas(lg)%conc, salsa_gas_c(:,:,:,lg), kcto, jflo, jfuo,  &
-                                     kflo, kfuo, 'l', 's')
+          CALL pmci_interp_lr( u, uc, kcto, jflo, jfuo, kflo, kfuo, 'l', 'u' )
+          CALL pmci_interp_lr( v, vc, kcto, jflv, jfuv, kflo, kfuo, 'l', 'v' )
+          CALL pmci_interp_lr( w, wc, kctw, jflo, jfuo, kflw, kfuw, 'l', 'w' )
+!
+!--       Treatment of TKE. Interpolation is only required if parent and child operate in RANS mode,
+!--       else, interpolation is replaced by a Neumann condition.
+          IF ( rans_mode_parent  .AND.  rans_mode )  THEN
+              CALL pmci_interp_lr( e, ec, kcto, jflo, jfuo, kflo, kfuo, 'l', 'e' )
+          ELSE
+             DO  ibgp = -nbgp, -1
+                e(nzb:nzt,nys:nyn,ibgp) = e(nzb:nzt,nys:nyn,0)
              ENDDO
           ENDIF
-       ENDIF
 
-    ENDIF
-!
-!-- Right border pe:
-    IF ( bc_dirichlet_r  .AND.  .NOT. nesting_bounds_vertical_only )  THEN
-
-       CALL pmci_interp_lr( u, uc, kcto, jflo, jfuo, kflo, kfuo, 'r', 'u' )
-       CALL pmci_interp_lr( v, vc, kcto, jflv, jfuv, kflo, kfuo, 'r', 'v' )
-       CALL pmci_interp_lr( w, wc, kctw, jflo, jfuo, kflw, kfuw, 'r', 'w' )
-!
-!--    Treatment of TKE. Interpolation is only required if parent and child operate in RANS mode,
-!--    else, interpolation is replaced by a Neumann condition.
-       IF ( rans_mode_parent  .AND.  rans_mode )  THEN
-          CALL pmci_interp_lr( e, ec, kcto, jflo, jfuo, kflo, kfuo, 'r', 'e' )
-       ELSE
-          DO  ibgp = nx+1, nx+nbgp
-             e(nzb:nzt,nys:nyn,ibgp) = e(nzb:nzt,nys:nyn,nx)
-          ENDDO
-       ENDIF
-
-       IF ( rans_mode_parent  .AND.  rans_mode  .AND.  rans_tke_e )  THEN
-          CALL pmci_interp_lr( diss, dissc, kcto, jflo, jfuo, kflo, kfuo, 'r', 's' )
-       ENDIF
-
-       IF (  .NOT.  neutral )  THEN
-          CALL pmci_interp_lr( pt, ptc, kcto, jflo, jfuo, kflo, kfuo, 'r', 's' )
-       ENDIF
-
-       IF ( humidity )  THEN
-
-          CALL pmci_interp_lr( q, q_c, kcto, jflo, jfuo, kflo, kfuo, 'r', 's' )
-
-          IF ( bulk_cloud_model  .AND.  microphysics_morrison )  THEN
-             CALL pmci_interp_lr( qc, qcc, kcto, jflo, jfuo, kflo, kfuo, 'r', 's' )
-             CALL pmci_interp_lr( nc, ncc, kcto, jflo, jfuo, kflo, kfuo, 'r', 's' )
+          IF ( rans_mode_parent  .AND.  rans_mode  .AND.  rans_tke_e )  THEN
+             CALL pmci_interp_lr( diss, dissc, kcto, jflo, jfuo, kflo, kfuo, 'l', 's' )
           ENDIF
 
-          IF ( bulk_cloud_model  .AND.  microphysics_seifert )  THEN
-             CALL pmci_interp_lr( qr, qrc, kcto, jflo, jfuo, kflo, kfuo, 'r', 's' )
-             CALL pmci_interp_lr( nr, nrc, kcto, jflo, jfuo, kflo, kfuo, 'r', 's' )
+          IF ( .NOT. neutral )  THEN
+             CALL pmci_interp_lr( pt, ptc, kcto, jflo, jfuo, kflo, kfuo, 'l', 's' )
           ENDIF
 
-       ENDIF
+          IF ( humidity )  THEN
 
-       IF ( passive_scalar )  THEN
-          CALL pmci_interp_lr( s, sc, kcto, jflo, jfuo, kflo, kfuo, 'r', 's' )
-       ENDIF
+             CALL pmci_interp_lr( q, q_c, kcto, jflo, jfuo, kflo, kfuo, 'l', 's' )
 
-       IF ( air_chemistry  .AND.  nesting_chem )  THEN
-          DO  n = 1, nspec
-             CALL pmci_interp_lr( chem_species(n)%conc, chem_spec_c(:,:,:,n), kcto, jflo, jfuo,    &
-                                  kflo, kfuo, 'r', 's' )
-          ENDDO
-       ENDIF
+             IF ( bulk_cloud_model  .AND.  microphysics_morrison )  THEN
+                CALL pmci_interp_lr( qc, qcc, kcto, jflo, jfuo, kflo, kfuo, 'l', 's' )
+                CALL pmci_interp_lr( nc, ncc, kcto, jflo, jfuo, kflo, kfuo, 'l', 's' )
+             ENDIF
 
-       IF ( salsa  .AND.  nesting_salsa )  THEN
-          DO  lb = 1, nbins_aerosol
-             CALL pmci_interp_lr( aerosol_number(lb)%conc, aerosol_number_c(:,:,:,lb), kcto, jflo, &
-                                  jfuo, kflo, kfuo, 'r', 's' )
-          ENDDO
-          DO  lc = 1, nbins_aerosol * ncomponents_mass
-             CALL pmci_interp_lr( aerosol_mass(lc)%conc, aerosol_mass_c(:,:,:,lc), kcto, jflo,     &
-                                  jfuo, kflo, kfuo, 'r', 's' )
-          ENDDO
-          IF ( .NOT. salsa_gases_from_chem )  THEN
-             DO  lg = 1, ngases_salsa
-                CALL pmci_interp_lr( salsa_gas(lg)%conc, salsa_gas_c(:,:,:,lg), kcto, jflo, jfuo,  &
-                                     kflo, kfuo, 'r', 's' )
+             IF ( bulk_cloud_model  .AND.  microphysics_seifert )  THEN
+                CALL pmci_interp_lr( qr, qrc, kcto, jflo, jfuo, kflo, kfuo, 'l', 's' )
+                CALL pmci_interp_lr( nr, nrc, kcto, jflo, jfuo, kflo, kfuo, 'l', 's' )
+             ENDIF
+
+          ENDIF
+
+          IF ( passive_scalar )  THEN
+             CALL pmci_interp_lr( s, sc, kcto, jflo, jfuo, kflo, kfuo, 'l', 's' )
+          ENDIF
+
+          IF ( air_chemistry  .AND.  nesting_chem )  THEN
+             DO  n = 1, nspec
+                CALL pmci_interp_lr( chem_species(n)%conc, chem_spec_c(:,:,:,n),                   &
+                                     kcto, jflo, jfuo, kflo, kfuo, 'l', 's' )
              ENDDO
           ENDIF
-       ENDIF
 
-    ENDIF
-!
-!-- South border pe:
-    IF ( bc_dirichlet_s  .AND.  .NOT. nesting_bounds_vertical_only )  THEN
-
-       CALL pmci_interp_sn( v, vc, kcto, iflo, ifuo, kflo, kfuo, 's', 'v' )
-       CALL pmci_interp_sn( w, wc, kctw, iflo, ifuo, kflw, kfuw, 's', 'w' )
-       CALL pmci_interp_sn( u, uc, kcto, iflu, ifuu, kflo, kfuo, 's', 'u' )
-!
-!--    Treatment of TKE. Interpolation is only required if parent and child operate in RANS mode,
-!--    else, interpolation is replaced by a Neumann condition.
-       IF ( rans_mode_parent  .AND.  rans_mode )  THEN
-          CALL pmci_interp_sn( e, ec, kcto, iflo, ifuo, kflo, kfuo, 's', 'e' )
-       ELSE
-          DO  jbgp = -nbgp, -1
-             e(nzb:nzt,jbgp,nxl:nxr) = e(nzb:nzt,0,nxl:nxr)
-          ENDDO
-       ENDIF
-
-       IF ( rans_mode_parent  .AND.  rans_mode  .AND.  rans_tke_e )  THEN
-          CALL pmci_interp_sn( diss, dissc, kcto, iflo, ifuo, kflo, kfuo, 's', 's' )
-       ENDIF
-
-       IF (  .NOT.  neutral )  THEN
-          CALL pmci_interp_sn( pt, ptc, kcto, iflo, ifuo, kflo, kfuo, 's', 's' )
-       ENDIF
-
-       IF ( humidity )  THEN
-
-          CALL pmci_interp_sn( q, q_c, kcto, iflo, ifuo, kflo, kfuo, 's', 's' )
-
-          IF ( bulk_cloud_model  .AND.  microphysics_morrison )  THEN
-             CALL pmci_interp_sn( qc, qcc, kcto, iflo, ifuo, kflo, kfuo, 's', 's' )
-             CALL pmci_interp_sn( nc, ncc, kcto, iflo, ifuo, kflo, kfuo, 's', 's' )
-          ENDIF
-
-          IF ( bulk_cloud_model  .AND.  microphysics_seifert )  THEN
-             CALL pmci_interp_sn( qr, qrc, kcto, iflo, ifuo, kflo, kfuo, 's', 's' )
-             CALL pmci_interp_sn( nr, nrc, kcto, iflo, ifuo, kflo, kfuo, 's', 's' )
+          IF ( salsa  .AND.  nesting_salsa )  THEN
+             DO  lb = 1, nbins_aerosol
+                CALL pmci_interp_lr( aerosol_number(lb)%conc, aerosol_number_c(:,:,:,lb),          &
+                                     kcto, jflo, jfuo, kflo, kfuo, 'l', 's')
+             ENDDO
+             DO  lc = 1, nbins_aerosol * ncomponents_mass
+                CALL pmci_interp_lr( aerosol_mass(lc)%conc, aerosol_mass_c(:,:,:,lc),              &
+                                     kcto, jflo, jfuo, kflo, kfuo, 'l', 's')
+             ENDDO
+             IF ( .NOT. salsa_gases_from_chem )  THEN
+                DO  lg = 1, ngases_salsa
+                   CALL pmci_interp_lr( salsa_gas(lg)%conc, salsa_gas_c(:,:,:,lg),                 &
+                                        kcto, jflo, jfuo, kflo, kfuo, 'l', 's')
+                ENDDO
+             ENDIF
           ENDIF
 
        ENDIF
+!
+!--    Right border pe
+       IF ( bc_dirichlet_r )  THEN
 
-       IF ( passive_scalar )  THEN
-          CALL pmci_interp_sn( s, sc, kcto, iflo, ifuo, kflo, kfuo, 's', 's' )
-       ENDIF
-
-       IF ( air_chemistry  .AND.  nesting_chem )  THEN
-          DO  n = 1, nspec
-             CALL pmci_interp_sn( chem_species(n)%conc, chem_spec_c(:,:,:,n), kcto, iflo, ifuo,    &
-                                  kflo, kfuo, 's', 's' )
-          ENDDO
-       ENDIF
-
-       IF ( salsa  .AND.  nesting_salsa )  THEN
-          DO  lb = 1, nbins_aerosol
-             CALL pmci_interp_sn( aerosol_number(lb)%conc, aerosol_number_c(:,:,:,lb), kcto, iflo, &
-                                  ifuo, kflo, kfuo, 's', 's' )
-          ENDDO
-          DO  lc = 1, nbins_aerosol * ncomponents_mass
-             CALL pmci_interp_sn( aerosol_mass(lc)%conc, aerosol_mass_c(:,:,:,lc), kcto, iflo,     &
-                                  ifuo, kflo, kfuo, 's', 's' )
-          ENDDO
-          IF ( .NOT. salsa_gases_from_chem )  THEN
-             DO  lg = 1, ngases_salsa
-                CALL pmci_interp_sn( salsa_gas(lg)%conc, salsa_gas_c(:,:,:,lg), kcto, iflo, ifuo,  &
-                                     kflo, kfuo, 's', 's' )
+          CALL pmci_interp_lr( u, uc, kcto, jflo, jfuo, kflo, kfuo, 'r', 'u' )
+          CALL pmci_interp_lr( v, vc, kcto, jflv, jfuv, kflo, kfuo, 'r', 'v' )
+          CALL pmci_interp_lr( w, wc, kctw, jflo, jfuo, kflw, kfuw, 'r', 'w' )
+!
+!--       Treatment of TKE. Interpolation is only required if parent and child operate in RANS mode,
+!--       else, interpolation is replaced by a Neumann condition.
+          IF ( rans_mode_parent  .AND.  rans_mode )  THEN
+             CALL pmci_interp_lr( e, ec, kcto, jflo, jfuo, kflo, kfuo, 'r', 'e' )
+          ELSE
+             DO  ibgp = nx+1, nx+nbgp
+                e(nzb:nzt,nys:nyn,ibgp) = e(nzb:nzt,nys:nyn,nx)
              ENDDO
           ENDIF
-       ENDIF
 
-    ENDIF
-!
-!-- North border pe:
-    IF ( bc_dirichlet_n  .AND.  .NOT. nesting_bounds_vertical_only )  THEN
-
-       CALL pmci_interp_sn( v, vc, kcto, iflo, ifuo, kflo, kfuo, 'n', 'v' )
-       CALL pmci_interp_sn( w, wc, kctw, iflo, ifuo, kflw, kfuw, 'n', 'w' )
-       CALL pmci_interp_sn( u, uc, kcto, iflu, ifuu, kflo, kfuo, 'n', 'u' )
-!
-!--    Treatment of TKE. Interpolation is only required if parent and child operate in RANS mode,
-!--    else, interpolation is replaced by a Neumann condition.
-       IF ( rans_mode_parent  .AND.  rans_mode )  THEN
-          CALL pmci_interp_sn( e, ec, kcto, iflo, ifuo, kflo, kfuo, 'n', 'e' )
-       ELSE
-          DO  jbgp = ny+1, ny+nbgp
-             e(nzb:nzt,jbgp,nxl:nxr) = e(nzb:nzt,ny,nxl:nxr)
-          ENDDO
-       ENDIF
-
-       IF ( rans_mode_parent  .AND.  rans_mode  .AND.  rans_tke_e )  THEN
-          CALL pmci_interp_sn( diss, dissc, kcto, iflo, ifuo, kflo, kfuo, 'n', 's' )
-       ENDIF
-
-       IF (  .NOT.  neutral )  THEN
-          CALL pmci_interp_sn( pt, ptc, kcto, iflo, ifuo, kflo, kfuo, 'n', 's' )
-       ENDIF
-
-       IF ( humidity )  THEN
-
-          CALL pmci_interp_sn( q, q_c, kcto, iflo, ifuo, kflo, kfuo, 'n', 's' )
-
-          IF ( bulk_cloud_model  .AND.  microphysics_morrison )  THEN
-             CALL pmci_interp_sn( qc, qcc, kcto, iflo, ifuo, kflo, kfuo, 'n', 's' )
-             CALL pmci_interp_sn( nc, ncc, kcto, iflo, ifuo, kflo, kfuo, 'n', 's' )
+          IF ( rans_mode_parent  .AND.  rans_mode  .AND.  rans_tke_e )  THEN
+             CALL pmci_interp_lr( diss, dissc, kcto, jflo, jfuo, kflo, kfuo, 'r', 's' )
           ENDIF
 
-          IF ( bulk_cloud_model  .AND.  microphysics_seifert )  THEN
-             CALL pmci_interp_sn( qr, qrc, kcto, iflo, ifuo, kflo, kfuo, 'n', 's' )
-             CALL pmci_interp_sn( nr, nrc, kcto, iflo, ifuo, kflo, kfuo, 'n', 's' )
+          IF (  .NOT.  neutral )  THEN
+             CALL pmci_interp_lr( pt, ptc, kcto, jflo, jfuo, kflo, kfuo, 'r', 's' )
           ENDIF
 
-       ENDIF
+          IF ( humidity )  THEN
+             CALL pmci_interp_lr( q, q_c, kcto, jflo, jfuo, kflo, kfuo, 'r', 's' )
 
-       IF ( passive_scalar )  THEN
-          CALL pmci_interp_sn( s, sc, kcto, iflo, ifuo, kflo, kfuo, 'n', 's' )
-       ENDIF
+             IF ( bulk_cloud_model  .AND.  microphysics_morrison )  THEN
+                CALL pmci_interp_lr( qc, qcc, kcto, jflo, jfuo, kflo, kfuo, 'r', 's' )
+                CALL pmci_interp_lr( nc, ncc, kcto, jflo, jfuo, kflo, kfuo, 'r', 's' )
+             ENDIF
 
-       IF ( air_chemistry  .AND.  nesting_chem )  THEN
-          DO  n = 1, nspec
-             CALL pmci_interp_sn( chem_species(n)%conc, chem_spec_c(:,:,:,n), kcto, iflo, ifuo,    &
-                                  kflo, kfuo, 'n', 's' )
-          ENDDO
-       ENDIF
+             IF ( bulk_cloud_model  .AND.  microphysics_seifert )  THEN
+                CALL pmci_interp_lr( qr, qrc, kcto, jflo, jfuo, kflo, kfuo, 'r', 's' )
+                CALL pmci_interp_lr( nr, nrc, kcto, jflo, jfuo, kflo, kfuo, 'r', 's' )
+             ENDIF
 
-       IF ( salsa  .AND.  nesting_salsa )  THEN
-          DO  lb = 1, nbins_aerosol
-             CALL pmci_interp_sn( aerosol_number(lb)%conc, aerosol_number_c(:,:,:,lb), kcto, iflo, &
-                                  ifuo, kflo, kfuo, 'n', 's' )
-          ENDDO
-          DO  lc = 1, nbins_aerosol * ncomponents_mass
-             CALL pmci_interp_sn( aerosol_mass(lc)%conc, aerosol_mass_c(:,:,:,lc), kcto, iflo,     &
-                                  ifuo, kflo, kfuo, 'n', 's' )
-          ENDDO
-          IF ( .NOT. salsa_gases_from_chem )  THEN
-             DO  lg = 1, ngases_salsa
-                CALL pmci_interp_sn( salsa_gas(lg)%conc, salsa_gas_c(:,:,:,lg), kcto, iflo, ifuo,  &
-                                     kflo, kfuo, 'n', 's' )
+          ENDIF
+
+          IF ( passive_scalar )  THEN
+             CALL pmci_interp_lr( s, sc, kcto, jflo, jfuo, kflo, kfuo, 'r', 's' )
+          ENDIF
+
+          IF ( air_chemistry  .AND.  nesting_chem )  THEN
+             DO  n = 1, nspec
+                CALL pmci_interp_lr( chem_species(n)%conc, chem_spec_c(:,:,:,n),                    &
+                                     kcto, jflo, jfuo, kflo, kfuo, 'r', 's' )
              ENDDO
           ENDIF
+
+          IF ( salsa  .AND.  nesting_salsa )  THEN
+             DO  lb = 1, nbins_aerosol
+                CALL pmci_interp_lr( aerosol_number(lb)%conc, aerosol_number_c(:,:,:,lb),           &
+                                          kcto, jflo, jfuo, kflo, kfuo, 'r', 's' )
+             ENDDO
+             DO  lc = 1, nbins_aerosol * ncomponents_mass
+                CALL pmci_interp_lr( aerosol_mass(lc)%conc, aerosol_mass_c(:,:,:,lc),               &
+                                     kcto, jflo, jfuo, kflo, kfuo, 'r', 's' )
+             ENDDO
+             IF ( .NOT. salsa_gases_from_chem )  THEN
+                DO  lg = 1, ngases_salsa
+                   CALL pmci_interp_lr( salsa_gas(lg)%conc, salsa_gas_c(:,:,:,lg),                  &
+                                        kcto, jflo, jfuo, kflo, kfuo, 'r', 's' )
+                ENDDO
+             ENDIF
+          ENDIF
+
+       ENDIF
+!
+!--    South border pe
+       IF ( bc_dirichlet_s )  THEN
+
+          CALL pmci_interp_sn( v, vc, kcto, iflo, ifuo, kflo, kfuo, 's', 'v' )
+          CALL pmci_interp_sn( w, wc, kctw, iflo, ifuo, kflw, kfuw, 's', 'w' )
+          CALL pmci_interp_sn( u, uc, kcto, iflu, ifuu, kflo, kfuo, 's', 'u' )
+!
+!--       Treatment of TKE. Interpolation is only required if parent and child operate in RANS mode,
+!--       else, interpolation is replaced by a Neumann condition.
+          IF ( rans_mode_parent  .AND.  rans_mode )  THEN
+             CALL pmci_interp_sn( e, ec, kcto, iflo, ifuo, kflo, kfuo, 's', 'e' )
+          ELSE
+             DO  jbgp = -nbgp, -1
+                e(nzb:nzt,jbgp,nxl:nxr) = e(nzb:nzt,0,nxl:nxr)
+             ENDDO
+          ENDIF
+
+          IF ( rans_mode_parent  .AND.  rans_mode  .AND.  rans_tke_e )  THEN
+             CALL pmci_interp_sn( diss, dissc, kcto, iflo, ifuo, kflo, kfuo, 's', 's' )
+          ENDIF
+
+          IF (  .NOT.  neutral )  THEN
+             CALL pmci_interp_sn( pt, ptc, kcto, iflo, ifuo, kflo, kfuo, 's', 's' )
+          ENDIF
+
+          IF ( humidity )  THEN
+             CALL pmci_interp_sn( q, q_c, kcto, iflo, ifuo, kflo, kfuo, 's', 's' )
+
+             IF ( bulk_cloud_model  .AND.  microphysics_morrison )  THEN
+                CALL pmci_interp_sn( qc, qcc, kcto, iflo, ifuo, kflo, kfuo, 's', 's' )
+                CALL pmci_interp_sn( nc, ncc, kcto, iflo, ifuo, kflo, kfuo, 's', 's' )
+             ENDIF
+
+             IF ( bulk_cloud_model  .AND.  microphysics_seifert )  THEN
+                CALL pmci_interp_sn( qr, qrc, kcto, iflo, ifuo, kflo, kfuo, 's', 's' )
+                CALL pmci_interp_sn( nr, nrc, kcto, iflo, ifuo, kflo, kfuo, 's', 's' )
+             ENDIF
+
+          ENDIF
+
+          IF ( passive_scalar )  THEN
+             CALL pmci_interp_sn( s, sc, kcto, iflo, ifuo, kflo, kfuo, 's', 's' )
+          ENDIF
+
+          IF ( air_chemistry  .AND.  nesting_chem )  THEN
+             DO  n = 1, nspec
+                CALL pmci_interp_sn( chem_species(n)%conc, chem_spec_c(:,:,:,n),                   &
+                                     kcto, iflo, ifuo, kflo, kfuo, 's', 's' )
+             ENDDO
+          ENDIF
+
+          IF ( salsa  .AND.  nesting_salsa )  THEN
+             DO  lb = 1, nbins_aerosol
+                CALL pmci_interp_sn( aerosol_number(lb)%conc, aerosol_number_c(:,:,:,lb),          &
+                                     kcto, iflo, ifuo, kflo, kfuo, 's', 's' )
+             ENDDO
+             DO  lc = 1, nbins_aerosol * ncomponents_mass
+                CALL pmci_interp_sn( aerosol_mass(lc)%conc, aerosol_mass_c(:,:,:,lc),              &
+                                     kcto, iflo, ifuo, kflo, kfuo, 's', 's' )
+             ENDDO
+             IF ( .NOT. salsa_gases_from_chem )  THEN
+                DO  lg = 1, ngases_salsa
+                   CALL pmci_interp_sn( salsa_gas(lg)%conc, salsa_gas_c(:,:,:,lg),                 &
+                                        kcto, iflo, ifuo, kflo, kfuo, 's', 's' )
+                ENDDO
+             ENDIF
+          ENDIF
+
+       ENDIF
+!
+!--    North border pe
+       IF ( bc_dirichlet_n )  THEN
+
+          CALL pmci_interp_sn( v, vc, kcto, iflo, ifuo, kflo, kfuo, 'n', 'v' )
+          CALL pmci_interp_sn( w, wc, kctw, iflo, ifuo, kflw, kfuw, 'n', 'w' )
+          CALL pmci_interp_sn( u, uc, kcto, iflu, ifuu, kflo, kfuo, 'n', 'u' )
+!
+!--       Treatment of TKE. Interpolation is only required if parent and child operate in RANS mode,
+!--       else, interpolation is replaced by a Neumann condition.
+          IF ( rans_mode_parent  .AND.  rans_mode )  THEN
+             CALL pmci_interp_sn( e, ec, kcto, iflo, ifuo, kflo, kfuo, 'n', 'e' )
+          ELSE
+             DO  jbgp = ny+1, ny+nbgp
+                e(nzb:nzt,jbgp,nxl:nxr) = e(nzb:nzt,ny,nxl:nxr)
+             ENDDO
+          ENDIF
+
+          IF ( rans_mode_parent  .AND.  rans_mode  .AND.  rans_tke_e )  THEN
+             CALL pmci_interp_sn( diss, dissc, kcto, iflo, ifuo, kflo, kfuo, 'n', 's' )
+          ENDIF
+
+          IF (  .NOT.  neutral )  THEN
+             CALL pmci_interp_sn( pt, ptc, kcto, iflo, ifuo, kflo, kfuo, 'n', 's' )
+          ENDIF
+
+          IF ( humidity )  THEN
+             CALL pmci_interp_sn( q, q_c, kcto, iflo, ifuo, kflo, kfuo, 'n', 's' )
+
+             IF ( bulk_cloud_model  .AND.  microphysics_morrison )  THEN
+                CALL pmci_interp_sn( qc, qcc, kcto, iflo, ifuo, kflo, kfuo, 'n', 's' )
+                CALL pmci_interp_sn( nc, ncc, kcto, iflo, ifuo, kflo, kfuo, 'n', 's' )
+             ENDIF
+
+             IF ( bulk_cloud_model  .AND.  microphysics_seifert )  THEN
+                CALL pmci_interp_sn( qr, qrc, kcto, iflo, ifuo, kflo, kfuo, 'n', 's' )
+                CALL pmci_interp_sn( nr, nrc, kcto, iflo, ifuo, kflo, kfuo, 'n', 's' )
+             ENDIF
+
+          ENDIF
+
+          IF ( passive_scalar )  THEN
+             CALL pmci_interp_sn( s, sc, kcto, iflo, ifuo, kflo, kfuo, 'n', 's' )
+          ENDIF
+
+          IF ( air_chemistry  .AND.  nesting_chem )  THEN
+             DO  n = 1, nspec
+                CALL pmci_interp_sn( chem_species(n)%conc, chem_spec_c(:,:,:,n),                   &
+                                     kcto, iflo, ifuo, kflo, kfuo, 'n', 's' )
+             ENDDO
+          ENDIF
+
+          IF ( salsa  .AND.  nesting_salsa )  THEN
+             DO  lb = 1, nbins_aerosol
+                CALL pmci_interp_sn( aerosol_number(lb)%conc, aerosol_number_c(:,:,:,lb),          &
+                                     kcto, iflo, ifuo, kflo, kfuo, 'n', 's' )
+             ENDDO
+             DO  lc = 1, nbins_aerosol * ncomponents_mass
+                CALL pmci_interp_sn( aerosol_mass(lc)%conc, aerosol_mass_c(:,:,:,lc),              &
+                                     kcto, iflo, ifuo, kflo, kfuo, 'n', 's' )
+             ENDDO
+             IF ( .NOT. salsa_gases_from_chem )  THEN
+                DO  lg = 1, ngases_salsa
+                   CALL pmci_interp_sn( salsa_gas(lg)%conc, salsa_gas_c(:,:,:,lg),                 &
+                                        kcto, iflo, ifuo, kflo, kfuo, 'n', 's' )
+                ENDDO
+             ENDIF
+          ENDIF
+
        ENDIF
 
-    ENDIF
-
+    ENDIF       ! IF ( nesting_mode /= 'vertical' )
 !
-!-- All PEs are top-border PEs:
+!-- All PEs are top-border PEs
     CALL pmci_interp_t( w, wc, kctw, iflo, ifuo, jflo, jfuo, 'w' )
     CALL pmci_interp_t( u, uc, kcto, iflu, ifuu, jflo, jfuo, 'u' )
     CALL pmci_interp_t( v, vc, kcto, iflo, ifuo, jflv, jfuv, 'v' )
@@ -5046,24 +4091,24 @@
 
     IF ( air_chemistry  .AND.  nesting_chem )  THEN
        DO  n = 1, nspec
-          CALL pmci_interp_t( chem_species(n)%conc, chem_spec_c(:,:,:,n), kcto, iflo, ifuo, jflo,  &
-                              jfuo, 's' )
+          CALL pmci_interp_t( chem_species(n)%conc, chem_spec_c(:,:,:,n),                          &
+                              kcto, iflo, ifuo, jflo, jfuo, 's' )
        ENDDO
     ENDIF
 
     IF ( salsa  .AND.  nesting_salsa )  THEN
        DO  lb = 1, nbins_aerosol
-          CALL pmci_interp_t( aerosol_number(lb)%conc, aerosol_number_c(:,:,:,lb), kcto, iflo,     &
-                              ifuo, jflo, jfuo, 's' )
+          CALL pmci_interp_t( aerosol_number(lb)%conc, aerosol_number_c(:,:,:,lb),                 &
+                              kcto, iflo, ifuo, jflo, jfuo, 's' )
        ENDDO
        DO  lc = 1, nbins_aerosol * ncomponents_mass
-          CALL pmci_interp_t( aerosol_mass(lc)%conc, aerosol_mass_c(:,:,:,lc), kcto, iflo, ifuo,   &
-                              jflo, jfuo, 's' )
+          CALL pmci_interp_t( aerosol_mass(lc)%conc, aerosol_mass_c(:,:,:,lc),                     &
+                              kcto, iflo, ifuo, jflo, jfuo, 's' )
        ENDDO
        IF ( .NOT. salsa_gases_from_chem )  THEN
           DO  lg = 1, ngases_salsa
-             CALL pmci_interp_t( salsa_gas(lg)%conc, salsa_gas_c(:,:,:,lg), kcto, iflo, ifuo,      &
-                                 jflo, jfuo, 's' )
+             CALL pmci_interp_t( salsa_gas(lg)%conc, salsa_gas_c(:,:,:,lg),                        &
+                                 kcto, iflo, ifuo, jflo, jfuo, 's' )
           ENDDO
        ENDIF
     ENDIF
@@ -5080,10 +4125,10 @@
  SUBROUTINE pmci_anterpolation
  
     IMPLICIT NONE
-    INTEGER(iwp) ::  lb  !< running index for aerosol size bins
-    INTEGER(iwp) ::  lc  !< running index for aerosol mass bins
-    INTEGER(iwp) ::  lg  !< running index for salsa gases
-    INTEGER(iwp) ::  n   !< running index for number of chemical species
+    INTEGER(iwp) ::  lb  !< Running index for aerosol size bins
+    INTEGER(iwp) ::  lc  !< Running index for aerosol mass bins
+    INTEGER(iwp) ::  lg  !< Running index for salsa gases
+    INTEGER(iwp) ::  n   !< Running index for number of chemical species
 
 
     CALL pmci_anterp_var( u,  uc,  kcto, iflu, ifuu, jflo, jfuo, kflo, kfuo, ijkfc_u, 'u' )
@@ -5097,8 +4142,8 @@
 !
 !--    Anterpolation of dissipation rate only if TKE-e closure is applied.
        IF ( rans_tke_e )  THEN
-          CALL pmci_anterp_var( diss, dissc, kcto, iflo, ifuo, jflo, jfuo, kflo, kfuo, ijkfc_s,    &
-                                'diss' )
+          CALL pmci_anterp_var( diss, dissc, kcto, iflo, ifuo, jflo, jfuo, kflo, kfuo,              &
+                                ijkfc_s, 'diss' )
        ENDIF
 
     ENDIF
@@ -5112,13 +4157,19 @@
        CALL pmci_anterp_var( q, q_c, kcto, iflo, ifuo, jflo, jfuo, kflo, kfuo, ijkfc_s, 'q' )
 
        IF ( bulk_cloud_model  .AND.  microphysics_morrison )  THEN
+
           CALL pmci_anterp_var( qc, qcc, kcto, iflo, ifuo, jflo, jfuo, kflo, kfuo, ijkfc_s, 'qc' )
+
           CALL pmci_anterp_var( nc, ncc, kcto, iflo, ifuo, jflo, jfuo, kflo, kfuo, ijkfc_s, 'nc' )
+
        ENDIF
 
        IF ( bulk_cloud_model  .AND.  microphysics_seifert )  THEN
+
           CALL pmci_anterp_var( qr, qrc, kcto, iflo, ifuo, jflo, jfuo, kflo, kfuo, ijkfc_s, 'qr' )
+
           CALL pmci_anterp_var( nr, nrc, kcto, iflo, ifuo, jflo, jfuo, kflo, kfuo, ijkfc_s, 'nr' )
+
        ENDIF
 
     ENDIF
@@ -5129,24 +4180,24 @@
 
     IF ( air_chemistry  .AND.  nesting_chem )  THEN
        DO  n = 1, nspec
-          CALL pmci_anterp_var( chem_species(n)%conc, chem_spec_c(:,:,:,n), kcto, iflo, ifuo,      &
-                                jflo, jfuo, kflo, kfuo, ijkfc_s, 's' )
+          CALL pmci_anterp_var( chem_species(n)%conc, chem_spec_c(:,:,:,n),                        &
+                                kcto, iflo, ifuo, jflo, jfuo, kflo, kfuo, ijkfc_s, 's' )
        ENDDO
     ENDIF
 
     IF ( salsa  .AND.  nesting_salsa )  THEN
        DO  lb = 1, nbins_aerosol
-          CALL pmci_anterp_var( aerosol_number(lb)%conc, aerosol_number_c(:,:,:,lb), kcto, iflo,   &
-                                ifuo, jflo, jfuo, kflo, kfuo, ijkfc_s, 's' )
+          CALL pmci_anterp_var( aerosol_number(lb)%conc, aerosol_number_c(:,:,:,lb),               &
+                                kcto, iflo, ifuo, jflo, jfuo, kflo, kfuo, ijkfc_s, 's' )
        ENDDO
        DO  lc = 1, nbins_aerosol * ncomponents_mass
-          CALL pmci_anterp_var( aerosol_mass(lc)%conc, aerosol_mass_c(:,:,:,lc), kcto, iflo, ifuo, &
-                                jflo, jfuo, kflo, kfuo, ijkfc_s, 's' )
+          CALL pmci_anterp_var( aerosol_mass(lc)%conc, aerosol_mass_c(:,:,:,lc),                   &
+                                kcto, iflo, ifuo, jflo, jfuo, kflo, kfuo, ijkfc_s, 's' )
        ENDDO
        IF ( .NOT. salsa_gases_from_chem )  THEN
           DO  lg = 1, ngases_salsa
-             CALL pmci_anterp_var( salsa_gas(lg)%conc, salsa_gas_c(:,:,:,lg), kcto, iflo, ifuo,    &
-                                   jflo, jfuo, kflo, kfuo, ijkfc_s, 's' )
+             CALL pmci_anterp_var( salsa_gas(lg)%conc, salsa_gas_c(:,:,:,lg),                      &
+                                   kcto, iflo, ifuo, jflo, jfuo, kflo, kfuo, ijkfc_s, 's' )
           ENDDO
        ENDIF
     ENDIF
@@ -5164,18 +4215,18 @@
 
     IMPLICIT NONE
 
-    CHARACTER(LEN=1), INTENT(IN) ::  edge  !< edge symbol: 'l' or 'r'
-    CHARACTER(LEN=1), INTENT(IN) ::  var   !< variable symbol: 'u', 'v', 'w' or 's'
+    CHARACTER(LEN=1), INTENT(IN) ::  edge  !< Edge symbol: 'l' or 'r'
+    CHARACTER(LEN=1), INTENT(IN) ::  var   !< Variable symbol: 'u', 'v', 'w' or 's'
 
-    INTEGER(iwp), INTENT(IN) ::  kct  !< the parent-grid index in z-direction just below the boundary value node
+    INTEGER(iwp), INTENT(IN) ::  kct  !< The parent-grid index in z-direction just below the boundary value node
 
-    INTEGER(iwp), DIMENSION(jpsa:jpna), INTENT(IN) ::  jfl  !< indicates start index of child cells belonging to certain
+    INTEGER(iwp), DIMENSION(jpsa:jpna), INTENT(IN) ::  jfl  !< Indicates start index of child cells belonging to certain
                                                             !< parent cell - y direction
-    INTEGER(iwp), DIMENSION(jpsa:jpna), INTENT(IN) ::  jfu  !< indicates end index of child cells belonging to certain
+    INTEGER(iwp), DIMENSION(jpsa:jpna), INTENT(IN) ::  jfu  !< Indicates end index of child cells belonging to certain
                                                             !< parent cell - y direction
-    INTEGER(iwp), DIMENSION(0:pg%nz+1), INTENT(IN) ::  kfl  !< indicates start index of child cells belonging to certain
+    INTEGER(iwp), DIMENSION(0:pg%nz+1), INTENT(IN) ::  kfl  !< Indicates start index of child cells belonging to certain
                                                             !< parent cell - z direction
-    INTEGER(iwp), DIMENSION(0:pg%nz+1), INTENT(IN) ::  kfu  !< indicates end index of child cells belonging to certain
+    INTEGER(iwp), DIMENSION(0:pg%nz+1), INTENT(IN) ::  kfu  !< Indicates end index of child cells belonging to certain
                                                             !< parent cell - z direction
 
     REAL(wp), DIMENSION(nzb:nzt+1,nysg:nyng,nxlg:nxrg), INTENT(INOUT) ::  child_array  !< Child-grid array
@@ -5184,27 +4235,26 @@
 
 !
 !-- Local variables:
-    INTEGER(iwp) ::  icb    !< fixed child-grid index in the x-direction pointing to the node just behind the
+    INTEGER(iwp) ::  icb    !< Fixed child-grid index in the x-direction pointing to the node just behind the
                             !< boundary-value node
-    INTEGER(iwp) ::  icbc   !< fixed child-grid index in the x-direction pointing to the boundary-value nodes
-    INTEGER(iwp) ::  icbgp  !< index running over the redundant boundary ghost points in the x-direction
+    INTEGER(iwp) ::  icbc   !< Fixed child-grid index in the x-direction pointing to the boundary-value nodes
+    INTEGER(iwp) ::  icbgp  !< Index running over the redundant boundary ghost points in the x-direction
     INTEGER(iwp) ::  ierr   !< MPI error code
-    INTEGER(iwp) ::  ipbeg  !< parent-grid index in the x-direction pointing to the starting point of workarr_lr
+    INTEGER(iwp) ::  ipbeg  !< Parent-grid index in the x-direction pointing to the starting point of workarr_lr
                             !< in the parent-grid array
-    INTEGER(iwp) ::  ipw    !< reduced parent-grid index in the x-direction for workarr_lr pointing to
+    INTEGER(iwp) ::  ipw    !< Reduced parent-grid index in the x-direction for workarr_lr pointing to
                             !< the boundary ghost node
-    INTEGER(iwp) ::  ipwp   !< reduced parent-grid index in the x-direction for workarr_lr pointing to
+    INTEGER(iwp) ::  ipwp   !< Reduced parent-grid index in the x-direction for workarr_lr pointing to
                             !< the first prognostic node
-    INTEGER(iwp) ::  jc     !< running child-grid index in the y-direction
-    INTEGER(iwp) ::  jp     !< running parent-grid index in the y-direction
-    INTEGER(iwp) ::  kc     !< running child-grid index in the z-direction
-    INTEGER(iwp) ::  kp     !< running parent-grid index in the z-direction
+    INTEGER(iwp) ::  jc     !< Running child-grid index in the y-direction
+    INTEGER(iwp) ::  jp     !< Running parent-grid index in the y-direction
+    INTEGER(iwp) ::  kc     !< Running child-grid index in the z-direction
+    INTEGER(iwp) ::  kp     !< Running parent-grid index in the z-direction
 
-    REAL(wp) ::  cb          !< interpolation coefficient for the boundary ghost node
-    REAL(wp) ::  cp          !< interpolation coefficient for the first prognostic node
-    REAL(wp) ::  c_interp_1  !< value interpolated to the flux point in x direction from the parent-grid data
-    REAL(wp) ::  c_interp_2  !< auxiliary value interpolated  to the flux point in x direction from the parent-grid data
-    
+    REAL(wp) ::  cb          !< Interpolation coefficient for the boundary ghost node
+    REAL(wp) ::  cp          !< Interpolation coefficient for the first prognostic node
+    REAL(wp) ::  c_interp_1  !< Value interpolated to the flux point in x direction from the parent-grid data
+    REAL(wp) ::  c_interp_2  !< Auxiliary value interpolated  to the flux point in x direction from the parent-grid data
 !
 !-- Check which edge is to be handled
     IF ( edge == 'l' )  THEN
@@ -5251,15 +4301,15 @@
 !
 !-- Substitute the necessary parent-grid data to the work array workarr_lr.
     workarr_lr = 0.0_wp
-    IF ( npey > 1 )  THEN
+    IF ( pdims(2) > 1 )  THEN
 
        IF ( bc_dirichlet_s )  THEN
           workarr_lr(0:pg%nz+1,jpsw:jpnw-1,0:2) = parent_array(0:pg%nz+1,jpsw:jpnw-1,ipbeg:ipbeg+2)
        ELSE IF ( bc_dirichlet_n )  THEN
           workarr_lr(0:pg%nz+1,jpsw+1:jpnw,0:2) = parent_array(0:pg%nz+1,jpsw+1:jpnw,ipbeg:ipbeg+2)
        ELSE
-          workarr_lr(0:pg%nz+1,jpsw+1:jpnw-1,0:2) =                                                &
-                                                parent_array(0:pg%nz+1,jpsw+1:jpnw-1,ipbeg:ipbeg+2)
+          workarr_lr(0:pg%nz+1,jpsw+1:jpnw-1,0:2) = parent_array(0:pg%nz+1,jpsw+1:jpnw-1,          &
+                                                                 ipbeg:ipbeg+2)
        ENDIF
 !
 !--    South-north exchange if more than one PE subdomain in the y-direction. Note that in case of
@@ -5352,10 +4402,9 @@
 !
 !--          Then fill up the nodes in between with the averages
              DO  kc = kfu(kp-1) + 1, kfu(kp) - 1
-                child_array(kc,jfl(jp):jfu(jp),icbc) = 0.5_wp * (                                  &
-                                                       child_array(kfu(kp-1),jfl(jp):jfu(jp),icbc) &
-                                                     + child_array(kfu(kp),jfl(jp):jfu(jp),icbc)   &
-                                                                )
+                child_array(kc,jfl(jp):jfu(jp),icbc) = 0.5_wp * ( child_array(kfu(kp-1),           &
+                                                                  jfl(jp):jfu(jp),icbc)            &
+                                                       + child_array(kfu(kp),jfl(jp):jfu(jp),icbc) )
              ENDDO
 
           ENDDO
@@ -5403,18 +4452,18 @@
  
     IMPLICIT NONE
 
-    CHARACTER(LEN=1), INTENT(IN) ::  edge  !< edge symbol: 's' or 'n'
-    CHARACTER(LEN=1), INTENT(IN) ::  var   !< variable symbol: 'u', 'v', 'w' or 's'
+    CHARACTER(LEN=1), INTENT(IN) ::  edge  !< Edge symbol: 's' or 'n'
+    CHARACTER(LEN=1), INTENT(IN) ::  var   !< Variable symbol: 'u', 'v', 'w' or 's'
 
-    INTEGER(iwp), INTENT(IN) ::  kct  !< the parent-grid index in z-direction just below the boundary value node
+    INTEGER(iwp), INTENT(IN) ::  kct  !< The parent-grid index in z-direction just below the boundary value node
 
-    INTEGER(iwp), DIMENSION(ipla:ipra), INTENT(IN) ::  ifl  !< indicates start index of child cells belonging to certain
+    INTEGER(iwp), DIMENSION(ipla:ipra), INTENT(IN) ::  ifl  !< Indicates start index of child cells belonging to certain
                                                             !< parent cell - x direction
-    INTEGER(iwp), DIMENSION(ipla:ipra), INTENT(IN) ::  ifu  !< indicates end index of child cells belonging to certain
+    INTEGER(iwp), DIMENSION(ipla:ipra), INTENT(IN) ::  ifu  !< Indicates end index of child cells belonging to certain
                                                             !< parent cell - x direction
-    INTEGER(iwp), DIMENSION(0:pg%nz+1), INTENT(IN) ::  kfl  !< indicates start index of child cells belonging to certain
+    INTEGER(iwp), DIMENSION(0:pg%nz+1), INTENT(IN) ::  kfl  !< Indicates start index of child cells belonging to certain
                                                             !< parent cell - z direction
-    INTEGER(iwp), DIMENSION(0:pg%nz+1), INTENT(IN) ::  kfu  !< indicates end index of child cells belonging to certain
+    INTEGER(iwp), DIMENSION(0:pg%nz+1), INTENT(IN) ::  kfu  !< Indicates end index of child cells belonging to certain
                                                             !< parent cell - z direction
 
     REAL(wp), DIMENSION(nzb:nzt+1,nysg:nyng,nxlg:nxrg), INTENT(INOUT) ::  child_array  !< Child-grid array
@@ -5422,26 +4471,27 @@
     REAL(wp), DIMENSION(0:pg%nz+1,jps:jpn,ipl:ipr), INTENT(IN) ::  parent_array  !< Parent-grid array
 !
 !-- Local variables:
-    INTEGER(iwp) ::  ic     !< running child-grid index in the x-direction
+    INTEGER(iwp) ::  ic     !< Running child-grid index in the x-direction
     INTEGER(iwp) ::  ierr   !< MPI error code
-    INTEGER(iwp) ::  ip     !< running parent-grid index in the x-direction
-    INTEGER(iwp) ::  jcb    !< fixed child-grid index in the y-direction pointing to the node just behind the
+    INTEGER(iwp) ::  ip     !< Running parent-grid index in the x-direction
+    INTEGER(iwp) ::  jcb    !< Fixed child-grid index in the y-direction pointing to the node just behind the
                             !< boundary-value node
-    INTEGER(iwp) ::  jcbc   !< fixed child-grid index in the y-direction pointing to the boundary-value nodes
-    INTEGER(iwp) ::  jcbgp  !< index running over the redundant boundary ghost points in y-direction
-    INTEGER(iwp) ::  jpbeg  !< parent-grid index in the y-direction pointing to the starting point of workarr_sn
+    INTEGER(iwp) ::  jcbc   !< Fixed child-grid index in the y-direction pointing to the boundary-value nodes
+    INTEGER(iwp) ::  jcbgp  !< Index running over the redundant boundary ghost points in y-direction
+    INTEGER(iwp) ::  jpbeg  !< Parent-grid index in the y-direction pointing to the starting point of workarr_sn
                             !< in the parent-grid array
-    INTEGER(iwp) ::  jpw    !< reduced parent-grid index in the y-direction for workarr_sn pointing to
+    INTEGER(iwp) ::  jpw    !< Reduced parent-grid index in the y-direction for workarr_sn pointing to
                             !< the boundary ghost node
-    INTEGER(iwp) ::  jpwp   !< reduced parent-grid index in the y-direction for workarr_sn pointing to
+    INTEGER(iwp) ::  jpwp   !< Reduced parent-grid index in the y-direction for workarr_sn pointing to
                             !< the first prognostic node
-    INTEGER(iwp) ::  kc     !< running child-grid index in the z-direction
-    INTEGER(iwp) ::  kp     !< running parent-grid index in the z-direction
+    INTEGER(iwp) ::  kc     !< Running child-grid index in the z-direction
+    INTEGER(iwp) ::  kp     !< Running parent-grid index in the z-direction
 
-    REAL(wp) ::  cb          !< interpolation coefficient for the boundary ghost node
-    REAL(wp) ::  cp          !< interpolation coefficient for the first prognostic node
-    REAL(wp) ::  c_interp_1  !< value interpolated to the flux point in x direction from the parent-grid data
-    REAL(wp) ::  c_interp_2  !< auxiliary value interpolated  to the flux point in x direction from the parent-grid data
+    REAL(wp) ::  cb          !< Interpolation coefficient for the boundary ghost node
+    REAL(wp) ::  cp          !< Interpolation coefficient for the first prognostic node
+    REAL(wp) ::  c_interp_1  !< Value interpolated to the flux point in x direction from the parent-grid data
+    REAL(wp) ::  c_interp_2  !< Auxiliary value interpolated  to the flux point in x direction from the parent-grid data
+
 
 !
 !-- Check which edge is to be handled: south or north
@@ -5489,15 +4539,15 @@
 !
 !-- Substitute the necessary parent-grid data to the work array workarr_sn.
     workarr_sn = 0.0_wp
-    IF ( npex > 1 )  THEN
+    IF ( pdims(1) > 1 )  THEN
 
        IF ( bc_dirichlet_l )  THEN
           workarr_sn(0:pg%nz+1,0:2,iplw:iprw-1) = parent_array(0:pg%nz+1,jpbeg:jpbeg+2,iplw:iprw-1)
        ELSE IF ( bc_dirichlet_r )  THEN
           workarr_sn(0:pg%nz+1,0:2,iplw+1:iprw) = parent_array(0:pg%nz+1,jpbeg:jpbeg+2,iplw+1:iprw)
        ELSE
-          workarr_sn(0:pg%nz+1,0:2,iplw+1:iprw-1) =                                                &
-                                                parent_array(0:pg%nz+1,jpbeg:jpbeg+2,iplw+1:iprw-1)
+          workarr_sn(0:pg%nz+1,0:2,iplw+1:iprw-1) = parent_array(0:pg%nz+1,jpbeg:jpbeg+2,          &
+                                                                 iplw+1:iprw-1)
        ENDIF
 !
 !--    Left-right exchange if more than one PE subdomain in the x-direction. Note that in case of
@@ -5591,10 +4641,9 @@
 !
 !--          Then fill up the nodes in between with the averages
              DO  kc = kfu(kp-1) + 1, kfu(kp) - 1
-                child_array(kc,jcbc,ifl(ip):ifu(ip)) = 0.5_wp * (                                  &
-                                                       child_array(kfu(kp-1),jcbc,ifl(ip):ifu(ip)) &
-                                                     + child_array(kfu(kp),jcbc,ifl(ip):ifu(ip))   &
-                                                                )
+                child_array(kc,jcbc,ifl(ip):ifu(ip)) = 0.5_wp * ( child_array(kfu(kp-1),           &
+                                                                  jcbc,ifl(ip):ifu(ip))            &
+                                                       + child_array(kfu(kp),jcbc,ifl(ip):ifu(ip)) )
              ENDDO
 
           ENDDO
@@ -5642,47 +4691,48 @@
  
     IMPLICIT NONE
 
-    CHARACTER(LEN=1), INTENT(IN) ::  var  !< variable symbol: 'u', 'v', 'w' or 's'
+    CHARACTER(LEN=1), INTENT(IN) ::  var  !< Variable symbol: 'u', 'v', 'w' or 's'
 
-    INTEGER(iwp), INTENT(IN) ::  kct  !< the parent-grid index in z-direction just below the boundary value node
+    INTEGER(iwp), INTENT(IN) ::  kct  !< The parent-grid index in z-direction just below the boundary value node
 
-    INTEGER(iwp), DIMENSION(ipla:ipra), INTENT(IN) ::  ifl  !< indicates start index of child cells belonging to certain
+    INTEGER(iwp), DIMENSION(ipla:ipra), INTENT(IN) ::  ifl  !< Indicates start index of child cells belonging to certain
                                                             !< parent cell - x direction
-    INTEGER(iwp), DIMENSION(ipla:ipra), INTENT(IN) ::  ifu  !< indicates end index of child cells belonging to certain
+    INTEGER(iwp), DIMENSION(ipla:ipra), INTENT(IN) ::  ifu  !< Indicates end index of child cells belonging to certain
                                                             !< parent cell - x direction
-    INTEGER(iwp), DIMENSION(jpsa:jpna), INTENT(IN) ::  jfl  !< indicates start index of child cells belonging to certain
+    INTEGER(iwp), DIMENSION(jpsa:jpna), INTENT(IN) ::  jfl  !< Indicates start index of child cells belonging to certain
                                                             !< parent cell - y direction
-    INTEGER(iwp), DIMENSION(jpsa:jpna), INTENT(IN) ::  jfu  !< indicates end index of child cells belonging to certain
+    INTEGER(iwp), DIMENSION(jpsa:jpna), INTENT(IN) ::  jfu  !< Indicates end index of child cells belonging to certain
                                                             !< parent cell - y direction
 
     REAL(wp), DIMENSION(nzb:nzt+1,nysg:nyng,nxlg:nxrg), INTENT(INOUT) ::  child_array  !< Child-grid array
 
     REAL(wp), DIMENSION(0:pg%nz+1,jps:jpn,ipl:ipr), INTENT(IN) ::  parent_array  !< Parent-grid array
 
+
 !
 !-- Local variables:
-    INTEGER(iwp) ::  ic          !< running child-grid index in the x-direction
+    INTEGER(iwp) ::  ic          !< Running child-grid index in the x-direction
     INTEGER(iwp) ::  ierr        !< MPI error code
-    INTEGER(iwp) ::  iplc        !< lower parent-grid index limit in the x-direction for copying parent-grid
+    INTEGER(iwp) ::  iplc        !< Lower parent-grid index limit in the x-direction for copying parent-grid
                                  !< array data to workarr_t
-    INTEGER(iwp) ::  iprc        !< upper parent-grid index limit in the x-direction for copying parent-grid
+    INTEGER(iwp) ::  iprc        !< Upper parent-grid index limit in the x-direction for copying parent-grid
                                  !< array data to workarr_t
-    INTEGER(iwp) ::  jc          !< running child-grid index in the y-direction
-    INTEGER(iwp) ::  jpsc        !< lower parent-grid index limit in the y-direction for copying parent-grid
+    INTEGER(iwp) ::  jc          !< Running child-grid index in the y-direction
+    INTEGER(iwp) ::  jpsc        !< Lower parent-grid index limit in the y-direction for copying parent-grid
                                  !< array data to workarr_t
-    INTEGER(iwp) ::  jpnc        !< upper parent-grid-index limit in the y-direction for copying parent-grid
+    INTEGER(iwp) ::  jpnc        !< Upper parent-grid-index limit in the y-direction for copying parent-grid
                                  !< array data to workarr_t
-    INTEGER(iwp) ::  kc          !< vertical child-grid index fixed to the boundary-value level
-    INTEGER(iwp) ::  ip          !< running parent-grid index in the x-direction
-    INTEGER(iwp) ::  jp          !< running parent-grid index in the y-direction
-    INTEGER(iwp) ::  kpw         !< reduced parent-grid index in the z-direction for workarr_t pointing to
+    INTEGER(iwp) ::  kc          !< Vertical child-grid index fixed to the boundary-value level
+    INTEGER(iwp) ::  ip          !< Running parent-grid index in the x-direction
+    INTEGER(iwp) ::  jp          !< Running parent-grid index in the y-direction
+    INTEGER(iwp) ::  kpw         !< Reduced parent-grid index in the z-direction for workarr_t pointing to
                                  !< the boundary ghost node
 
-    REAL(wp) ::  c31         !< interpolation coefficient for the 3rd-order WS scheme
-    REAL(wp) ::  c32         !< interpolation coefficient for the 3rd-order WS scheme
-    REAL(wp) ::  c33         !< interpolation coefficient for the 3rd-order WS scheme
-    REAL(wp) ::  c_interp_1  !< value interpolated to the flux point in z direction from the parent-grid data
-    REAL(wp) ::  c_interp_2  !< auxiliary value interpolated to the flux point in z direction from the parent-grid data
+    REAL(wp) ::  c31         !< Interpolation coefficient for the 3rd-order WS scheme
+    REAL(wp) ::  c32         !< Interpolation coefficient for the 3rd-order WS scheme
+    REAL(wp) ::  c33         !< Interpolation coefficient for the 3rd-order WS scheme
+    REAL(wp) ::  c_interp_1  !< Value interpolated to the flux point in z direction from the parent-grid data
+    REAL(wp) ::  c_interp_2  !< Auxiliary value interpolated to the flux point in z direction from the parent-grid data
 
 
     IF ( var == 'w' )  THEN
@@ -5714,16 +4764,16 @@
     iprc = iprw - 1
     jpsc = jpsw + 1
     jpnc = jpnw - 1
-    IF ( bc_dirichlet_l  .AND.  .NOT. nesting_bounds_vertical_only )  THEN
+    IF ( bc_dirichlet_l )  THEN
        iplc = iplw
     ENDIF
-    IF ( bc_dirichlet_r  .AND.  .NOT. nesting_bounds_vertical_only )  THEN
+    IF ( bc_dirichlet_r )  THEN
        iprc = iprw
     ENDIF
-    IF ( bc_dirichlet_s  .AND.  .NOT. nesting_bounds_vertical_only )  THEN
+    IF ( bc_dirichlet_s )  THEN
        jpsc = jpsw
     ENDIF
-    IF ( bc_dirichlet_n  .AND.  .NOT. nesting_bounds_vertical_only )  THEN
+    IF ( bc_dirichlet_n )  THEN
        jpnc = jpnw
     ENDIF
     workarr_t = 0.0_wp
@@ -5731,7 +4781,7 @@
 !
 !-- Left-right exchange if more than one PE subdomain in the x-direction. Note that in case of 3-D
 !-- nesting the left and right boundaries are not exchanged because the nest domain is not cyclic.
-    IF ( npex > 1 )  THEN
+    IF ( pdims(1) > 1 )  THEN
 !
 !--    From left to right
        CALL MPI_SENDRECV( workarr_t(0,jpsw,iplw+1), 1, workarr_t_exchange_type_y, pleft, 0,        &
@@ -5747,7 +4797,7 @@
 !-- South-north exchange if more than one PE subdomain in the y-direction.
 !-- Note that in case of 3-D nesting the south and north boundaries are not exchanged because the
 !-- nest domain is not cyclic.
-    IF ( npey > 1 )  THEN
+    IF ( pdims(2) > 1 )  THEN
 !
 !--    From south to north
        CALL MPI_SENDRECV( workarr_t(0,jpsw+1,iplw), 1, workarr_t_exchange_type_x, psouth, 2,       &
@@ -5913,45 +4963,45 @@
 
     IMPLICIT NONE
 
-    CHARACTER(LEN=*), INTENT(IN) ::  var  !< variable symbol: 'u', 'v', 'w' or 's'
+    CHARACTER(LEN=*), INTENT(IN) ::  var  !< Variable symbol: 'u', 'v', 'w' or 's'
 
-    INTEGER(iwp), INTENT(IN) ::  kct  !< top boundary index for anterpolation along z
+    INTEGER(iwp), INTENT(IN) ::  kct  !< Top boundary index for anterpolation along z
 
     INTEGER(iwp), DIMENSION(0:pg%nz+1,jpsa:jpna,ipla:ipra), INTENT(IN) ::  ijkfc  !< number of child grid points contributing
                                                                                   !< to a parent grid box
-    INTEGER(iwp), DIMENSION(ipla:ipra), INTENT(IN) ::  ifl  !< indicates start index of child cells belonging to certain
+    INTEGER(iwp), DIMENSION(ipla:ipra), INTENT(IN) ::  ifl  !< Indicates start index of child cells belonging to certain
                                                             !< parent cell - x direction
-    INTEGER(iwp), DIMENSION(ipla:ipra), INTENT(IN) ::  ifu  !< indicates end index of child cells belonging to certain
+    INTEGER(iwp), DIMENSION(ipla:ipra), INTENT(IN) ::  ifu  !< Indicates end index of child cells belonging to certain
                                                             !< parent cell - x direction
-    INTEGER(iwp), DIMENSION(jpsa:jpna), INTENT(IN) ::  jfl  !< indicates start index of child cells belonging to certain
+    INTEGER(iwp), DIMENSION(jpsa:jpna), INTENT(IN) ::  jfl  !< Indicates start index of child cells belonging to certain
                                                             !< parent cell - y direction
-    INTEGER(iwp), DIMENSION(jpsa:jpna), INTENT(IN) ::  jfu  !< indicates end index of child cells belonging to certain
+    INTEGER(iwp), DIMENSION(jpsa:jpna), INTENT(IN) ::  jfu  !< Indicates end index of child cells belonging to certain
                                                             !< parent cell - y direction
-    INTEGER(iwp), DIMENSION(0:pg%nz+1), INTENT(IN) ::  kfl  !< indicates start index of child cells belonging to certain
+    INTEGER(iwp), DIMENSION(0:pg%nz+1), INTENT(IN) ::  kfl  !< Indicates start index of child cells belonging to certain
                                                             !< parent cell - z direction
-    INTEGER(iwp), DIMENSION(0:pg%nz+1), INTENT(IN) ::  kfu  !< indicates end index of child cells belonging to certain
+    INTEGER(iwp), DIMENSION(0:pg%nz+1), INTENT(IN) ::  kfu  !< Indicates end index of child cells belonging to certain
                                                             !< parent cell - z direction
 
-    REAL(wp), DIMENSION(nzb:nzt+1,nysg:nyng,nxlg:nxrg), INTENT(IN) ::  child_array  !< child-grid array
+    REAL(wp), DIMENSION(nzb:nzt+1,nysg:nyng,nxlg:nxrg), INTENT(IN) ::  child_array  !< Child-grid array
 
-    REAL(wp), DIMENSION(0:pg%nz+1,jps:jpn,ipl:ipr), INTENT(INOUT) ::  parent_array  !< parent-grid array
+    REAL(wp), DIMENSION(0:pg%nz+1,jps:jpn,ipl:ipr), INTENT(INOUT) ::  parent_array  !< Parent-grid array
 
 !
 !-- Local variables:
-    INTEGER(iwp) ::  ic              !< running index x-direction - child grid
-    INTEGER(iwp) ::  ip              !< running index x-direction - parent grid
-    INTEGER(iwp) ::  ipl_anterp      !< left boundary index for anterpolation along x
-    INTEGER(iwp) ::  ipr_anterp      !< right boundary index for anterpolation along x
-    INTEGER(iwp) ::  jc              !< running index y-direction - child grid
-    INTEGER(iwp) ::  jp              !< running index y-direction - parent grid
-    INTEGER(iwp) ::  jpn_anterp      !< north boundary index for anterpolation along y
-    INTEGER(iwp) ::  jps_anterp      !< south boundary index for anterpolation along y
-    INTEGER(iwp) ::  kc              !< running index z-direction - child grid
-    INTEGER(iwp) ::  kp              !< running index z-direction - parent grid
-    INTEGER(iwp) ::  kpt_anterp      !< top boundary index for anterpolation along z
+    INTEGER(iwp) ::  ic              !< Running index x-direction - child grid
+    INTEGER(iwp) ::  ip              !< Running index x-direction - parent grid
+    INTEGER(iwp) ::  ipl_anterp      !< Left boundary index for anterpolation along x
+    INTEGER(iwp) ::  ipr_anterp      !< Right boundary index for anterpolation along x
+    INTEGER(iwp) ::  jc              !< Running index y-direction - child grid
+    INTEGER(iwp) ::  jp              !< Running index y-direction - parent grid
+    INTEGER(iwp) ::  jpn_anterp      !< North boundary index for anterpolation along y
+    INTEGER(iwp) ::  jps_anterp      !< South boundary index for anterpolation along y
+    INTEGER(iwp) ::  kc              !< Running index z-direction - child grid
+    INTEGER(iwp) ::  kp              !< Running index z-direction - parent grid
+    INTEGER(iwp) ::  kpt_anterp      !< Top boundary index for anterpolation along z
     INTEGER(iwp) ::  var_flag        !< bit number used to flag topography on respective grid
 
-    REAL(wp) ::  cellsum  !< sum of respective child cells belonging to parent cell
+    REAL(wp) ::  cellsum  !< Sum of respective child cells belonging to parent cell
 
 !
 !-- Define the index bounds ipl_anterp, ipr_anterp, jps_anterp and jpn_anterp.
@@ -5971,17 +5021,15 @@
 !-- pmci_compute_kpb_anterp.
     kpt_anterp = kct - 1 - anterpolation_buffer_width
 
+    IF ( nesting_mode /= 'vertical' )  THEN
 !
-!-- Set the anterpolation buffers on the lateral boundaries (not required, if the child has
-!-- cyclic lateral boundaries and if pure vertical nesting is used).
-    IF ( .NOT. bc_lr_cyc  .AND.  .NOT. nesting_bounds_vertical_only )  THEN
+!--    Set the anterpolation buffers on the lateral boundaries
        ipl_anterp = MAX( ipl, iplg + 3 + anterpolation_buffer_width )
        ipr_anterp = MIN( ipr, iprg - 3 - anterpolation_buffer_width )
-    ENDIF
-    IF ( .NOT. bc_ns_cyc  .AND.  .NOT. nesting_bounds_vertical_only )  THEN
        jps_anterp = MAX( jps, jpsg + 3 + anterpolation_buffer_width )
        jpn_anterp = MIN( jpn, jpng - 3 - anterpolation_buffer_width )
-    ENDIF 
+
+    ENDIF
 !
 !-- Set masking bit for topography flags
     IF ( var == 'u' )  THEN
@@ -6007,7 +5055,7 @@
                 DO  jc = jfl(jp), jfu(jp)
                    DO  kc = kfl(kp), kfu(kp)
                       cellsum = cellsum + MERGE( child_array(kc,jc,ic), 0.0_wp,                    &
-                                                 BTEST( topo_flags(kc,jc,ic), var_flag ) )
+                                                 BTEST( wall_flags_total_0(kc,jc,ic), var_flag ) )
                    ENDDO
                 ENDDO
              ENDDO
@@ -6043,54 +5091,71 @@
 #if defined( __parallel )
     IMPLICIT NONE
 
-    INTEGER(iwp) ::  ic  !< index along x-direction
-    INTEGER(iwp) ::  jc  !< index along y-direction
-    INTEGER(iwp) ::  kc  !< index along z-direction
-    INTEGER(iwp) ::  lb  !< running index for aerosol size bins
-    INTEGER(iwp) ::  lc  !< running index for aerosol mass bins
-    INTEGER(iwp) ::  lg  !< running index for salsa gases
-    INTEGER(iwp) ::  m   !< running index for surface type
-    INTEGER(iwp) ::  n   !< running index for number of chemical species
+    INTEGER(iwp) ::  ic  !< Index along x-direction
+    INTEGER(iwp) ::  jc  !< Index along y-direction
+    INTEGER(iwp) ::  kc  !< Index along z-direction
+    INTEGER(iwp) ::  lb  !< Running index for aerosol size bins
+    INTEGER(iwp) ::  lc  !< Running index for aerosol mass bins
+    INTEGER(iwp) ::  lg  !< Running index for salsa gases
+    INTEGER(iwp) ::  m   !< Running index for surface type
+    INTEGER(iwp) ::  n   !< Running index for number of chemical species
 
 
     IF ( debug_output_timestep )  CALL debug_message( 'pmci_boundary_conds', 'start' )
 !
-!-- Set Dirichlet boundary conditions for horizontal velocity components at topography grid points.
+!-- Set Dirichlet boundary conditions for horizontal velocity components
     IF ( ibc_uv_b == 0 )  THEN
-       DO  m = 1, bc_hv%ns
 !
-!--       Only consider horizontal surfaces. This is to maintain comparability to prior versions.
-!--       Later on, treat also vertical surfaces.
-          IF ( bc_hv%koff(m) /= 0 )  THEN
-             ic = bc_hv%i(m)
-             jc = bc_hv%j(m)
-             kc = bc_hv%k(m)
-             u(kc+bc_hv%koff(m),jc+bc_hv%joff(m),ic+bc_hv%ioff(m)) = 0.0_wp
-             v(kc+bc_hv%koff(m),jc+bc_hv%joff(m),ic+bc_hv%ioff(m)) = 0.0_wp
-          ENDIF
+!--    Upward-facing surfaces
+       DO  m = 1, bc_h(0)%ns
+          ic = bc_h(0)%i(m)
+          jc = bc_h(0)%j(m)
+          kc = bc_h(0)%k(m)
+          u(kc-1,jc,ic) = 0.0_wp
+          v(kc-1,jc,ic) = 0.0_wp
+       ENDDO
+!
+!--    Downward-facing surfaces
+       DO  m = 1, bc_h(1)%ns
+          ic = bc_h(1)%i(m)
+          jc = bc_h(1)%j(m)
+          kc = bc_h(1)%k(m)
+          u(kc+1,jc,ic) = 0.0_wp
+          v(kc+1,jc,ic) = 0.0_wp
        ENDDO
     ENDIF
 !
 !-- Set Dirichlet boundary conditions for vertical velocity component
-    DO  m = 1, bc_hv%ns
-       IF ( bc_hv%koff(m) /= 0  )  THEN
-          ic = bc_hv%i(m)
-          jc = bc_hv%j(m)
-          kc = bc_hv%k(m)
-          w(kc+bc_hv%koff(m),jc+bc_hv%joff(m),ic+bc_hv%ioff(m)) = 0.0_wp
-       ENDIF
+!-- Upward-facing surfaces
+    DO  m = 1, bc_h(0)%ns
+       ic = bc_h(0)%i(m)
+       jc = bc_h(0)%j(m)
+       kc = bc_h(0)%k(m)
+       w(kc-1,jc,ic) = 0.0_wp
+    ENDDO
+!
+!-- Downward-facing surfaces
+    DO  m = 1, bc_h(1)%ns
+       ic = bc_h(1)%i(m)
+       jc = bc_h(1)%j(m)
+       kc = bc_h(1)%k(m)
+       w(kc+1,jc,ic) = 0.0_wp
     ENDDO
 !
 !-- Set Neumann boundary conditions for potential temperature
     IF ( .NOT. neutral )  THEN
        IF ( ibc_pt_b == 1 )  THEN
-          DO  m = 1, bc_hv%ns
-             IF ( bc_hv%koff(m) /= 0  )  THEN
-                ic = bc_hv%i(m)
-                jc = bc_hv%j(m)
-                kc = bc_hv%k(m)
-                pt(kc+bc_hv%koff(m),jc+bc_hv%joff(m),ic+bc_hv%ioff(m)) = pt(kc,jc,ic)
-             ENDIF
+          DO  m = 1, bc_h(0)%ns
+             ic = bc_h(0)%i(m)
+             jc = bc_h(0)%j(m)
+             kc = bc_h(0)%k(m)
+             pt(kc-1,jc,ic) = pt(kc,jc,ic)
+          ENDDO
+          DO  m = 1, bc_h(1)%ns
+             ic = bc_h(1)%i(m)
+             jc = bc_h(1)%j(m)
+             kc = bc_h(1)%k(m)
+             pt(kc+1,jc,ic) = pt(kc,jc,ic)
           ENDDO
        ENDIF
     ENDIF
@@ -6098,36 +5163,51 @@
 !-- Set Neumann boundary conditions for humidity and cloud-physical quantities
     IF ( humidity )  THEN
        IF ( ibc_q_b == 1 )  THEN
-          DO  m = 1, bc_hv%ns
-             IF ( bc_hv%koff(m) /= 0  )  THEN
-                ic = bc_hv%i(m)
-                jc = bc_hv%j(m)
-                kc = bc_hv%k(m)
-                q(kc+bc_hv%koff(m),jc+bc_hv%joff(m),ic+bc_hv%ioff(m)) = q(kc,jc,ic)
-             ENDIF
+          DO  m = 1, bc_h(0)%ns
+             ic = bc_h(0)%i(m)
+             jc = bc_h(0)%j(m)
+             kc = bc_h(0)%k(m)
+             q(kc-1,jc,ic) = q(kc,jc,ic)
+          ENDDO
+          DO  m = 1, bc_h(1)%ns
+             ic = bc_h(1)%i(m)
+             jc = bc_h(1)%j(m)
+             kc = bc_h(1)%k(m)
+             q(kc+1,jc,ic) = q(kc,jc,ic)
           ENDDO
        ENDIF
        IF ( bulk_cloud_model  .AND.  microphysics_morrison )  THEN
-          DO  m = 1, bc_hv%ns
-             IF ( bc_hv%koff(m) /= 0  )  THEN
-                ic = bc_hv%i(m)
-                jc = bc_hv%j(m)
-                kc = bc_hv%k(m)
-                nc(kc+bc_hv%koff(m),jc+bc_hv%joff(m),ic+bc_hv%ioff(m)) = 0.0_wp
-                qc(kc+bc_hv%koff(m),jc+bc_hv%joff(m),ic+bc_hv%ioff(m)) = 0.0_wp
-             ENDIF
+          DO  m = 1, bc_h(0)%ns
+             ic = bc_h(0)%i(m)
+             jc = bc_h(0)%j(m)
+             kc = bc_h(0)%k(m)
+             nc(kc-1,jc,ic) = 0.0_wp
+             qc(kc-1,jc,ic) = 0.0_wp
+          ENDDO
+          DO  m = 1, bc_h(1)%ns
+             ic = bc_h(1)%i(m)
+             jc = bc_h(1)%j(m)
+             kc = bc_h(1)%k(m)
+
+             nc(kc+1,jc,ic) = 0.0_wp
+             qc(kc+1,jc,ic) = 0.0_wp
           ENDDO
        ENDIF
 
        IF ( bulk_cloud_model  .AND.  microphysics_seifert )  THEN
-          DO  m = 1, bc_hv%ns
-             IF ( bc_hv%koff(m) /= 0  )  THEN
-                ic = bc_hv%i(m)
-                jc = bc_hv%j(m)
-                kc = bc_hv%k(m)
-                nr(kc+bc_hv%koff(m),jc+bc_hv%joff(m),ic+bc_hv%ioff(m)) = 0.0_wp
-                qr(kc+bc_hv%koff(m),jc+bc_hv%joff(m),ic+bc_hv%ioff(m)) = 0.0_wp
-             ENDIF
+          DO  m = 1, bc_h(0)%ns
+             ic = bc_h(0)%i(m)
+             jc = bc_h(0)%j(m)
+             kc = bc_h(0)%k(m)
+             nr(kc-1,jc,ic) = 0.0_wp
+             qr(kc-1,jc,ic) = 0.0_wp
+          ENDDO
+          DO  m = 1, bc_h(1)%ns
+             ic = bc_h(1)%i(m)
+             jc = bc_h(1)%j(m)
+             kc = bc_h(1)%k(m)
+             nr(kc+1,jc,ic) = 0.0_wp
+             qr(kc+1,jc,ic) = 0.0_wp
           ENDDO
        ENDIF
 
@@ -6136,13 +5216,17 @@
 !-- Set Neumann boundary conditions for passive scalar
     IF ( passive_scalar )  THEN
        IF ( ibc_s_b == 1 )  THEN
-          DO  m = 1, bc_hv%ns
-             IF ( bc_hv%koff(m) /= 0  )  THEN
-                ic = bc_hv%i(m)
-                jc = bc_hv%j(m)
-                kc = bc_hv%k(m)
-                s(kc+bc_hv%koff(m),jc+bc_hv%joff(m),ic+bc_hv%ioff(m)) = s(kc,jc,ic)
-             ENDIF
+          DO  m = 1, bc_h(0)%ns
+             ic = bc_h(0)%i(m)
+             jc = bc_h(0)%j(m)
+             kc = bc_h(0)%k(m)
+             s(kc-1,jc,ic) = s(kc,jc,ic)
+          ENDDO
+          DO  m = 1, bc_h(1)%ns
+             ic = bc_h(1)%i(m)
+             jc = bc_h(1)%j(m)
+             kc = bc_h(1)%k(m)
+             s(kc+1,jc,ic) = s(kc,jc,ic)
           ENDDO
        ENDIF
     ENDIF
@@ -6151,14 +5235,17 @@
     IF ( air_chemistry  .AND.  nesting_chem )  THEN
        IF ( ibc_cs_b == 1 )  THEN
           DO  n = 1, nspec
-             DO  m = 1, bc_hv%ns
-                IF ( bc_hv%koff(m) /= 0  )  THEN
-                   ic = bc_hv%i(m)
-                   jc = bc_hv%j(m)
-                   kc = bc_hv%k(m)
-                   chem_species(n)%conc(kc+bc_hv%koff(m),jc+bc_hv%joff(m),ic+bc_hv%ioff(m)) =      &
-                                                                     chem_species(n)%conc(kc,jc,ic)
-                ENDIF
+             DO  m = 1, bc_h(0)%ns
+                ic = bc_h(0)%i(m)
+                jc = bc_h(0)%j(m)
+                kc = bc_h(0)%k(m)
+                chem_species(n)%conc(kc-1,jc,ic) = chem_species(n)%conc(kc,jc,ic)
+             ENDDO
+             DO  m = 1, bc_h(1)%ns
+                ic = bc_h(1)%i(m)
+                jc = bc_h(1)%j(m)
+                kc = bc_h(1)%k(m)
+                chem_species(n)%conc(kc+1,jc,ic) = chem_species(n)%conc(kc,jc,ic)
              ENDDO
           ENDDO
        ENDIF
@@ -6167,25 +5254,36 @@
 !-- Set Neumann boundary conditions for aerosols and salsa gases
     IF ( salsa  .AND.  nesting_salsa )  THEN
        IF ( ibc_aer_b == 1 )  THEN
-          DO  m = 1, bc_hv%ns
-             IF ( bc_hv%koff(m) /= 0  )  THEN
-                ic = bc_hv%i(m)
-                jc = bc_hv%j(m)
-                kc = bc_hv%k(m)
-                DO  lb = 1, nbins_aerosol
-                   aerosol_number(lb)%conc(kc+bc_hv%koff(m),jc+bc_hv%joff(m),ic+bc_hv%ioff(m)) =   &
-                                                                   aerosol_number(lb)%conc(kc,jc,ic)
+          DO  m = 1, bc_h(0)%ns
+             ic = bc_h(0)%i(m)
+             jc = bc_h(0)%j(m)
+             kc = bc_h(0)%k(m)
+             DO  lb = 1, nbins_aerosol
+                aerosol_number(lb)%conc(kc-1,jc,ic) = aerosol_number(lb)%conc(kc,jc,ic)
+             ENDDO
+             DO  lc = 1, nbins_aerosol * ncomponents_mass
+                aerosol_mass(lc)%conc(kc-1,jc,ic) = aerosol_mass(lc)%conc(kc,jc,ic)
+             ENDDO
+             IF ( .NOT. salsa_gases_from_chem )  THEN
+                DO  lg = 1, ngases_salsa
+                   salsa_gas(lg)%conc(kc-1,jc,ic) = salsa_gas(lg)%conc(kc,jc,ic)
                 ENDDO
-                DO  lc = 1, nbins_aerosol * ncomponents_mass
-                   aerosol_mass(lc)%conc(kc+bc_hv%koff(m),jc+bc_hv%joff(m),ic+bc_hv%ioff(m)) =     &
-                                                                   aerosol_mass(lc)%conc(kc,jc,ic)
+             ENDIF
+          ENDDO
+          DO  m = 1, bc_h(1)%ns
+             ic = bc_h(1)%i(m)
+             jc = bc_h(1)%j(m)
+             kc = bc_h(1)%k(m)
+             DO  lb = 1, nbins_aerosol
+                aerosol_number(lb)%conc(kc+1,jc,ic) = aerosol_number(lb)%conc(kc,jc,ic)
+             ENDDO
+             DO  lc = 1, nbins_aerosol * ncomponents_mass
+                aerosol_mass(lc)%conc(kc+1,jc,ic) = aerosol_mass(lc)%conc(kc,jc,ic)
+             ENDDO
+             IF ( .NOT. salsa_gases_from_chem )  THEN
+                DO  lg = 1, ngases_salsa
+                   salsa_gas(lg)%conc(kc+1,jc,ic) = salsa_gas(lg)%conc(kc,jc,ic)
                 ENDDO
-                IF ( .NOT. salsa_gases_from_chem )  THEN
-                   DO  lg = 1, ngases_salsa
-                      salsa_gas(lg)%conc(kc+bc_hv%koff(m),jc+bc_hv%joff(m),ic+bc_hv%ioff(m)) =     &
-                                                                   salsa_gas(lg)%conc(kc,jc,ic)
-                   ENDDO
-                ENDIF
              ENDIF
           ENDDO
        ENDIF
@@ -6208,35 +5306,38 @@
  
     IMPLICIT NONE
 
-    INTEGER(iwp) ::  i     !< running index in the x-direction
+    INTEGER(iwp) ::  i     !< Running index in the x-direction
     INTEGER(iwp) ::  ierr  !< MPI error code
-    INTEGER(iwp) ::  j     !< running index in the y-direction
-    INTEGER(iwp) ::  k     !< running index in the z-direction
-    INTEGER(iwp) ::  n     !< running index over the boundary faces: l, r, s, n and t
+    INTEGER(iwp) ::  j     !< Running index in the y-direction
+    INTEGER(iwp) ::  k     !< Running index in the z-direction
+    INTEGER(iwp) ::  n     !< Running index over the boundary faces: l, r, s, n and t
 
-    REAL(wp) ::  dxdy                  !< surface area of grid cell top face
-    REAL(wp) ::  sub_sum               !< intermediate sum for reducing the loss of signifigant digits in 2-D summations
-    REAL(wp) ::  u_corr_left           !< correction added to the left boundary value of u
-    REAL(wp) ::  u_corr_right          !< correction added to the right boundary value of u
-    REAL(wp) ::  v_corr_south          !< correction added to the south boundary value of v
-    REAL(wp) ::  v_corr_north          !< correction added to the north boundary value of v
-    REAL(wp) ::  volume_flux_integral  !< surface integral of volume flux over the domain boundaries
-    REAL(wp) ::  volume_flux_local     !< surface integral of volume flux over the subdomain boundary face
-    REAL(wp) ::  w_corr_top            !< correction added to the top boundary value of w
+    REAL(wp) ::  dxdy                  !< Surface area of grid cell top face
+    REAL(wp) ::  innor                 !< Inner normal vector of the grid cell face
+    REAL(wp) ::  sub_sum               !< Intermediate sum for reducing the loss of signifigant digits in 2-D summations
+    REAL(wp) ::  u_corr_left           !< Correction added to the left boundary value of u
+    REAL(wp) ::  u_corr_right          !< Correction added to the right boundary value of u
+    REAL(wp) ::  v_corr_south          !< Correction added to the south boundary value of v
+    REAL(wp) ::  v_corr_north          !< Correction added to the north boundary value of v
+    REAL(wp) ::  volume_flux_integral  !< Surface integral of volume flux over the domain boundaries
+    REAL(wp) ::  volume_flux_local     !< Surface integral of volume flux over the subdomain boundary face
+    REAL(wp) ::  w_corr_top            !< Correction added to the top boundary value of w
 
-    REAL(wp), DIMENSION(5) ::  volume_flux  !< surface integral of volume flux over each boundary face of the domain
+    REAL(wp), DIMENSION(5) ::  volume_flux  !< Surface integral of volume flux over each boundary face of the domain
+
 
 !
 !-- Sum up the volume flow through the left boundary
     volume_flux(1) = 0.0_wp
     volume_flux_local = 0.0_wp
-    IF ( bc_dirichlet_l  .OR.  bc_radiation_l )  THEN
+    IF ( bc_dirichlet_l )  THEN
        i = 0
+       innor = dy
        DO   j = nys, nyn
           sub_sum = 0.0_wp
           DO   k = nzb+1, nzt
-             sub_sum = sub_sum + dy * dzw(k) * u(k,j,i) *                                          &
-                       MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 1 ) )
+             sub_sum = sub_sum + innor * u(k,j,i) * dzw(k)                                         &
+                       * MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 1 ) )
           ENDDO
           volume_flux_local = volume_flux_local + sub_sum
        ENDDO
@@ -6252,13 +5353,14 @@
 !-- Sum up the volume flow through the right boundary
     volume_flux(2) = 0.0_wp
     volume_flux_local = 0.0_wp
-    IF ( bc_dirichlet_r  .OR.  bc_radiation_r )  THEN
+    IF ( bc_dirichlet_r )  THEN
        i = nx + 1
+       innor = -dy
        DO   j = nys, nyn
           sub_sum = 0.0_wp
           DO   k = nzb+1, nzt
-             sub_sum = sub_sum - dy * dzw(k) * u(k,j,i) *                                          &
-                       MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 1 ) )
+             sub_sum = sub_sum + innor * u(k,j,i) * dzw(k)                                         &
+                       * MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 1 ) )
           ENDDO
           volume_flux_local = volume_flux_local + sub_sum
        ENDDO
@@ -6274,13 +5376,14 @@
 !-- Sum up the volume flow through the south boundary
     volume_flux(3) = 0.0_wp
     volume_flux_local = 0.0_wp
-    IF ( bc_dirichlet_s  .OR.  bc_radiation_s )  THEN
+    IF ( bc_dirichlet_s )  THEN
        j = 0
+       innor = dx
        DO   i = nxl, nxr
           sub_sum = 0.0_wp
           DO   k = nzb+1, nzt
-             sub_sum = sub_sum + dx * dzw(k) * v(k,j,i) *                                          &
-                       MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 2 ) )
+             sub_sum = sub_sum + innor * v(k,j,i) * dzw(k)                                         &
+                       * MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 2 ) )
           ENDDO
           volume_flux_local = volume_flux_local + sub_sum
        ENDDO
@@ -6296,13 +5399,14 @@
 !-- Sum up the volume flow through the north boundary
     volume_flux(4) = 0.0_wp
     volume_flux_local = 0.0_wp
-    IF ( bc_dirichlet_n  .OR.  bc_radiation_n )  THEN
+    IF ( bc_dirichlet_n )  THEN
        j = ny + 1
+       innor = -dx
        DO  i = nxl, nxr
           sub_sum = 0.0_wp
           DO  k = nzb+1, nzt
-             sub_sum = sub_sum - dx * dzw(k) * v(k,j,i) *                                          &
-                       MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 2 ) )
+             sub_sum = sub_sum + innor * v(k,j,i) * dzw(k)                                         &
+                       * MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 2 ) )
           ENDDO
           volume_flux_local = volume_flux_local + sub_sum
        ENDDO
@@ -6340,35 +5444,22 @@
        volume_flux_integral = volume_flux_integral + volume_flux(n)
     ENDDO
 !
-!-- Adjust the velocities.
-    IF ( nesting_bounds_vertical_only )  THEN
-!
-!--    For pure vertical nesting and non-cyclic conditions along x or y only the top boundary must
-!--    compensate, because velocity values at boundaries along x or y are prescribed elsewhere
-!--    (via turbulence recycling, Dirichlet- or radiation boundary conditions). Therefore,
-!--    normal velocities (u,v) at these boundaries must not be changed here. They would be
-!--    overwritten anyhow at a later time (e.g. when turbulence recycling is carried out).
-!--    For the case with cyclic conditions along x and y no correction is required at all
-!--    (horizontally averaged vertical velocity may be removed in the pressure solver).
-       IF ( .NOT. ( bc_lr_cyc  .AND.  bc_ns_cyc ) )  THEN
-          w_corr_top = volume_flux_integral / face_area(5)
-       ELSE
-          w_corr_top = 0.0_wp
-       ENDIF
-       u_corr_left  = 0.0_wp
-       u_corr_right = 0.0_wp
-       v_corr_south = 0.0_wp
-       v_corr_north = 0.0_wp
-    ELSE
-!
-!--    Correction equally distributed to all nest boundaries, area_total must be used as area.
-!--    Note that face_area(6) is the total area (=sum from 1 to 5)
-       w_corr_top   = volume_flux_integral / face_area(6)
-       IF ( bc_dirichlet_l )  u_corr_left  = -w_corr_top
-       IF ( bc_dirichlet_r )  u_corr_right =  w_corr_top
-       IF ( bc_dirichlet_s )  v_corr_south = -w_corr_top
-       IF ( bc_dirichlet_n )  v_corr_north =  w_corr_top
-   ENDIF
+!-- Correction equally distributed to all nest boundaries, area_total must be used as area.
+!-- Note that face_area(6) is the total area (=sum from 1 to 5)
+    w_corr_top   = volume_flux_integral / face_area(6)
+    u_corr_left  =-w_corr_top
+    u_corr_right = w_corr_top
+    v_corr_south =-w_corr_top
+    v_corr_north = w_corr_top
+!!
+!!-- Just print out the net volume fluxes through each boundary. Only the root process prints.
+!    if ( myid == 0 )  then
+!       write( 9, "(5(e14.7,2x),4x,e14.7,4x,e12.5,4x,5(e14.7,2x))" )                                &
+!            volume_flux(1), volume_flux(2), volume_flux(3), volume_flux(4), volume_flux(5),        &
+!            volume_flux_integral, c_correc,                                                        &
+!            u_corr_left, u_corr_right,  v_corr_south, v_corr_north, w_corr_top
+!       flush( 9 )
+!    endif
 !
 !-- Correct the top-boundary value of w
     DO   i = nxl, nxr
@@ -6385,7 +5476,7 @@
           DO  j = nys, nyn
              DO  k = nzb + 1, nzt
                 u(k,j,i) = u(k,j,i) + u_corr_left                                                  &
-                           * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 1 ) )
+                           * MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 1 ) )
              ENDDO
           ENDDO
        ENDDO
@@ -6397,7 +5488,7 @@
           DO  j = nys, nyn
              DO  k = nzb + 1, nzt
                 u(k,j,i) = u(k,j,i) + u_corr_right                                                 &
-                           * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 1 ) )
+                           * MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 1 ) )
              ENDDO
           ENDDO
        ENDDO
@@ -6409,7 +5500,7 @@
           DO  j = nysg, nys
              DO  k = nzb + 1, nzt
                 v(k,j,i) = v(k,j,i) + v_corr_south                                                 &
-                           * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 2 ) )
+                           * MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 2 ) )
              ENDDO
           ENDDO
        ENDDO
@@ -6421,13 +5512,83 @@
           DO  j = nyn+1, nyng
              DO  k = nzb + 1, nzt
                 v(k,j,i) = v(k,j,i) + v_corr_north                                                 &
-                           * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 2 ) )
+                           * MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 2 ) )
              ENDDO
           ENDDO
        ENDDO
     ENDIF
 
+
  END SUBROUTINE pmci_ensure_nest_mass_conservation
+
+
+
+!--------------------------------------------------------------------------------------------------!
+! Description:
+! ------------
+!> Adjust the volume-flow rate through the top boundary so that the net volume flow through 
+!> all boundaries of the current nest domain becomes zero.
+!--------------------------------------------------------------------------------------------------!
+ SUBROUTINE pmci_ensure_nest_mass_conservation_vertical
+ 
+    IMPLICIT NONE
+
+    INTEGER(iwp) ::  i     !< Running index in the x-direction
+    INTEGER(iwp) ::  ierr  !< MPI error code
+    INTEGER(iwp) ::  j     !< Running index in the y-direction
+    INTEGER(iwp) ::  k     !< Running index in the z-direction
+
+    REAL(wp) ::  dxdy               !< Surface area of grid cell top face
+    REAL(wp) ::  sub_sum            !< Intermediate sum for reducing the loss of signifigant digits in 2-D summations
+    REAL(wp) ::  top_area           !< Top boundary face area
+    REAL(wp) ::  volume_flux        !< Surface integral of volume flux over the top boundary face
+    REAL(wp) ::  volume_flux_local  !< Surface integral of volume flux over the subdomain boundary face
+    REAL(wp) ::  w_corr_top         !< Correction added to the top boundary value of w
+
+
+    top_area = face_area(5)
+!
+!-- Sum up the volume flow through the top boundary
+    volume_flux = 0.0_wp
+    volume_flux_local = 0.0_wp
+    dxdy = dx * dy
+    k = nzt
+    DO  i = nxl, nxr
+       sub_sum = 0.0_wp
+       DO   j = nys, nyn
+          sub_sum = sub_sum - w(k,j,i) * dxdy  ! Minus, because the inner unit normal vector is (0,0,-1)
+       ENDDO
+       volume_flux_local = volume_flux_local + sub_sum
+    ENDDO
+
+#if defined( __parallel )
+    IF ( collective_wait )  CALL MPI_BARRIER( comm2d, ierr )
+    CALL MPI_ALLREDUCE( volume_flux_local, volume_flux, 1, MPI_REAL, MPI_SUM, comm2d, ierr )
+#else
+    volume_flux = volume_flux_local
+#endif
+
+    w_corr_top   = volume_flux / top_area
+!!
+!!-- Just print out the net volume fluxes through each boundary. Only the root process prints.
+!    if ( myid == 0 )  then
+!       write( 9, "(5(e14.7,2x),4x,e14.7,4x,e12.5,4x,5(e14.7,2x))" )                                &
+!            volume_flux(1), volume_flux(2), volume_flux(3), volume_flux(4), volume_flux(5),        &
+!            volume_flux_integral, c_correc,                                                        &
+!            u_corr_left, u_corr_right,  v_corr_south, v_corr_north, w_corr_top
+!       flush( 9 )
+!    endif
+!
+!-- Correct the top-boundary value of w
+    DO   i = nxl, nxr
+       DO   j = nys, nyn
+          DO  k = nzt, nzt + 1
+             w(k,j,i) = w(k,j,i) + w_corr_top
+          ENDDO
+       ENDDO
+    ENDDO
+
+ END SUBROUTINE pmci_ensure_nest_mass_conservation_vertical
 
 #endif
 END MODULE pmc_interface

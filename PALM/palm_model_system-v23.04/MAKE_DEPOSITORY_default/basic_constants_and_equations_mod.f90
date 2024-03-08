@@ -13,15 +13,54 @@
 ! You should have received a copy of the GNU General Public License along with PALM. If not, see
 ! <http://www.gnu.org/licenses/>.
 !
-! Copyright 1997-2021 Leibniz Universitaet Hannover
-! Copyright 2022-2022 pecanode GmbH
+! Copyright 1997-2020 Leibniz Universitaet Hannover
 !--------------------------------------------------------------------------------------------------!
+!
+! Current revisions:
+! -----------------
+!
+!
+! Former revisions:
+! -----------------
+! $Id: basic_constants_and_equations_mod.f90 4742 2020-10-14 15:11:02Z schwenkel $
+! Implement snow and graupel (bulk microphysics)
+! 
+! 4509 2020-04-26 15:57:55Z raasch
+! file re-formatted to follow the PALM coding standard
+!
+! 4502 2020-04-17 16:14:16Z schwenkel
+! Implementation of ice microphysics
+!
+! 4400 2020-02-10 20:32:41Z suehring
+! Move routine to transform coordinates from netcdf_interface_mod to
+! basic_constants_and_equations_mod
+!
+! 4360 2020-01-07 11:25:50Z suehring
+! Corrected "Former revisions" section
+!
+! 4088 2019-07-11 13:57:56Z Giersch
+! Comment of barometric formula improved, function for ideal gas law revised
+!
+! 4084 2019-07-10 17:09:11Z knoop
+! Changed precomputed fractions to be variable based
+!
+! 4055 2019-06-27 09:47:29Z suehring
+! Added rgas_univ (universal gas constant) (E.C. Chan)
+!
+!
+! 3655 2019-01-07 16:51:22Z knoop
+! OpenACC port for SPEC
+! 3361 2018-10-16 20:39:37Z knoop
+! New module (introduced with modularization of bulk cloud physics model)
+!
+!
+!
 !
 ! Description:
 ! ------------
 !> This module contains all basic (physical) constants and functions for the calculation of
 !> diagnostic quantities.
-!--------------------------------------------------------------------------------------------------!
+!-                    -----------------------------------------------------------------------------!
  MODULE basic_constants_and_equations_mod
 
 
@@ -89,11 +128,7 @@
             exner_function_invers_0d,                                                              &
             exner_function_invers_1d,                                                              &
             barometric_formula_0d,                                                                 &
-            barometric_formula_1d,                                                                 &
-            get_relative_humidity_equilibrium_0d,                                                  &
-            get_relative_humidity_equilibrium_1d,                                                  &
-            get_relative_humidity_supersaturated_0d,                                               &
-            get_relative_humidity_supersaturated_1d
+            barometric_formula_1d
 
 
     INTERFACE convert_utm_to_geographic
@@ -139,16 +174,8 @@
        MODULE PROCEDURE barometric_formula_0d
        MODULE PROCEDURE barometric_formula_1d
     END INTERFACE barometric_formula
-
-    INTERFACE get_relative_humidity
-       MODULE PROCEDURE get_relative_humidity_equilibrium_0d
-       MODULE PROCEDURE get_relative_humidity_equilibrium_1d
-       MODULE PROCEDURE get_relative_humidity_supersaturated_0d
-       MODULE PROCEDURE get_relative_humidity_supersaturated_1d
-    END INTERFACE get_relative_humidity
-
 !
-!-- Public function and routines
+!-- Public routines
     PUBLIC convert_utm_to_geographic
 
  CONTAINS
@@ -285,7 +312,6 @@
     lon = ATAN2( sinh_nu_s, cos_eta_s ) / pi * 180.0_wp + crs(4)
 
  END SUBROUTINE convert_utm_to_geographic
-
 
 !--------------------------------------------------------------------------------------------------!
 ! Description:
@@ -614,126 +640,5 @@
     barometric_formula_1d =  p_0 * ( (t_0 - g_d_cp * z) / t_0 )**( cp_d_rd )
 
  END FUNCTION barometric_formula_1d
-
-
-!--------------------------------------------------------------------------------------------------!
-! Description:
-! ------------
-!> Compute relative humidty for an equilibrium thermodynamic state (i.e. bounds between 0 and 1)
-!> Scalar version
-!--------------------------------------------------------------------------------------------------!
- FUNCTION get_relative_humidity_equilibrium_0d( vapor_content, temperature, pressure, air_density )
-
-    IMPLICIT NONE
-
-    REAL(wp), INTENT(IN) ::  temperature    !< thermodynamic temperature (i.e., exner x pt)
-    REAL(wp), INTENT(IN) ::  pressure       !< pressure (hyp)
-    REAL(wp), INTENT(IN) ::  air_density    !< rho_air
-    REAL(wp), INTENT(IN) ::  vapor_content  !< q
-
-    REAL(wp) ::  get_relative_humidity_equilibrium_0d
-!
-!-- Local variables
-    REAL(wp) ::  pressure_ratio_1           !< (hydrostatic / saturation vapor pressure) - 1
-    REAL(wp) ::  saturation_vapor_pressure  !< saturation vapor pressure
-    REAL(wp) ::  vapor_content_1            !< 1- vapor content
-    REAL(wp) ::  vapor_ratio                !< vapor content / (1 - vapor content)
-!
-!-- Prevents singularity
-    saturation_vapor_pressure = MAX( 1.0E-12_wp, magnus( temperature ) )
-    vapor_content_1           = MAX( 1.0E-12_wp, ( 1.0_wp - vapor_content ) )
-!
-!-- Vapor and pressure ratios
-    vapor_ratio      = vapor_content / vapor_content_1
-    pressure_ratio_1 = ( pressure / saturation_vapor_pressure ) - 1.0_wp
-!
-!-- Compute RH:
-    get_relative_humidity_equilibrium_0d = MAX( 0.0_wp, MIN( 1.0_wp,                               &
-                                                             ( air_density / rd_d_rv ) *           &
-                                                             pressure_ratio_1 * vapor_ratio ) )
-
- END FUNCTION get_relative_humidity_equilibrium_0d
-
-
-!--------------------------------------------------------------------------------------------------!
-! Description:
-! ------------
-!> Compute relative humidty for an equilibrium thermodynamic state (i.e. bounds between 0 and 1)
-!> 1D-array version
-!--------------------------------------------------------------------------------------------------!
- FUNCTION get_relative_humidity_equilibrium_1d( vapor_content, temperature, pressure, air_density )
-
-    IMPLICIT NONE
-
-    REAL(wp), INTENT(IN), DIMENSION(:) ::  vapor_content  !< q
-    REAL(wp), INTENT(IN), DIMENSION(:) ::  temperature    !< thermodynamic temperature (i.e., exner x pt)
-    REAL(wp), INTENT(IN), DIMENSION(:) ::  pressure       !< pressure (hyp)
-    REAL(wp), INTENT(IN), DIMENSION(:) ::  air_density    !< rho_air
-
-    REAL(wp), DIMENSION(size(vapor_content)) ::  get_relative_humidity_equilibrium_1d
-!
-!-- Local variables
-    REAL(wp), DIMENSION(size(vapor_content)) ::  pressure_ratio_1           !< (p/es) - 1
-    REAL(wp), DIMENSION(size(vapor_content)) ::  saturation_vapor_pressure  !< es
-    REAL(wp), DIMENSION(size(vapor_content)) ::  vapor_content_1            !< 1 - q
-    REAL(wp), DIMENSION(size(vapor_content)) ::  vapor_ratio                !< q / (1-q)
-!
-!-- Prevent singularity
-    saturation_vapor_pressure = MAX( 1.0E-12_wp, magnus( temperature ) )
-    vapor_content_1           = MAX( 1.0E-12_wp, ( 1.0_wp - vapor_content ) )
-!
-!-- Vapor and pressure ratios
-    vapor_ratio      = vapor_content / vapor_content_1
-    pressure_ratio_1 = ( pressure / saturation_vapor_pressure ) - 1.0_wp
-!
-!-- Compute RH:
-    get_relative_humidity_equilibrium_1d = MAX( 0.0_wp, MIN( 1.0_wp,                               &
-                                                             ( air_density / rd_d_rv ) *           &
-                                                             pressure_ratio_1 * vapor_ratio ) )
-
- END FUNCTION get_relative_humidity_equilibrium_1d
-
-
-!--------------------------------------------------------------------------------------------------!
-! Description:
-! ------------
-!> Compute relative humidty for a potentially supersaturated thermodynamic state (i.e., RH > 1)
-!> Scalar version
-!--------------------------------------------------------------------------------------------------!
- FUNCTION get_relative_humidity_supersaturated_0d( vapor_content )
-
-    IMPLICIT NONE
-
-    REAL(wp), INTENT(IN) ::  vapor_content  !< q
-
-    REAL(wp) ::  get_relative_humidity_supersaturated_0d
-
-!
-!-- placeholder for new implementation
-
-    get_relative_humidity_supersaturated_0d = 0.0_wp * vapor_content
-
- END FUNCTION get_relative_humidity_supersaturated_0d
-
-
-!--------------------------------------------------------------------------------------------------!
-! Description:
-! ------------
-!> Compute relative humidty for a potentially supersaturated thermodynamic state (i.e., RH > 1)
-!> 1D array version
-!--------------------------------------------------------------------------------------------------!
- FUNCTION get_relative_humidity_supersaturated_1d( vapor_content )
-
-    IMPLICIT NONE
-
-    REAL(wp), INTENT(IN), DIMENSION(:) ::  vapor_content  !< q
-
-    REAL(wp), DIMENSION(size(vapor_content)) ::  get_relative_humidity_supersaturated_1d
-!
-!-- placeholder for new implementation
-
-    get_relative_humidity_supersaturated_1d = 0.0_wp * vapor_content
-
- END FUNCTION get_relative_humidity_supersaturated_1d
 
  END MODULE basic_constants_and_equations_mod

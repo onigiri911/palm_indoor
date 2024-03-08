@@ -13,17 +13,33 @@
 ! You should have received a copy of the GNU General Public License along with PALM. If not, see
 ! <http://www.gnu.org/licenses/>.
 !
-! Copyright 1997-2021 Leibniz Universitaet Hannover
+! Copyright 1997-2020 Leibniz Universitaet Hannover
 !--------------------------------------------------------------------------------------------------!
+!
+! Current revisions:
+! -----------------
+! 
+! 
+! Former revisions:
+! -----------------
+! $Id: wrd_write_string.f90 4489 2020-04-04 10:54:08Z raasch $
+! file re-formatted to follow the PALM coding standard
+!
+! 4360 2020-01-07 11:25:50Z suehring
+! Initial revision
+!
 !
 ! Description:
 ! ------------
 !> Calculates length of string and write the respective value together with the string into binary
 !  file(s) for restart runs
 !--------------------------------------------------------------------------------------------------!
+
  SUBROUTINE wrd_write_string( string )
 
+
     USE kinds
+
 
     IMPLICIT NONE
 

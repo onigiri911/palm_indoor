@@ -13,8 +13,33 @@
 ! You should have received a copy of the GNU General Public License along with PALM. If not, see
 ! <http://www.gnu.org/licenses/>.
 !
-! Copyright 1997-2021 Leibniz Universitaet Hannover
+! Copyright 1997-2020 Leibniz Universitaet Hannover
 !--------------------------------------------------------------------------------------------------!
+!
+! Current revisions:
+! -----------------
+! 
+! 
+! Former revisions:
+! -----------------
+! $Id: advec_s_up.f90 4488 2020-04-03 11:34:29Z raasch $
+! file re-formatted to follow the PALM coding standard
+!
+! 4360 2020-01-07 11:25:50Z suehring
+! Corrected "Former revisions" section
+!
+! 3927 2019-04-23 13:24:29Z raasch
+! pointer attribute removed from scalar 3d-array for performance reasons
+!
+! 3665 2019-01-10 08:28:24Z raasch
+! unused variables removed
+!
+! 3655 2019-01-07 16:51:22Z knoop
+! nopointer option removed
+!
+! Revision 1.1  1997/08/29 08:54:33  raasch
+! Initial revision
+!
 !
 ! Description:
 ! ------------
@@ -44,31 +69,16 @@
  SUBROUTINE advec_s_up( sk )
 
     USE arrays_3d,                                                                                 &
-        ONLY:  ddzu,                                                                               &
-               tend,                                                                               &
-               u,                                                                                  &
-               v,                                                                                  &
-               w
+        ONLY:  ddzu, tend, u, v, w
 
     USE control_parameters,                                                                        &
-        ONLY:  u_gtrans,                                                                           &
-               v_gtrans
+        ONLY:  u_gtrans, v_gtrans
 
     USE grid_variables,                                                                            &
-        ONLY:  ddx,                                                                                &
-               ddy
+        ONLY:  ddx, ddy
 
     USE indices,                                                                                   &
-        ONLY:  nxl,                                                                                &
-               nxlg,                                                                               &
-               nxr,                                                                                &
-               nxrg,                                                                               &
-               nyn,                                                                                &
-               nyng,                                                                               &
-               nys,                                                                                &
-               nysg,                                                                               &
-               nzb,                                                                                &
-               nzt
+        ONLY:  nxl, nxlg, nxr, nxrg, nyn, nyng, nys, nysg, nzb, nzt
 
     USE kinds
 
@@ -129,27 +139,16 @@
  SUBROUTINE advec_s_up_ij( i, j, sk )
 
     USE arrays_3d,                                                                                 &
-        ONLY:  ddzu,                                                                               &
-               tend,                                                                               &
-               u,                                                                                  &
-               v,                                                                                  &
-               w
+        ONLY:  ddzu, tend, u, v, w
 
     USE control_parameters,                                                                        &
-        ONLY:  u_gtrans,                                                                           &
-               v_gtrans
+        ONLY:  u_gtrans, v_gtrans
 
     USE grid_variables,                                                                            &
-        ONLY:  ddx,                                                                                &
-               ddy
+        ONLY:  ddx, ddy
 
     USE indices,                                                                                   &
-        ONLY:  nxlg,                                                                               &
-               nxrg,                                                                               &
-               nyng,                                                                               &
-               nysg,                                                                               &
-               nzb,                                                                                &
-               nzt
+        ONLY:  nxlg, nxrg, nyng, nysg, nzb, nzt
 
     USE kinds
 

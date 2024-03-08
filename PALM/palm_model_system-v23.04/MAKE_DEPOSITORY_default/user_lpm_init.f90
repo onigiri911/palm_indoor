@@ -13,9 +13,31 @@
 ! You should have received a copy of the GNU General Public License along with PALM. If not, see
 ! <http://www.gnu.org/licenses/>.
 !
-! Copyright 1997-2021 Leibniz Universitaet Hannover
+! Copyright 1997-2020 Leibniz Universitaet Hannover
 !--------------------------------------------------------------------------------------------------!
 !
+!
+! Current revisions:
+! -----------------
+! 
+! 
+! Former revisions:
+! -----------------
+! $Id: user_lpm_init.f90 4497 2020-04-15 10:20:51Z raasch $
+! file re-formatted to follow the PALM coding standard
+!
+!
+! 4360 2020-01-07 11:25:50Z suehring
+! Corrected "Former revisions" section
+!
+! 3768 2019-02-27 14:35:58Z raasch
+! unused variables commented out to avoid compiler warnings
+!
+! 3655 2019-01-07 16:51:22Z knoop
+! Corrected "Former revisions" section
+!
+! 211 2008-11-11 04:46:24Z raasch
+! Former file user_interface.f90 split into one file per subroutine
 !
 ! Description:
 ! ------------

@@ -13,10 +13,46 @@
 ! You should have received a copy of the GNU General Public License along with PALM. If not, see
 ! <http://www.gnu.org/licenses/>.
 !
-! Copyright 1997-2021 Leibniz Universitaet Hannover
+! Copyright 1997-2020 Leibniz Universitaet Hannover
 !--------------------------------------------------------------------------------------------------!
 !
 !
+! Current revisions:
+! -----------------
+!
+!
+! Former revisions:
+! -----------------
+! $Id: poismg_noopt_mod.f90 4649 2020-08-25 12:11:17Z raasch $
+! File re-formatted to follow the PALM coding standard
+!
+!
+! 4457 2020-03-11 14:20:43Z raasch
+! Use statement for exchange horiz added
+!
+! 4429 2020-02-27 15:24:30Z raasch
+! Bugfix: cpp-directives added for serial mode
+!
+! 4414 2020-02-19 20:16:04Z suehring
+! Remove double-declared use only construct.
+!
+! 4360 2020-01-07 11:25:50Z suehring
+! Introduction of wall_flags_total_0, which currently sets bits based on static
+! topography information used in wall_flags_static_0
+!
+! 4329 2019-12-10 15:46:36Z motisi
+! Renamed wall_flags_0 to wall_flags_static_0
+!
+! 4182 2019-08-22 15:20:23Z scharf
+! Corrected "Former revisions" section
+!
+! 3655 2019-01-07 16:51:22Z knoop
+! Unused variables removed
+!
+! Revision 1.1  2001/07/20 13:10:51  raasch
+! Initial revision
+!
+!--------------------------------------------------------------------------------------------------!
 ! Description:
 ! ------------
 !> Solves the Poisson equation for the perturbation pressure with a multigrid V- or W-Cycle scheme.
@@ -31,10 +67,6 @@
 !> @todo Formatting adjustments required (indention after modularization)
 !--------------------------------------------------------------------------------------------------!
  MODULE poismg_noopt_mod
-
-#if defined( __parallel )
-    USE MPI
-#endif
 
     USE control_parameters,                                                                        &
         ONLY:  bc_dirichlet_l,                                                                     &
@@ -209,7 +241,7 @@
 !--       convergence
           IF ( mgcycles > 1000  .AND.  mg_cycles == -1 )  THEN
              message_string = 'no sufficient convergence within 1000 cycles'
-             CALL message( 'poismg_noopt', 'PAC0265', 1, 2, 0, 6, 0 )
+             CALL message( 'poismg_noopt', 'PA0283', 1, 2, 0, 6, 0 )
           ENDIF
 
        ENDDO
@@ -258,16 +290,16 @@
                nyn_mg,                                                                             &
                nzb,                                                                                &
                nzt_mg,                                                                             &
-               topo_flags_1,                                                                       &
-               topo_flags_2,                                                                       &
-               topo_flags_3,                                                                       &
-               topo_flags_4,                                                                       &
-               topo_flags_5,                                                                       &
-               topo_flags_6,                                                                       &
-               topo_flags_7,                                                                       &
-               topo_flags_8,                                                                       &
-               topo_flags_9,                                                                       &
-               topo_flags_10
+               wall_flags_1,                                                                       &
+               wall_flags_2,                                                                       &
+               wall_flags_3,                                                                       &
+               wall_flags_4,                                                                       &
+               wall_flags_5,                                                                       &
+               wall_flags_6,                                                                       &
+               wall_flags_7,                                                                       &
+               wall_flags_8,                                                                       &
+               wall_flags_9,                                                                       &
+               wall_flags_10
 
 
 
@@ -296,25 +328,25 @@
 !-- Choose flag array of this level
     SELECT CASE ( l )
        CASE ( 1 )
-          flags => topo_flags_1
+          flags => wall_flags_1
        CASE ( 2 )
-          flags => topo_flags_2
+          flags => wall_flags_2
        CASE ( 3 )
-          flags => topo_flags_3
+          flags => wall_flags_3
        CASE ( 4 )
-          flags => topo_flags_4
+          flags => wall_flags_4
        CASE ( 5 )
-          flags => topo_flags_5
+          flags => wall_flags_5
        CASE ( 6 )
-          flags => topo_flags_6
+          flags => wall_flags_6
        CASE ( 7 )
-          flags => topo_flags_7
+          flags => wall_flags_7
        CASE ( 8 )
-          flags => topo_flags_8
+          flags => wall_flags_8
        CASE ( 9 )
-          flags => topo_flags_9
+          flags => wall_flags_9
        CASE ( 10 )
-          flags => topo_flags_10
+          flags => wall_flags_10
     END SELECT
 
 !$OMP PARALLEL PRIVATE (i,j,k)
@@ -412,16 +444,16 @@
                nyn_mg,                                                                             &
                nzb,                                                                                &
                nzt_mg,                                                                             &
-               topo_flags_1,                                                                       &
-               topo_flags_2,                                                                       &
-               topo_flags_3,                                                                       &
-               topo_flags_4,                                                                       &
-               topo_flags_5,                                                                       &
-               topo_flags_6,                                                                       &
-               topo_flags_7,                                                                       &
-               topo_flags_8,                                                                       &
-               topo_flags_9,                                                                       &
-               topo_flags_10
+               wall_flags_1,                                                                       &
+               wall_flags_2,                                                                       &
+               wall_flags_3,                                                                       &
+               wall_flags_4,                                                                       &
+               wall_flags_5,                                                                       &
+               wall_flags_6,                                                                       &
+               wall_flags_7,                                                                       &
+               wall_flags_8,                                                                       &
+               wall_flags_9,                                                                       &
+               wall_flags_10
 
 
     USE kinds
@@ -468,25 +500,25 @@
 !-- Choose flag array of the upper level
     SELECT CASE ( l+1 )
        CASE ( 1 )
-          flags => topo_flags_1
+          flags => wall_flags_1
        CASE ( 2 )
-          flags => topo_flags_2
+          flags => wall_flags_2
        CASE ( 3 )
-          flags => topo_flags_3
+          flags => wall_flags_3
        CASE ( 4 )
-          flags => topo_flags_4
+          flags => wall_flags_4
        CASE ( 5 )
-          flags => topo_flags_5
+          flags => wall_flags_5
        CASE ( 6 )
-          flags => topo_flags_6
+          flags => wall_flags_6
        CASE ( 7 )
-          flags => topo_flags_7
+          flags => wall_flags_7
        CASE ( 8 )
-          flags => topo_flags_8
+          flags => wall_flags_8
        CASE ( 9 )
-          flags => topo_flags_9
+          flags => wall_flags_9
        CASE ( 10 )
-          flags => topo_flags_10
+          flags => wall_flags_10
     END SELECT
 
 !$OMP PARALLEL PRIVATE (i,j,k,ic,jc,kc, rkjim,rkjip,rkjpi,rkjmi,rkjmim,rkjpim, &
@@ -608,12 +640,12 @@
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE prolong_noopt( p, temp )
 
+
     USE control_parameters,                                                                        &
         ONLY:  bc_lr_cyc,                                                                          &
                bc_ns_cyc,                                                                          &
                ibc_p_b,                                                                            &
                ibc_p_t
-
     USE indices,                                                                                   &
         ONLY:  nxl_mg,                                                                             &
                nxr_mg,                                                                             &
@@ -722,6 +754,7 @@
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE redblack_noopt( f_mg, p_mg )
 
+
     USE arrays_3d,                                                                                 &
         ONLY:  f1_mg,                                                                              &
                f2_mg,                                                                              &
@@ -751,36 +784,32 @@
                nyn_mg,                                                                             &
                nzb,                                                                                &
                nzt_mg,                                                                             &
-               topo_flags_1,                                                                       &
-               topo_flags_2,                                                                       &
-               topo_flags_3,                                                                       &
-               topo_flags_4,                                                                       &
-               topo_flags_5,                                                                       &
-               topo_flags_6,                                                                       &
-               topo_flags_7,                                                                       &
-               topo_flags_8,                                                                       &
-               topo_flags_9,                                                                       &
-               topo_flags_10
+               wall_flags_1,                                                                       &
+               wall_flags_2,                                                                       &
+               wall_flags_3,                                                                       &
+               wall_flags_4,                                                                       &
+               wall_flags_5,                                                                       &
+               wall_flags_6,                                                                       &
+               wall_flags_7,                                                                       &
+               wall_flags_8,                                                                       &
+               wall_flags_9,                                                                       &
+               wall_flags_10
 
 
     USE kinds
 
     IMPLICIT NONE
 
-    INTEGER(iwp) ::  color  !<
-    INTEGER(iwp) ::  i      !<
-    INTEGER(iwp) ::  ic     !<
-    INTEGER(iwp) ::  j      !<
-    INTEGER(iwp) ::  jc     !<
-    INTEGER(iwp) ::  jj     !<
-    INTEGER(iwp) ::  k      !<
-    INTEGER(iwp) ::  l      !<
-    INTEGER(iwp) ::  n      !<
-    INTEGER(iwp) ::  save_nxl_mg  !< to save nxl_mg on coarsest level 1
-    INTEGER(iwp) ::  save_nys_mg  !< to save nys_mg on coarsest level 1
+    INTEGER(iwp) :: color  !<
+    INTEGER(iwp) :: i      !<
+    INTEGER(iwp) :: ic     !<
+    INTEGER(iwp) :: j      !<
+    INTEGER(iwp) :: jc     !<
+    INTEGER(iwp) :: jj     !<
+    INTEGER(iwp) :: k      !<
+    INTEGER(iwp) :: l      !<
+    INTEGER(iwp) :: n      !<
 
-    LOGICAL ::  adjust_lower_i_index  !< adjust lower limit of i loop in case of odd number of grid points
-    LOGICAL ::  adjust_lower_j_index  !< adjust lower limit of j loop in case of odd number of grid points
     LOGICAL ::  unroll  !<
 
     REAL(wp) ::  wall_left   !<
@@ -801,47 +830,29 @@
 !-- Choose flag array of this level
     SELECT CASE ( l )
        CASE ( 1 )
-          flags => topo_flags_1
+          flags => wall_flags_1
        CASE ( 2 )
-          flags => topo_flags_2
+          flags => wall_flags_2
        CASE ( 3 )
-          flags => topo_flags_3
+          flags => wall_flags_3
        CASE ( 4 )
-          flags => topo_flags_4
+          flags => wall_flags_4
        CASE ( 5 )
-          flags => topo_flags_5
+          flags => wall_flags_5
        CASE ( 6 )
-          flags => topo_flags_6
+          flags => wall_flags_6
        CASE ( 7 )
-          flags => topo_flags_7
+          flags => wall_flags_7
        CASE ( 8 )
-          flags => topo_flags_8
+          flags => wall_flags_8
        CASE ( 9 )
-          flags => topo_flags_9
+          flags => wall_flags_9
        CASE ( 10 )
-          flags => topo_flags_10
+          flags => wall_flags_10
     END SELECT
 
     unroll = ( MOD( nyn_mg(l)-nys_mg(l)+1, 4 ) == 0  .AND.                                         &
                MOD( nxr_mg(l)-nxl_mg(l)+1, 2 ) == 0 )
-
-!
-!-- The red/black decomposition requires that on the lower i,j indices need to start alternatively with an
-!-- even or odd value on the coarsest grid level, depending on the core-id, and if the subdomain has an
-!-- uneven number of gridpoints along x/y. Set the respective steering switches here.
-    IF ( l == 1  .AND.  MOD( myidx, 2 ) /= 0  .AND.  MOD( nxl_mg(l) - nxr_mg(l), 2 ) == 0 )  THEN
-       adjust_lower_i_index = .TRUE.
-       save_nxl_mg = nxl_mg(1)
-    ELSE
-       adjust_lower_i_index = .FALSE.
-    ENDIF
-    IF ( l == 1  .AND.  MOD( myidy, 2 ) /= 0  .AND.  MOD( nyn_mg(l) - nys_mg(l), 2 ) == 0 )  THEN
-       adjust_lower_j_index = .TRUE.
-       save_nys_mg = nys_mg(l)
-    ELSE
-       adjust_lower_j_index = .FALSE.
-    ENDIF
-
 
     DO  n = 1, ngsrb
 
@@ -851,17 +862,6 @@
 
              CALL cpu_log( log_point_s(36), 'redblack_no_unroll_noopt', 'start' )
 
-             IF ( adjust_lower_i_index )  THEN
-                nxl_mg(l) = save_nxl_mg + 1
-             ENDIF
-
-             IF ( adjust_lower_j_index )  THEN
-                IF ( color == 1 )  THEN
-                  nys_mg(l) = save_nys_mg - 1
-                ELSE
-                  nys_mg(l) = save_nys_mg + 1
-                ENDIF
-             ENDIF
 !
 !--          Without unrolling of loops, no cache optimization
              DO  i = nxl_mg(l), nxr_mg(l), 2
@@ -897,18 +897,6 @@
                 ENDDO
              ENDDO
 
-             IF ( adjust_lower_i_index )  THEN
-                nxl_mg(l) = save_nxl_mg - 1
-             ENDIF
-
-             IF ( adjust_lower_j_index )  THEN
-                IF ( color == 1 )  THEN
-                  nys_mg(l) = save_nys_mg + 1
-                ELSE
-                  nys_mg(l) = save_nys_mg - 1
-                ENDIF
-             ENDIF
-
              DO  i = nxl_mg(l)+1, nxr_mg(l), 2
                 DO  j = nys_mg(l) + (color-1), nyn_mg(l), 2
                    DO  k = nzb+1, nzt_mg(l), 2
@@ -935,18 +923,6 @@
                 ENDDO
              ENDDO
 
-             IF ( adjust_lower_i_index )  THEN
-                nxl_mg(l) = save_nxl_mg + 1
-             ENDIF
-
-             IF ( adjust_lower_j_index )  THEN
-                IF ( color == 1 )  THEN
-                  nys_mg(l) = save_nys_mg + 1
-                ELSE
-                  nys_mg(l) = save_nys_mg - 1
-                ENDIF
-             ENDIF
-
              DO  i = nxl_mg(l), nxr_mg(l), 2
                 DO  j = nys_mg(l) + (color-1), nyn_mg(l), 2
                    DO  k = nzb+2, nzt_mg(l), 2
@@ -972,18 +948,6 @@
                    ENDDO
                 ENDDO
              ENDDO
-
-             IF ( adjust_lower_i_index )  THEN
-                nxl_mg(l) = save_nxl_mg - 1
-             ENDIF
-
-             IF ( adjust_lower_j_index )  THEN
-                IF ( color == 1 )  THEN
-                  nys_mg(l) = save_nys_mg - 1
-                ELSE
-                  nys_mg(l) = save_nys_mg + 1
-                ENDIF
-             ENDIF
 
              DO  i = nxl_mg(l)+1, nxr_mg(l), 2
                 DO  j = nys_mg(l) + 2 - color, nyn_mg(l), 2
@@ -1250,17 +1214,7 @@
     ENDDO
 
 !
-!-- Reset lower index limits to their standard values (may happen on coarsest levels only)
-    IF ( adjust_lower_i_index )  THEN
-       nxl_mg(l) = save_nxl_mg
-    ENDIF
-
-    IF ( adjust_lower_j_index )  THEN
-       nys_mg(l) = save_nys_mg
-    ENDIF
-
-!
-!-- Set pressure within topography and at the topography surfaces
+!--    Set pressure within topography and at the topography surfaces
 !$OMP PARALLEL PRIVATE (i,j,k,wall_left,wall_north,wall_right,wall_south,wall_top,wall_total)
 !$OMP DO
     DO  i = nxl_mg(l), nxr_mg(l)
@@ -1808,17 +1762,17 @@
                nys_mg,                                                                             &
                nzb,                                                                                &
                nzt_mg,                                                                             &
-               topo_flags,                                                                         &
-               topo_flags_1,                                                                       &
-               topo_flags_10,                                                                      &
-               topo_flags_2,                                                                       &
-               topo_flags_3,                                                                       &
-               topo_flags_4,                                                                       &
-               topo_flags_5,                                                                       &
-               topo_flags_6,                                                                       &
-               topo_flags_7,                                                                       &
-               topo_flags_8,                                                                       &
-               topo_flags_9
+               wall_flags_total_0,                                                                 &
+               wall_flags_1,                                                                       &
+               wall_flags_10,                                                                      &
+               wall_flags_2,                                                                       &
+               wall_flags_3,                                                                       &
+               wall_flags_4,                                                                       &
+               wall_flags_5,                                                                       &
+               wall_flags_6,                                                                       &
+               wall_flags_7,                                                                       &
+               wall_flags_8,                                                                       &
+               wall_flags_9
 
     IMPLICIT NONE
 
@@ -1841,7 +1795,7 @@
     inc = 1
     DO  l = maximum_grid_level, 1 , -1
 !
-!--    Set grid_level as it is required for exchange_horiz_int
+!--    Set grid_level as it is required for exchange_horiz_2d_int
        grid_level = l
 
        nxl_l = nxl_mg(l)
@@ -1853,25 +1807,25 @@
 !--    Assign the flag level to be calculated
        SELECT CASE ( l )
           CASE ( 1 )
-             flags => topo_flags_1
+             flags => wall_flags_1
           CASE ( 2 )
-             flags => topo_flags_2
+             flags => wall_flags_2
           CASE ( 3 )
-             flags => topo_flags_3
+             flags => wall_flags_3
           CASE ( 4 )
-             flags => topo_flags_4
+             flags => wall_flags_4
           CASE ( 5 )
-             flags => topo_flags_5
+             flags => wall_flags_5
           CASE ( 6 )
-             flags => topo_flags_6
+             flags => wall_flags_6
           CASE ( 7 )
-             flags => topo_flags_7
+             flags => wall_flags_7
           CASE ( 8 )
-             flags => topo_flags_8
+             flags => wall_flags_8
           CASE ( 9 )
-             flags => topo_flags_9
+             flags => wall_flags_9
           CASE ( 10 )
-             flags => topo_flags_10
+             flags => wall_flags_10
        END SELECT
 
 !
@@ -1898,7 +1852,7 @@
           DO  i = nxl_l, nxr_l
              DO  j = nys_l, nyn_l
                 DO  k = nzb, nzt_l
-                   topo_tmp(k,j,i) = topo_flags(k*inc,j*inc,i*inc)
+                   topo_tmp(k,j,i) = wall_flags_total_0(k*inc,j*inc,i*inc)
                 ENDDO
              ENDDO
           ENDDO

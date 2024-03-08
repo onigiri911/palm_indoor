@@ -13,10 +13,31 @@
 ! You should have received a copy of the GNU General Public License along with PALM. If not, see
 ! <http://www.gnu.org/licenses/>.
 !
-! Copyright 1997-2021 Leibniz Universitaet Hannover
+! Copyright 1997-2020 Leibniz Universitaet Hannover
 !--------------------------------------------------------------------------------------------------!
 !
 !
+! Current revisions:
+! -----------------
+!
+!
+! Former revisions:
+! -----------------
+! $Id: singleton_mod.f90 4591 2020-07-06 15:56:08Z raasch $
+! File re-formatted to follow the PALM coding standard
+!
+!
+! 4182 2019-08-22 15:20:23Z scharf
+! Corrected "Former revisions" section
+!
+! 3761 2019-02-25 15:31:42Z raasch
+! Statement added to prevent compiler warning about unused variables
+!
+! Revision 1.1  2002/05/02 18:56:59  raasch
+! Initial revision
+!
+!
+!--------------------------------------------------------------------------------------------------!
 ! Description:
 ! ------------
 !> Multivariate Fast Fourier Transform

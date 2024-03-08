@@ -13,9 +13,38 @@
 ! You should have received a copy of the GNU General Public License along with PALM. If not, see
 ! <http://www.gnu.org/licenses/>.
 !
-! Copyright 1997-2021 Leibniz Universitaet Hannover
+! Copyright 1997-2020 Leibniz Universitaet Hannover
 !--------------------------------------------------------------------------------------------------!
 !
+!
+! Current revisions:
+! -----------------
+! 
+! 
+! Former revisions:
+! -----------------
+! $Id: user_data_output_mask.f90 4498 2020-04-15 14:26:31Z raasch $
+! file re-formatted to follow the PALM coding standard
+!
+!
+! 4360 2020-01-07 11:25:50Z suehring
+! Corrected "Former revisions" section
+!
+! 4168 2019-08-16 13:50:17Z suehring
+! Remove dependency on surface_mod + example for terrain-following output
+! adjusted
+!
+! 4069 2019-07-01 14:05:51Z Giersch
+! Masked output running index mid has been introduced as a local variable to
+! avoid runtime error (Loop variable has been modified) in time_integration
+!
+! 3768 2019-02-27 14:35:58Z raasch
+! variables commented + statement added to avoid compiler warnings about unused variables
+!
+! 3655 2019-01-07 16:51:22Z knoop
+! Add terrain-following output
+! 1036 2012-10-22 13:43:42Z raasch
+! code put under GPL (PALM 3.9)
 !
 ! Description:
 ! ------------
@@ -23,6 +52,7 @@
 !> indices (i,j,k) for masked data output.
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE user_data_output_mask( av, variable, found, local_pf, mid )
+
 
     USE control_parameters
 

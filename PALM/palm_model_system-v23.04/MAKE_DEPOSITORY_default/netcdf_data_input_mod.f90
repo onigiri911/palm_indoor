@@ -13,9 +13,191 @@
 ! You should have received a copy of the GNU General Public License along with PALM. If not, see
 ! <http://www.gnu.org/licenses/>.
 !
-! Copyright 1997-2021 Leibniz Universitaet Hannover
-! Copyright 2022-2022 pecanode GmbH
+! Copyright 1997-2020 Leibniz Universitaet Hannover
 !--------------------------------------------------------------------------------------------------!
+!
+! Current revisions:
+! -----------------
+!
+!
+! Former revisions:
+! -----------------
+! $Id: netcdf_data_input_mod.f90 4767 2020-11-02 15:44:16Z raasch $
+! file re-formatted to follow the PALM coding standard
+!
+! 4724 2020-10-06 17:20:39Z suehring
+! - New routines to read LOD=1 variables from dynamic input file
+! - add no_abort option to all get_attribute routines
+!
+! 4641 2020-08-13 09:57:07Z suehring
+! To follow (UC)2 standard, change default of attribute data_content
+!
+! 4507 2020-04-22 18:21:45Z gronemeier
+! - bugfix: check terrain height for fill values directly after reading
+! - changes:
+!   - remove check for negative zt
+!   - add reference height from input file upon PALM reference height (origin_z)
+!
+! 4457 2020-03-11 14:20:43Z raasch
+! use statement for exchange horiz added,
+! bugfixes for calls of exchange horiz 2d
+!
+! 4435 2020-03-03 10:38:41Z raasch
+! temporary bugfix to avoid compile problems with older NetCDFD libraries on IMUK machines
+!
+! 4434 2020-03-03 10:02:18Z oliver.maas
+! added optional netcdf data input for wtm array input parameters
+!
+! 4404 2020-02-12 17:01:53Z suehring
+! Fix misplaced preprocessor directives.
+!
+! 4401 2020-02-11 16:19:09Z suehring
+! Define a default list of coordinate reference system variables used when no static driver input is
+! available
+!
+! 4400 2020-02-10 20:32:41Z suehring
+! - Routine to inquire default fill values added
+! - netcdf_data_input_att and netcdf_data_input_var routines removed
+!
+! 4392 2020-01-31 16:14:57Z pavelkrc
+! (resler) Decrease length of reading buffer (fix problem of ifort/icc compilers)
+!
+! 4389 2020-01-29 08:22:42Z raasch
+! Error messages refined for reading ASCII topo file, also reading of topo file revised so that
+! statement labels and goto statements are not required any more
+!
+! 4388 2020-01-28 16:36:55Z raasch
+! bugfix for error messages while reading ASCII topo file
+!
+! 4387 2020-01-28 11:44:20Z banzhafs
+! Added subroutine get_variable_string_generic ( ) and added to interface get_variable to circumvent
+! unknown application-specific restrictions in existing function get_variable_string ( ), which is
+! retained for backward compatibility (ECC)
+!
+! 4370 2020-01-10 14:00:44Z raasch
+! collective read switched off on NEC Aurora to avoid hang situations
+!
+! 4362 2020-01-07 17:15:02Z suehring
+! Input of plant canopy variables from static driver moved to plant-canopy model
+!
+! 4360 2020-01-07 11:25:50Z suehring
+! Correct single message calls, local checks must be given by the respective mpi rank.
+!
+! 4346 2019-12-18 11:55:56Z motisi
+! Introduction of wall_flags_total_0, which currently sets bits based on static topography
+! information used in wall_flags_static_0
+!
+! 4329 2019-12-10 15:46:36Z motisi
+! Renamed wall_flags_0 to wall_flags_static_0
+!
+! 4321 2019-12-04 10:26:38Z pavelkrc
+! Further revise check for surface fractions
+!
+! 4313 2019-11-27 14:07:00Z suehring
+! Checks for surface fractions revised
+!
+! 4312 2019-11-27 14:06:25Z suehring
+! Open input files with read-only attribute instead of write attribute.
+!
+! 4280 2019-10-29 14:34:15Z monakurppa
+! Remove id_emis flags from get_variable_4d_to_3d_real and get_variable_5d_to_4d_real
+!
+! 4258 2019-10-07 13:29:08Z suehring
+! - Migrate input of soil temperature and moisture to land-surface model.
+! - Remove interpolate routines and move the only required subroutine to land-surface model.
+!
+! 4247 2019-09-30 10:18:24Z pavelkrc
+! Add reading and processing of building_surface_pars
+!
+! 4226 2019-09-10 17:03:24Z suehring
+! - Netcdf input routine for dimension length renamed
+! - Move offline-nesting-specific checks to nesting_offl_mod
+! - Module-specific input of boundary data for offline nesting moved to nesting_offl_mod
+! - Define module specific data type for offline nesting in nesting_offl_mod
+!
+! 4190 2019-08-27 15:42:37Z suehring
+! type real_1d changed to real_1d_3d
+!
+! 4186 2019-08-23 16:06:14Z suehring
+! Minor formatting adjustments
+!
+! 4182 2019-08-22 15:20:23Z scharf
+! Corrected "Former revisions" section
+!
+! 4178 2019-08-21 11:13:06Z suehring
+! Implement input of external radiation forcing. Therefore, provide public subroutines and
+! variables.
+!
+! 4150 2019-08-08 20:00:47Z suehring
+! Some variables are given the public attribute, in order to call netcdf input from single routines
+!
+! 4125 2019-07-29 13:31:44Z suehring
+! To enable netcdf-parallel access for lateral boundary data (dynamic input), zero number of
+! elements are passed to the respective get_variable routine for non-boundary cores.
+!
+! 4100 2019-07-17 08:11:29Z forkel
+! Made check for input_pids_dynamic and 'inifor' more general
+!
+! 4012 2019-05-31 15:19:05Z monakurppa
+!
+! 3994 2019-05-22 18:08:09Z suehring
+! Remove single location message
+!
+! 3976 2019-05-15 11:02:34Z hellstea
+! Remove unused variables from last commit
+!
+! 3969 2019-05-13 12:14:33Z suehring
+! - clean-up index notations for emission_values to eliminate magic numbers
+! - introduce temporary variable dum_var_5d as well as subroutines get_var_5d_real and
+!   get_var_5d_real_dynamic
+! - remove emission-specific code in generic get_variable routines
+! - in subroutine netcdf_data_input_chemistry_data change netCDF LOD 1 (default) emission_values to
+!   the following index order: z, y, x, species, category
+! - in subroutine netcdf_data_input_chemistry_data changed netCDF LOD 2 pre-processed
+!   emission_values to the following index order: time, z, y, x, species
+! - in type chem_emis_att_type replace nspec with n_emiss_species but retained nspec for backward
+!   compatibility with salsa_mod. (E.C. Chan)
+!
+! 3961 2019-05-08 16:12:31Z suehring
+! Revise checks for building IDs and types
+!
+! 3943 2019-05-02 09:50:41Z maronga
+! Temporarily disabled some (faulty) checks for static driver.
+!
+! 3942 2019-04-30 13:08:30Z kanani
+! Fix: increase LEN of all NetCDF attribute values (caused crash in netcdf_create_global_atts due to
+!      insufficient length)
+!
+! 3941 2019-04-30 09:48:33Z suehring
+! Move check for grid dimension to an earlier point in time when first array is read.
+! Improve checks for building types / IDs with respect to 2D/3D buildings.
+!
+! 3885 2019-04-11 11:29:34Z kanani
+! Changes related to global restructuring of location messages and introduction of additional debug
+! messages
+!
+! 3864 2019-04-05 09:01:56Z monakurppa
+! get_variable_4d_to_3d_real modified to enable read in data of type data(t,y,x,n) one timestep at
+! a time + some routines made public
+!
+! 3855 2019-04-03 10:00:59Z suehring
+! Typo removed
+!
+! 3854 2019-04-02 16:59:33Z suehring
+! Bugfix in one of the checks. Typo removed.
+!
+! 3744 2019-02-15 18:38:58Z suehring
+! Enable mesoscale offline nesting for chemistry variables as well as initialization of chemistry
+! via dynamic input file.
+!
+! 3705 2019-01-29 19:56:39Z suehring
+! Interface for attribute input of 8-bit and 32-bit integer
+!
+! 3704 2019-01-29 19:51:41Z suehring
+! unused variables removed
+!
+! 2696 2017-12-14 17:12:51Z kanani
+! Initial revision (suehring)
 !
 ! Authors:
 ! --------
@@ -28,64 +210,28 @@
 !> Modulue contains routines to input data according to Palm input data
 !> standart using dynamic and static input files.
 !> @todo - Chemistry: revise reading of netcdf file and ajdust formatting according to standard!!!
+!>         (ecc/done)
 !> @todo - Order input alphabetically
 !> @todo - Revise error messages and error numbers
 !> @todo - Input of missing quantities (chemical species, emission rates)
-!> @todo - Definition and input of still missing variable attributes
+!> @todo - Definition and input of still missing variable attributes (ecc/what are they?)
 !> @todo - Input of initial geostrophic wind profiles with cyclic conditions.
 !> @todo - remove z dimension from default_emission_data nad preproc_emission_data and correpsonding
-!>         subroutines get_var_5d_real and get_var_5d_dynamic
-!> @todo - decpreciate chem_emis_att_type@nspec
-!> @todo - depreciate subroutines get_variable_4d_to_3d_real and get_variable_5d_to_4d_real
+!>         subroutines get_var_5d_real and get_var_5d_dynamic (ecc)
+!> @todo - decpreciate chem_emis_att_type@nspec (ecc)
+!> @todo - depreciate subroutines get_variable_4d_to_3d_real and get_variable_5d_to_4d_real (ecc)
 !> @todo - introduce useful debug_message(s)
 !--------------------------------------------------------------------------------------------------!
  MODULE netcdf_data_input_mod
 
-#if defined( __parallel )
-    USE MPI
-#endif
-
     USE control_parameters,                                                                        &
-        ONLY:  air_chemistry,                                                                      &
-               bc_lr_cyc,                                                                          &
-               bc_ns_cyc,                                                                          &
-               coupling_char,                                                                      &
-               dz,                                                                                 &
-               humidity,                                                                           &
-               initializing_actions,                                                               &
-               io_blocks,                                                                          &
-               io_group,                                                                           &
-               land_surface,                                                                       &
-               message_string,                                                                     &
-               neutral,                                                                            &
-               number_dz,                                                                          &
-               topo_no_distinct,                                                                   &
-               urban_surface
+        ONLY:  coupling_char, io_blocks, io_group
 
     USE cpulog,                                                                                    &
-        ONLY:  cpu_log,                                                                            &
-               log_point_s
-
-    USE, INTRINSIC ::  IEEE_ARITHMETIC
+        ONLY:  cpu_log, log_point_s
 
     USE indices,                                                                                   &
-        ONLY:  nbgp,                                                                               &
-               nx,                                                                                 &
-               nxl,                                                                                &
-               nxlg,                                                                               &
-               nxlu,                                                                               &
-               nxr,                                                                                &
-               nxrg,                                                                               &
-               ny,                                                                                 &
-               nyn,                                                                                &
-               nyng,                                                                               &
-               nys,                                                                                &
-               nysg,                                                                               &
-               nysv,                                                                               &
-               nz,                                                                                 &
-               nzb,                                                                                &
-               nzt,                                                                                &
-               topo_flags
+        ONLY:  nbgp
 
     USE kinds
 
@@ -94,6 +240,9 @@
 #endif
 
     USE pegrid
+
+    USE surface_mod,                                                                               &
+        ONLY:  ind_pav_green, ind_veg_wall, ind_wat_win
 !
 !-- Define type for dimensions.
     TYPE dims_xy
@@ -175,10 +324,10 @@
        REAL(wp), DIMENSION(:,:), ALLOCATABLE ::  chem_init  !< initial vertical profiles of chemistry variables
 
 
-       REAL(wp), DIMENSION(:,:,:), ALLOCATABLE ::  msoil_3d  !< initial 3d soil moisture provided by dynamic file and
-                                                             !< interpolated onto soil grid
-       REAL(wp), DIMENSION(:,:,:), ALLOCATABLE ::  tsoil_3d  !< initial 3d soil temperature provided by dynamic file and
-                                                             !< interpolated onto soil grid
+       REAL(wp), DIMENSION(:,:,:), ALLOCATABLE ::  msoil_3d  !< initial 3d soil moisture provide by Inifor and interpolated onto
+                                                             !< soil grid
+       REAL(wp), DIMENSION(:,:,:), ALLOCATABLE ::  tsoil_3d  !< initial 3d soil temperature provide by Inifor and interpolated onto
+                                                             !< soil grid
 
     END TYPE init_type
 !
@@ -188,7 +337,7 @@
 !--    DIMENSIONS
        INTEGER(iwp)                                 :: nspec=0            !< no of chem species provided in emission_values
        INTEGER(iwp)                                 :: n_emiss_species=0  !< no of chem species provided in emission_values
-                                                                          !< same function as nspec, which will be depreciated
+                                                                          !< same function as nspec, which will be depreciated (ecc)
        INTEGER(iwp)                                 :: ncat=0             !< number of emission categories
        INTEGER(iwp)                                 :: nvoc=0             !< number of VOC components
        INTEGER(iwp)                                 :: npm=0              !< number of PM components
@@ -231,7 +380,7 @@
 !-- Data type for the values of chemistry emissions
     TYPE chem_emis_val_type
 
-       !REAL(wp),ALLOCATABLE, DIMENSION(:,:)     :: stack_height           !< stack height
+       !REAL(wp),ALLOCATABLE, DIMENSION(:,:)     :: stack_height           !< stack height (ecc / to be implemented)
        REAL(wp),ALLOCATABLE, DIMENSION(:,:,:)    :: default_emission_data  !< Emission input values for LOD1 (DEFAULT mode)
        REAL(wp),ALLOCATABLE, DIMENSION(:,:,:,:)  :: preproc_emission_data  !< Emission input values for LOD2 (PRE-PROCESSED mode)
 
@@ -241,8 +390,8 @@
 !-- Define data structures for different input data types.
 !-- 8-bit Integer 2D
     TYPE int_2d_8bit
-       INTEGER(ibp) ::  fill = -127                      !< fill value
-       INTEGER(ibp), DIMENSION(:,:), ALLOCATABLE ::  var !< respective variable
+       INTEGER(KIND=1) ::  fill = -127                      !< fill value
+       INTEGER(KIND=1), DIMENSION(:,:), ALLOCATABLE ::  var !< respective variable
 
        LOGICAL ::  from_file = .FALSE.  !< flag indicating whether an input variable is available and read from file or default
                                         !< values are used
@@ -250,8 +399,8 @@
 !
 !-- 8-bit Integer 3D
     TYPE int_3d_8bit
-       INTEGER(ibp) ::  fill = -127                           !< fill value
-       INTEGER(ibp), DIMENSION(:,:,:), ALLOCATABLE ::  var_3d !< respective variable
+       INTEGER(KIND=1) ::  fill = -127                           !< fill value
+       INTEGER(KIND=1), DIMENSION(:,:,:), ALLOCATABLE ::  var_3d !< respective variable
 
        LOGICAL ::  from_file = .FALSE.  !< flag indicating whether an input variable is available and read from file or default
                                         !< values are used
@@ -306,10 +455,10 @@
 !-- detail.
 !-- For buildings, the input is either 2D float, or 3d byte.
     TYPE build_in
-       INTEGER(iwp) ::  lod = 1                               !< level of detail
-       INTEGER(ibp) ::  fill2 = -127                          !< fill value for lod = 2
-       INTEGER(iwp) ::  nz                                    !< number of vertical layers in file
-       INTEGER(ibp), DIMENSION(:,:,:), ALLOCATABLE ::  var_3d !< 3d variable (lod = 2)
+       INTEGER(iwp)    ::  lod = 1                               !< level of detail
+       INTEGER(KIND=1) ::  fill2 = -127                          !< fill value for lod = 2
+       INTEGER(iwp)    ::  nz                                    !< number of vertical layers in file
+       INTEGER(KIND=1), DIMENSION(:,:,:), ALLOCATABLE ::  var_3d !< 3d variable (lod = 2)
 
        REAL(wp), DIMENSION(:), ALLOCATABLE ::  z                 !< vertical coordinate for 3D building, used for consistency check
 
@@ -324,10 +473,10 @@
 !
 !-- For soil_type, the input is either 2D or 3D one-byte integer.
     TYPE soil_in
-       INTEGER(iwp)                                ::  lod = 1      !< level of detail
-       INTEGER(ibp)                                ::  fill = -127  !< fill value for lod = 2
-       INTEGER(ibp), DIMENSION(:,:), ALLOCATABLE   ::  var_2d       !< 2d variable (lod = 1)
-       INTEGER(ibp), DIMENSION(:,:,:), ALLOCATABLE ::  var_3d       !< 3d variable (lod = 2)
+       INTEGER(iwp)                                   ::  lod = 1      !< level of detail
+       INTEGER(KIND=1)                                ::  fill = -127  !< fill value for lod = 2
+       INTEGER(KIND=1), DIMENSION(:,:), ALLOCATABLE   ::  var_2d       !< 2d variable (lod = 1)
+       INTEGER(KIND=1), DIMENSION(:,:,:), ALLOCATABLE ::  var_3d       !< 3d variable (lod = 2)
 
        LOGICAL ::  from_file = .FALSE.  !< flag indicating whether an input variable is available and read from file or default
                                         !< values are used
@@ -461,6 +610,8 @@
 !-- Define variables
     TYPE(crs_type)  ::  coord_ref_sys  !< coordinate reference system
 
+    TYPE(dims_xy)   ::  dim_static     !< data structure for x, y-dimension in static input file
+
     TYPE(init_type) ::  init_3d     !< data structure for the initialization of the 3D flow and soil fields
     TYPE(init_type) ::  init_model  !< data structure for the initialization of the model
 
@@ -476,7 +627,7 @@
 !
 !-- Define 3D variables of type NC_BYTE
     TYPE(int_3d_8bit)  ::  building_obstruction_f    !< input variable for building obstruction
-    ! TYPE(int_3d_8bit)  ::  building_obstruction_full !< input variable for building obstruction
+    TYPE(int_3d_8bit)  ::  building_obstruction_full !< input variable for building obstruction
 !
 !-- Define 2D variables of type NC_INT
     TYPE(int_2d_32bit) ::  building_id_f     !< input variable for building ID
@@ -604,18 +755,16 @@
        MODULE PROCEDURE get_variable_2d_int32
        MODULE PROCEDURE get_variable_2d_real
        MODULE PROCEDURE get_variable_2d_real_dynamic
-       MODULE PROCEDURE get_variable_2d_real_time_slice
        MODULE PROCEDURE get_variable_3d_int8
        MODULE PROCEDURE get_variable_3d_real
        MODULE PROCEDURE get_variable_3d_real_dynamic
-       MODULE PROCEDURE get_variable_4d_real_dynamic
        MODULE PROCEDURE get_variable_4d_to_3d_real
        MODULE PROCEDURE get_variable_4d_real
        MODULE PROCEDURE get_variable_5d_to_4d_real
-       MODULE PROCEDURE get_variable_5d_real           ! temp subroutine 4 reading 5D NC arrays
+       MODULE PROCEDURE get_variable_5d_real           ! (ecc) temp subroutine 4 reading 5D NC arrays
        MODULE PROCEDURE get_variable_5d_real_dynamic   ! 2B removed as z is out of emission_values
        MODULE PROCEDURE get_variable_string
-       MODULE PROCEDURE get_variable_string_generic    ! generic string function
+       MODULE PROCEDURE get_variable_string_generic    ! (ecc) generic string function
 
     END INTERFACE get_variable
 
@@ -630,19 +779,9 @@
        MODULE PROCEDURE get_attribute_string
     END INTERFACE get_attribute
 
-    INTERFACE add_ghost_layers
-       MODULE PROCEDURE add_ghost_layers_2d_int8
-       MODULE PROCEDURE add_ghost_layers_2d_int32
-       MODULE PROCEDURE add_ghost_layers_2d_real
-       MODULE PROCEDURE add_ghost_layers_3d_int8
-       MODULE PROCEDURE add_ghost_layers_3d_real
-       MODULE PROCEDURE add_ghost_layers_4d_real
-    END INTERFACE add_ghost_layers
-
 !
 !-- Public data structures
-    PUBLIC dims_xy,                                                                                &
-           real_1d_3d,                                                                             &
+    PUBLIC real_1d_3d,                                                                             &
            real_2d,                                                                                &
            real_3d
 !
@@ -703,8 +842,7 @@
 
 !
 !-- Public subroutines
-    PUBLIC add_ghost_layers,                                                                       &
-           check_existence,                                                                        &
+    PUBLIC check_existence,                                                                        &
            close_input_file,                                                                       &
            get_attribute,                                                                          &
            get_dimension_length,                                                                   &
@@ -720,7 +858,9 @@
            netcdf_data_input_init,                                                                 &
            netcdf_data_input_init_3d,                                                              &
            netcdf_data_input_surface_data,                                                         &
-           open_read_file
+           netcdf_data_input_topo,                                                                 &
+           open_read_file,                                                                         &
+           resize_array_3d_real
 
 
  CONTAINS
@@ -732,6 +872,9 @@
 !> checks are performed.
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE netcdf_data_input_inquire_file
+
+    USE control_parameters,                                                                        &
+        ONLY:  topo_no_distinct
 
     IMPLICIT NONE
 
@@ -769,13 +912,8 @@
 
     IMPLICIT NONE
 
-    CHARACTER(LEN=500) ::  faulty_attribute  !< string to gather attributes with incorrect settings
-
     INTEGER(iwp) ::  id_mod     !< NetCDF id of input file
     INTEGER(iwp) ::  var_id_crs !< NetCDF id of variable crs
-
-    LOGICAL ::  input_pids_static_for_all_domains !< parameter to check if all domains have a static input file
-    LOGICAL ::  trigger_error_message             !< control flag to check whether all attributes are set appropriately
 
 !
 !-- Define default list of crs attributes. This is required for coordinate transformation.
@@ -788,172 +926,125 @@
                   coord_ref_sys%false_easting,                                                     &
                   coord_ref_sys%false_northing /)
 
-    IF ( input_pids_static )  THEN
+    IF ( .NOT. input_pids_static )  RETURN
 
 #if defined ( __netcdf )
 !
-!--    Open file in read-only mode
-       CALL open_read_file( TRIM( input_file_static ) // TRIM( coupling_char ), id_mod )
+!-- Open file in read-only mode
+    CALL open_read_file( TRIM( input_file_static ) // TRIM( coupling_char ), id_mod )
 !
-!--    Read global attributes
-       CALL get_attribute( id_mod, input_file_atts%origin_lat_char,                                &
-                           input_file_atts%origin_lat, .TRUE. )
+!-- Read global attributes
+    CALL get_attribute( id_mod, input_file_atts%origin_lat_char,                                   &
+                        input_file_atts%origin_lat, .TRUE. )
 
-       CALL get_attribute( id_mod, input_file_atts%origin_lon_char,                                &
-                           input_file_atts%origin_lon, .TRUE. )
+    CALL get_attribute( id_mod, input_file_atts%origin_lon_char,                                   &
+                        input_file_atts%origin_lon, .TRUE. )
 
-       CALL get_attribute( id_mod, input_file_atts%origin_time_char,                               &
-                           input_file_atts%origin_time, .TRUE., ignore_error = .TRUE. )
+    CALL get_attribute( id_mod, input_file_atts%origin_time_char,                                  &
+                        input_file_atts%origin_time, .TRUE. )
 
-       CALL get_attribute( id_mod, input_file_atts%origin_x_char,                                  &
-                           input_file_atts%origin_x, .TRUE. )
+    CALL get_attribute( id_mod, input_file_atts%origin_x_char,                                     &
+                        input_file_atts%origin_x, .TRUE. )
 
-       CALL get_attribute( id_mod, input_file_atts%origin_y_char,                                  &
-                           input_file_atts%origin_y, .TRUE. )
+    CALL get_attribute( id_mod, input_file_atts%origin_y_char,                                     &
+                        input_file_atts%origin_y, .TRUE. )
 
-       CALL get_attribute( id_mod, input_file_atts%origin_z_char,                                  &
-                           input_file_atts%origin_z, .TRUE. )
+    CALL get_attribute( id_mod, input_file_atts%origin_z_char,                                     &
+                        input_file_atts%origin_z, .TRUE. )
 
-       CALL get_attribute( id_mod, input_file_atts%rotation_angle_char,                            &
-                           input_file_atts%rotation_angle, .TRUE. )
+    CALL get_attribute( id_mod, input_file_atts%rotation_angle_char,                               &
+                        input_file_atts%rotation_angle, .TRUE. )
 
-       CALL get_attribute( id_mod, input_file_atts%author_char,                                    &
-                           input_file_atts%author, .TRUE., ignore_error = .TRUE. )
+    CALL get_attribute( id_mod, input_file_atts%author_char,                                       &
+                        input_file_atts%author, .TRUE., no_abort=.FALSE. )
 
-       CALL get_attribute( id_mod, input_file_atts%contact_person_char,                            &
-                           input_file_atts%contact_person, .TRUE., ignore_error = .TRUE. )
-       CALL get_attribute( id_mod, input_file_atts%institution_char,                               &
-                           input_file_atts%institution,    .TRUE., ignore_error = .TRUE. )
-       CALL get_attribute( id_mod, input_file_atts%acronym_char,                                   &
-                           input_file_atts%acronym,        .TRUE., ignore_error = .TRUE. )
+    CALL get_attribute( id_mod, input_file_atts%contact_person_char,                               &
+                        input_file_atts%contact_person, .TRUE., no_abort=.FALSE. )
+    CALL get_attribute( id_mod, input_file_atts%institution_char,                                  &
+                        input_file_atts%institution,    .TRUE., no_abort=.FALSE. )
+    CALL get_attribute( id_mod, input_file_atts%acronym_char,                                      &
+                        input_file_atts%acronym,        .TRUE., no_abort=.FALSE. )
 
-       CALL get_attribute( id_mod, input_file_atts%campaign_char,                                  &
-                           input_file_atts%campaign, .TRUE., ignore_error = .TRUE. )
-       CALL get_attribute( id_mod, input_file_atts%location_char,                                  &
-                           input_file_atts%location, .TRUE., ignore_error = .TRUE. )
-       CALL get_attribute( id_mod, input_file_atts%site_char,                                      &
-                           input_file_atts%site,     .TRUE., ignore_error = .TRUE. )
+    CALL get_attribute( id_mod, input_file_atts%campaign_char,                                     &
+                        input_file_atts%campaign, .TRUE., no_abort=.FALSE. )
+    CALL get_attribute( id_mod, input_file_atts%location_char,                                     &
+                        input_file_atts%location, .TRUE., no_abort=.FALSE. )
+    CALL get_attribute( id_mod, input_file_atts%site_char,                                         &
+                        input_file_atts%site,     .TRUE., no_abort=.FALSE. )
 
-       CALL get_attribute( id_mod, input_file_atts%source_char,                                    &
-                           input_file_atts%source,     .TRUE., ignore_error = .TRUE. )
-       CALL get_attribute( id_mod, input_file_atts%references_char,                                &
-                           input_file_atts%references, .TRUE., ignore_error = .TRUE. )
-       CALL get_attribute( id_mod, input_file_atts%keywords_char,                                  &
-                           input_file_atts%keywords,   .TRUE., ignore_error = .TRUE. )
-       CALL get_attribute( id_mod, input_file_atts%licence_char,                                   &
-                           input_file_atts%licence,    .TRUE., ignore_error = .TRUE. )
-       CALL get_attribute( id_mod, input_file_atts%comment_char,                                   &
-                           input_file_atts%comment,    .TRUE., ignore_error = .TRUE. )
+    CALL get_attribute( id_mod, input_file_atts%source_char,                                       &
+                        input_file_atts%source,     .TRUE., no_abort=.FALSE. )
+    CALL get_attribute( id_mod, input_file_atts%references_char,                                   &
+                        input_file_atts%references, .TRUE., no_abort=.FALSE. )
+    CALL get_attribute( id_mod, input_file_atts%keywords_char,                                     &
+                        input_file_atts%keywords,   .TRUE., no_abort=.FALSE. )
+    CALL get_attribute( id_mod, input_file_atts%licence_char,                                      &
+                        input_file_atts%licence,    .TRUE., no_abort=.FALSE. )
+    CALL get_attribute( id_mod, input_file_atts%comment_char,                                      &
+                        input_file_atts%comment,    .TRUE., no_abort=.FALSE. )
 !
-!--    Check for proper setting of global attributes, i.e. they must not be set to NaN values.
-       trigger_error_message = .FALSE.
-       faulty_attribute = ''
-       IF ( IEEE_IS_NAN( input_file_atts%origin_lat ) )  THEN
-          trigger_error_message = .TRUE.
-          faulty_attribute = TRIM( faulty_attribute ) // input_file_atts%origin_lat_char // ', '
-       ENDIF
-       IF ( IEEE_IS_NAN( input_file_atts%origin_lon ) )  THEN
-          trigger_error_message = .TRUE.
-          faulty_attribute = TRIM( faulty_attribute ) // input_file_atts%origin_lon_char // ', '
-       ENDIF
-       IF ( IEEE_IS_NAN( input_file_atts%origin_x ) )  THEN
-          trigger_error_message = .TRUE.
-          faulty_attribute = TRIM( faulty_attribute ) // input_file_atts%origin_x_char // ', '
-       ENDIF
-       IF ( IEEE_IS_NAN( input_file_atts%origin_y ) )  THEN
-          trigger_error_message = .TRUE.
-          faulty_attribute = TRIM( faulty_attribute ) // input_file_atts%origin_y_char // ', '
-       ENDIF
-       IF ( IEEE_IS_NAN( input_file_atts%origin_z ) )  THEN
-          trigger_error_message = .TRUE.
-          faulty_attribute = TRIM( faulty_attribute ) // input_file_atts%origin_z_char // ', '
-       ENDIF
-       IF ( IEEE_IS_NAN( input_file_atts%rotation_angle ) )  THEN
-          trigger_error_message = .TRUE.
-          faulty_attribute = TRIM( faulty_attribute ) // input_file_atts%rotation_angle_char // ', '
-       ENDIF
-
-       IF ( trigger_error_message )  THEN
-          message_string = 'static driver global attribute(s): &' // TRIM( faulty_attribute ) //   &
-                           '&is (are) "NaN"'
-          CALL message( 'netcdf_data_input_init', 'DRV0042', 1, 2, 0, 6, 0 )
-       ENDIF
+!-- Read coordinate reference system if available
+    nc_stat = NF90_INQ_VARID( id_mod, 'crs', var_id_crs )
+    IF ( nc_stat == NF90_NOERR )  THEN
+       CALL get_attribute( id_mod, 'epsg_code', coord_ref_sys%epsg_code, .FALSE., 'crs' )
+       CALL get_attribute( id_mod, 'false_easting', coord_ref_sys%false_easting, .FALSE., 'crs' )
+       CALL get_attribute( id_mod, 'false_northing', coord_ref_sys%false_northing, .FALSE., 'crs' )
+       CALL get_attribute( id_mod, 'grid_mapping_name', coord_ref_sys%grid_mapping_name, .FALSE.,  &
+                           'crs' )
+       CALL get_attribute( id_mod, 'inverse_flattening', coord_ref_sys%inverse_flattening, .FALSE.,&
+                           'crs' )
+       CALL get_attribute( id_mod, 'latitude_of_projection_origin',                                &
+                           coord_ref_sys%latitude_of_projection_origin, .FALSE., 'crs' )
+       CALL get_attribute( id_mod, 'long_name', coord_ref_sys%long_name, .FALSE., 'crs' )
+       CALL get_attribute( id_mod, 'longitude_of_central_meridian',                                &
+                           coord_ref_sys%longitude_of_central_meridian, .FALSE., 'crs' )
+       CALL get_attribute( id_mod, 'longitude_of_prime_meridian',                                  &
+                           coord_ref_sys%longitude_of_prime_meridian, .FALSE., 'crs' )
+       CALL get_attribute( id_mod, 'scale_factor_at_central_meridian',                             &
+                           coord_ref_sys%scale_factor_at_central_meridian, .FALSE., 'crs' )
+       CALL get_attribute( id_mod, 'semi_major_axis', coord_ref_sys%semi_major_axis, .FALSE., 'crs')
+       CALL get_attribute( id_mod, 'units', coord_ref_sys%units, .FALSE., 'crs' )
+    ELSE
 !
-!--    Read coordinate reference system if available
-       nc_stat = NF90_INQ_VARID( id_mod, 'crs', var_id_crs )
-       IF ( nc_stat == NF90_NOERR )  THEN
-          CALL get_attribute( id_mod, 'epsg_code', coord_ref_sys%epsg_code, .FALSE., 'crs' )
-          CALL get_attribute( id_mod, 'false_easting', coord_ref_sys%false_easting, .FALSE., 'crs' )
-          CALL get_attribute( id_mod, 'false_northing', coord_ref_sys%false_northing, .FALSE., 'crs' )
-          CALL get_attribute( id_mod, 'grid_mapping_name', coord_ref_sys%grid_mapping_name,        &
-                              .FALSE., 'crs' )
-          CALL get_attribute( id_mod, 'inverse_flattening', coord_ref_sys%inverse_flattening,      &
-                              .FALSE., 'crs' )
-          CALL get_attribute( id_mod, 'latitude_of_projection_origin',                             &
-                              coord_ref_sys%latitude_of_projection_origin, .FALSE., 'crs' )
-          CALL get_attribute( id_mod, 'long_name', coord_ref_sys%long_name, .FALSE., 'crs' )
-          CALL get_attribute( id_mod, 'longitude_of_central_meridian',                             &
-                              coord_ref_sys%longitude_of_central_meridian, .FALSE., 'crs' )
-          CALL get_attribute( id_mod, 'longitude_of_prime_meridian',                               &
-                              coord_ref_sys%longitude_of_prime_meridian, .FALSE., 'crs' )
-          CALL get_attribute( id_mod, 'scale_factor_at_central_meridian',                          &
-                              coord_ref_sys%scale_factor_at_central_meridian, .FALSE., 'crs' )
-          CALL get_attribute( id_mod, 'semi_major_axis', coord_ref_sys%semi_major_axis, .FALSE.,   &
-                              'crs')
-          CALL get_attribute( id_mod, 'units', coord_ref_sys%units, .FALSE., 'crs' )
-       ELSE
-!
-!--       Calculate central meridian from origin_lon
-          coord_ref_sys%longitude_of_central_meridian =                                            &
+!--    Calculate central meridian from origin_lon
+       coord_ref_sys%longitude_of_central_meridian =                                               &
                                    CEILING( input_file_atts%origin_lon / 6.0_wp ) * 6.0_wp - 3.0_wp
-       ENDIF
-!
-!--    Finally, close input file
-       CALL close_input_file( id_mod )
-#endif
-
-!
-!--    Copy latitude, longitude, origin_z, rotation angle on init type.
-!--    Note: A shifting height might have already been saved to orgin_z in init_grid; therefore,
-!--          do not override but add the reference height from the input file.
-       init_model%latitude       = input_file_atts%origin_lat
-       init_model%longitude      = input_file_atts%origin_lon
-       init_model%origin_x       = input_file_atts%origin_x
-       init_model%origin_y       = input_file_atts%origin_y
-       init_model%origin_z       = init_model%origin_z + input_file_atts%origin_z
-       init_model%rotation_angle = input_file_atts%rotation_angle
-
-!
-!--    Update list of crs attributes. This is required for coordinate transformation.
-       crs_list = (/ coord_ref_sys%semi_major_axis,                                                &
-                     coord_ref_sys%inverse_flattening,                                             &
-                     coord_ref_sys%longitude_of_prime_meridian,                                    &
-                     coord_ref_sys%longitude_of_central_meridian,                                  &
-                     coord_ref_sys%scale_factor_at_central_meridian,                               &
-                     coord_ref_sys%latitude_of_projection_origin,                                  &
-                     coord_ref_sys%false_easting,                                                  &
-                     coord_ref_sys%false_northing /)
     ENDIF
+!
+!-- Finally, close input file
+    CALL close_input_file( id_mod )
+#endif
+!
+!-- Copy latitude, longitude, origin_z, rotation angle on init type.
+!-- Note: A shifting height might have already been saved to orgin_z in init_grid; therefore, do not
+!--       override but add the reference height from the input file.
+    init_model%latitude       = input_file_atts%origin_lat
+    init_model%longitude      = input_file_atts%origin_lon
+    init_model%origin_time    = input_file_atts%origin_time
+    init_model%origin_x       = input_file_atts%origin_x
+    init_model%origin_y       = input_file_atts%origin_y
+    init_model%origin_z       = init_model%origin_z + input_file_atts%origin_z
+    init_model%rotation_angle = input_file_atts%rotation_angle
+
+!
+!-- Update list of crs attributes. This is required for coordinate transformation.
+    crs_list = (/ coord_ref_sys%semi_major_axis,                                                   &
+                  coord_ref_sys%inverse_flattening,                                                &
+                  coord_ref_sys%longitude_of_prime_meridian,                                       &
+                  coord_ref_sys%longitude_of_central_meridian,                                     &
+                  coord_ref_sys%scale_factor_at_central_meridian,                                  &
+                  coord_ref_sys%latitude_of_projection_origin,                                     &
+                  coord_ref_sys%false_easting,                                                     &
+                  coord_ref_sys%false_northing /)
 !
 !-- In case of nested runs, each model domain might have different longitude and latitude, which
 !-- would result in different Coriolis parameters and sun-zenith angles. To avoid this, longitude
-!-- and latitude in each model domain will be set to the values of the root model. Please note,
-!-- this synchronization is required already here. However, synchronization is only done if
-!-- these information is provided by a static input file in all domains. Therefore, first
-!-- check if a static input file is available for all domains.
-    input_pids_static_for_all_domains = input_pids_static
-
+!-- and latitude in each model domain will be set to the values of the root model. Please note, this
+!-- synchronization is required already here.
 #if defined( __parallel )
-    CALL MPI_ALLREDUCE( MPI_IN_PLACE, input_pids_static_for_all_domains, 1, MPI_LOGICAL, MPI_LAND, &
-                        MPI_COMM_WORLD, ierr )
+    CALL MPI_BCAST( init_model%latitude,  1, MPI_REAL, 0, MPI_COMM_WORLD, ierr )
+    CALL MPI_BCAST( init_model%longitude, 1, MPI_REAL, 0, MPI_COMM_WORLD, ierr )
 #endif
-
-    IF ( input_pids_static_for_all_domains )  THEN
-#if defined( __parallel )
-       CALL MPI_BCAST( init_model%latitude,  1, MPI_REAL, 0, MPI_COMM_WORLD, ierr )
-       CALL MPI_BCAST( init_model%longitude, 1, MPI_REAL, 0, MPI_COMM_WORLD, ierr )
-#endif
-    ENDIF
 
  END SUBROUTINE netcdf_data_input_init
 
@@ -966,9 +1057,13 @@
  SUBROUTINE netcdf_data_input_chemistry_data( emt_att, emt )
 
     USE chem_modules,                                                                              &
-        ONLY:  emiss_lod,                                                                          &
-               surface_csflux_name,                                                                &
-               time_fac_type
+        ONLY:  emiss_lod, surface_csflux_name, time_fac_type
+
+    USE control_parameters,                                                                        &
+        ONLY:  message_string
+
+    USE indices,                                                                                   &
+        ONLY:  nxl, nxr, nys, nyn
 
     IMPLICIT NONE
 
@@ -984,7 +1079,7 @@
 !-- dum_var_4d are designed to read in emission_values from the chemistry netCDF file.
 !-- Currently the vestigial "z" dimension in emission_values makes it a 5D array, hence the
 !-- corresponding dum_var_5d array. When the "z" dimension is removed completely, dum_var_4d will be
-!-- used instead
+!-- used instead (ecc 20190425)
 
 !    REAL(wp), ALLOCATABLE, DIMENSION(:,:,:,:)    ::  dum_var_4d  !< temp array 4 4D chem emission data
     REAL(wp), ALLOCATABLE, DIMENSION(:,:,:,:,:) ::  dum_var_5d  !< temp array 4 5D chem emission data
@@ -996,7 +1091,7 @@
     IF ( emiss_lod == 0 )  THEN
 
 !
-!--    For reference
+!--    For reference (ecc)
 !       IF (TRIM(mode_emis) == "PARAMETERIZED" .OR. TRIM(mode_emis) == "parameterized") THEN
 
        ispec=1
@@ -1010,7 +1105,7 @@
           ispec = ispec + 1
 !
 !--       Followling line retained for compatibility with salsa_mod which still uses emt_att%nspec
-!--       heavily
+!--       heavily (ecc)
           emt_att%nspec = emt_att%nspec + 1
 
        ENDDO
@@ -1056,7 +1151,7 @@
        CALL get_dimension_length( id_emis, emt_att%n_emiss_species, 'nspecies' )
 
 !
-!--    Backward compatibility for salsa_mod
+!--    Backward compatibility for salsa_mod (ecc)
        emt_att%nspec = emt_att%n_emiss_species
 
 !
@@ -1097,7 +1192,7 @@
 !--    Start of emission LOD 1 (default mode)
        IF ( emiss_lod == 1 )  THEN
 !
-!--       For reference
+!--       For reference (ecc)
 !          IF (TRIM(mode_emis) == "DEFAULT" .OR. TRIM(mode_emis) == "default") THEN
 
 !
@@ -1120,6 +1215,7 @@
 !--        various mode splits as all id_emis conditionals have been removed from get_var_functions.
 !--        In theory this would mean all arrays should be read from 0 to n-1 (C convention) as
 !--        opposed to 1 to n (FORTRAN convention). Keep this in mind !!
+!--        (ecc 20190424)
 !--------------------------------------------------------------------------------------------------
 
           DO  ispec = 1, emt_att%n_emiss_species
@@ -1220,7 +1316,7 @@
                               '     !no time-factor type specified!'              //               &
                               'Please specify the value of time_fac_type:'        //               &
                               '         either "MDH" or "HOUR"'
-             CALL message( 'netcdf_data_input_chemistry_data', 'DRV0002', 2, 2, 0, 6, 0 )
+             CALL message( 'netcdf_data_input_chemistry_data', 'CM0200', 2, 2, 0, 6, 0 )
 
 
           ENDIF  ! time_fac_type
@@ -1244,7 +1340,7 @@
 !--                 That is, setting the array horizontal limit from nx0:nx1 to 1:(nx1-nx0+1) or
 !--                 nx0+1:nx1+1 did not result in correct or definite behavior.
 !--                 This must be looked at at some point by the Hannover team but for now this
-!--                 workaround is deemed reasonable.
+!--                 workaround is deemed reasonable (ecc 20190417).
              IF ( .NOT. ALLOCATED( emt(ispec)%default_emission_data ) )  THEN
                 ALLOCATE( emt(ispec)%default_emission_data(emt_att%ncat,nys:nyn+1,nxl:nxr+1) )
              ENDIF
@@ -1263,6 +1359,7 @@
 !--          Assign temp array to data structure then deallocate temp array
 !--          Note - Indices are shifted from nx0:nx1 to nx0+1:nx1+1 to offset the emission data
 !--                 array to counter said domain offset.
+!--                 (ecc 20190417)
              DO  k = 1, emt_att%ncat
                 DO  j = nys+1, nyn+1
                    DO  i = nxl+1, nxr+1
@@ -1286,7 +1383,7 @@
 !--    Start LOD 2 (pre-processed mode)
        ELSEIF ( emiss_lod == 2 )  THEN
 
-!      For reference
+!      For reference (ecc)
 !       ELSEIF( TRIM( mode_emis ) == "PRE-PROCESSED" .OR. TRIM( mode_emis ) == "pre-processed")  THEN
 
 !
@@ -1295,6 +1392,7 @@
 !--       for the various mode splits as all id_emis conditionals have been removed from
 !--       get_var_functions. In theory this would mean all arrays should be read from 0 to n-1
 !--       (C convention) as opposed to 1 to n (FORTRAN convention). Keep this in mind!!
+!--       (ecc 20190424)
           DO  ispec = 1, emt_att%n_emiss_species
 
 !
@@ -1342,7 +1440,7 @@
 !--                 That is, setting the array horizontal limit from nx0:nx1 to 1:(nx1-nx0+1) or
 !--                 nx0+1:nx1+1 did not result in correct or definite behavior.
 !--                 This must be looked at at some point by the Hannover team but for now this
-!--                 workaround is deemed reasonable.
+!--                 workaround is deemed reasonable (ecc 20190417).
 
              IF ( .NOT. ALLOCATED( emt(ispec)%preproc_emission_data ) )  THEN
                 ALLOCATE( emt(ispec)%preproc_emission_data(                                        &
@@ -1363,6 +1461,7 @@
 !--          Assign temp array to data structure then deallocate temp array.
 !--          Note - Indices are shifted from nx0:nx1 to nx0+1:nx1+1 to offset the emission data
 !--                 array to counter mentioned unkonwn offset.
+!--                 (ecc 20190417)
 
              DO  k = 1, emt_att%dt_emission
                 DO  j = nys+1, nyn+1
@@ -1397,13 +1496,15 @@
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE netcdf_data_input_surface_data
 
-    USE boundary_settings_mod,                                                                     &
-        ONLY:  set_lateral_neumann_bc
+    USE control_parameters,                                                                        &
+        ONLY:  land_surface, urban_surface
 
     USE exchange_horiz_mod,                                                                        &
-        ONLY:  exchange_horiz_2d,                                                                  &
-               exchange_horiz_2d_byte,                                                             &
-               exchange_horiz_2d_int
+        ONLY:  exchange_horiz_2d, exchange_horiz_2d_byte, exchange_horiz_2d_int
+
+    USE indices,                                                                                   &
+        ONLY:  nbgp, nxl, nxr, nyn, nys
+
 
     IMPLICIT NONE
 
@@ -1414,11 +1515,6 @@
     INTEGER(iwp) ::  k2        !< running index
     INTEGER(iwp) ::  num_vars  !< number of variables in input file
     INTEGER(iwp) ::  nz_soil   !< number of soil layers in file
-
-    INTEGER(ibp), DIMENSION(:,:), ALLOCATABLE ::  tmp_2d_byte  !< temporary array to hold horizontal slices of 3d-data
-
-    REAL(wp), DIMENSION(:,:), ALLOCATABLE ::  tmp_2d  !< temporary array to hold horizontal slices of 3d-data
-
 
 !
 !-- If not static input file is available, skip this routine
@@ -1797,159 +1893,121 @@
 !
 !-- Exchange ghost points for surface variables. Therefore, resize variables.
     IF ( albedo_type_f%from_file )  THEN
-       CALL add_ghost_layers( albedo_type_f%var )
+       CALL resize_array_2d_int8( albedo_type_f%var, nys, nyn, nxl, nxr )
        CALL exchange_horiz_2d_byte( albedo_type_f%var, nys, nyn, nxl, nxr, nbgp )
-       CALL set_lateral_neumann_bc( albedo_type_f%var )
     ENDIF
     IF ( pavement_type_f%from_file )  THEN
-       CALL add_ghost_layers( pavement_type_f%var )
+       CALL resize_array_2d_int8( pavement_type_f%var, nys, nyn, nxl, nxr )
        CALL exchange_horiz_2d_byte( pavement_type_f%var, nys, nyn, nxl, nxr, nbgp )
-       CALL set_lateral_neumann_bc( pavement_type_f%var )
     ENDIF
     IF ( soil_type_f%from_file  .AND.  ALLOCATED( soil_type_f%var_2d ) )  THEN
-       CALL add_ghost_layers( soil_type_f%var_2d )
+       CALL resize_array_2d_int8( soil_type_f%var_2d, nys, nyn, nxl, nxr )
        CALL exchange_horiz_2d_byte( soil_type_f%var_2d, nys, nyn, nxl, nxr, nbgp )
-       CALL set_lateral_neumann_bc( soil_type_f%var_2d )
     ENDIF
     IF ( vegetation_type_f%from_file )  THEN
-       CALL add_ghost_layers( vegetation_type_f%var )
+       CALL resize_array_2d_int8( vegetation_type_f%var, nys, nyn, nxl, nxr )
        CALL exchange_horiz_2d_byte( vegetation_type_f%var, nys, nyn, nxl, nxr, nbgp )
-       CALL set_lateral_neumann_bc( vegetation_type_f%var )
     ENDIF
     IF ( water_type_f%from_file )  THEN
-       CALL add_ghost_layers( water_type_f%var )
+       CALL resize_array_2d_int8( water_type_f%var, nys, nyn, nxl, nxr )
        CALL exchange_horiz_2d_byte( water_type_f%var, nys, nyn, nxl, nxr, nbgp )
-       CALL set_lateral_neumann_bc( water_type_f%var )
     ENDIF
 
 !
 !-- Exchange ghost points for 3/4-D variables. For the sake of simplicity, loop further dimensions
-!-- to use 2D exchange routines. This is preferred to introducing new MPI-data types that are
-!-- required just here.
-!-- In order to avoid compiler warnings due to non-contiguous array-arguments, use temporary
-!-- 2d-arrays.
+!-- to use 2D exchange routines. Unfortunately this is necessary, else new MPI-data types need to be
+!-- introduced just for 2 variables.
     IF ( soil_type_f%from_file  .AND.  ALLOCATED( soil_type_f%var_3d ) )  THEN
-       CALL add_ghost_layers( soil_type_f%var_3d, 0, nz_soil )
-       ALLOCATE( tmp_2d_byte(nysg:nyng,nxlg:nxrg) )
+       CALL resize_array_3d_int8( soil_type_f%var_3d, 0, nz_soil, nys, nyn, nxl, nxr )
        DO  k = 0, nz_soil
-          tmp_2d_byte(:,:) = soil_type_f%var_3d(k,:,:)
-          CALL exchange_horiz_2d_byte( tmp_2d_byte, nys, nyn, nxl, nxr, nbgp )
-          CALL set_lateral_neumann_bc( tmp_2d_byte )
-          soil_type_f%var_3d(k,:,:) = tmp_2d_byte(:,:)
+          CALL exchange_horiz_2d_byte( soil_type_f%var_3d(k,:,:), nys, nyn, nxl, nxr, nbgp )
        ENDDO
-       DEALLOCATE( tmp_2d_byte )
     ENDIF
 
-    ALLOCATE( tmp_2d(nysg:nyng,nxlg:nxrg) )
-
     IF ( surface_fraction_f%from_file )  THEN
-       CALL add_ghost_layers( surface_fraction_f%frac, 0, surface_fraction_f%nf-1 )
+       CALL resize_array_3d_real( surface_fraction_f%frac, 0, surface_fraction_f%nf-1, nys, nyn,   &
+                                  nxl, nxr )
        DO  k = 0, surface_fraction_f%nf-1
-          tmp_2d(:,:) = surface_fraction_f%frac(k,:,:)
-          CALL exchange_horiz_2d( tmp_2d )
-          CALL set_lateral_neumann_bc( tmp_2d )
-          surface_fraction_f%frac(k,:,:) = tmp_2d(:,:)
+          CALL exchange_horiz_2d( surface_fraction_f%frac(k,:,:) )
        ENDDO
     ENDIF
 
     IF ( building_pars_f%from_file )  THEN
-       CALL add_ghost_layers( building_pars_f%pars_xy, 0, building_pars_f%np-1 )
+       CALL resize_array_3d_real( building_pars_f%pars_xy, 0, building_pars_f%np-1, nys, nyn, nxl, &
+                                  nxr )
        DO  k = 0, building_pars_f%np-1
-          tmp_2d(:,:) = building_pars_f%pars_xy(k,:,:)
-          CALL exchange_horiz_2d( tmp_2d )
-          CALL set_lateral_neumann_bc( tmp_2d )
-          building_pars_f%pars_xy(k,:,:) = tmp_2d(:,:)
+          CALL exchange_horiz_2d( building_pars_f%pars_xy(k,:,:) )
        ENDDO
     ENDIF
 
     IF ( albedo_pars_f%from_file )  THEN
-       CALL add_ghost_layers( albedo_pars_f%pars_xy, 0, albedo_pars_f%np-1 )
+       CALL resize_array_3d_real( albedo_pars_f%pars_xy, 0, albedo_pars_f%np-1, nys, nyn, nxl, nxr )
        DO  k = 0, albedo_pars_f%np-1
-          tmp_2d(:,:) = albedo_pars_f%pars_xy(k,:,:)
-          CALL exchange_horiz_2d( tmp_2d )
-          CALL set_lateral_neumann_bc( tmp_2d )
-          albedo_pars_f%pars_xy(k,:,:) = tmp_2d(:,:)
+          CALL exchange_horiz_2d( albedo_pars_f%pars_xy(k,:,:) )
        ENDDO
     ENDIF
 
     IF ( pavement_pars_f%from_file )  THEN
-       CALL add_ghost_layers( pavement_pars_f%pars_xy, 0, pavement_pars_f%np-1 )
+       CALL resize_array_3d_real( pavement_pars_f%pars_xy, 0, pavement_pars_f%np-1, nys, nyn, nxl, &
+                                  nxr )
        DO  k = 0, pavement_pars_f%np-1
-          tmp_2d(:,:) = pavement_pars_f%pars_xy(k,:,:)
-          CALL exchange_horiz_2d( tmp_2d )
-          CALL set_lateral_neumann_bc( tmp_2d )
-          pavement_pars_f%pars_xy(k,:,:) = tmp_2d(:,:)
+          CALL exchange_horiz_2d( pavement_pars_f%pars_xy(k,:,:) )
        ENDDO
     ENDIF
 
     IF ( vegetation_pars_f%from_file )  THEN
-       CALL add_ghost_layers( vegetation_pars_f%pars_xy, 0, vegetation_pars_f%np-1 )
+       CALL resize_array_3d_real( vegetation_pars_f%pars_xy, 0, vegetation_pars_f%np-1, nys, nyn,  &
+                                  nxl, nxr )
        DO  k = 0, vegetation_pars_f%np-1
-          tmp_2d(:,:) = vegetation_pars_f%pars_xy(k,:,:)
-          CALL exchange_horiz_2d( tmp_2d )
-          CALL set_lateral_neumann_bc( tmp_2d )
-          vegetation_pars_f%pars_xy(k,:,:) = tmp_2d(:,:)
+          CALL exchange_horiz_2d( vegetation_pars_f%pars_xy(k,:,:) )
        ENDDO
     ENDIF
 
     IF ( water_pars_f%from_file )  THEN
-       CALL add_ghost_layers( water_pars_f%pars_xy, 0, water_pars_f%np-1 )
+       CALL resize_array_3d_real( water_pars_f%pars_xy, 0, water_pars_f%np-1, nys, nyn, nxl, nxr )
        DO  k = 0, water_pars_f%np-1
-          tmp_2d(:,:) = water_pars_f%pars_xy(k,:,:)
-          CALL exchange_horiz_2d( tmp_2d )
-          CALL set_lateral_neumann_bc( tmp_2d )
-          water_pars_f%pars_xy(k,:,:) = tmp_2d(:,:)
+          CALL exchange_horiz_2d( water_pars_f%pars_xy(k,:,:) )
        ENDDO
     ENDIF
 
     IF ( root_area_density_lsm_f%from_file )  THEN
-       CALL add_ghost_layers( root_area_density_lsm_f%var, 0, root_area_density_lsm_f%nz-1 )
+       CALL resize_array_3d_real( root_area_density_lsm_f%var, 0, root_area_density_lsm_f%nz-1,    &
+                                  nys, nyn, nxl, nxr )
        DO  k = 0, root_area_density_lsm_f%nz-1
-          tmp_2d(:,:) = root_area_density_lsm_f%var(k,:,:)
-          CALL exchange_horiz_2d( tmp_2d )
-          CALL set_lateral_neumann_bc( tmp_2d )
-          root_area_density_lsm_f%var(k,:,:) = tmp_2d(:,:)
+          CALL exchange_horiz_2d( root_area_density_lsm_f%var(k,:,:) )
        ENDDO
     ENDIF
 
     IF ( soil_pars_f%from_file )  THEN
        IF ( soil_pars_f%lod == 1 )  THEN
-          CALL add_ghost_layers( soil_pars_f%pars_xy, 0, soil_pars_f%np-1 )
+          CALL resize_array_3d_real( soil_pars_f%pars_xy, 0, soil_pars_f%np-1, nys, nyn, nxl, nxr )
           DO  k = 0, soil_pars_f%np-1
-             tmp_2d(:,:) = soil_pars_f%pars_xy(k,:,:)
-             CALL exchange_horiz_2d( tmp_2d )
-             CALL set_lateral_neumann_bc( tmp_2d )
-             soil_pars_f%pars_xy(k,:,:) = tmp_2d(:,:)
+             CALL exchange_horiz_2d( soil_pars_f%pars_xy(k,:,:) )
           ENDDO
 
        ELSEIF ( soil_pars_f%lod == 2 )  THEN
-          CALL add_ghost_layers( soil_pars_f%pars_xyz, 0, soil_pars_f%np-1, 0, soil_pars_f%nz-1 )
+          CALL resize_array_4d_real( soil_pars_f%pars_xyz, 0, soil_pars_f%np-1,                    &
+                                     0, soil_pars_f%nz-1, nys, nyn, nxl, nxr )
+
           DO  k2 = 0, soil_pars_f%nz-1
              DO  k = 0, soil_pars_f%np-1
-                tmp_2d(:,:) = soil_pars_f%pars_xyz(k,k2,:,:)
-                CALL exchange_horiz_2d( tmp_2d )
-                CALL set_lateral_neumann_bc( tmp_2d )
-                soil_pars_f%pars_xyz(k,k2,:,:) = tmp_2d(:,:)
+                CALL exchange_horiz_2d( soil_pars_f%pars_xyz(k,k2,:,:) )
              ENDDO
           ENDDO
        ENDIF
     ENDIF
 
     IF ( pavement_subsurface_pars_f%from_file )  THEN
-       CALL add_ghost_layers( pavement_subsurface_pars_f%pars_xyz,                                 &
-                              0, pavement_subsurface_pars_f%np-1,                                  &
-                              0, pavement_subsurface_pars_f%nz-1 )
+       CALL resize_array_4d_real( pavement_subsurface_pars_f%pars_xyz,                             &
+                                  0, pavement_subsurface_pars_f%np-1,                              &
+                                  0, pavement_subsurface_pars_f%nz-1, nys, nyn, nxl, nxr )
+
        DO  k2 = 0, pavement_subsurface_pars_f%nz-1
           DO  k = 0, pavement_subsurface_pars_f%np-1
-             tmp_2d(:,:) = pavement_subsurface_pars_f%pars_xyz(k,k2,:,:)
-             CALL exchange_horiz_2d( tmp_2d )
-             CALL set_lateral_neumann_bc( tmp_2d )
-             pavement_subsurface_pars_f%pars_xyz(k,k2,:,:) = tmp_2d(:,:)
+             CALL exchange_horiz_2d( pavement_subsurface_pars_f%pars_xyz(k,k2,:,:) )
           ENDDO
        ENDDO
     ENDIF
-
-    DEALLOCATE( tmp_2d )
 
  END SUBROUTINE netcdf_data_input_surface_data
 
@@ -1960,6 +2018,9 @@
 !> Reads uvem lookup table information.
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE netcdf_data_input_uvem
+
+    USE indices,                                                                                   &
+        ONLY:  nxl, nxr, nyn, nys
 
     IMPLICIT NONE
 
@@ -2033,18 +2094,16 @@
        ENDIF
 !
 !--    Read building obstruction
-!      @bug This part is deactivated due to improper implementation: conflicts with
-!           building_obstruction_f and it is also not used anywhere else in the code
-!        IF ( check_existence( var_names, 'obstruction' ) )  THEN
-!           building_obstruction_full%from_file = .TRUE.
-! !
-! !--       Input 3D uvem building obstruction
-!           ALLOCATE( building_obstruction_full%var_3d(0:44,0:2,0:2) )
-!           CALL get_variable( id_uvem, 'obstruction', building_obstruction_full%var_3d, &
-!                              0, 2, 0, 2, 0, 44 )
-!        ELSE
-!           building_obstruction_full%from_file = .FALSE.
-!        ENDIF
+       IF ( check_existence( var_names, 'obstruction' ) )  THEN
+          building_obstruction_full%from_file = .TRUE.
+!
+!--       Input 3D uvem building obstruction
+          ALLOCATE( building_obstruction_full%var_3d(0:44,0:2,0:2) )
+          CALL get_variable( id_uvem, 'obstruction', building_obstruction_full%var_3d, 0, 2, 0, 2, &
+                             0, 44 )
+       ELSE
+          building_obstruction_full%from_file = .FALSE.
+       ENDIF
 !
        IF ( check_existence( var_names, 'obstruction' ) )  THEN
           building_obstruction_f%from_file = .TRUE.
@@ -2066,47 +2125,316 @@
 
  END SUBROUTINE netcdf_data_input_uvem
 
+
+!--------------------------------------------------------------------------------------------------!
+! Description:
+! ------------
+!> Reads orography and building information.
+!--------------------------------------------------------------------------------------------------!
+ SUBROUTINE netcdf_data_input_topo
+
+    USE control_parameters,                                                                        &
+        ONLY:  message_string, topography
+
+    USE exchange_horiz_mod,                                                                        &
+        ONLY:  exchange_horiz_2d_byte, exchange_horiz_2d_int
+
+    USE grid_variables,                                                                            &
+        ONLY:  dx, dy
+
+    USE indices,                                                                                   &
+        ONLY:  nbgp, nx, nxl, nxr, ny, nyn, nys, nzb
+
+
+    IMPLICIT NONE
+
+    CHARACTER(LEN=100), DIMENSION(:), ALLOCATABLE ::  var_names  !< variable names in static input file
+
+
+    INTEGER(iwp) ::  i             !< running index along x-direction
+    INTEGER(iwp) ::  id_topo       !< NetCDF id of topograhy input file
+    INTEGER(iwp) ::  ii            !< running index for IO blocks
+    INTEGER(iwp) ::  io_status     !< status after reading the ascii topo file
+    INTEGER(iwp) ::  j             !< running index along y-direction
+    INTEGER(iwp) ::  num_vars      !< number of variables in netcdf input file
+    INTEGER(iwp) ::  skip_n_rows   !< counting variable to skip rows while reading topography file
+
+    REAL(wp) ::  dum           !< dummy variable to skip columns while reading topography file
+
+
+!
+!-- CPU measurement
+    CALL cpu_log( log_point_s(83), 'NetCDF/ASCII input topo', 'start' )
+!
+!-- Input via palm-input data standard
+    IF ( input_pids_static )  THEN
+#if defined ( __netcdf )
+!
+!--    Open file in read-only mode
+       CALL open_read_file( TRIM( input_file_static ) // TRIM( coupling_char ), id_topo )
+!
+!--    At first, inquire all variable names.
+!--    This will be used to check whether an input variable exists or not.
+       CALL inquire_num_variables( id_topo, num_vars )
+!
+!--    Allocate memory to store variable names and inquire them.
+       ALLOCATE( var_names(1:num_vars) )
+       CALL inquire_variable_names( id_topo, var_names )
+!
+!--    Read x, y - dimensions. Only required for consistency checks.
+       CALL get_dimension_length( id_topo, dim_static%nx, 'x' )
+       CALL get_dimension_length( id_topo, dim_static%ny, 'y' )
+       ALLOCATE( dim_static%x(0:dim_static%nx-1) )
+       ALLOCATE( dim_static%y(0:dim_static%ny-1) )
+       CALL get_variable( id_topo, 'x', dim_static%x )
+       CALL get_variable( id_topo, 'y', dim_static%y )
+!
+!--    Check whether dimension size in input file matches the model dimensions
+       IF ( dim_static%nx-1 /= nx  .OR.  dim_static%ny-1 /= ny )  THEN
+          message_string = 'Static input file: horizontal dimension in ' //                        &
+                           'x- and/or y-direction ' //                                             &
+                           'do not match the respective model dimension'
+          CALL message( 'netcdf_data_input_mod', 'PA0548', 1, 2, 0, 6, 0 )
+       ENDIF
+!
+!--    Check if grid spacing of provided input data matches the respective grid spacing in the
+!--    model.
+       IF ( ABS( dim_static%x(1) - dim_static%x(0) - dx ) > 10E-6_wp  .OR.                         &
+            ABS( dim_static%y(1) - dim_static%y(0) - dy ) > 10E-6_wp )  THEN
+          message_string = 'Static input file: horizontal grid spacing ' //                        &
+                           'in x- and/or y-direction ' //                                          &
+                           'do not match the respective model grid spacing.'
+          CALL message( 'netcdf_data_input_mod', 'PA0549', 1, 2, 0, 6, 0 )
+       ENDIF
+!
+!--    Terrain height. First, get variable-related _FillValue attribute
+       IF ( check_existence( var_names, 'zt' ) )  THEN
+          terrain_height_f%from_file = .TRUE.
+          CALL get_attribute( id_topo, char_fill, terrain_height_f%fill, .FALSE., 'zt' )
+!
+!--       Input 2D terrain height.
+          ALLOCATE( terrain_height_f%var(nys:nyn,nxl:nxr)  )
+
+          CALL get_variable( id_topo, 'zt', terrain_height_f%var, nxl, nxr, nys, nyn )
+
+       ELSE
+          terrain_height_f%from_file = .FALSE.
+       ENDIF
+
+!
+!--    Read building height. First, read its _FillValue attribute, as well as lod attribute
+       buildings_f%from_file = .FALSE.
+       IF ( check_existence( var_names, 'buildings_2d' ) )  THEN
+          buildings_f%from_file = .TRUE.
+          CALL get_attribute( id_topo, char_lod, buildings_f%lod, .FALSE., 'buildings_2d' )
+          CALL get_attribute( id_topo, char_fill, buildings_f%fill1, .FALSE., 'buildings_2d' )
+
+!
+!--       Read 2D buildings
+          IF ( buildings_f%lod == 1 )  THEN
+             ALLOCATE( buildings_f%var_2d(nys:nyn,nxl:nxr) )
+             CALL get_variable( id_topo, 'buildings_2d',                                           &
+                                buildings_f%var_2d,                                                &
+                                nxl, nxr, nys, nyn )
+          ELSE
+             message_string = 'NetCDF attribute lod ' //                                           &
+                              '(level of detail) is not set ' //                                   &
+                              'properly for buildings_2d.'
+             CALL message( 'netcdf_data_input_mod', 'PA0540', 1, 2, 0, 6, 0 )
+          ENDIF
+       ENDIF
+!
+!--    If available, also read 3D building information. If both are available, use 3D information.
+       IF ( check_existence( var_names, 'buildings_3d' ) )  THEN
+          buildings_f%from_file = .TRUE.
+          CALL get_attribute( id_topo, char_lod, buildings_f%lod, .FALSE., 'buildings_3d' )
+          CALL get_attribute( id_topo, char_fill, buildings_f%fill2, .FALSE., 'buildings_3d' )
+          CALL get_dimension_length( id_topo, buildings_f%nz, 'z' )
+!
+!--       Read 3D buildings
+          IF ( buildings_f%lod == 2 )  THEN
+             ALLOCATE( buildings_f%z(nzb:buildings_f%nz-1) )
+             CALL get_variable( id_topo, 'z', buildings_f%z )
+             ALLOCATE( buildings_f%var_3d(nzb:buildings_f%nz-1, nys:nyn,nxl:nxr) )
+             buildings_f%var_3d = 0
+             CALL get_variable( id_topo, 'buildings_3d', buildings_f%var_3d, nxl, nxr, nys, nyn, 0,&
+                                buildings_f%nz-1 )
+          ELSE
+             message_string = 'NetCDF attribute lod (level of detail) is not set ' //              &
+                              'properly for buildings_3d.'
+             CALL message( 'netcdf_data_input_mod', 'PA0541', 1, 2, 0, 6, 0 )
+          ENDIF
+       ENDIF
+!
+!--    Read building IDs and its FillValue attribute. Further required for mapping buildings on top
+!--    of orography.
+       IF ( check_existence( var_names, 'building_id' ) )  THEN
+          building_id_f%from_file = .TRUE.
+          CALL get_attribute( id_topo, char_fill, building_id_f%fill, .FALSE., 'building_id' )
+          ALLOCATE( building_id_f%var(nys:nyn,nxl:nxr) )
+          CALL get_variable( id_topo, 'building_id', building_id_f%var, nxl, nxr, nys, nyn )
+       ELSE
+          building_id_f%from_file = .FALSE.
+       ENDIF
+!
+!--    Read building_type and required attributes.
+       IF ( check_existence( var_names, 'building_type' ) )  THEN
+          building_type_f%from_file = .TRUE.
+          CALL get_attribute( id_topo, char_fill, building_type_f%fill, .FALSE., 'building_type' )
+          ALLOCATE( building_type_f%var(nys:nyn,nxl:nxr) )
+          CALL get_variable( id_topo, 'building_type', building_type_f%var, nxl, nxr, nys, nyn )
+       ELSE
+          building_type_f%from_file = .FALSE.
+       ENDIF
+!
+!--    Close topography input file
+       CALL close_input_file( id_topo )
+#else
+       CONTINUE
+#endif
+!
+!-- ASCII input
+    ELSEIF ( TRIM( topography ) == 'read_from_file' )  THEN
+
+       DO  ii = 0, io_blocks-1
+          IF ( ii == io_group )  THEN
+
+             OPEN( 90, FILE='TOPOGRAPHY_DATA' // TRIM( coupling_char ), STATUS='OLD',              &
+                       FORM='FORMATTED', IOSTAT=io_status )
+
+             IF ( io_status > 0 )  THEN
+                message_string = 'file TOPOGRAPHY_DATA' //                                         &
+                                 TRIM( coupling_char ) // ' does not exist'
+                CALL message( 'netcdf_data_input_mod', 'PA0208', 1, 2, 0, 6, 0 )
+             ENDIF
+
+!
+!--          Read topography PE-wise. Rows are read from nyn to nys, columns are read from nxl to
+!--          nxr. At first, ny-nyn rows need to be skipped.
+             skip_n_rows = 0
+             DO  WHILE ( skip_n_rows < ny - nyn )
+                READ( 90, * )
+                skip_n_rows = skip_n_rows + 1
+             ENDDO
+!
+!--          Read data from nyn to nys and nxl to nxr. Therefore, skip column until nxl-1 is reached
+             ALLOCATE( buildings_f%var_2d(nys:nyn,nxl:nxr) )
+             DO  j = nyn, nys, -1
+
+                READ( 90, *, IOSTAT=io_status )  ( dum, i = 0, nxl-1 ),                            &
+                                                 ( buildings_f%var_2d(j,i), i = nxl, nxr )
+
+                IF ( io_status > 0 )  THEN
+                   WRITE( message_string, '(A,1X,I5,1X,A)' ) 'error reading line', ny-j+1,         &
+                                          'of file TOPOGRAPHY_DATA' // TRIM( coupling_char )
+                   CALL message( 'netcdf_data_input_mod', 'PA0209', 2, 2, myid, 6, 0 )
+                ELSEIF ( io_status < 0 )  THEN
+                   WRITE( message_string, '(A,1X,I5)' ) 'end of line or file detected for '//      &
+                               'file TOPOGRAPHY_DATA' // TRIM( coupling_char ) // ' at line', ny-j+1
+                   CALL message( 'netcdf_data_input_mod', 'PA0704', 2, 2, myid, 6, 0 )
+                ENDIF
+
+             ENDDO
+
+             CLOSE( 90 )
+             buildings_f%from_file = .TRUE.
+
+          ENDIF
+#if defined( __parallel )
+          CALL MPI_BARRIER( comm2d, ierr )
+#endif
+       ENDDO
+
+    ENDIF
+!
+!-- End of CPU measurement
+    CALL cpu_log( log_point_s(83), 'NetCDF/ASCII input topo', 'stop' )
+
+!
+!-- Check for minimum requirement to setup building topography. If buildings are provided, also an
+!-- ID and a type are required.
+!-- Note, doing this check in check_parameters will be too late (data will be used for grid
+!-- inititialization before).
+    IF ( input_pids_static )  THEN
+       IF ( buildings_f%from_file  .AND.  .NOT. building_id_f%from_file )  THEN
+          message_string = 'If building heights are prescribed in ' //                             &
+                           'static input file, also an ID is required.'
+          CALL message( 'netcdf_data_input_mod', 'PA0542', 1, 2, 0, 6, 0 )
+       ENDIF
+    ENDIF
+
+    IF ( terrain_height_f%from_file )  THEN
+!
+!--    Check orography for fill-values.
+!--    For the moment, give an error message. More advanced methods, e.g. a nearest neighbor
+!--    algorithm as used in GIS systems might be implemented later.
+!--    Note: This check must be placed here as terrain_height_f is altered within init_grid which is
+!--    called before netcdf_data_input_check_static
+       IF ( ANY( terrain_height_f%var == terrain_height_f%fill ) )  THEN
+          message_string = 'NetCDF variable zt is not ' // 'allowed to have missing data'
+          CALL message( 'netcdf_data_input_mod', 'PA0550', 2, 2, myid, 6, 0 )
+       ENDIF
+    ELSE
+!
+!--    In case no terrain height is provided by static input file, allocate array nevertheless and
+!--    set terrain height to 0, which simplifies topography initialization.
+       ALLOCATE( terrain_height_f%var(nys:nyn,nxl:nxr) )
+       terrain_height_f%var = 0.0_wp
+    ENDIF
+!
+!-- Finally, exchange 1 ghost point for building ID and type.
+!-- In case of non-cyclic boundary conditions set Neumann conditions at the lateral boundaries.
+    IF ( building_id_f%from_file )  THEN
+       CALL resize_array_2d_int32( building_id_f%var, nys, nyn, nxl, nxr )
+       CALL exchange_horiz_2d_int( building_id_f%var, nys, nyn, nxl, nxr, nbgp )
+    ENDIF
+
+    IF ( building_type_f%from_file )  THEN
+       CALL resize_array_2d_int8( building_type_f%var, nys, nyn, nxl, nxr )
+       CALL exchange_horiz_2d_byte( building_type_f%var, nys, nyn, nxl, nxr, nbgp )
+    ENDIF
+
+ END SUBROUTINE netcdf_data_input_topo
+
+
 !--------------------------------------------------------------------------------------------------!
 ! Description:
 ! ------------
 !> Reads initialization data of u, v, w, pt, q, geostrophic wind components, as well as soil
-!> moisture and soil temperature, derived from larger-scale model data.
+!> moisture and soil temperature, derived from larger-scale model (COSMO) by Inifor.
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE netcdf_data_input_init_3d
 
     USE arrays_3d,                                                                                 &
-        ONLY:  pt,                                                                                 &
-               q,                                                                                  &
-               u,                                                                                  &
-               v,                                                                                  &
-               w,                                                                                  &
-               zu,                                                                                 &
-               zw
+        ONLY:  pt, q, u, v, w, zu, zw
+
+    USE control_parameters,                                                                        &
+        ONLY:  air_chemistry, bc_lr_cyc, bc_ns_cyc, humidity, message_string, neutral
+
+    USE indices,                                                                                   &
+        ONLY:  nx, nxl, nxlu, nxr, ny, nyn, nys, nysv, nzb, nz, nzt
 
     IMPLICIT NONE
 
-    CHARACTER(LEN=100), DIMENSION(:), ALLOCATABLE ::  var_names  !< variables on dynamic input file
-    CHARACTER(LEN=500) ::  variable_not_found = ''               !< string to gather information of missing dimensions and variables
+    CHARACTER(LEN=100), DIMENSION(:), ALLOCATABLE ::  var_names
 
     INTEGER(iwp) ::  id_dynamic  !< NetCDF id of dynamic input file
-    INTEGER(iwp) ::  k           !< running index along z-direction
     INTEGER(iwp) ::  n           !< running index for chemistry variables
     INTEGER(iwp) ::  num_vars    !< number of variables in netcdf input file
 
-    LOGICAL      ::  check_passed          !< flag indicating if a check passed
-    LOGICAL      ::  dynamic_3d = .TRUE.   !< flag indicating that 3D data is read from dynamic file
-    LOGICAL      ::  trigger_error_message !< control flag to check whether all required input data is available
+    LOGICAL      ::  check_passed         !< flag indicating if a check passed
+    LOGICAL      ::  dynamic_3d = .TRUE.  !< flag indicating that 3D data is read from dynamic file
 
 !
 !-- Skip routine if no input file with dynamic input data is available.
     IF ( .NOT. input_pids_dynamic )  RETURN
 !
-!-- Please note, the dynamic input file provides initial data for u and v for the prognostic grid
+!-- Please note, Inifor is designed to provide initial data for u and v for the prognostic grid
 !-- points in case of lateral Dirichlet conditions.
-!-- This means that the dynamic input file provides data from nxlu:nxr (for u) and from
-!-- nysv:nyn (for v) at the left and south domain boundary, respectively.
+!-- This means that Inifor provides data from nxlu:nxr (for u) and from nysv:nyn (for v) at the left
+!-- and south domain boundary, respectively.
 !-- However, as work-around for the moment, PALM will run with cyclic conditions and will be
-!-- initialized with data provided by the dynamic input in case of Dirichlet boundaries.
+!-- initialized with data provided by Inifor boundaries in case of Dirichlet.
 !-- Hence, simply set set nxlu/nysv to 1 (will be reset to its original value at the end of this
 !-- routine).
     IF ( bc_lr_cyc  .AND.  nxl == 0 )  nxlu = 1
@@ -2130,100 +2458,33 @@
     CALL inquire_variable_names( id_dynamic, var_names )
 !
 !-- Read vertical dimension of scalar und w grid.
-!-- For each dimension read, check if dimension is given in file.
-    trigger_error_message = .FALSE.
-    variable_not_found = ''
-
-    IF ( check_existence( var_names, 'z' ) )  THEN
-       CALL get_dimension_length( id_dynamic, init_3d%nzu, 'z'     )
-    ELSE
-       trigger_error_message = .TRUE.
-       variable_not_found = TRIM( 'z' )
-    ENDIF
-
-    IF ( check_existence( var_names, 'zw' ) )  THEN
-       CALL get_dimension_length( id_dynamic, init_3d%nzw, 'zw'    )
-    ELSE
-       trigger_error_message = .TRUE.
-       variable_not_found = TRIM( variable_not_found ) // ', ' // 'zw'
-    ENDIF
+    CALL get_dimension_length( id_dynamic, init_3d%nzu, 'z'     )
+    CALL get_dimension_length( id_dynamic, init_3d%nzw, 'zw'    )
 !
 !-- Read also the horizontal dimensions. These are used just used for checking the compatibility
 !-- with the PALM grid before reading.
-    IF ( check_existence( var_names, 'x' ) )  THEN
-       CALL get_dimension_length( id_dynamic, init_3d%nx, 'x' )
-    ELSE
-       trigger_error_message = .TRUE.
-       variable_not_found = TRIM( variable_not_found ) // ', ' // 'x'
-    ENDIF
-
-    IF ( check_existence( var_names, 'xu' ) )  THEN
-       CALL get_dimension_length( id_dynamic, init_3d%nxu, 'xu' )
-    ELSE
-       trigger_error_message = .TRUE.
-       variable_not_found = TRIM( variable_not_found ) // ', ' // 'xu'
-    ENDIF
-
-    IF ( check_existence( var_names, 'y' ) )  THEN
-       CALL get_dimension_length( id_dynamic, init_3d%ny, 'y' )
-    ELSE
-       trigger_error_message = .TRUE.
-       variable_not_found = TRIM( variable_not_found ) // ', ' // 'y'
-    ENDIF
-
-    IF ( check_existence( var_names, 'yv' ) )  THEN
-       CALL get_dimension_length( id_dynamic, init_3d%nyv, 'yv' )
-    ELSE
-       trigger_error_message = .TRUE.
-       variable_not_found = TRIM( variable_not_found ) // ', ' // 'yv'
-    ENDIF
-
-    IF ( trigger_error_message )  THEN
-       message_string = 'initialization with data from dynamic driver - dimension(s): &"' //       &
-                        TRIM( variable_not_found ) // '" not found in dynamic driver'
-       CALL message( 'netcdf_data_input_mod', 'DRV0003', 1, 2, 0, 6, 0 )
-    ENDIF
+    CALL get_dimension_length( id_dynamic, init_3d%nx,  'x'  )
+    CALL get_dimension_length( id_dynamic, init_3d%nxu, 'xu' )
+    CALL get_dimension_length( id_dynamic, init_3d%ny,  'y'  )
+    CALL get_dimension_length( id_dynamic, init_3d%nyv, 'yv' )
 
 !
 !-- Check for correct horizontal and vertical dimension. Please note, checks are performed directly
 !-- here and not called from check_parameters as some varialbes are still not allocated there.
-!-- Moreover, please note, u- and v-grid has 1 grid point less than the dynamic file grid.
-    IF ( init_3d%nx-1 /= nx )  THEN
-       WRITE( message_string, '(A,I5,A,I5,A)' )                                                    &
-                           'number of grid points along x in dynamic input file (=', init_3d%nx-1, &
-                           ') does not match the number of grid points in this run (nx=', nx, ')'
-       CALL message( 'netcdf_data_input_mod', 'DRV0004', 1, 2, 0, 6, 0 )
-    ENDIF
-    IF ( init_3d%nxu-1 /= nx-1 )  THEN
-       WRITE( message_string, '(A,I5,A,I5,A)' )                                                    &
-                       'number of grid points along x in dynamic input file (nxu=', init_3d%nxu-1, &
-                       ') does not match the number of grid points in this run (nx-1=', nx-1, ')'
-       CALL message( 'netcdf_data_input_mod', 'DRV0004', 1, 2, 0, 6, 0 )
-    ENDIF
-    IF ( init_3d%ny-1 /= ny )  THEN
-       WRITE( message_string, '(A,I5,A,I5,A)' )                                                    &
-                           'number of grid points along y in dynamic input file (=', init_3d%ny-1, &
-                           ') does not match the number of grid points in this run (ny=', ny, ')'
-       CALL message( 'netcdf_data_input_mod', 'DRV0004', 1, 2, 0, 6, 0 )
-    ENDIF
-    IF ( init_3d%nyv-1 /= ny-1 )  THEN
-       WRITE( message_string, '(A,I5,A,I5,A)' )                                                    &
-                       'number of grid points along y in dynamic input file (nyv=', init_3d%nyv-1, &
-                       ') does not match the number of grid points in this run (ny-1=', ny-1, ')'
-       CALL message( 'netcdf_data_input_mod', 'DRV0004', 1, 2, 0, 6, 0 )
+!-- Moreover, please note, u- and v-grid has 1 grid point less on Inifor grid.
+    IF ( init_3d%nx-1 /= nx  .OR.  init_3d%nxu-1 /= nx - 1  .OR.                                   &
+         init_3d%ny-1 /= ny  .OR.  init_3d%nyv-1 /= ny - 1 )  THEN
+       message_string = 'Number of horizontal grid points in '//                                   &
+                        'dynamic input file does not match ' //                                    &
+                        'the number of numeric grid points.'
+       CALL message( 'netcdf_data_input_mod', 'PA0543', 1, 2, 0, 6, 0 )
     ENDIF
 
     IF ( init_3d%nzu /= nz )  THEN
-       WRITE( message_string, '(A,I5,A,I5,A)' )                                                    &
-                         'number of grid points along z in dynamic input file (nzu=', init_3d%nzu, &
-                         ') does not match the number of grid points in this run (nz=', nz, ')'
-       CALL message( 'netcdf_data_input_mod', 'DRV0004', 1, 2, 0, 6, 0 )
-    ENDIF
-    IF ( init_3d%nzw /= nz - 1 )  THEN
-       WRITE( message_string, '(A,I5,A,I5,A)' )                                                    &
-                         'number of grid points along z in dynamic input file (nzw=', init_3d%nzw, &
-                         ') does not match the number of grid points in this run (nz-1=', nz-1, ')'
-       CALL message( 'netcdf_data_input_mod', 'DRV0004', 1, 2, 0, 6, 0 )
+       message_string = 'Number of vertical grid points in '//                                     &
+                        'dynamic input file does not match ' //                                    &
+                        'the number of numeric grid points.'
+       CALL message( 'netcdf_data_input_mod', 'PA0543', 1, 2, 0, 6, 0 )
     ENDIF
 !
 !-- Read vertical dimensions. Later, these are required for eventual inter- and extrapolations of
@@ -2240,31 +2501,11 @@
 !-- Check for consistency between vertical coordinates in dynamic driver and numeric grid.
 !-- Please note, depending on compiler options both may be  equal up to a certain threshold, and
 !-- differences between the numeric grid and vertical coordinate in the driver can built-up to
-!-- 10E-1-10E-0 m. For this reason, the check allows for a tolerance. In order to take into account
-!-- the general spatial resolution of the setup, the tolerance is defined as 10% of the smallest
-!-- vertical grid spacing.
-!-- Note, the check is performed separately for 'z' and 'zw'.
-    IF ( ANY( ABS( zu(1:nzt) - init_3d%zu_atmos(1:init_3d%nzu) ) >                                 &
-              0.1_wp * MINVAL( dz(1:number_dz) ) ) )  THEN
-       k = 1
-       DO  WHILE ( k <= nzt )
-          IF ( ABS( init_3d%zu_atmos(k) - zu(k) ) > 0.1_wp * MINVAL( dz(1:number_dz) ) )  EXIT
-          k = k + 1
-       ENDDO
-       WRITE( message_string, * ) 'vertical coordinate z in dynamic driver does not match the ',   &
-                                  'computational grid (zu) in this run at z(', k, ')'
-       CALL message( 'netcdf_data_input_mod', 'DRV0005', 1, 2, 0, 6, 0 )
-    ENDIF
-    IF ( ANY( ABS( zw(1:nzt-1) - init_3d%zw_atmos(1:init_3d%nzw) ) >                               &
-              0.1_wp * MINVAL( dz(1:number_dz) ) ) )  THEN
-       k = 1
-       DO  WHILE ( k <= nzt )
-          IF ( ABS( init_3d%zw_atmos(k) - zw(k) ) > 0.1_wp * MINVAL( dz(1:number_dz) ) )  EXIT
-          k = k + 1
-       ENDDO
-       WRITE( message_string, * ) 'vertical coordinate zw in dynamic driver does not match the ',  &
-                                  'computational grid (zw) in this run at zw(', k, ')'
-       CALL message( 'netcdf_data_input_mod', 'DRV0005', 1, 2, 0, 6, 0 )
+!-- 10E-1-10E-0 m. For this reason, the check is performed not for exactly matching values.
+    IF ( ANY( ABS( zu(1:nzt)   - init_3d%zu_atmos(1:init_3d%nzu) ) > 10E-1 )  .OR.                 &
+         ANY( ABS( zw(1:nzt-1) - init_3d%zw_atmos(1:init_3d%nzw) ) > 10E-1 ) )  THEN
+       message_string = 'Vertical grid in dynamic driver does not ' // 'match the numeric grid.'
+       CALL message( 'netcdf_data_input_mod', 'PA0543', 1, 2, 0, 6, 0 )
     ENDIF
 !
 !-- Read initial geostrophic wind components at t = 0 (index 1 in file).
@@ -2316,8 +2557,8 @@
           CALL get_variable( id_dynamic, 'init_atmosphere_u', u(nzb+1:nzt,nys:nyn,nxlu:nxr),       &
                              nxlu, nys+1, nzb+1, nxr-nxlu+1, nyn-nys+1, init_3d%nzu, dynamic_3d )
 !
-!--       Set value at leftmost model grid point nxl = 0. This is because the dynamic file provides
-!--       data only from 1:nx-1.
+!--       Set value at leftmost model grid point nxl = 0. This is because Inifor provides data only
+!--       from 1:nx-1 since it assumes non-cyclic conditions.
           IF ( nxl == 0 )  u(nzb+1:nzt,nys:nyn,nxl) = u(nzb+1:nzt,nys:nyn,nxlu)
 !
 !--       Set bottom and top-boundary
@@ -2326,8 +2567,8 @@
        ENDIF
        init_3d%from_file_u = .TRUE.
     ELSE
-       message_string = 'missing initial data for u-component'
-       CALL message( 'netcdf_data_input_mod', 'DRV0006', 1, 2, 0, 6, 0 )
+       message_string = 'Missing initial data for u-component'
+       CALL message( 'netcdf_data_input_mod', 'PA0544', 1, 2, 0, 6, 0 )
     ENDIF
 !
 !-- Read v-component
@@ -2352,8 +2593,8 @@
           CALL get_variable( id_dynamic, 'init_atmosphere_v', v(nzb+1:nzt,nysv:nyn,nxl:nxr),       &
                              nxl+1, nysv, nzb+1, nxr-nxl+1, nyn-nysv+1, init_3d%nzu, dynamic_3d )
 !
-!--       Set value at southmost model grid point nys = 0. This is because the dynamic file
-!--       provides data only from 1:ny-1.
+!--       Set value at southmost model grid point nys = 0. This is because Inifor provides data only
+!--       from 1:ny-1 since it assumes non-cyclic conditions.
           IF ( nys == 0 )  v(nzb+1:nzt,nys,nxl:nxr) = v(nzb+1:nzt,nysv,nxl:nxr)
 !
 !--       Set bottom and top-boundary
@@ -2362,8 +2603,8 @@
        ENDIF
        init_3d%from_file_v = .TRUE.
     ELSE
-       message_string = 'missing initial data for v-component'
-       CALL message( 'netcdf_data_input_mod', 'DRV0006', 1, 2, 0, 6, 0 )
+       message_string = 'Missing initial data for v-component'
+       CALL message( 'netcdf_data_input_mod', 'PA0544', 1, 2, 0, 6, 0 )
     ENDIF
 !
 !-- Read w-component
@@ -2395,8 +2636,8 @@
        ENDIF
        init_3d%from_file_w = .TRUE.
     ELSE
-       message_string = 'missing initial data for w-component'
-       CALL message( 'netcdf_data_input_mod', 'DRV0006', 1, 2, 0, 6, 0 )
+       message_string = 'Missing initial data for w-component'
+       CALL message( 'netcdf_data_input_mod', 'PA0544', 1, 2, 0, 6, 0 )
     ENDIF
 !
 !-- Read potential temperature
@@ -2428,8 +2669,8 @@
           ENDIF
           init_3d%from_file_pt = .TRUE.
        ELSE
-          message_string = 'missing initial data for potential temperature'
-          CALL message( 'netcdf_data_input_mod', 'DRV0006', 1, 2, 0, 6, 0 )
+          message_string = 'Missing initial data for ' // 'potential temperature'
+          CALL message( 'netcdf_data_input_mod', 'PA0544', 1, 2, 0, 6, 0 )
        ENDIF
     ENDIF
 
@@ -2463,8 +2704,8 @@
           ENDIF
           init_3d%from_file_q = .TRUE.
        ELSE
-          message_string = 'missing initial data for mixing ratio'
-          CALL message( 'netcdf_data_input_mod', 'DRV0006', 1, 2, 0, 6, 0 )
+          message_string = 'Missing initial data for ' // 'mixing ratio'
+          CALL message( 'netcdf_data_input_mod', 'PA0544', 1, 2, 0, 6, 0 )
        ENDIF
     ENDIF
 
@@ -2489,8 +2730,8 @@
 !
 !--          Give message that only LOD=1 is allowed.
              IF ( init_3d%lod_chem(n) /= 1 )  THEN
-                message_string = 'for chemistry variables only LOD=1 is allowed'
-                CALL message( 'netcdf_data_input_mod', 'DRV0007', 1, 2, 0, 6, 0 )
+                message_string = 'For chemistry variables only LOD=1 is ' // 'allowed.'
+                CALL message( 'netcdf_data_input_mod', 'PA0586', 1, 2, 0, 6, 0 )
              ENDIF
 !
 !--          level-of-detail 1 - read initialization profile
@@ -2522,8 +2763,9 @@
           IF ( ANY( u(nzb+1:nzt+1,nys:nyn,nxlu:nxr) == init_3d%fill_u ) )  check_passed = .FALSE.
        ENDIF
        IF ( .NOT. check_passed )  THEN
-          message_string = 'netCDF input for init_atmosphere_u must not contain any _FillValues'
-          CALL message( 'netcdf_data_input_mod', 'DRV0008', 2, 2, 0, 6, 0 )
+          message_string = 'NetCDF input for init_atmosphere_u must ' //                           &
+                           'not contain any _FillValues'
+          CALL message( 'netcdf_data_input_mod', 'PA0545', 2, 2, 0, 6, 0 )
        ENDIF
     ENDIF
 
@@ -2535,8 +2777,9 @@
           IF ( ANY( v(nzb+1:nzt+1,nysv:nyn,nxl:nxr) == init_3d%fill_v ) )  check_passed = .FALSE.
        ENDIF
        IF ( .NOT. check_passed )  THEN
-          message_string = 'netCDF input for init_atmosphere_v must not contain any _FillValues'
-          CALL message( 'netcdf_data_input_mod', 'DRV0008', 2, 2, 0, 6, 0 )
+          message_string = 'NetCDF input for init_atmosphere_v must ' //                           &
+                           'not contain any _FillValues'
+          CALL message( 'netcdf_data_input_mod', 'PA0545', 2, 2, 0, 6, 0 )
        ENDIF
     ENDIF
 
@@ -2548,8 +2791,9 @@
           IF ( ANY( w(nzb+1:nzt,nys:nyn,nxl:nxr) == init_3d%fill_w ) )  check_passed = .FALSE.
        ENDIF
        IF ( .NOT. check_passed )  THEN
-          message_string = 'NetCDF input for init_atmosphere_w must not contain any _FillValues'
-          CALL message( 'netcdf_data_input_mod', 'DRV0008', 2, 2, 0, 6, 0 )
+          message_string = 'NetCDF input for init_atmosphere_w must ' //                           &
+                           'not contain any _FillValues'
+          CALL message( 'netcdf_data_input_mod', 'PA0545', 2, 2, 0, 6, 0 )
        ENDIF
     ENDIF
 
@@ -2561,8 +2805,9 @@
           IF ( ANY( pt(nzb+1:nzt+1,nys:nyn,nxl:nxr) == init_3d%fill_pt ) )  check_passed = .FALSE.
        ENDIF
        IF ( .NOT. check_passed )  THEN
-          message_string = 'NetCDF input for init_atmosphere_pt must not contain any _FillValues'
-          CALL message( 'netcdf_data_input_mod', 'DRV0008', 2, 2, 0, 6, 0 )
+          message_string = 'NetCDF input for init_atmosphere_pt must ' //                          &
+                           'not contain any _FillValues'
+          CALL message( 'netcdf_data_input_mod', 'PA0545', 2, 2, 0, 6, 0 )
        ENDIF
     ENDIF
 
@@ -2574,8 +2819,9 @@
           IF ( ANY( q(nzb+1:nzt+1,nys:nyn,nxl:nxr) == init_3d%fill_q ) )  check_passed = .FALSE.
        ENDIF
        IF ( .NOT. check_passed )  THEN
-          message_string = 'NetCDF input for init_atmosphere_q must not contain any _FillValues'
-          CALL message( 'netcdf_data_input_mod', 'DRV0008', 2, 2, 0, 6, 0 )
+          message_string = 'NetCDF input for init_atmosphere_q must ' //                           &
+                           'not contain any _FillValues'
+          CALL message( 'netcdf_data_input_mod', 'PA0545', 2, 2, 0, 6, 0 )
        ENDIF
     ENDIF
 !
@@ -2593,14 +2839,16 @@
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE netcdf_data_input_check_dynamic
 
+    USE control_parameters,                                                                        &
+        ONLY:  initializing_actions, message_string
+
     IMPLICIT NONE
 !
-!-- Dynamic input file must be also present if initialization via read_from_file is prescribed.
-    IF ( .NOT. input_pids_dynamic  .AND.  INDEX( initializing_actions, 'read_from_file' ) /= 0 )   &
-    THEN
-       message_string = 'initializing_actions = "read_from_file" requires dynamic driver file "' //&
-                        TRIM( input_file_dynamic ) // TRIM( coupling_char ) // '"'
-       CALL message( 'netcdf_data_input_mod', 'DRV0009', 1, 2, 0, 6, 0 )
+!-- Dynamic input file must also be present if initialization via inifor is prescribed.
+    IF ( .NOT. input_pids_dynamic  .AND.  INDEX( initializing_actions, 'inifor' ) /= 0 )  THEN
+       message_string = 'initializing_actions = inifor requires dynamic ' //                       &
+                        'input file ' // TRIM( input_file_dynamic ) // TRIM( coupling_char )
+       CALL message( 'netcdf_data_input_mod', 'PA0547', 1, 2, 0, 6, 0 )
     ENDIF
 
  END SUBROUTINE netcdf_data_input_check_dynamic
@@ -2613,50 +2861,53 @@
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE netcdf_data_input_check_static
 
+    USE arrays_3d,                                                                                 &
+        ONLY:  zu
+
+    USE control_parameters,                                                                        &
+        ONLY:  land_surface, message_string, urban_surface
+
+    USE indices,                                                                                   &
+        ONLY:  nxl, nxr, nyn, nys, wall_flags_total_0
+
     IMPLICIT NONE
 
     INTEGER(iwp) ::  i       !< loop index along x-direction
     INTEGER(iwp) ::  j       !< loop index along y-direction
     INTEGER(iwp) ::  n_surf  !< number of different surface types at given location
 
-    LOGICAL ::  check_passed !< flag indicating if a check passed
+    LOGICAL      ::  check_passed  !< flag indicating if a check passed
 
 !
 !-- Return if no static input file is available
     IF ( .NOT. input_pids_static )  RETURN
 !
-!-- Check for a proper valid range of global attributes. No checks for origin_x and origin_y
-!-- so far, because these values refer to the used UTM reference zone, so that the values can
-!-- be even negative. Except for the virtual measurement module, there are also no other side
-!-- effects. The same applies for origin_z, which only sets a reference height. Since PALM uses
-!-- a relative height coordinate, there is no impact on the numerical solution (expect it is not
-!-- NaN, which has been already checked before).
-!-- Longitude and latitude need to be within a geographically reasonable range.
-    IF ( ABS( input_file_atts%origin_lon ) > 180.0_wp  .OR.                                        &
-         ABS( input_file_atts%origin_lat ) > 90.0_wp )  THEN
-       WRITE( message_string, * ) 'static driver coordinates "origin_lon" = ',                     &
-                                  input_file_atts%origin_lon, ' and/or "origin_lat" = ',           &
-                                  input_file_atts%origin_lat,                                      &
-                                  ' are outside the allowed range of values'
-       CALL message( 'netcdf_data_input_init', 'DRV0001', 1, 2, 0, 6, 0 )
-    ENDIF
-
-    IF ( input_file_atts%rotation_angle < 0.0_wp  .OR.                                             &
-         input_file_atts%rotation_angle > 360.0_wp )  THEN
-       message_string = 'static driver attribute "rotation_angle" ' //                             &
-                        'is outside the allowed range of 0-360 degrees'
-       CALL message( 'netcdf_data_input_init', 'DRV0041', 1, 2, 0, 6, 0 )
-    ENDIF
-!
-!-- Now, check for proper settings of specific input dimensions and variables.
 !-- Check for correct dimension of surface_fractions, should run from 0-2.
     IF ( surface_fraction_f%from_file )  THEN
        IF ( surface_fraction_f%nf-1 > 2 )  THEN
-          WRITE( message_string, * ) 'nsurface_fraction = ', surface_fraction_f%nf,                &
-                                     ' must not be larger than 3'
-          CALL message( 'netcdf_data_input_mod', 'DRV0010', 1, 2, 0, 6, 0 )
+          message_string = 'nsurface_fraction must not be larger than 3.'
+          CALL message( 'netcdf_data_input_mod', 'PA0580', 1, 2, 0, 6, 0 )
        ENDIF
     ENDIF
+!
+!-- If 3D buildings are read, check if building information is consistent to numeric grid.
+    IF ( buildings_f%from_file )  THEN
+       IF ( buildings_f%lod == 2 )  THEN
+          IF ( buildings_f%nz > SIZE( zu ) )  THEN
+             message_string = 'Reading 3D building data - too much ' //                            &
+                              'data points along the vertical coordinate.'
+             CALL message( 'netcdf_data_input_mod', 'PA0552', 2, 2, 0, 6, 0 )
+          ENDIF
+
+          IF ( ANY( ABS( buildings_f%z(0:buildings_f%nz-1) - zu(0:buildings_f%nz-1) ) > 1E-6_wp ) )&
+          THEN
+             message_string = 'Reading 3D building data - vertical ' //                            &
+                              'coordinate do not match numeric grid.'
+             CALL message( 'netcdf_data_input_mod', 'PA0553', 2, 2, 0, 6, 0 )
+          ENDIF
+       ENDIF
+    ENDIF
+
 !
 !-- Skip further checks concerning buildings and natural surface properties if no urban surface and
 !-- land surface model are applied.
@@ -2668,8 +2919,10 @@
            .NOT. water_type_f%from_file      .OR.                                                  &
            .NOT. soil_type_f%from_file            )  .OR.                                          &
           ( urban_surface  .AND.  .NOT. building_type_f%from_file ) )  THEN
-       message_string = 'minimum requirement for surface classification is not fulfilled'
-       CALL message( 'netcdf_data_input_mod', 'DRV0011', 1, 2, 0, 6, 0 )
+       message_string = 'Minimum requirement for surface classification is not fulfilled. At ' //  &
+                        'least vegetation_type, pavement_type, soil_type and water_type are ' //   &
+                        'required. If urban-surface model is applied, also building_type is required'
+       CALL message( 'netcdf_data_input_mod', 'PA0554', 1, 2, 0, 6, 0 )
     ENDIF
 !
 !-- Check for general availability of input variables.
@@ -2678,14 +2931,14 @@
     IF ( vegetation_type_f%from_file )  THEN
        IF ( ANY( vegetation_type_f%var == 0 ) )  THEN
           IF ( .NOT. vegetation_pars_f%from_file )  THEN
-             message_string = 'if vegetation_type = 0 at any location, ' //                        &
+             message_string = 'If vegetation_type = 0 at any location, ' //                        &
                               'vegetation_pars is required'
-             CALL message( 'netcdf_data_input_mod', 'DRV0012', 2, 2, myid, 6, 0 )
+             CALL message( 'netcdf_data_input_mod', 'PA0555', 2, 2, myid, 6, 0 )
           ENDIF
           IF ( .NOT. root_area_density_lsm_f%from_file )  THEN
-             message_string = 'if vegetation_type = 0 at any location, ' //                        &
+             message_string = 'If vegetation_type = 0 at any location, ' //                        &
                               'root_area_dens_s is required'
-             CALL message( 'netcdf_data_input_mod', 'DRV0012', 2, 2, myid, 6, 0 )
+             CALL message( 'netcdf_data_input_mod', 'PA0556', 2, 2, myid, 6, 0 )
           ENDIF
        ENDIF
     ENDIF
@@ -2703,45 +2956,46 @@
           ENDIF
        ENDIF
        IF ( .NOT. check_passed )  THEN
-          message_string = 'if soil_type = 0 at any location, soil_pars is required'
-          CALL message( 'netcdf_data_input_mod', 'DRV0013', 2, 2, myid, 6, 0 )
+          message_string = 'If soil_type = 0 at any location, soil_pars is required'
+          CALL message( 'netcdf_data_input_mod', 'PA0557', 2, 2, myid, 6, 0 )
        ENDIF
     ENDIF
 !
 !-- Buildings require a type in case of urban-surface model.
     IF ( buildings_f%from_file  .AND.  .NOT. building_type_f%from_file  )  THEN
-       message_string = 'if buildings are provided, also building_type is required'
-       CALL message( 'netcdf_data_input_mod', 'DRV0014', 2, 2, 0, 6, 0 )
+       message_string = 'If buildings are provided, also building_type is required'
+       CALL message( 'netcdf_data_input_mod', 'PA0581', 2, 2, 0, 6, 0 )
     ENDIF
 !
 !-- Buildings require an ID.
     IF ( buildings_f%from_file  .AND.  .NOT. building_id_f%from_file  )  THEN
-       message_string = 'if buildings are provided, also building_id is required'
-       CALL message( 'netcdf_data_input_mod', 'DRV0014', 2, 2, 0, 6, 0 )
+       message_string = 'If buildings are provided, also building_id is required'
+       CALL message( 'netcdf_data_input_mod', 'PA0582', 2, 2, 0, 6, 0 )
     ENDIF
 !
 !-- If building_type is zero at any location, building_pars is required.
     IF ( building_type_f%from_file )  THEN
        IF ( ANY( building_type_f%var == 0 ) )  THEN
           IF ( .NOT. building_pars_f%from_file )  THEN
-             message_string = 'if building_type = 0 at any location, building_pars is required'
-             CALL message( 'netcdf_data_input_mod', 'DRV0015', 2, 2, myid, 6, 0 )
+             message_string = 'If building_type = 0 at any location, ' //                          &
+                              'building_pars is required'
+             CALL message( 'netcdf_data_input_mod', 'PA0558', 2, 2, myid, 6, 0 )
           ENDIF
        ENDIF
     ENDIF
 !
 !-- If building_type is provided, also building_id is needed (due to the filtering algorithm).
     IF ( building_type_f%from_file  .AND.  .NOT. building_id_f%from_file )  THEN
-       message_string = 'if building_type is provided, also building_id is required'
-       CALL message( 'netcdf_data_input_mod', 'DRV0016', 2, 2, 0, 6, 0 )
+       message_string = 'If building_type is provided, also building_id is required'
+       CALL message( 'netcdf_data_input_mod', 'PA0519', 2, 2, 0, 6, 0 )
     ENDIF
 !
 !-- If albedo_type is zero at any location, albedo_pars is required.
     IF ( albedo_type_f%from_file )  THEN
        IF ( ANY( albedo_type_f%var == 0 ) )  THEN
           IF ( .NOT. albedo_pars_f%from_file )  THEN
-             message_string = 'if albedo_type = 0 at any location, albedo_pars is required'
-             CALL message( 'netcdf_data_input_mod', 'DRV0017', 2, 2, myid, 6, 0 )
+             message_string = 'If albedo_type = 0 at any location, albedo_pars is required'
+             CALL message( 'netcdf_data_input_mod', 'PA0559', 2, 2, myid, 6, 0 )
           ENDIF
        ENDIF
     ENDIF
@@ -2750,8 +3004,8 @@
     IF ( pavement_type_f%from_file )  THEN
        IF ( ANY( pavement_type_f%var == 0 ) )  THEN
           IF ( .NOT. pavement_pars_f%from_file )  THEN
-             message_string = 'if pavement_type = 0 at any location, pavement_pars is required'
-             CALL message( 'netcdf_data_input_mod', 'DRV0018', 2, 2, myid, 6, 0 )
+             message_string = 'If pavement_type = 0 at any location, pavement_pars is required'
+             CALL message( 'netcdf_data_input_mod', 'PA0560', 2, 2, myid, 6, 0 )
           ENDIF
        ENDIF
     ENDIF
@@ -2760,9 +3014,9 @@
     IF ( pavement_type_f%from_file )  THEN
        IF ( ANY( pavement_type_f%var == 0 ) )  THEN
           IF ( .NOT. pavement_subsurface_pars_f%from_file )  THEN
-             message_string = 'if pavement_type = 0 at any location, ' //                          &
+             message_string = 'If pavement_type = 0 at any location, ' //                          &
                               'pavement_subsurface_pars is required'
-             CALL message( 'netcdf_data_input_mod', 'DRV0019', 2, 2, myid, 6, 0 )
+             CALL message( 'netcdf_data_input_mod', 'PA0561', 2, 2, myid, 6, 0 )
           ENDIF
        ENDIF
     ENDIF
@@ -2771,8 +3025,8 @@
     IF ( water_type_f%from_file )  THEN
        IF ( ANY( water_type_f%var == 0 ) )  THEN
           IF ( .NOT. water_pars_f%from_file )  THEN
-             message_string = 'if water_type = 0 at any location, water_pars is required'
-             CALL message( 'netcdf_data_input_mod', 'DRV0020', 2, 2, myid, 6, 0 )
+             message_string = 'If water_type = 0 at any location, water_pars is required'
+             CALL message( 'netcdf_data_input_mod', 'PA0562', 2, 2, myid, 6, 0 )
           ENDIF
        ENDIF
     ENDIF
@@ -2787,24 +3041,22 @@
              IF ( vegetation_type_f%var(j,i) == vegetation_type_f%fill  .AND.                      &
                   pavement_type_f%var(j,i)   == pavement_type_f%fill    .AND.                      &
                   water_type_f%var(j,i)      == water_type_f%fill )  THEN
-                WRITE( message_string, * ) 'at least one of the parameters '//                     &
+                WRITE( message_string, * ) 'At least one of the parameters '//                     &
                                            'vegetation_type, pavement_type, ' //                   &
                                            'or water_type must be set '//                          &
-                                           'to a non-missing value at grid point (i,j) = (', i,    &
-                                           ',', j, ')'
-                CALL message( 'netcdf_data_input_mod', 'DRV0021', 2, 2, myid, 6, 0 )
+                                           'to a non-missing value. Grid point: ', j, i
+                CALL message( 'netcdf_data_input_mod', 'PA0563', 2, 2, myid, 6, 0 )
              ENDIF
           ELSEIF ( land_surface  .AND.  urban_surface )  THEN
              IF ( vegetation_type_f%var(j,i) == vegetation_type_f%fill  .AND.                      &
                   pavement_type_f%var(j,i)   == pavement_type_f%fill    .AND.                      &
                   building_type_f%var(j,i)   == building_type_f%fill    .AND.                      &
                   water_type_f%var(j,i)      == water_type_f%fill )  THEN
-                WRITE( message_string, * ) 'at least one of the parameters '//                     &
+                WRITE( message_string, * ) 'At least one of the parameters '//                     &
                                            'vegetation_type, pavement_type, '  //                  &
                                            'building_type, or water_type must be set '//           &
-                                           'to a non-missing value at grid point (i,j) = (', i,    &
-                                           ',', j, ')'
-                CALL message( 'netcdf_data_input_mod', 'DRV0022', 2, 2, myid, 6, 0 )
+                                           'to a non-missing value. Grid point: ', j, i
+                CALL message( 'netcdf_data_input_mod', 'PA0563', 2, 2, myid, 6, 0 )
              ENDIF
           ENDIF
 
@@ -2822,9 +3074,9 @@
 
              IF ( .NOT. check_passed )  THEN
                 message_string = 'soil_type is required for each '//                               &
-                                 'location (x,y) where vegetation_type or ' //                     &
-                                 'pavement_type is a non-missing value'
-                CALL message( 'netcdf_data_input_mod', 'DRV0023', 2, 2, myid, 6, 0 )
+                                 'location (y,x) where vegetation_type or ' //                     &
+                                 'pavement_type is a non-missing value.'
+                CALL message( 'netcdf_data_input_mod', 'PA0564', 2, 2, myid, 6, 0 )
              ENDIF
           ENDIF
 !
@@ -2839,9 +3091,13 @@
           IF ( pavement_type_f%var(j,i)   /= pavement_type_f%fill   )  n_surf = n_surf + 1
 
           IF ( n_surf > 1 )  THEN
-             WRITE( message_string, * ) 'more than one surface type (vegetation, pavement, water)',&
-                                        'is given at a location (i,j) = (', i, ',', j, ')'
-             CALL message( 'netcdf_data_input_mod', 'DRV0024', 2, 2, myid, 6, 0 )
+             WRITE( message_string, * ) 'More than one surface type (vegetation, ' //              &
+                                        'pavement, water) is given at a location. ' //             &
+                                        'Please note, this is not possible at ' //                 &
+                                        'the moment as no tile approach has been ' // &
+                                        'yet implemented. (i,j) = ', i, j
+             CALL message( 'netcdf_data_input_mod', 'PA0565',               &
+                            2, 2, myid, 6, 0 )
 
 !              IF ( .NOT. surface_fraction_f%from_file )  THEN
 !                 message_string = 'More than one surface type (vegetation '//                     &
@@ -2852,12 +3108,12 @@
 !                 message_string = 'If more than one surface type is ' //                          &
 !                                  'given at a location, surface_fraction ' //                     &
 !                                  'must be provided.'
-!                 CALL message( 'netcdf_data_input_mod', 'DRVxxx', 2, 2, myid, 6, 0 )
+!                 CALL message( 'netcdf_data_input_mod', 'PA0565', 2, 2, myid, 6, 0 )
 !              ELSEIF ( ANY ( surface_fraction_f%frac(:,j,i) ==  surface_fraction_f%fill ) )  THEN
 !                 message_string = 'If more than one surface type is ' //                          &
 !                                  'given at a location, surface_fraction ' //                     &
 !                                  'must be provided.'
-!                 CALL message( 'netcdf_data_input_mod', 'DRVxxxx', 2, 2, myid, 6, 0 )
+!                 CALL message( 'netcdf_data_input_mod', 'PA0565', 2, 2, myid, 6, 0 )
 !              ENDIF
           ENDIF
 !
@@ -2870,9 +3126,12 @@
                                     surface_fraction_f%frac(:,j,i) /= surface_fraction_f%fill )    &
                      ) > 1 )                                                                       &
              THEN
-                WRITE( message_string, * ) 'surface_fraction is given for more than one type at ', &
-                                           'location (i,j) = (', i, ',', j, ')'
-                CALL message( 'netcdf_data_input_mod', 'DRV0025', 2, 2, myid, 6, 0 )
+                WRITE( message_string, * ) 'surface_fraction is given for more ' //                &
+                                           'than one type. ' //                                    &
+                                           'Please note, this is not possible at ' //              &
+                                           'the moment as no tile approach has ' //                &
+                                           'yet been implemented. (i, j) = ', i, j
+                CALL message( 'netcdf_data_input_mod', 'PA0676', 2, 2, myid, 6, 0 )
              ENDIF
 !
 !--          Sum of relative fractions must be 1. Note, attributed to type conversions due to
@@ -2884,53 +3143,54 @@
 !--          vegetation, pavement or water is defined.
              IF ( vegetation_type_f%var(j,i) /= vegetation_type_f%fill  .OR.                       &
                   pavement_type_f%var(j,i)   /= pavement_type_f%fill    .OR.                       &
-                  water_type_f%var(j,i)      /= water_type_f%fill )                                &
-             THEN
+                  water_type_f%var(j,i)      /= water_type_f%fill )  THEN
                 IF ( SUM ( surface_fraction_f%frac(0:2,j,i) ) > 1.0_wp + 1E-8_wp  .OR.             &
-                     SUM ( surface_fraction_f%frac(0:2,j,i) ) < 1.0_wp - 1E-8_wp )                 &
-                THEN
-                   WRITE( message_string, * ) 'sum of all land-surface fractions does not equal',  &
-                                              '1 at location (i,j) = (', i, ',',  j, ')'
-                   CALL message( 'netcdf_data_input_mod', 'DRV0026', 2, 2, myid, 6, 0 )
+                     SUM ( surface_fraction_f%frac(0:2,j,i) ) < 1.0_wp - 1E-8_wp )  THEN
+                   WRITE( message_string, * ) 'The sum of all land-surface fractions ' //          &
+                                              'must equal 1. (i, j) = ', i, j
+                   CALL message( 'netcdf_data_input_mod', 'PA0566', 2, 2, myid, 6, 0 )
                 ENDIF
              ENDIF
 !
 !--          Relative fraction for a type must not be zero at locations where this type is set.
              IF ( ( vegetation_type_f%var(j,i) /= vegetation_type_f%fill  .AND.                    &
-                    ( surface_fraction_f%frac(0,j,i) == 0.0_wp .OR.                     &
-                      surface_fraction_f%frac(0,j,i) == surface_fraction_f%fill )       &
+                    ( surface_fraction_f%frac(ind_veg_wall,j,i) == 0.0_wp .OR.                     &
+                      surface_fraction_f%frac(ind_veg_wall,j,i) == surface_fraction_f%fill )       &
                   )  .OR.                                                                          &
                   ( pavement_type_f%var(j,i) /= pavement_type_f%fill       .AND.                   &
-                    ( surface_fraction_f%frac(1,j,i) == 0.0_wp .OR.                    &
-                      surface_fraction_f%frac(1,j,i) == surface_fraction_f%fill )      &
+                    ( surface_fraction_f%frac(ind_pav_green,j,i) == 0.0_wp .OR.                    &
+                      surface_fraction_f%frac(ind_pav_green,j,i) == surface_fraction_f%fill )      &
                   )  .OR.                                                                          &
                   ( water_type_f%var(j,i) /= water_type_f%fill             .AND.                   &
-                   ( surface_fraction_f%frac(2,j,i) == 0.0_wp      .OR.                  &
-                     surface_fraction_f%frac(2,j,i) == surface_fraction_f%fill )         &
-                  ) )                                                                              &
-             THEN
-                WRITE( message_string, * ) 'mismatch in setting of surface_fraction at location ', &
-                                           '(i,j) = (', i, ',', j, ')'
-                CALL message( 'netcdf_data_input_mod', 'DRV0027', 2, 2, myid, 6, 0 )
+                   ( surface_fraction_f%frac(ind_wat_win,j,i) == 0.0_wp      .OR.                  &
+                     surface_fraction_f%frac(ind_wat_win,j,i) == surface_fraction_f%fill )         &
+                  ) )  THEN
+                WRITE( message_string, * ) 'Mismatch in setting of '     //                        &
+                                           'surface_fraction. Vegetation-, pavement-, or ' //      &
+                                           'water surface is given at (i,j) = ( ', i, j,           &
+                                           ' ), but surface fraction is 0 for the given type.'
+                CALL message( 'netcdf_data_input_mod', 'PA0567', 2, 2, myid, 6, 0 )
              ENDIF
 !
 !--          Relative fraction for a type must not contain non-zero values if this type is not set.
              IF ( ( vegetation_type_f%var(j,i) == vegetation_type_f%fill    .AND.                  &
-                    ( surface_fraction_f%frac(0,j,i) /= 0.0_wp   .AND.                  &
-                      surface_fraction_f%frac(0,j,i) /= surface_fraction_f%fill )       &
+                    ( surface_fraction_f%frac(ind_veg_wall,j,i) /= 0.0_wp   .AND.                  &
+                      surface_fraction_f%frac(ind_veg_wall,j,i) /= surface_fraction_f%fill )       &
                   )  .OR.                                                                          &
                   ( pavement_type_f%var(j,i) == pavement_type_f%fill        .AND.                  &
-                    ( surface_fraction_f%frac(1,j,i) /= 0.0_wp .AND.                   &
-                      surface_fraction_f%frac(1,j,i) /= surface_fraction_f%fill )      &
+                    ( surface_fraction_f%frac(ind_pav_green,j,i) /= 0.0_wp .AND.                   &
+                      surface_fraction_f%frac(ind_pav_green,j,i) /= surface_fraction_f%fill )      &
                   )  .OR.                                                                          &
                   ( water_type_f%var(j,i) == water_type_f%fill           .AND.                     &
-                    ( surface_fraction_f%frac(2,j,i) /= 0.0_wp .AND.                     &
-                      surface_fraction_f%frac(2,j,i) /= surface_fraction_f%fill )        &
-                  ) )                                                                              &
-             THEN
-                WRITE( message_string, * ) 'mismatch in setting of surface_fraction at location ', &
-                                           '(i,j) = (', i, ',', j, ')'
-                CALL message( 'netcdf_data_input_mod', 'DRV0028', 2, 2, myid, 6, 0 )
+                    ( surface_fraction_f%frac(ind_wat_win,j,i) /= 0.0_wp .AND.                     &
+                      surface_fraction_f%frac(ind_wat_win,j,i) /= surface_fraction_f%fill )        &
+                  ) )  THEN
+                WRITE( message_string, * ) 'Mismatch in setting of '     //                        &
+                                           'surface_fraction. Vegetation-, pavement-, or '//       &
+                                           'water surface is not given at (i,j) = ( ', i, j,       &
+                                           ' ), but surface fraction is not 0 for the ' //         &
+                                           'given type.'
+                CALL message( 'netcdf_data_input_mod', 'PA0568', 2, 2, myid, 6, 0 )
              ENDIF
           ENDIF
 !
@@ -2939,9 +3199,10 @@
           IF ( vegetation_type_f%from_file )  THEN
              IF ( vegetation_type_f%var(j,i) == 0 )  THEN
                 IF ( ANY( vegetation_pars_f%pars_xy(:,j,i) == vegetation_pars_f%fill ) )  THEN
-                   WRITE( message_string, * ) 'vegetation_pars missing at location (i,j) = (',     &
-                                              i, ',', j, ')'
-                   CALL message( 'netcdf_data_input_mod', 'DRV0029', 2, 2, myid, 6, 0 )
+                   message_string = 'If vegetation_type(y,x) = 0, all '  //                        &
+                                    'parameters of vegetation_pars at ' //                         &
+                                    'this location must be set.'
+                   CALL message( 'netcdf_data_input_mod', 'PA0569', 2, 2, myid, 6, 0 )
                 ENDIF
              ENDIF
           ENDIF
@@ -2951,9 +3212,10 @@
              IF ( vegetation_type_f%var(j,i) == 0 )  THEN
                 IF ( ANY( root_area_density_lsm_f%var(:,j,i) == root_area_density_lsm_f%fill ) )   &
                 THEN
-                   WRITE( message_string, * ) 'root_area_dens_s missing at location (i,j) = (',    &
-                                              i, ',', j, ')'
-                   CALL message( 'netcdf_data_input_mod', 'DRV0030', 2, 2, myid, 6, 0 )
+                   message_string = 'If vegetation_type(y,x) = 0, all ' //                         &
+                                    'levels of root_area_dens_s ' //                               &
+                                    'must be set at this location.'
+                   CALL message( 'netcdf_data_input_mod', 'PA0570', 2, 2, myid, 6, 0 )
                 ENDIF
              ENDIF
           ENDIF
@@ -2973,9 +3235,9 @@
                 ENDIF
              ENDIF
              IF ( .NOT. check_passed )  THEN
-                WRITE( message_string, * ) 'soil_pars missing at location (i,j) = (',              &
-                                           i, ',', j, ')'
-                CALL message( 'netcdf_data_input_mod', 'DRV0031', 2, 2, myid, 6, 0 )
+                message_string = 'If soil_type(y,x) = 0, all levels of '  //                       &
+                                 'soil_pars at this location must be set.'
+                CALL message( 'netcdf_data_input_mod', 'PA0571', 2, 2, myid, 6, 0 )
              ENDIF
           ENDIF
 
@@ -2984,49 +3246,51 @@
           IF ( building_type_f%from_file )  THEN
              IF ( building_type_f%var(j,i) == 0 )  THEN
                 IF ( ANY( building_pars_f%pars_xy(:,j,i) == building_pars_f%fill ) )  THEN
-                   WRITE( message_string, * ) 'building_pars missing at location (i,j) = (',       &
-                                              i, ',', j, ')'
-                  CALL message( 'netcdf_data_input_mod', 'DRV0032', 2, 2, myid, 6, 0 )
+                   message_string = 'If building_type(y,x) = 0, all ' //                           &
+                                    'parameters of building_pars at this ' //                      &
+                                    'location must be set.'
+                   CALL message( 'netcdf_data_input_mod', 'PA0572', 2, 2, myid, 6, 0 )
                 ENDIF
              ENDIF
           ENDIF
 !
 !--       Check if building_type is set at each building and vice versa.
 !--       Please note, buildings are already processed and filtered.
-!--       For this reason, consistency checks are based on topo_flags rather than
-!--       buildings_f (buildings are represented by bit 6 in topo_flags).
+!--       For this reason, consistency checks are based on wall_flags_total_0 rather than
+!--       buildings_f (buildings are represented by bit 6 in wall_flags_total_0).
           IF ( building_type_f%from_file  .AND.  buildings_f%from_file )  THEN
-             IF ( ANY( BTEST ( topo_flags(:,j,i), 6 ) )             .AND.                          &
+             IF ( ANY( BTEST ( wall_flags_total_0(:,j,i), 6 ) )  .AND.                             &
                   building_type_f%var(j,i) == building_type_f%fill  .OR.                           &
-                  .NOT. ANY( BTEST ( topo_flags(:,j,i), 6 ) )       .AND.                          &
-                  building_type_f%var(j,i) /= building_type_f%fill )                               &
-             THEN
-                WRITE( message_string, * ) 'building_type missing at location (i,j) = (',          &
-                                           i, ',', j, ')'
-                CALL message( 'netcdf_data_input_mod', 'DRV0033', 2, 2, myid, 6, 0 )
+                  .NOT. ANY( BTEST ( wall_flags_total_0(:,j,i), 6 ) )  .AND.                       &
+                  building_type_f%var(j,i) /= building_type_f%fill )  THEN
+                WRITE( message_string, * ) 'Each location where a ' //                             &
+                                           'building is set requires a type ' //                   &
+                                           '( and vice versa ) in case the ' //                    &
+                                           'urban-surface model is applied. ' //                   &
+                                           'i, j = ', i, j
+                CALL message( 'netcdf_data_input_mod', 'PA0573', 2, 2, myid, 6, 0 )
              ENDIF
           ENDIF
 !
 !--       Check if at each location where a building is present also an ID is set and vice versa.
           IF ( buildings_f%from_file )  THEN
-             IF ( ANY( BTEST ( topo_flags(:,j,i), 6 ) )         .AND.                              &
+             IF ( ANY( BTEST ( wall_flags_total_0(:,j,i), 6 ) )  .AND.                             &
                   building_id_f%var(j,i) == building_id_f%fill  .OR.                               &
-                  .NOT. ANY( BTEST ( topo_flags(:,j,i), 6 ) )   .AND.                              &
-                  building_id_f%var(j,i) /= building_id_f%fill )                                   &
-             THEN
-                WRITE( message_string, * ) 'building_id missing at location (i,j) = (',            &
-                                           i, ',', j, ')'
-                CALL message( 'netcdf_data_input_mod', 'DRV0034', 2, 2, myid, 6, 0 )
+                  .NOT. ANY( BTEST ( wall_flags_total_0(:,j,i), 6 ) )  .AND.                       &
+                  building_id_f%var(j,i) /= building_id_f%fill )  THEN
+                WRITE( message_string, * ) 'Each location where a ' //                             &
+                                           'building is set requires an ID ' //                    &
+                                           '( and vice versa ). i, j = ', i, j
+                CALL message( 'netcdf_data_input_mod', 'PA0574', 2, 2, myid, 6, 0 )
              ENDIF
           ENDIF
 !
 !--       Check if building ID is set where a bulding is defined.
           IF ( buildings_f%from_file )  THEN
-             IF ( ANY( BTEST ( topo_flags(:,j,i), 6 ) )  .AND.                                     &
+             IF ( ANY( BTEST ( wall_flags_total_0(:,j,i), 6 ) )  .AND.                             &
                   building_id_f%var(j,i) == building_id_f%fill )  THEN
-                WRITE( message_string, * ) 'building_id missing at location (i,j) = (',            &
-                                           i, ',', j, ')'
-                CALL message( 'netcdf_data_input_mod', 'DRV0034', 2, 2, myid, 6, 0 )
+                WRITE( message_string, * ) 'Each building grid point ' // 'requires an ID.', i, j
+                CALL message( 'netcdf_data_input_mod', 'PA0575', 2, 2, myid, 6, 0 )
              ENDIF
           ENDIF
 !
@@ -3034,9 +3298,10 @@
           IF ( albedo_type_f%from_file )  THEN
              IF ( albedo_type_f%var(j,i) == 0 )  THEN
                 IF ( ANY( albedo_pars_f%pars_xy(:,j,i) == albedo_pars_f%fill ) )  THEN
-                   WRITE( message_string, * ) 'albedo_pars missing at location (i,j) = (',         &
-                                              i, ',', j, ')'
-                   CALL message( 'netcdf_data_input_mod', 'DRV0035', 2, 2, myid, 6, 0 )
+                   message_string = 'If albedo_type(y,x) = 0, all ' //                             &
+                                    'parameters of albedo_pars at this ' //                        &
+                                    'location must be set.'
+                   CALL message( 'netcdf_data_input_mod', 'PA0576', 2, 2, myid, 6, 0 )
                 ENDIF
              ENDIF
           ENDIF
@@ -3047,9 +3312,10 @@
           IF ( pavement_type_f%from_file )  THEN
              IF ( pavement_type_f%var(j,i) == 0 )  THEN
                 IF ( ANY( pavement_pars_f%pars_xy(:,j,i) == pavement_pars_f%fill ) )  THEN
-                   WRITE( message_string, * ) 'pavement_pars missing at location (i,j) = (',       &
-                                              i, ',', j, ')'
-                   CALL message( 'netcdf_data_input_mod', 'DRV0036', 2, 2, myid, 6, 0 )
+                   message_string = 'If pavement_type(y,x) = 0, all ' //                           &
+                                    'parameters of pavement_pars at this '//                       &
+                                    'location must be set.'
+                   CALL message( 'netcdf_data_input_mod', 'PA0577', 2, 2, myid, 6, 0 )
                 ENDIF
              ENDIF
           ENDIF
@@ -3059,11 +3325,12 @@
           IF ( pavement_type_f%from_file )  THEN
              IF ( pavement_type_f%var(j,i) == 0 )  THEN
                 IF ( ANY( pavement_subsurface_pars_f%pars_xyz(:,:,j,i) ==                          &
-                          pavement_subsurface_pars_f%fill ) )                                      &
-                THEN
-                   WRITE( message_string, * ) 'pavement_subsurface_pars missing at location (i,j)',&
-                                              ' = (', i, ',', j, ')'
-                   CALL message( 'netcdf_data_input_mod', 'DRV0037', 2, 2, myid, 6, 0 )
+                          pavement_subsurface_pars_f%fill ) )  THEN
+                   message_string = 'If pavement_type(y,x) = 0, all '   //                         &
+                                    'parameters of '                    //                         &
+                                    'pavement_subsurface_pars at this ' //                         &
+                                    'location must be set.'
+                   CALL message( 'netcdf_data_input_mod', 'PA0578', 2, 2, myid, 6, 0 )
                 ENDIF
              ENDIF
           ENDIF
@@ -3073,9 +3340,10 @@
           IF ( water_type_f%from_file )  THEN
              IF ( water_type_f%var(j,i) == 0 )  THEN
                 IF ( ANY( water_pars_f%pars_xy(:,j,i) == water_pars_f%fill ) )  THEN
-                   WRITE( message_string, * ) 'water_pars missing at location (i,j) = (',          &
-                                              i, ',', j, ')'
-                   CALL message( 'netcdf_data_input_mod', 'DRV0038', 2, 2, myid, 6, 0 )
+                   message_string = 'If water_type(y,x) = 0, all ' //                              &
+                                    'parameters of water_pars at this ' //                         &
+                                    'location must be set.'
+                   CALL message( 'netcdf_data_input_mod', 'PA0579', 2, 2, myid, 6, 0 )
                 ENDIF
              ENDIF
           ENDIF
@@ -3091,27 +3359,32 @@
 ! ------------
 !> Resize 8-bit 2D Integer array: (nys:nyn,nxl:nxr) -> (nysg:nyng,nxlg:nxrg)
 !--------------------------------------------------------------------------------------------------!
- SUBROUTINE add_ghost_layers_2d_int8( var )
+ SUBROUTINE resize_array_2d_int8( var, js, je, is, ie )
 
     IMPLICIT NONE
 
-    INTEGER(ibp), DIMENSION(:,:), ALLOCATABLE ::  var     !< treated variable
-    INTEGER(ibp), DIMENSION(:,:), ALLOCATABLE ::  var_tmp !< temporary copy
+    INTEGER(iwp) ::  ie  !< upper index bound along x direction
+    INTEGER(iwp) ::  is  !< lower index bound along x direction
+    INTEGER(iwp) ::  je  !< upper index bound along y direction
+    INTEGER(iwp) ::  js  !< lower index bound along y direction
+
+    INTEGER(KIND=1), DIMENSION(:,:), ALLOCATABLE ::  var     !< treated variable
+    INTEGER(KIND=1), DIMENSION(:,:), ALLOCATABLE ::  var_tmp !< temporary copy
 !
 !-- Allocate temporary variable
-    ALLOCATE( var_tmp(nys-nbgp:nyn+nbgp,nxl-nbgp:nxr+nbgp) )
+    ALLOCATE( var_tmp(js-nbgp:je+nbgp,is-nbgp:ie+nbgp) )
 !
 !-- Temporary copy of the variable
-    var_tmp(nys:nyn,nxl:nxr) = var(nys:nyn,nxl:nxr)
+    var_tmp(js:je,is:ie) = var(js:je,is:ie)
 !
 !-- Resize the array
     DEALLOCATE( var )
-    ALLOCATE( var(nys-nbgp:nyn+nbgp,nxl-nbgp:nxr+nbgp) )
+    ALLOCATE( var(js-nbgp:je+nbgp,is-nbgp:ie+nbgp) )
 !
 !-- Transfer temporary copy back to original array
-    var(nys:nyn,nxl:nxr) = var_tmp(nys:nyn,nxl:nxr)
+    var(js:je,is:ie) = var_tmp(js:je,is:ie)
 
- END SUBROUTINE add_ghost_layers_2d_int8
+ END SUBROUTINE resize_array_2d_int8
 
 
 !--------------------------------------------------------------------------------------------------!
@@ -3119,54 +3392,32 @@
 ! ------------
 !> Resize 32-bit 2D Integer array: (nys:nyn,nxl:nxr) -> (nysg:nyng,nxlg:nxrg)
 !--------------------------------------------------------------------------------------------------!
- SUBROUTINE add_ghost_layers_2d_int32( var )
+ SUBROUTINE resize_array_2d_int32( var, js, je, is, ie )
 
     IMPLICIT NONE
+
+    INTEGER(iwp) ::  ie  !< upper index bound along x direction
+    INTEGER(iwp) ::  is  !< lower index bound along x direction
+    INTEGER(iwp) ::  je  !< upper index bound along y direction
+    INTEGER(iwp) ::  js  !< lower index bound along y direction
 
     INTEGER(iwp), DIMENSION(:,:), ALLOCATABLE ::  var     !< treated variable
     INTEGER(iwp), DIMENSION(:,:), ALLOCATABLE ::  var_tmp !< temporary copy
 !
 !-- Allocate temporary variable
-    ALLOCATE( var_tmp(nys-nbgp:nyn+nbgp,nxl-nbgp:nxr+nbgp) )
+    ALLOCATE( var_tmp(js-nbgp:je+nbgp,is-nbgp:ie+nbgp) )
 !
 !-- Temporary copy of the variable
-    var_tmp(nys:nyn,nxl:nxr) = var(nys:nyn,nxl:nxr)
+    var_tmp(js:je,is:ie) = var(js:je,is:ie)
 !
 !-- Resize the array
     DEALLOCATE( var )
-    ALLOCATE( var(nys-nbgp:nyn+nbgp,nxl-nbgp:nxr+nbgp) )
+    ALLOCATE( var(js-nbgp:je+nbgp,is-nbgp:ie+nbgp) )
 !
 !-- Transfer temporary copy back to original array
-    var(nys:nyn,nxl:nxr) = var_tmp(nys:nyn,nxl:nxr)
+    var(js:je,is:ie) = var_tmp(js:je,is:ie)
 
- END SUBROUTINE add_ghost_layers_2d_int32
-
-!--------------------------------------------------------------------------------------------------!
-! Description:
-! ------------
-!> Resize 2D float array: (nys:nyn,nxl:nxr) -> (nysg:nyng,nxlg:nxrg)
-!--------------------------------------------------------------------------------------------------!
- SUBROUTINE add_ghost_layers_2d_real( var )
-
-    IMPLICIT NONE
-
-    REAL(wp), DIMENSION(:,:), ALLOCATABLE ::  var     !< treated variable
-    REAL(wp), DIMENSION(:,:), ALLOCATABLE ::  var_tmp !< temporary copy
-!
-!-- Allocate temporary variable
-    ALLOCATE( var_tmp(nys-nbgp:nyn+nbgp,nxl-nbgp:nxr+nbgp) )
-!
-!-- Temporary copy of the variable
-    var_tmp(nys:nyn,nxl:nxr) = var(nys:nyn,nxl:nxr)
-!
-!-- Resize the array
-    DEALLOCATE( var )
-    ALLOCATE( var(nys-nbgp:nyn+nbgp,nxl-nbgp:nxr+nbgp) )
-!
-!-- Transfer temporary copy back to original array
-    var(nys:nyn,nxl:nxr) = var_tmp(nys:nyn,nxl:nxr)
-
- END SUBROUTINE add_ghost_layers_2d_real
+ END SUBROUTINE resize_array_2d_int32
 
 
 !--------------------------------------------------------------------------------------------------!
@@ -3174,30 +3425,34 @@
 ! ------------
 !> Resize 8-bit 3D Integer array: (:,nys:nyn,nxl:nxr) -> (:,nysg:nyng,nxlg:nxrg)
 !--------------------------------------------------------------------------------------------------!
- SUBROUTINE add_ghost_layers_3d_int8( var, ks, ke )
+ SUBROUTINE resize_array_3d_int8( var, ks, ke, js, je, is, ie )
 
     IMPLICIT NONE
 
+    INTEGER(iwp) ::  ie  !< upper index bound along x direction
+    INTEGER(iwp) ::  is  !< lower index bound along x direction
+    INTEGER(iwp) ::  je  !< upper index bound along y direction
+    INTEGER(iwp) ::  js  !< lower index bound along y direction
     INTEGER(iwp) ::  ke  !< upper bound of treated array in z-direction
     INTEGER(iwp) ::  ks  !< lower bound of treated array in z-direction
 
-    INTEGER(ibp), DIMENSION(:,:,:), ALLOCATABLE ::  var     !< treated variable
-    INTEGER(ibp), DIMENSION(:,:,:), ALLOCATABLE ::  var_tmp !< temporary copy
+    INTEGER(KIND=1), DIMENSION(:,:,:), ALLOCATABLE ::  var     !< treated variable
+    INTEGER(KIND=1), DIMENSION(:,:,:), ALLOCATABLE ::  var_tmp !< temporary copy
 !
 !-- Allocate temporary variable
-    ALLOCATE( var_tmp(ks:ke,nys-nbgp:nyn+nbgp,nxl-nbgp:nxr+nbgp) )
+    ALLOCATE( var_tmp(ks:ke,js-nbgp:je+nbgp,is-nbgp:ie+nbgp) )
 !
 !-- Temporary copy of the variable
-    var_tmp(ks:ke,nys:nyn,nxl:nxr) = var(ks:ke,nys:nyn,nxl:nxr)
+    var_tmp(ks:ke,js:je,is:ie) = var(ks:ke,js:je,is:ie)
 !
 !-- Resize the array
     DEALLOCATE( var )
-    ALLOCATE( var(ks:ke,nys-nbgp:nyn+nbgp,nxl-nbgp:nxr+nbgp) )
+    ALLOCATE( var(ks:ke,js-nbgp:je+nbgp,is-nbgp:ie+nbgp) )
 !
 !-- Transfer temporary copy back to original array
-    var(ks:ke,nys:nyn,nxl:nxr) = var_tmp(ks:ke,nys:nyn,nxl:nxr)
+    var(ks:ke,js:je,is:ie) = var_tmp(ks:ke,js:je,is:ie)
 
- END SUBROUTINE add_ghost_layers_3d_int8
+ END SUBROUTINE resize_array_3d_int8
 
 
 !--------------------------------------------------------------------------------------------------!
@@ -3205,10 +3460,14 @@
 ! ------------
 !> Resize 3D Real array: (:,nys:nyn,nxl:nxr) -> (:,nysg:nyng,nxlg:nxrg)
 !--------------------------------------------------------------------------------------------------!
- SUBROUTINE add_ghost_layers_3d_real( var, ks, ke )
+ SUBROUTINE resize_array_3d_real( var, ks, ke, js, je, is, ie )
 
     IMPLICIT NONE
 
+    INTEGER(iwp) ::  ie  !< upper index bound along x direction
+    INTEGER(iwp) ::  is  !< lower index bound along x direction
+    INTEGER(iwp) ::  je  !< upper index bound along y direction
+    INTEGER(iwp) ::  js  !< lower index bound along y direction
     INTEGER(iwp) ::  ke  !< upper bound of treated array in z-direction
     INTEGER(iwp) ::  ks  !< lower bound of treated array in z-direction
 
@@ -3216,19 +3475,19 @@
     REAL(wp), DIMENSION(:,:,:), ALLOCATABLE ::  var_tmp !< temporary copy
 !
 !-- Allocate temporary variable
-    ALLOCATE( var_tmp(ks:ke,nys-nbgp:nyn+nbgp,nxl-nbgp:nxr+nbgp) )
+    ALLOCATE( var_tmp(ks:ke,js-nbgp:je+nbgp,is-nbgp:ie+nbgp) )
 !
 !-- Temporary copy of the variable
-    var_tmp(ks:ke,nys:nyn,nxl:nxr) = var(ks:ke,nys:nyn,nxl:nxr)
+    var_tmp(ks:ke,js:je,is:ie) = var(ks:ke,js:je,is:ie)
 !
 !-- Resize the array
     DEALLOCATE( var )
-    ALLOCATE( var(ks:ke,nys-nbgp:nyn+nbgp,nxl-nbgp:nxr+nbgp) )
+    ALLOCATE( var(ks:ke,js-nbgp:je+nbgp,is-nbgp:ie+nbgp) )
 !
 !-- Transfer temporary copy back to original array
-    var(ks:ke,nys:nyn,nxl:nxr) = var_tmp(ks:ke,nys:nyn,nxl:nxr)
+    var(ks:ke,js:je,is:ie) = var_tmp(ks:ke,js:je,is:ie)
 
- END SUBROUTINE add_ghost_layers_3d_real
+ END SUBROUTINE resize_array_3d_real
 
 
 !--------------------------------------------------------------------------------------------------!
@@ -3236,10 +3495,14 @@
 ! ------------
 !> Resize 4D Real array: (:,:,nys:nyn,nxl:nxr) -> (:,nysg:nyng,nxlg:nxrg)
 !--------------------------------------------------------------------------------------------------!
- SUBROUTINE add_ghost_layers_4d_real( var, k1s, k1e, k2s, k2e )
+ SUBROUTINE resize_array_4d_real( var, k1s, k1e, k2s, k2e, js, je, is, ie )
 
     IMPLICIT NONE
 
+    INTEGER(iwp) ::  ie   !< upper index bound along x direction
+    INTEGER(iwp) ::  is   !< lower index bound along x direction
+    INTEGER(iwp) ::  je   !< upper index bound along y direction
+    INTEGER(iwp) ::  js   !< lower index bound along y direction
     INTEGER(iwp) ::  k1e  !< upper bound of treated array in z-direction
     INTEGER(iwp) ::  k1s  !< lower bound of treated array in z-direction
     INTEGER(iwp) ::  k2e  !< upper bound of treated array along parameter space
@@ -3249,19 +3512,19 @@
     REAL(wp), DIMENSION(:,:,:,:), ALLOCATABLE ::  var_tmp  !< temporary copy
 !
 !-- Allocate temporary variable
-    ALLOCATE( var_tmp(k1s:k1e,k2s:k2e,nys-nbgp:nyn+nbgp,nxl-nbgp:nxr+nbgp) )
+    ALLOCATE( var_tmp(k1s:k1e,k2s:k2e,js-nbgp:je+nbgp,is-nbgp:ie+nbgp) )
 !
 !-- Temporary copy of the variable
-    var_tmp(k1s:k1e,k2s:k2e,nys:nyn,nxl:nxr) = var(k1s:k1e,k2s:k2e,nys:nyn,nxl:nxr)
+    var_tmp(k1s:k1e,k2s:k2e,js:je,is:ie) = var(k1s:k1e,k2s:k2e,js:je,is:ie)
 !
 !-- Resize the array
     DEALLOCATE( var )
-    ALLOCATE( var(k1s:k1e,k2s:k2e,nys-nbgp:nyn+nbgp,nxl-nbgp:nxr+nbgp) )
+    ALLOCATE( var(k1s:k1e,k2s:k2e,js-nbgp:je+nbgp,is-nbgp:ie+nbgp) )
 !
 !-- Transfer temporary copy back to original array
-    var(k1s:k1e,k2s:k2e,nys:nyn,nxl:nxr) = var_tmp(k1s:k1e,k2s:k2e,nys:nyn,nxl:nxr)
+    var(k1s:k1e,k2s:k2e,js:je,is:ie) = var_tmp(k1s:k1e,k2s:k2e,js:je,is:ie)
 
- END SUBROUTINE add_ghost_layers_4d_real
+ END SUBROUTINE resize_array_4d_real
 
 
 !--------------------------------------------------------------------------------------------------!
@@ -3299,6 +3562,8 @@
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE close_input_file( id )
 
+    USE pegrid
+
     IMPLICIT NONE
 
     INTEGER(iwp), INTENT(INOUT) ::  id  !< file id
@@ -3318,21 +3583,14 @@
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE open_read_file( filename, id )
 
+    USE pegrid
+
     IMPLICIT NONE
 
-    CHARACTER (LEN=*), INTENT(IN) ::  filename    !< filename
-    INTEGER(iwp), INTENT(INOUT)   ::  id          !< file id
-    LOGICAL                       ::  file_exists !< true if file exists
+    CHARACTER (LEN=*), INTENT(IN) ::  filename  !< filename
+    INTEGER(iwp), INTENT(INOUT)   ::  id        !< file id
 
 #if defined( __netcdf )
-!
-!-- Check if requested file exists
-    INQUIRE( FILE=filename, EXIST=file_exists )
-
-    IF ( .NOT. file_exists )  THEN
-       WRITE( message_string, * ) 'required input file "' // filename // '" does not exist'
-       CALL message( 'open_read_file', 'DRV0039', 2, 2, 0, 6, 1 )
-    ENDIF
 
 #if defined( __netcdf4_parallel )
 !
@@ -3369,7 +3627,9 @@
 ! ------------
 !> Reads global or variable-related attributes of type INTEGER (32-bit)
 !--------------------------------------------------------------------------------------------------!
-  SUBROUTINE get_attribute_int32( id, attribute_name, value, global, variable_name, ignore_error )
+  SUBROUTINE get_attribute_int32( id, attribute_name, value, global, variable_name, no_abort )
+
+    USE pegrid
 
     IMPLICIT NONE
 
@@ -3382,11 +3642,11 @@
 
     LOGICAL                       ::  check_error    !< flag indicating if handle_error shall be checked
     LOGICAL, INTENT(IN)           ::  global         !< flag indicating global attribute
-    LOGICAL, INTENT(IN), OPTIONAL ::  ignore_error   !< flag indicating if errors should be checked or not
+    LOGICAL, INTENT(IN), OPTIONAL ::  no_abort       !< flag indicating if errors should be checked
 #if defined( __netcdf )
 
-    IF ( PRESENT( ignore_error ) )  THEN
-       check_error = .NOT. ignore_error
+    IF ( PRESENT( no_abort ) )  THEN
+       check_error = no_abort
     ELSE
        check_error = .TRUE.
     ENDIF
@@ -3394,14 +3654,14 @@
 !-- Read global attribute
     IF ( global )  THEN
        nc_stat = NF90_GET_ATT( id, NF90_GLOBAL, TRIM( attribute_name ), value )
-       IF ( check_error )  CALL handle_error( 'get_attribute_int32 global', 522, attribute_name )
+       IF ( check_error)  CALL handle_error( 'get_attribute_int32 global', 522, attribute_name )
 !
 !-- Read attributes referring to a single variable. Therefore, first inquire variable id
     ELSE
        nc_stat = NF90_INQ_VARID( id, TRIM( variable_name ), id_var )
-       IF ( check_error )  CALL handle_error( 'get_attribute_int32', 522, attribute_name )
+       IF ( check_error)  CALL handle_error( 'get_attribute_int32', 522, attribute_name )
        nc_stat = NF90_GET_ATT( id, id_var, TRIM( attribute_name ), value )
-       IF ( check_error )  CALL handle_error( 'get_attribute_int32', 522, attribute_name )
+       IF ( check_error)  CALL handle_error( 'get_attribute_int32', 522, attribute_name )
     ENDIF
 #endif
 
@@ -3413,7 +3673,9 @@
 ! ------------
 !> Reads global or variable-related attributes of type INTEGER (8-bit)
 !--------------------------------------------------------------------------------------------------!
- SUBROUTINE get_attribute_int8( id, attribute_name, value, global, variable_name, ignore_error )
+ SUBROUTINE get_attribute_int8( id, attribute_name, value, global, variable_name, no_abort )
+
+    USE pegrid
 
     IMPLICIT NONE
 
@@ -3422,15 +3684,15 @@
 
     INTEGER(iwp), INTENT(IN)    ::  id               !< file id
     INTEGER(iwp)                ::  id_var           !< variable id
-    INTEGER(ibp), INTENT(INOUT) ::  value            !< read value
+    INTEGER(KIND=1), INTENT(INOUT) ::  value         !< read value
 
     LOGICAL                       ::  check_error    !< flag indicating if handle_error shall be checked
+    LOGICAL, INTENT(IN), OPTIONAL ::  no_abort       !< flag indicating if errors should be checked
     LOGICAL, INTENT(IN)           ::  global         !< flag indicating global attribute
-    LOGICAL, INTENT(IN), OPTIONAL ::  ignore_error   !< flag indicating if errors should be checked or not
 #if defined( __netcdf )
 
-    IF ( PRESENT( ignore_error ) )  THEN
-       check_error = .NOT. ignore_error
+    IF ( PRESENT( no_abort ) )  THEN
+       check_error = no_abort
     ELSE
        check_error = .TRUE.
     ENDIF
@@ -3438,14 +3700,14 @@
 !-- Read global attribute
     IF ( global )  THEN
        nc_stat = NF90_GET_ATT( id, NF90_GLOBAL, TRIM( attribute_name ), value )
-       IF ( check_error )  CALL handle_error( 'get_attribute_int8 global', 523, attribute_name )
+       IF ( check_error)  CALL handle_error( 'get_attribute_int8 global', 523, attribute_name )
 !
 !-- Read attributes referring to a single variable. Therefore, first inquire variable id
     ELSE
        nc_stat = NF90_INQ_VARID( id, TRIM( variable_name ), id_var )
-       IF ( check_error )  CALL handle_error( 'get_attribute_int8', 523, attribute_name )
+       IF ( check_error)  CALL handle_error( 'get_attribute_int8', 523, attribute_name )
        nc_stat = NF90_GET_ATT( id, id_var, TRIM( attribute_name ), value )
-       IF ( check_error )  CALL handle_error( 'get_attribute_int8', 523, attribute_name )
+       IF ( check_error)  CALL handle_error( 'get_attribute_int8', 523, attribute_name )
     ENDIF
 #endif
 
@@ -3457,7 +3719,9 @@
 ! ------------
 !> Reads global or variable-related attributes of type REAL
 !--------------------------------------------------------------------------------------------------!
- SUBROUTINE get_attribute_real( id, attribute_name, value, global, variable_name, ignore_error )
+ SUBROUTINE get_attribute_real( id, attribute_name, value, global, variable_name, no_abort )
+
+    USE pegrid
 
     IMPLICIT NONE
 
@@ -3469,13 +3733,13 @@
 
     LOGICAL                       ::  check_error    !< flag indicating if handle_error shall be checked
     LOGICAL, INTENT(IN)           ::  global         !< flag indicating global attribute
-    LOGICAL, INTENT(IN), OPTIONAL ::  ignore_error   !< flag indicating if errors should be checked or not
+    LOGICAL, INTENT(IN), OPTIONAL ::  no_abort       !< flag indicating if errors should be checked
 
     REAL(wp), INTENT(INOUT)     ::  value            !< read value
 #if defined( __netcdf )
 
-    IF ( PRESENT( ignore_error ) )  THEN
-       check_error = .NOT. ignore_error
+    IF ( PRESENT( no_abort ) )  THEN
+       check_error = no_abort
     ELSE
        check_error = .TRUE.
     ENDIF
@@ -3483,14 +3747,14 @@
 !-- Read global attribute
     IF ( global )  THEN
        nc_stat = NF90_GET_ATT( id, NF90_GLOBAL, TRIM( attribute_name ), value )
-       IF ( check_error )  CALL handle_error( 'get_attribute_real global', 524, attribute_name )
+       IF ( check_error)  CALL handle_error( 'get_attribute_real global', 524, attribute_name )
 !
 !-- Read attributes referring to a single variable. Therefore, first inquire variable id
     ELSE
        nc_stat = NF90_INQ_VARID( id, TRIM( variable_name ), id_var )
-       IF ( check_error )  CALL handle_error( 'get_attribute_real', 524, attribute_name )
+       IF ( check_error)  CALL handle_error( 'get_attribute_real', 524, attribute_name )
        nc_stat = NF90_GET_ATT( id, id_var, TRIM( attribute_name ), value )
-       IF ( check_error )  CALL handle_error( 'get_attribute_real', 524, attribute_name )
+       IF ( check_error)  CALL handle_error( 'get_attribute_real', 524, attribute_name )
     ENDIF
 #endif
 
@@ -3504,7 +3768,9 @@
 !> Remark: reading attributes of type NF_STRING return an error code 56 -
 !> Attempt to convert between text & numbers.
 !--------------------------------------------------------------------------------------------------!
- SUBROUTINE get_attribute_string( id, attribute_name, value, global, variable_name, ignore_error )
+ SUBROUTINE get_attribute_string( id, attribute_name, value, global, variable_name, no_abort )
+
+    USE pegrid
 
     IMPLICIT NONE
 
@@ -3515,13 +3781,13 @@
     INTEGER(iwp), INTENT(IN)    ::  id               !< file id
     INTEGER(iwp)                ::  id_var           !< variable id
 
-    LOGICAL                       ::  check_error    !< flag indicating if handle_error shall be checked
-    LOGICAL, INTENT(IN)           ::  global         !< flag indicating global attribute
-    LOGICAL, INTENT(IN), OPTIONAL ::  ignore_error   !< flag indicating if errors should be checked or not
+    LOGICAL ::  check_error                          !< flag indicating if handle_error shall be checked
+    LOGICAL, INTENT(IN) ::  global                   !< flag indicating global attribute
+    LOGICAL, INTENT(IN), OPTIONAL ::  no_abort       !< flag indicating if errors should be checked
 #if defined( __netcdf )
 
-    IF ( PRESENT( ignore_error ) )  THEN
-       check_error = .NOT. ignore_error
+    IF ( PRESENT( no_abort ) )  THEN
+       check_error = no_abort
     ELSE
        check_error = .TRUE.
     ENDIF
@@ -3529,15 +3795,15 @@
 !-- Read global attribute
     IF ( global )  THEN
        nc_stat = NF90_GET_ATT( id, NF90_GLOBAL, TRIM( attribute_name ), value )
-       IF ( check_error )  CALL handle_error( 'get_attribute_string global', 525, attribute_name )
+       IF ( check_error)  CALL handle_error( 'get_attribute_string global', 525, attribute_name )
 !
 !-- Read attributes referring to a single variable. Therefore, first inquire variable id
     ELSE
        nc_stat = NF90_INQ_VARID( id, TRIM( variable_name ), id_var )
-       IF ( check_error )  CALL handle_error( 'get_attribute_string', 525, attribute_name )
+       IF ( check_error)  CALL handle_error( 'get_attribute_string', 525, attribute_name )
 
        nc_stat = NF90_GET_ATT( id, id_var, TRIM( attribute_name ), value )
-       IF ( check_error )  CALL handle_error( 'get_attribute_string',525, attribute_name )
+       IF ( check_error)  CALL handle_error( 'get_attribute_string',525, attribute_name )
 
     ENDIF
 #endif
@@ -3551,6 +3817,7 @@
 !> Get dimension array for a given dimension
 !--------------------------------------------------------------------------------------------------!
   SUBROUTINE get_dimension_length( id, dim_len, variable_name )
+    USE pegrid
 
     IMPLICIT NONE
 
@@ -3582,6 +3849,9 @@
 !> Routine for reading-in a character string from the chem emissions netcdf input file.
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE get_variable_string( id, variable_name, var_string, names_number )
+
+    USE indices
+    USE pegrid
 
     IMPLICIT NONE
 
@@ -3655,6 +3925,7 @@
 !>   - Somehow I could not get the subroutine to work with str_array(:,:) so I reverted to a
 !>     hard-coded str_array(:,512), hopefully large enough for most general applications. This also
 !>     means the character variable used for str_array must be of size (:,512)
+!>     (ecc 20200128)
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE get_variable_string_generic ( id, var_name, str_array, num_str, str_len )
 
@@ -3702,6 +3973,8 @@
 !>   Reads a character variable in a 1D array
 !--------------------------------------------------------------------------------------------------!
   SUBROUTINE get_variable_1d_char( id, variable_name, var )
+
+    USE pegrid
 
     IMPLICIT NONE
 
@@ -3753,6 +4026,8 @@
 !--------------------------------------------------------------------------------------------------!
   SUBROUTINE get_variable_1d_int( id, variable_name, var )
 
+    USE pegrid
+
     IMPLICIT NONE
 
     CHARACTER(LEN=*)            ::  variable_name    !< variable name
@@ -3783,6 +4058,8 @@
 !> Reads a 1D float variable from file.
 !--------------------------------------------------------------------------------------------------!
   SUBROUTINE get_variable_1d_real( id, variable_name, var, is, count_elements )
+
+    USE pegrid
 
     IMPLICIT NONE
 
@@ -3820,6 +4097,8 @@
 !> Reads a time-dependent 1D float variable from file.
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE get_variable_pr( id, variable_name, t, var )
+
+    USE pegrid
 
     IMPLICIT NONE
 
@@ -3861,9 +4140,16 @@
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE get_variable_surf( id, variable_name, surf )
 
+    USE pegrid
+
+    USE indices,                                                                                   &
+        ONLY:  nxl, nxr, nys, nyn
+
+    USE control_parameters,                                                                        &
+        ONLY: dz, message_string
+
     USE grid_variables,                                                                            &
-        ONLY: ddx,                                                                                 &
-              ddy
+        ONLY: dx, dy
 
     USE basic_constants_and_equations_mod,                                                         &
         ONLY: pi
@@ -3875,8 +4161,7 @@
 
     CHARACTER(LEN=*)                          ::  variable_name !< variable name
 
-    INTEGER(iwp)                              ::  i             !< grid index in x-direction
-    INTEGER(iwp)                              ::  j             !< grid index in y-direction
+    INTEGER(iwp)                              ::  i, j
     INTEGER(iwp), INTENT(IN)                  ::  id            !< file id
     INTEGER(iwp)                              ::  id_azimuth    !< azimuth variable id
     INTEGER(iwp)                              ::  id_var        !< variable id
@@ -3889,7 +4174,7 @@
     INTEGER(iwp)                              ::  isurf         !< netcdf surface index
     INTEGER(iwp)                              ::  nsurf         !< total number of surfaces in file
 
-    INTEGER(iwp), DIMENSION(6)                ::  coords        !< integer coordinates of surface location
+    INTEGER(iwp), DIMENSION(6)                ::  coords        !< integer coordinates of surface
     INTEGER(iwp), DIMENSION(2)                ::  id_dim        !< dimension ids
 
     INTEGER(iwp), DIMENSION(:,:), ALLOCATABLE ::  nsurf_ji      !< numbers of surfaces by coords
@@ -3898,18 +4183,16 @@
 
     REAL(wp), DIMENSION(:), ALLOCATABLE       ::  azimuth       !< read buffer for azimuth(s)
     REAL(wp), DIMENSION(:), ALLOCATABLE       ::  zenith        !< read buffer for zenith(s)
-    REAL(wp), DIMENSION(:), ALLOCATABLE       ::  xs            !< surface coordinate array of x-dimension
-    REAL(wp), DIMENSION(:), ALLOCATABLE       ::  ys            !< surface coordinate array of y-dimension
-    REAL(wp), DIMENSION(:), ALLOCATABLE       ::  zs            !< surface coordinate array of z-dimension
+    REAL(wp), DIMENSION(:), ALLOCATABLE       ::  zs, ys, xs    !< read buffer for zs(s), ys, xs
 
-    REAL(wp), DIMENSION(:,:), ALLOCATABLE     ::  pars_read     !< read buffer for the building parameters
+    REAL(wp), DIMENSION(:,:), ALLOCATABLE     ::  pars_read     !< read buffer
 
     TYPE(pars_surf)                           ::  surf          !< parameters variable to be loaded
 
 
 #if defined( __netcdf )
 !
-!-- First, inquire variable ID's
+!-- First, inquire variable ID
     nc_stat = NF90_INQ_VARID( id, TRIM( variable_name ), id_var )
     nc_stat = NF90_INQ_VARID( id, 'zs',                  id_zs )
     nc_stat = NF90_INQ_VARID( id, 'ys',                  id_ys )
@@ -3917,7 +4200,7 @@
     nc_stat = NF90_INQ_VARID( id, 'zenith',              id_zenith )
     nc_stat = NF90_INQ_VARID( id, 'azimuth',             id_azimuth )
 !
-!-- Inquire dimension sizes for the number of surfaces and parameters given
+!-- Inquire dimension sizes
     nc_stat = NF90_INQUIRE_VARIABLE( id, id_var, DIMIDS = id_dim )
     nc_stat = NF90_INQUIRE_DIMENSION( id, id_dim(1), LEN = nsurf )
     nc_stat = NF90_INQUIRE_DIMENSION( id, id_dim(2), LEN = surf%np )
@@ -3926,11 +4209,11 @@
               zs(nsurf_pars_read), ys(nsurf_pars_read),                                            &
               xs(nsurf_pars_read), zenith(nsurf_pars_read),                                        &
               azimuth(nsurf_pars_read),                                                            &
-              nsurf_ji(nys:nyn,nxl:nxr) )
+              nsurf_ji(nys:nyn, nxl:nxr) )
 
     nsurf_ji(:,:) = 0
 !
-!-- Scan surface coordinates, count locally
+!-- Scan surface coordinates, count local
     is0 = 1
     DO
        isc = MIN(nsurf_pars_read, nsurf - is0 + 1)
@@ -3957,13 +4240,13 @@
           IF ( coords(2) < nys  .OR.  coords(2) > nyn  .OR.                                        &
                coords(3) < nxl  .OR.  coords(3) > nxr )  CYCLE
 
-          nsurf_ji(coords(2),coords(3)) = nsurf_ji(coords(2),coords(3)) + 1
+          nsurf_ji(coords(2), coords(3)) = nsurf_ji(coords(2), coords(3)) + 1
        ENDDO
        is0 = is0 + isc
     ENDDO
 !
 !-- Populate reverse index from surface counts
-    ALLOCATE( surf%index_ji( 2,nys:nyn,nxl:nxr ) )
+    ALLOCATE( surf%index_ji( 2, nys:nyn, nxl:nxr ) )
     isurf = 1
     DO  j = nys, nyn
        DO  i = nxl, nxr
@@ -3973,8 +4256,8 @@
     ENDDO
 
     surf%nsurf = isurf - 1
-    ALLOCATE( surf%pars(0:surf%np-1,surf%nsurf),                                                   &
-              surf%coords(6,surf%nsurf) )
+    ALLOCATE( surf%pars( 0:surf%np-1, surf%nsurf ), &
+              surf%coords( 6, surf%nsurf ) )
 !
 !-- Scan surfaces again, saving pars into allocated structures
     nsurf_ji(:,:) = 0
@@ -4013,12 +4296,12 @@
 !
 !--       Determine maximum terrain under building (base z-coordinate). Using normal vector to
 !--       locate building inner coordinates.
-          oro_max_l = buildings_f%oro_max(coords(2)-coords(5),coords(3)-coords(6))
+          oro_max_l = buildings_f%oro_max(coords(2)-coords(5), coords(3)-coords(6))
           IF ( oro_max_l == buildings_f%fill1 )  THEN
-             WRITE( message_string, * ) 'found building surface on '   //                          &
+             WRITE( message_string, * ) 'Found building surface on '   //                          &
                                         'non-building coordinates (xs, ys, zenith, azimuth): ',    &
                                         xs(isurf), ys(isurf), zenith(isurf), azimuth(isurf)
-             CALL message( 'get_variable_surf', 'DRV0040', 2, 2, myid, 6, 0 )
+             CALL message( 'get_variable_surf', 'PA0684', 2, 2, myid, 6, 0 )
           ENDIF
 !
 !--       Urban layer has no stretching, therefore using dz(1) instead of linear searching through
@@ -4027,11 +4310,11 @@
                             KIND=iwp )
 !
 !--       Save surface entry
-          is = surf%index_ji(1,coords(2),coords(3)) + nsurf_ji(coords(2),coords(3))
+          is = surf%index_ji(1, coords(2), coords(3)) + nsurf_ji(coords(2), coords(3))
           surf%pars(:,is) = pars_read(isurf,:)
           surf%coords(:,is) = coords(:)
 
-          nsurf_ji(coords(2),coords(3)) = nsurf_ji(coords(2),coords(3)) + 1
+          nsurf_ji(coords(2), coords(3)) = nsurf_ji(coords(2), coords(3)) + 1
        ENDDO
 
        is0 = is0 + isc
@@ -4046,8 +4329,7 @@
        INTEGER(iwp), DIMENSION(6) ::  transform_coords !< (k,j,i,norm_z,norm_y,norm_x)
 
        REAL(wp), INTENT(in) ::  azimuth  !< surface normal azimuth angle in degrees
-       REAL(wp), INTENT(in) ::  x        !< surface centre coordinate in x in metres from origin
-       REAL(wp), INTENT(in) ::  y        !< surface centre coordinate in y in metres from origin
+       REAL(wp), INTENT(in) ::  x, y     !< surface centre coordinates in metres from origin
        REAL(wp), INTENT(in) ::  zenith   !< surface normal zenith angle in degrees
 
        transform_coords(4) = NINT( COS( zenith * pi / 180.0_wp ), KIND=iwp )
@@ -4060,8 +4342,8 @@
        ENDIF
 
        transform_coords(1) = -999.0_wp ! not calculated here
-       transform_coords(2) = NINT( y * ddy - 0.5_wp + 0.5_wp * transform_coords(5), KIND=iwp )
-       transform_coords(3) = NINT( x * ddx - 0.5_wp + 0.5_wp * transform_coords(6), KIND=iwp )
+       transform_coords(2) = NINT( y / dy - 0.5_wp + 0.5_wp * transform_coords(5), KIND=iwp )
+       transform_coords(3) = NINT( x / dx - 0.5_wp + 0.5_wp * transform_coords(6), KIND=iwp )
 
     END FUNCTION transform_coords
 #endif
@@ -4076,6 +4358,9 @@
 !> own domain in slices along x.
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE get_variable_2d_real( id, variable_name, var, is, ie, js, je )
+
+    USE indices
+    USE pegrid
 
     IMPLICIT NONE
 
@@ -4137,6 +4422,9 @@
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE get_variable_2d_int32( id, variable_name, var, is, ie, js, je )
 
+    USE indices
+    USE pegrid
+
     IMPLICIT NONE
 
     CHARACTER(LEN=*)              ::  variable_name   !< variable name
@@ -4197,6 +4485,9 @@
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE get_variable_2d_int8( id, variable_name, var, is, ie, js, je )
 
+    USE indices
+    USE pegrid
+
     IMPLICIT NONE
 
     CHARACTER(LEN=*)              ::  variable_name   !< variable name
@@ -4210,9 +4501,9 @@
     INTEGER(iwp)                  ::  je              !< start index for subdomain input along y direction
     INTEGER(iwp)                  ::  js              !< end index for subdomain input along y direction
 
-    INTEGER(ibp), DIMENSION(:,:), ALLOCATABLE   ::  tmp  !< temporary variable to read data from file according
-                                                         !< to its reverse memory access
-    INTEGER(ibp), DIMENSION(:,:), INTENT(INOUT) ::  var  !< variable to be read
+    INTEGER(KIND=1), DIMENSION(:,:), ALLOCATABLE   ::  tmp  !< temporary variable to read data from file according
+                                                            !< to its reverse memory access
+    INTEGER(KIND=1), DIMENSION(:,:), INTENT(INOUT) ::  var  !< variable to be read
 
 
 #if defined( __netcdf )
@@ -4257,6 +4548,9 @@
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE get_variable_3d_int8( id, variable_name, var, is, ie, js, je, ks, ke )
 
+    USE indices
+    USE pegrid
+
     IMPLICIT NONE
 
     CHARACTER(LEN=*)              ::  variable_name   !< variable name
@@ -4273,10 +4567,10 @@
     INTEGER(iwp)                  ::  ke              !< start index of 3rd dimension
     INTEGER(iwp)                  ::  ks              !< end index of 3rd dimension
 
-    INTEGER(ibp), DIMENSION(:,:,:), ALLOCATABLE   ::  tmp  !< temporary variable to read data from file according
-                                                           !< to its reverse memory access
+    INTEGER(KIND=1), DIMENSION(:,:,:), ALLOCATABLE   ::  tmp  !< temporary variable to read data from file according
+                                                              !< to its reverse memory access
 
-    INTEGER(ibp), DIMENSION(:,:,:), INTENT(INOUT) ::  var  !< variable to be read
+    INTEGER(KIND=1), DIMENSION(:,:,:), INTENT(INOUT) ::  var  !< variable to be read
 #if defined( __netcdf )
 
 !
@@ -4320,6 +4614,9 @@
 !> Reads a 3D float variable from file.
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE get_variable_3d_real( id, variable_name, var, is, ie, js, je, ks, ke )
+
+    USE indices
+    USE pegrid
 
     IMPLICIT NONE
 
@@ -4384,6 +4681,9 @@
 !> Reads a 4D float variable from file.
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE get_variable_4d_real( id, variable_name, var, is, ie, js, je, k1s, k1e, k2s, k2e )
+
+    USE indices
+    USE pegrid
 
     IMPLICIT NONE
 
@@ -4456,6 +4756,9 @@
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE get_variable_4d_to_3d_real( id, variable_name, var, ns, is, ie, js, je, ks, ke )
 
+    USE indices
+    USE pegrid
+
     IMPLICIT NONE
 
     CHARACTER(LEN=*)              ::  variable_name   !< variable name
@@ -4525,6 +4828,9 @@
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE get_variable_2d_real_dynamic( id, variable_name, var, i1s, i2s, count_1, count_2 )
 
+    USE indices
+    USE pegrid
+
     IMPLICIT NONE
 
     CHARACTER(LEN=*)              ::  variable_name   !< variable name
@@ -4584,38 +4890,6 @@
 !--------------------------------------------------------------------------------------------------!
 ! Description:
 ! ------------
-!> Reads time slice from a 2D float variable (t,k) in file
-!--------------------------------------------------------------------------------------------------!
- SUBROUTINE get_variable_2d_real_time_slice( ncid, var_name, var_data, t0, ndata, init_data )
-
-    IMPLICIT NONE
-
-    CHARACTER(LEN=*), INTENT(IN) ::  var_name   !< variable name
-
-    INTEGER, INTENT(IN) ::  ncid   !< netCDF file handle
-    INTEGER, INTENT(IN) ::  ndata  !< slice size
-    INTEGER, INTENT(IN) ::  t0     !< index for time slice
-    INTEGER             ::  varid  !< variable ID
-
-    LOGICAL, INTENT(IN) ::  init_data  !< if data is to be initiated
-
-    REAL(KIND=wp), DIMENSION(:), INTENT(INOUT) ::  var_data  !< variable data (number of positions of a given time slice)
-
-
-    IF ( init_data )  var_data = 0.0
-
-#if defined( __netcdf )
-    nc_stat = NF90_INQ_VARID( ncid, trim(var_name), varid )
-    nc_stat = NF90_GET_VAR( ncid, varid, var_data, start=(/1,t0/), count=(/ndata,1/) )
-    CALL handle_error ( 'get_variable_2d_time_slice', 555, var_name )
-#endif
-
- END SUBROUTINE get_Variable_2d_real_time_slice
-
-
-!--------------------------------------------------------------------------------------------------!
-! Description:
-! ------------
 !> Reads a 3D float variables from dynamic driver, such as time-dependent xy-, xz- or yz-boundary
 !> data as well as 3D initialization data. Please note, the passed arguments are start indices and
 !> number of elements in each dimension, which is in contrast to the other 3d versions where start-
@@ -4624,6 +4898,9 @@
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE get_variable_3d_real_dynamic( id, variable_name, var, i1s, i2s, i3s,                   &
                                           count_1, count_2, count_3, par_access )
+
+    USE indices
+    USE pegrid
 
     IMPLICIT NONE
 
@@ -4656,6 +4933,7 @@
 
     REAL(wp), DIMENSION(:,:,:), INTENT(INOUT) ::  var !< input variable
 
+
 #if defined( __netcdf )
 !
 !-- Inquire variable id.
@@ -4673,12 +4951,12 @@
 !
 !-- Allocate temporary variable according to memory access on file.
 !-- Therefore, determine dimension bounds of input array.
-    lb1 = LBOUND( var, 3 )
-    ub1 = UBOUND( var, 3 )
-    lb2 = LBOUND( var, 2 )
-    ub2 = UBOUND( var, 2 )
-    lb3 = LBOUND( var, 1 )
-    ub3 = UBOUND( var, 1 )
+    lb1 = LBOUND( var,3 )
+    ub1 = UBOUND( var,3 )
+    lb2 = LBOUND( var,2 )
+    ub2 = UBOUND( var,2 )
+    lb3 = LBOUND( var,1 )
+    ub3 = UBOUND( var,1 )
     ALLOCATE( tmp(lb1:ub1,lb2:ub2,lb3:ub3) )
 !
 !-- Get variable
@@ -4705,105 +4983,12 @@
 !--------------------------------------------------------------------------------------------------!
 ! Description:
 ! ------------
-!> Reads a 4D float variable from dynamic driver, such as time-dependent 3d-data. Please note,
-!> the passed arguments are start indices and number of elements in each dimension, which is in
-!> contrast to some of the 3d versions.
-!--------------------------------------------------------------------------------------------------!
- SUBROUTINE get_variable_4d_real_dynamic( id, variable_name, var, i1s, i2s, i3s, i4s,              &
-                                          count_1, count_2, count_3, count_4, par_access )
-
-    IMPLICIT NONE
-
-    CHARACTER(LEN=*)              ::  variable_name   !< variable name
-
-    INTEGER(iwp)                  ::  count_1         !< number of elements to be read along 1st dimension (with respect to file)
-    INTEGER(iwp)                  ::  count_2         !< number of elements to be read along 2nd dimension (with respect to file)
-    INTEGER(iwp)                  ::  count_3         !< number of elements to be read along 3rd dimension (with respect to file)
-    INTEGER(iwp)                  ::  count_4         !< number of elements to be read along 4th dimension (with respect to file)
-    INTEGER(iwp)                  ::  i1              !< running index along 1st dimension on file
-    INTEGER(iwp)                  ::  i1s             !< start index for subdomain input along 1st dimension (with respect to file)
-    INTEGER(iwp)                  ::  i2              !< running index along 2nd dimension on file
-    INTEGER(iwp)                  ::  i2s             !< start index for subdomain input along 2nd dimension (with respect to file)
-    INTEGER(iwp)                  ::  i3              !< running index along 3rd dimension on file
-    INTEGER(iwp)                  ::  i3s             !< start index of 3rd dimension
-    INTEGER(iwp)                  ::  i4              !< running index along 3rd dimension on file
-    INTEGER(iwp)                  ::  i4s             !< start index of 3rd dimension
-    INTEGER(iwp), INTENT(IN)      ::  id              !< file id
-    INTEGER(iwp)                  ::  id_var          !< variable id
-    INTEGER(iwp)                  ::  lb1             !< lower bound of 1st dimension (with respect to file)
-    INTEGER(iwp)                  ::  lb2             !< lower bound of 2nd dimension (with respect to file)
-    INTEGER(iwp)                  ::  lb3             !< lower bound of 3rd dimension (with respect to file)
-    INTEGER(iwp)                  ::  lb4             !< lower bound of 4th dimension (with respect to file)
-    INTEGER(iwp)                  ::  ub1             !< upper bound of 1st dimension (with respect to file)
-    INTEGER(iwp)                  ::  ub2             !< upper bound of 2nd dimension (with respect to file)
-    INTEGER(iwp)                  ::  ub3             !< upper bound of 3rd dimension (with respect to file)
-    INTEGER(iwp)                  ::  ub4             !< lower bound of 4th dimension (with respect to file)
-
-    LOGICAL                       ::  par_access      !< additional flag indicating whether parallel read operations should be
-                                                      !< performed or not
-
-    REAL(wp), DIMENSION(:,:,:,:), ALLOCATABLE   ::  tmp !< temporary variable to read data from file according
-                                                        !< to its reverse memory access
-
-    REAL(wp), DIMENSION(:,:,:,:), INTENT(INOUT) ::  var !< input variable
-
-
-#if defined( __netcdf )
-!
-!-- Inquire variable id.
-    nc_stat = NF90_INQ_VARID( id, TRIM( variable_name ), id_var )
-!
-!-- Check for collective read-operation and set respective NetCDF flags if required.
-!-- Please note, in contrast to the other input routines where each PEs reads its subdomain data,
-!-- dynamic input data not by all PEs, only by those which encompass lateral model boundaries.
-!-- Hence, collective read operations are only enabled for top-boundary data.
-    IF ( collective_read  .AND.  par_access )  THEN
-#if defined( __netcdf4_parallel )
-       nc_stat = NF90_VAR_PAR_ACCESS (id, id_var, NF90_COLLECTIVE)
-#endif
-    ENDIF
-!
-!-- Allocate temporary variable according to memory access on file.
-!-- Therefore, determine dimension bounds of input array.
-    lb1 = LBOUND( var,4 )
-    ub1 = UBOUND( var,4 )
-    lb2 = LBOUND( var,3 )
-    ub2 = UBOUND( var,3 )
-    lb3 = LBOUND( var,2 )
-    ub3 = UBOUND( var,2 )
-    lb4 = LBOUND( var,1 )
-    ub4 = UBOUND( var,1 )
-    ALLOCATE( tmp(lb1:ub1,lb2:ub2,lb3:ub3,lb4:ub4) )
-!
-!-- Get variable
-    nc_stat = NF90_GET_VAR( id, id_var, tmp, start = (/ i1s, i2s, i3s, i4s /),                     &
-                            count = (/ count_1, count_2, count_3, count_4 /) )
-
-    CALL handle_error( 'get_variable_4d_real_dynamic', 537, variable_name )
-!
-!-- Resort data. Please note, dimension subscripts of var all start at 1.
-    DO  i4 = lb4, ub4
-       DO  i3 = lb3, ub3
-          DO i2 = lb2, ub2
-             DO  i1 = lb1, ub1
-                var(i4,i3,i2,i1) = tmp(i1,i2,i3,i4)
-             ENDDO
-          ENDDO
-       ENDDO
-    ENDDO
-
-    DEALLOCATE( tmp )
-#endif
-
- END SUBROUTINE get_variable_4d_real_dynamic
-
-
-!--------------------------------------------------------------------------------------------------!
-! Description:
-! ------------
 !> Reads a 5D float variable from file and store it to a 4-d variable.
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE get_variable_5d_to_4d_real( id, variable_name, var, ns, ts, te, is, ie, js, je, ks, ke )
+
+    USE indices
+    USE pegrid
 
     IMPLICIT NONE
 
@@ -4871,10 +5056,13 @@
 !> Reads a 5D float variable from file.
 !> Note - This subroutine is used specific for reading NC variable emission_values having a "z"
 !>        dimension. Mentioned dimension is to be removed in the future and this subroutine shall
-!>        be depreciated accordingly.
+!>        be depreciated accordingly. (ecc 20190418)
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE get_variable_5d_real( id, variable_name, var, is, ie, js, je, k1s, k1e, k2s, k2e, k3s, &
                                   k3e )
+
+    USE indices
+    USE pegrid
 
     IMPLICIT NONE
 
@@ -4958,12 +5146,16 @@
 !> asymmetry for the u- and v component.
 !> Note(1) - This subroutine is more flexible than get_variable_xd_real as it provides much better
 !>           control over starting and count indices.
+!>           (ecc 20190418)
 !> Note(2) - This subroutine is used specific for reading NC variable emission_values having a "z"
 !>           dimension. Mentioned dimension is to be removed in the future and this subroutine shall
-!>           be depreciated accordingly
+!>           be depreciated accordingly (ecc 20190418)
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE get_variable_5d_real_dynamic( id, variable_name, var, i1s, i2s, i3s, i4s, i5s,         &
                                           count_1, count_2, count_3, count_4, count_5, par_access )
+
+    USE indices
+    USE pegrid
 
     IMPLICIT NONE
 
@@ -5071,6 +5263,9 @@
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE inquire_num_variables( id, num_vars )
 
+    USE indices
+    USE pegrid
+
     IMPLICIT NONE
 
     INTEGER(iwp), INTENT(IN)      ::  id              !< file id
@@ -5091,6 +5286,9 @@
 !> Inquires the variable names belonging to a file.
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE inquire_variable_names( id, var_names )
+
+    USE indices
+    USE pegrid
 
     IMPLICIT NONE
 
@@ -5187,9 +5385,12 @@
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE handle_error( routine_name, errno, name )
 
+    USE control_parameters,                                                                        &
+        ONLY:  message_string
+
     IMPLICIT NONE
 
-    CHARACTER(LEN=7)           ::  message_identifier  !< string for the error number
+    CHARACTER(LEN=6)           ::  message_identifier  !< string for the error number
     CHARACTER(LEN=*), OPTIONAL ::  name                !< name of variable where reading failed
     CHARACTER(LEN=*)           ::  routine_name        !< routine name where the error happened
 
@@ -5199,7 +5400,7 @@
 #if defined( __netcdf )
     IF ( nc_stat /= NF90_NOERR )  THEN
 
-       WRITE( message_identifier, '(''NCF'',I4.4)' )  errno
+       WRITE( message_identifier, '(''NC'',I4.4)' )  errno
 
        IF ( PRESENT( name ) )  THEN
           message_string = "Problem reading attribute/variable - " //                              &

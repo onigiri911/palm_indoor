@@ -13,11 +13,142 @@
 ! You should have received a copy of the GNU General Public License along with PALM. If not, see
 ! <http://www.gnu.org/licenses/>.
 !
-! Copyright 1997-2021 Leibniz Universitaet Hannover
+! Copyright 1997-2020 Leibniz Universitaet Hannover
 !--------------------------------------------------------------------------------------------------!
 !
+! Current revisions:
+! ------------------
+!
+!
+! Former revisions:
+! -----------------
+! $Id: advec_ws.f90 4742 2020-10-14 15:11:02Z schwenkel $
+! Implement snow and graupel (bulk microphysics)
+!
+! 4697 2020-09-25 08:24:29Z suehring
+! To avoid numerical oscillations which may lead to a built-up of passive scalar near non-cyclic
+! boundaries, employ a first-order scheme at the 3 grid points next to the boundary for passive
+! scalars
+! 
+! 4581 2020-06-29 08:49:58Z suehring
+! Enable output of resolved-scale vertical fluxes of chemical species.
+! 
+! 4509 2020-04-26 15:57:55Z raasch
+! file re-formatted to follow the PALM coding standard
+!
+! 4502 2020-04-17 16:14:16Z schwenkel
+! Implementation of ice microphysics
+! 
+! 4469 2020-03-23 14:31:00Z suehring
+! fix mistakenly committed version
+!
+! 4468 2020-03-23 13:49:05Z suehring
+! - bugfix for last commit in openacc branch
+! - some loop bounds revised (only to be consistent with cache version)
+! - setting of nzb_max_l for advection of the w-component revised
+!
+! 4466 2020-03-20 16:14:41Z suehring
+! - vector branch further optimized (linear dependencies along z removed and loops are splitted)
+! - topography closed channel flow with symmetric boundaries also implemented in vector branch
+! - some formatting adjustments made and comments added
+! - cpu measures for vector branch added
+!
+! 4457 2020-03-11 14:20:43Z raasch
+! use statement for exchange horiz added
+!
+! 4414 2020-02-19 20:16:04Z suehring
+! Move call for initialization of control flags to ws_init
+!
+! 4360 2020-01-07 11:25:50Z suehring
+! Introduction of wall_flags_total_0, which currently sets bits based on static topography
+! information used in wall_flags_static_0
+!
+! 4340 2019-12-16 08:17:03Z Giersch
+! Topography closed channel flow with symmetric boundaries implemented
+!
+! 4330 2019-12-10 16:16:33Z knoop
+! Bugix: removed syntax error introduced by last commit
+!
+! 4329 2019-12-10 15:46:36Z motisi
+! Renamed wall_flags_0 to wall_flags_static_0
+!
+! 4328 2019-12-09 18:53:04Z suehring
+! Minor formatting adjustments
+!
+! 4327 2019-12-06 14:48:31Z Giersch
+! Setting of advection flags for vertical fluxes of w revised, air density for vertical flux
+! calculation of w at k=1 is considered now
+!
+! 4325 2019-12-06 07:14:04Z Giersch
+! Vertical fluxes of w are now set to zero at nzt and nzt+1, setting of advection flags for fluxes
+! in z-direction revised, comments extended
+!
+! 4324 2019-12-06 07:11:33Z Giersch
+! Indirect indexing for calculating vertical fluxes close to boundaries is only used for loop
+! indizes where it is really necessary
+!
+! 4317 2019-12-03 12:43:22Z Giersch
+! Comments revised/added, formatting improved, fluxes for u,v, and scalars are explicitly set to
+! zero at nzt+1, fluxes of w-component are now calculated only until nzt-1 (Prognostic equation for
+! w-velocity component ends at nzt-1)
+!
+! 4204 2019-08-30 12:30:17Z knoop
+! Bugfix: Changed sk_num initialization default to avoid implicit SAVE-Attribut
+!
+! 4182 2019-08-22 15:20:23Z scharf
+! Corrected "Former revisions" section
+!
+! 4110 2019-07-22 17:05:21Z suehring
+! - Separate initialization of advection flags for momentum and scalars. In this context, resort the
+!   bits and do some minor formatting.
+! - Make flag initialization for scalars more flexible, introduce an arguemnt list to indicate
+!   non-cyclic boundaries (required for decycled scalars such as chemical species or aerosols)
+! - Introduce extended 'degradation zones', where horizontal advection of passive scalars is
+!   discretized by first-order scheme at all grid points that in the vicinity of buildings (<= 3
+!   grid points). Even though no building is within the numerical stencil, first-order scheme is
+!   used. At fourth and fifth grid point the order of the horizontal advection scheme is
+!   successively upgraded. These extended degradation zones are used to avoid stationary numerical
+!   oscillations, which are responsible for high concentration maxima that may appear under
+!   shear-free stable conditions.
+! - Change interface for scalar advection routine.
+! - Bugfix, avoid uninitialized value sk_num in vector version of scalar
+!   advection
+!
+! 4109 2019-07-22 17:00:34Z suehring
+! Implementation of a flux limiter according to Skamarock (2006) for the vertical scalar advection.
+! Please note, this is only implemented for the cache-optimized version at the moment.
+! Implementation for the vector-optimized version will follow after critical issues concerning
+! vectorization are fixed.
+!
+! 3873 2019-04-08 15:44:30Z knoop
+! Moved ocean_mode specific code to ocean_mod
+!
+! 3872 2019-04-08 15:03:06Z knoop
+! Moved all USE statements to module level + removed salsa dependency
+!
+! 3871 2019-04-08 14:38:39Z knoop
+! Moving initialization of bcm specific flux arrays into bulk_cloud_model_mod
+!
+! 3864 2019-04-05 09:01:56Z monakurppa
+! Remove tailing white spaces
+!
+! 3696 2019-01-24 16:37:35Z suehring
+! Bugfix in degradation height
+!
+! 3661 2019-01-08 18:22:50Z suehring
+! - Minor bugfix in divergence correction (only has implications at downward-facing wall surfaces)
+! - Remove setting of Neumann condition for horizontal velocity variances
+! - Split loops for tendency calculation and divergence correction in order to reduce bit queries
+! - Introduce new parameter nzb_max_l to better control order degradation at non-cyclic boundaries
+!
+! 3655 2019-01-07 16:51:22Z knoop
+! OpenACC port for SPEC
+!
+! 411 2009-12-11 12:31:43 Z suehring
+! Initial revision
+!
 ! Authors:
-! ! --------
+! --------
 ! @author Matthias Suehring
 !
 !
@@ -38,50 +169,17 @@
  MODULE advec_ws
 
     USE arrays_3d,                                                                                 &
-        ONLY:  ddzu,                                                                               &
-               ddzw,                                                                               &
-               diss_l_diss,                                                                        &
-               diss_l_e,                                                                           &
-               diss_l_pt,                                                                          &
-               diss_l_q,                                                                           &
-               diss_l_s,                                                                           &
-               diss_l_u,                                                                           &
-               diss_l_v,                                                                           &
-               diss_l_w,                                                                           &
-               diss_s_diss,                                                                        &
-               diss_s_e,                                                                           &
-               diss_s_pt,                                                                          &
-               diss_s_q,                                                                           &
-               diss_s_s,                                                                           &
-               diss_s_u,                                                                           &
-               diss_s_v,                                                                           &
-               diss_s_w,                                                                           &
-               drho_air,                                                                           &
-               drho_air_zw,                                                                        &
-               rho_air,                                                                            &
-               rho_air_zw,                                                                         &
-               flux_l_diss,                                                                        &
-               flux_l_e,                                                                           &
-               flux_l_pt,                                                                          &
-               flux_l_q,                                                                           &
-               flux_l_s,                                                                           &
-               flux_l_u,                                                                           &
-               flux_l_v,                                                                           &
-               flux_l_w,                                                                           &
-               flux_s_diss,                                                                        &
-               flux_s_e,                                                                           &
-               flux_s_pt,                                                                          &
-               flux_s_q,                                                                           &
-               flux_s_s,                                                                           &
-               flux_s_u,                                                                           &
-               flux_s_v,                                                                           &
-               flux_s_w,                                                                           &
-               tend,                                                                               &
-               u,                                                                                  &
-               u_stokes_zu,                                                                        &
-               v,                                                                                  &
-               v_stokes_zu,                                                                        &
-               w
+        ONLY:  ddzu, ddzw, tend, u, v, w,                                                          &
+               diss_l_diss, diss_l_e, diss_l_pt, diss_l_q,                                         &
+               diss_l_s, diss_l_u, diss_l_v, diss_l_w,                                             &
+               diss_s_diss, diss_s_e, diss_s_pt, diss_s_q, diss_s_s,                               &
+               diss_s_u, diss_s_v, diss_s_w,                                                       &
+               drho_air, drho_air_zw, rho_air, rho_air_zw,                                         &
+               flux_l_diss, flux_l_e, flux_l_pt, flux_l_q, flux_l_s,                               &
+               flux_l_u, flux_l_v, flux_l_w,                                                       &
+               flux_s_diss, flux_s_e, flux_s_pt, flux_s_q, flux_s_s,                               &
+               flux_s_u, flux_s_v, flux_s_w,                                                       &
+               u_stokes_zu, v_stokes_zu
 
     USE control_parameters,                                                                        &
         ONLY:  bc_dirichlet_l,                                                                     &
@@ -109,8 +207,7 @@
                log_point_s
 
     USE exchange_horiz_mod,                                                                        &
-        ONLY:  exchange_horiz,                                                                     &
-               exchange_horiz_int
+        ONLY:  exchange_horiz_int
 
     USE indices,                                                                                   &
         ONLY:  advc_flags_m,                                                                       &
@@ -131,17 +228,15 @@
                nzb,                                                                                &
                nzb_max,                                                                            &
                nzt,                                                                                &
-               topo_flags
+               wall_flags_total_0
 
     USE grid_variables,                                                                            &
-        ONLY:  ddx,                                                                                &
-               ddy
+        ONLY:  ddx, ddy
 
     USE kinds
 
     USE pegrid,                                                                                    &
-        ONLY:  comm2d,                                                                             &
-               threads_per_task
+        ONLY:  threads_per_task
 
     USE statistics,                                                                                &
         ONLY:  hom,                                                                                &
@@ -180,17 +275,16 @@
     REAL(wp) ::  adv_sca_5            !< 1/60 - constant used in 5th-order advection scheme for scalar advection (5th-order part)
 
     PRIVATE
-    PUBLIC   advec_s_ws,                                                                           &
-             advec_u_ws,                                                                           &
-             advec_v_ws,                                                                           &
-             advec_w_ws,                                                                           &
-             ws_init,                                                                              &
-             ws_init_flags_scalar,                                                                 &
-             ws_statistics
+    PUBLIC   advec_s_ws, advec_u_ws, advec_v_ws, advec_w_ws, ws_init, ws_init_flags_momentum,      &
+             ws_init_flags_scalar, ws_statistics
 
     INTERFACE ws_init
        MODULE PROCEDURE ws_init
     END INTERFACE ws_init
+
+    INTERFACE ws_init_flags_momentum
+       MODULE PROCEDURE ws_init_flags_momentum
+    END INTERFACE ws_init_flags_momentum
 
     INTERFACE ws_init_flags_scalar
        MODULE PROCEDURE ws_init_flags_scalar
@@ -202,7 +296,6 @@
 
     INTERFACE advec_s_ws
        MODULE PROCEDURE advec_s_ws
-       MODULE PROCEDURE advec_s_ws_div_bc
        MODULE PROCEDURE advec_s_ws_ij
     END INTERFACE advec_s_ws
 
@@ -386,14 +479,14 @@
 !
 !--          u component - x-direction
 !--          WS1 (0), WS3 (1), WS5 (2)
-             IF ( .NOT. BTEST(topo_flags(k,j,i+1),1)  .OR.                                         &
+             IF ( .NOT. BTEST(wall_flags_total_0(k,j,i+1),1)  .OR.                                 &
                       ( ( bc_dirichlet_l .OR. bc_radiation_l ) .AND. i <= nxlu  )  .OR.            &
                       ( ( bc_dirichlet_r .OR. bc_radiation_r ) .AND. i == nxr   ) )                &
              THEN
                 advc_flags_m(k,j,i) = IBSET( advc_flags_m(k,j,i), 0 )
-             ELSEIF ( ( .NOT. BTEST(topo_flags(k,j,i+2),1)  .AND.                                  &
-                              BTEST(topo_flags(k,j,i+1),1)  .OR.                                   &
-                        .NOT. BTEST(topo_flags(k,j,i-1),1) )                                       &
+             ELSEIF ( ( .NOT. BTEST(wall_flags_total_0(k,j,i+2),1) .AND.                           &
+                              BTEST(wall_flags_total_0(k,j,i+1),1) .OR.                            &
+                        .NOT. BTEST(wall_flags_total_0(k,j,i-1),1) )                               &
                                               .OR.                                                 &
                       ( ( bc_dirichlet_r .OR. bc_radiation_r ) .AND. i == nxr-1 )  .OR.            &
                       ( ( bc_dirichlet_l .OR. bc_radiation_l ) .AND. i == nxlu+1) )                &
@@ -402,9 +495,9 @@
 !
 !--             Clear flag for WS1
                 advc_flags_m(k,j,i) = IBCLR( advc_flags_m(k,j,i), 0 )
-             ELSEIF ( BTEST(topo_flags(k,j,i+1),1)  .AND.                                          &
-                      BTEST(topo_flags(k,j,i+2),1)  .AND.                                          &
-                      BTEST(topo_flags(k,j,i-1),1) )                                               &
+             ELSEIF ( BTEST(wall_flags_total_0(k,j,i+1),1)  .AND.                                  &
+                      BTEST(wall_flags_total_0(k,j,i+2),1)  .AND.                                  &
+                      BTEST(wall_flags_total_0(k,j,i-1),1) )                                       &
              THEN
                 advc_flags_m(k,j,i) = IBSET( advc_flags_m(k,j,i), 2 )
 !
@@ -414,25 +507,25 @@
 !
 !--          u component - y-direction
 !--          WS1 (3), WS3 (4), WS5 (5)
-             IF ( .NOT. BTEST(topo_flags(k,j+1,i),1)  .OR.                                         &
-                      ( ( bc_dirichlet_s .OR. bc_radiation_s ) .AND. j == nys   )  .OR.            &
+             IF ( .NOT. BTEST(wall_flags_total_0(k,j+1,i),1)  .OR.                                 &
+                      ( ( bc_dirichlet_s .OR. bc_radiation_s ) .AND. j == nys   ) .OR.             &
                       ( ( bc_dirichlet_n .OR. bc_radiation_n ) .AND. j == nyn   ) )                &
              THEN
                 advc_flags_m(k,j,i) = IBSET( advc_flags_m(k,j,i), 3 )
-             ELSEIF ( ( .NOT. BTEST(topo_flags(k,j+2,i),1)  .AND.                                  &
-                              BTEST(topo_flags(k,j+1,i),1)  .OR.                                   &
-                        .NOT. BTEST(topo_flags(k,j-1,i),1) )                                       &
+             ELSEIF ( ( .NOT. BTEST(wall_flags_total_0(k,j+2,i),1) .AND.                           &
+                              BTEST(wall_flags_total_0(k,j+1,i),1) .OR.                            &
+                        .NOT. BTEST(wall_flags_total_0(k,j-1,i),1) )                               &
                                               .OR.                                                 &
-                      ( ( bc_dirichlet_s .OR. bc_radiation_s ) .AND. j == nysv  )  .OR.            &
+                      ( ( bc_dirichlet_s .OR. bc_radiation_s ) .AND. j == nysv  ) .OR.             &
                       ( ( bc_dirichlet_n .OR. bc_radiation_n ) .AND. j == nyn-1 ) )                &
              THEN
                 advc_flags_m(k,j,i) = IBSET( advc_flags_m(k,j,i), 4 )
 !
 !--             Clear flag for WS1
                 advc_flags_m(k,j,i) = IBCLR( advc_flags_m(k,j,i), 3 )
-             ELSEIF ( BTEST(topo_flags(k,j+1,i),1)  .AND.                                          &
-                      BTEST(topo_flags(k,j+2,i),1)  .AND.                                          &
-                      BTEST(topo_flags(k,j-1,i),1) )                                               &
+             ELSEIF ( BTEST(wall_flags_total_0(k,j+1,i),1)  .AND.                                  &
+                      BTEST(wall_flags_total_0(k,j+2,i),1)  .AND.                                  &
+                      BTEST(wall_flags_total_0(k,j-1,i),1) )                                       &
              THEN
                 advc_flags_m(k,j,i) = IBSET( advc_flags_m(k,j,i), 5 )
 !
@@ -460,33 +553,33 @@
              ENDIF
 
              flag_set = .FALSE.
-             IF ( ( .NOT. BTEST(topo_flags(k-1,j,i),1)                 .AND.                       &
-                          BTEST(topo_flags(k,j,i),1)                   .AND.                       &
-                          BTEST(topo_flags(k+1,j,i),1) )               .OR.                        &
-                  ( .NOT. BTEST(topo_flags(k_pp,j,i),1)                .AND.                       &
-                          BTEST(topo_flags(k+1,j,i),1)                 .AND.                       &
-                          BTEST(topo_flags(k,j,i),1) )                 .OR.                        &
+             IF ( ( .NOT. BTEST(wall_flags_total_0(k-1,j,i),1)       .AND.                         &
+                          BTEST(wall_flags_total_0(k,j,i),1)         .AND.                         &
+                          BTEST(wall_flags_total_0(k+1,j,i),1) )     .OR.                          &
+                  ( .NOT. BTEST(wall_flags_total_0(k_pp,j,i),1)      .AND.                         &
+                          BTEST(wall_flags_total_0(k+1,j,i),1)       .AND.                         &
+                          BTEST(wall_flags_total_0(k,j,i),1) )       .OR.                          &
                   ( k == nzt .AND. symmetry_flag == 0 ) )                                          &
              THEN
                 advc_flags_m(k,j,i) = IBSET( advc_flags_m(k,j,i), 6 )
                 flag_set = .TRUE.
-             ELSEIF ( ( .NOT. BTEST(topo_flags(k_mm,j,i),1)            .OR.                        &
-                        .NOT. BTEST(topo_flags(k_ppp,j,i),1) )         .AND.                       &
-                              BTEST(topo_flags(k-1,j,i),1)             .AND.                       &
-                              BTEST(topo_flags(k,j,i),1)               .AND.                       &
-                              BTEST(topo_flags(k+1,j,i),1)             .AND.                       &
-                              BTEST(topo_flags(k_pp,j,i),1)            .AND.                       &
+             ELSEIF ( ( .NOT. BTEST(wall_flags_total_0(k_mm,j,i),1)    .OR.                        &
+                        .NOT. BTEST(wall_flags_total_0(k_ppp,j,i),1) ) .AND.                       &
+                              BTEST(wall_flags_total_0(k-1,j,i),1)     .AND.                       &
+                              BTEST(wall_flags_total_0(k,j,i),1)       .AND.                       &
+                              BTEST(wall_flags_total_0(k+1,j,i),1)     .AND.                       &
+                              BTEST(wall_flags_total_0(k_pp,j,i),1)    .AND.                       &
                         .NOT. flag_set                                 .OR.                        &
                       ( k == nzt - 1 .AND. symmetry_flag == 0 ) )                                  &
              THEN
                 advc_flags_m(k,j,i) = IBSET( advc_flags_m(k,j,i), 7 )
                 flag_set = .TRUE.
-             ELSEIF ( BTEST(topo_flags(k_mm,j,i),1)                    .AND.                       &
-                      BTEST(topo_flags(k-1,j,i),1)                     .AND.                       &
-                      BTEST(topo_flags(k,j,i),1)                       .AND.                       &
-                      BTEST(topo_flags(k+1,j,i),1)                     .AND.                       &
-                      BTEST(topo_flags(k_pp,j,i),1)                    .AND.                       &
-                      BTEST(topo_flags(k_ppp,j,i),1)                   .AND.                       &
+             ELSEIF ( BTEST(wall_flags_total_0(k_mm,j,i),1)            .AND.                       &
+                      BTEST(wall_flags_total_0(k-1,j,i),1)             .AND.                       &
+                      BTEST(wall_flags_total_0(k,j,i),1)               .AND.                       &
+                      BTEST(wall_flags_total_0(k+1,j,i),1)             .AND.                       &
+                      BTEST(wall_flags_total_0(k_pp,j,i),1)            .AND.                       &
+                      BTEST(wall_flags_total_0(k_ppp,j,i),1)           .AND.                       &
                       .NOT. flag_set )                                                             &
              THEN
                 advc_flags_m(k,j,i) = IBSET( advc_flags_m(k,j,i), 8 )
@@ -509,16 +602,16 @@
 !
 !--          v component - x-direction
 !--          WS1 (9), WS3 (10), WS5 (11)
-             IF ( .NOT. BTEST(topo_flags(k,j,i+1),2)  .OR.                                         &
+             IF ( .NOT. BTEST(wall_flags_total_0(k,j,i+1),2)                       .OR.            &
                       ( ( bc_dirichlet_l .OR. bc_radiation_l ) .AND. i == nxl   )  .OR.            &
                       ( ( bc_dirichlet_r .OR. bc_radiation_r ) .AND. i == nxr   ) )                &
             THEN
                 advc_flags_m(k,j,i) = IBSET( advc_flags_m(k,j,i), 9 )
 !
 !--          WS3
-             ELSEIF ( ( .NOT. BTEST(topo_flags(k,j,i+2),2)    .AND.                                &
-                              BTEST(topo_flags(k,j,i+1),2) )  .OR.                                 &
-                        .NOT. BTEST(topo_flags(k,j,i-1),2)                                         &
+             ELSEIF ( ( .NOT. BTEST(wall_flags_total_0(k,j,i+2),2)   .AND.                         &
+                              BTEST(wall_flags_total_0(k,j,i+1),2) ) .OR.                          &
+                        .NOT. BTEST(wall_flags_total_0(k,j,i-1),2)                                 &
                                               .OR.                                                 &
                       ( ( bc_dirichlet_r .OR. bc_radiation_r ) .AND. i == nxr-1 )  .OR.            &
                       ( ( bc_dirichlet_l .OR. bc_radiation_l ) .AND. i == nxlu  ) )                &
@@ -527,9 +620,9 @@
 !
 !--             Clear flag for WS1
                 advc_flags_m(k,j,i) = IBCLR( advc_flags_m(k,j,i), 9 )
-             ELSEIF ( BTEST(topo_flags(k,j,i+1),2)  .AND.                                          &
-                      BTEST(topo_flags(k,j,i+2),2)  .AND.                                          &
-                      BTEST(topo_flags(k,j,i-1),2) )                                               &
+             ELSEIF ( BTEST(wall_flags_total_0(k,j,i+1),2)  .AND.                                  &
+                      BTEST(wall_flags_total_0(k,j,i+2),2)  .AND.                                  &
+                      BTEST(wall_flags_total_0(k,j,i-1),2) )                                       &
              THEN
                 advc_flags_m(k,j,i) = IBSET( advc_flags_m(k,j,i), 11 )
 !
@@ -539,25 +632,25 @@
 !
 !--          v component - y-direction
 !--          WS1 (12), WS3 (13), WS5 (14)
-             IF ( .NOT. BTEST(topo_flags(k,j+1,i),2)  .OR.                                         &
-                      ( ( bc_dirichlet_s .OR. bc_radiation_s ) .AND. j <= nysv  )   .OR.           &
+             IF ( .NOT. BTEST(wall_flags_total_0(k,j+1,i),2)                      .OR.             &
+                      ( ( bc_dirichlet_s .OR. bc_radiation_s ) .AND. j <= nysv  ) .OR.             &
                       ( ( bc_dirichlet_n .OR. bc_radiation_n ) .AND. j == nyn   ) )                &
              THEN
                 advc_flags_m(k,j,i) = IBSET( advc_flags_m(k,j,i), 12 )
-             ELSEIF ( ( .NOT. BTEST(topo_flags(k,j+2,i),2)  .AND.                                  &
-                              BTEST(topo_flags(k,j+1,i),2)  .OR.                                   &
-                        .NOT. BTEST(topo_flags(k,j-1,i),2) )                                       &
+             ELSEIF ( ( .NOT. BTEST(wall_flags_total_0(k,j+2,i),2)  .AND.                          &
+                              BTEST(wall_flags_total_0(k,j+1,i),2)  .OR.                           &
+                        .NOT. BTEST(wall_flags_total_0(k,j-1,i),2) )                               &
                                               .OR.                                                 &
-                      ( (  bc_dirichlet_s .OR. bc_radiation_s ) .AND. j == nysv+1)  .OR.           &
+                      ( (  bc_dirichlet_s .OR. bc_radiation_s ) .AND. j == nysv+1) .OR.            &
                       ( (  bc_dirichlet_n .OR. bc_radiation_n ) .AND. j == nyn-1 ) )               &
              THEN
                 advc_flags_m(k,j,i) = IBSET( advc_flags_m(k,j,i), 13 )
 !
 !--             Clear flag for WS1
                 advc_flags_m(k,j,i) = IBCLR( advc_flags_m(k,j,i), 12 )
-             ELSEIF ( BTEST(topo_flags(k,j+1,i),2)  .AND.                                          &
-                      BTEST(topo_flags(k,j+2,i),2)  .AND.                                          &
-                      BTEST(topo_flags(k,j-1,i),2) )                                               &
+             ELSEIF ( BTEST(wall_flags_total_0(k,j+1,i),2)  .AND.                                  &
+                      BTEST(wall_flags_total_0(k,j+2,i),2)  .AND.                                  &
+                      BTEST(wall_flags_total_0(k,j-1,i),2) )                                       &
              THEN
                 advc_flags_m(k,j,i) = IBSET( advc_flags_m(k,j,i), 14 )
 !
@@ -585,33 +678,33 @@
              ENDIF
 
              flag_set = .FALSE.
-             IF ( ( .NOT. BTEST(topo_flags(k-1,j,i),2)                 .AND.                       &
-                          BTEST(topo_flags(k,j,i),2)                   .AND.                       &
-                          BTEST(topo_flags(k+1,j,i),2) )               .OR.                        &
-                  ( .NOT. BTEST(topo_flags(k_pp,j,i),2)                .AND.                       &
-                          BTEST(topo_flags(k+1,j,i),2)                 .AND.                       &
-                          BTEST(topo_flags(k,j,i),2) )                 .OR.                        &
+             IF ( ( .NOT. BTEST(wall_flags_total_0(k-1,j,i),2)         .AND.                       &
+                          BTEST(wall_flags_total_0(k,j,i),2)           .AND.                       &
+                          BTEST(wall_flags_total_0(k+1,j,i),2) )       .OR.                        &
+                  ( .NOT. BTEST(wall_flags_total_0(k_pp,j,i),2)        .AND.                       &
+                          BTEST(wall_flags_total_0(k+1,j,i),2)         .AND.                       &
+                          BTEST(wall_flags_total_0(k,j,i),2) )         .OR.                        &
                   ( k == nzt .AND. symmetry_flag == 0 ) )                                          &
              THEN
                 advc_flags_m(k,j,i) = IBSET( advc_flags_m(k,j,i), 15 )
                 flag_set = .TRUE.
-             ELSEIF ( ( .NOT. BTEST(topo_flags(k_mm,j,i),2)            .OR.                        &
-                        .NOT. BTEST(topo_flags(k_ppp,j,i),2) )         .AND.                       &
-                              BTEST(topo_flags(k-1,j,i),2)             .AND.                       &
-                              BTEST(topo_flags(k,j,i),2)               .AND.                       &
-                              BTEST(topo_flags(k+1,j,i),2)             .AND.                       &
-                              BTEST(topo_flags(k_pp,j,i),2)            .AND.                       &
-                        .NOT. flag_set                                 .OR.                        &
+             ELSEIF ( ( .NOT. BTEST(wall_flags_total_0(k_mm,j,i),2)    .OR.                        &
+                        .NOT. BTEST(wall_flags_total_0(k_ppp,j,i),2) ) .AND.                       &
+                              BTEST(wall_flags_total_0(k-1,j,i),2)     .AND.                       &
+                              BTEST(wall_flags_total_0(k,j,i),2)       .AND.                       &
+                              BTEST(wall_flags_total_0(k+1,j,i),2)     .AND.                       &
+                              BTEST(wall_flags_total_0(k_pp,j,i),2)    .AND.                       &
+                        .NOT. flag_set                                  .OR.                       &
                       ( k == nzt - 1 .AND. symmetry_flag == 0 ) )                                  &
              THEN
                 advc_flags_m(k,j,i) = IBSET( advc_flags_m(k,j,i), 16 )
                 flag_set = .TRUE.
-             ELSEIF ( BTEST(topo_flags(k_mm,j,i),2)                    .AND.                       &
-                      BTEST(topo_flags(k-1,j,i),2)                     .AND.                       &
-                      BTEST(topo_flags(k,j,i),2)                       .AND.                       &
-                      BTEST(topo_flags(k+1,j,i),2)                     .AND.                       &
-                      BTEST(topo_flags(k_pp,j,i),2)                    .AND.                       &
-                      BTEST(topo_flags(k_ppp,j,i),2)                   .AND.                       &
+             ELSEIF ( BTEST(wall_flags_total_0(k_mm,j,i),2)            .AND.                       &
+                      BTEST(wall_flags_total_0(k-1,j,i),2)             .AND.                       &
+                      BTEST(wall_flags_total_0(k,j,i),2)               .AND.                       &
+                      BTEST(wall_flags_total_0(k+1,j,i),2)             .AND.                       &
+                      BTEST(wall_flags_total_0(k_pp,j,i),2)            .AND.                       &
+                      BTEST(wall_flags_total_0(k_ppp,j,i),2)           .AND.                       &
                       .NOT. flag_set )                                                             &
              THEN
                 advc_flags_m(k,j,i) = IBSET( advc_flags_m(k,j,i), 17 )
@@ -634,14 +727,14 @@
 !
 !--          w component - x-direction
 !--          WS1 (18), WS3 (19), WS5 (20)
-             IF ( .NOT. BTEST(topo_flags(k,j,i+1),3)  .OR.                                         &
+             IF ( .NOT. BTEST(wall_flags_total_0(k,j,i+1),3)                        .OR.           &
                       ( (  bc_dirichlet_l .OR. bc_radiation_l ) .AND. i == nxl   )  .OR.           &
                       ( (  bc_dirichlet_r .OR. bc_radiation_r ) .AND. i == nxr   ) )               &
              THEN
                 advc_flags_m(k,j,i) = IBSET( advc_flags_m(k,j,i), 18 )
-             ELSEIF ( ( .NOT. BTEST(topo_flags(k,j,i+2),3)  .AND.                                  &
-                              BTEST(topo_flags(k,j,i+1),3)  .OR.                                   &
-                        .NOT. BTEST(topo_flags(k,j,i-1),3) )                                       &
+             ELSEIF ( ( .NOT. BTEST(wall_flags_total_0(k,j,i+2),3)  .AND.                          &
+                              BTEST(wall_flags_total_0(k,j,i+1),3)  .OR.                           &
+                        .NOT. BTEST(wall_flags_total_0(k,j,i-1),3) )                               &
                                               .OR.                                                 &
                       ( ( bc_dirichlet_r .OR. bc_radiation_r )  .AND. i == nxr-1 )  .OR.           &
                       ( ( bc_dirichlet_l .OR.  bc_radiation_l ) .AND. i == nxlu  ) )               &
@@ -650,9 +743,9 @@
 !
 !--             Clear flag for WS1
                 advc_flags_m(k,j,i) = IBCLR( advc_flags_m(k,j,i), 18 )
-             ELSEIF ( BTEST(topo_flags(k,j,i+1),3)  .AND.                                          &
-                      BTEST(topo_flags(k,j,i+2),3)  .AND.                                          &
-                      BTEST(topo_flags(k,j,i-1),3) )                                               &
+             ELSEIF ( BTEST(wall_flags_total_0(k,j,i+1),3)  .AND.                                  &
+                      BTEST(wall_flags_total_0(k,j,i+2),3)  .AND.                                  &
+                      BTEST(wall_flags_total_0(k,j,i-1),3) )                                       &
              THEN
                 advc_flags_m(k,j,i) = IBSET( advc_flags_m(k,j,i),20 )
 !
@@ -662,14 +755,14 @@
 !
 !--          w component - y-direction
 !--          WS1 (21), WS3 (22), WS5 (23)
-             IF ( .NOT. BTEST(topo_flags(k,j+1,i),3)  .OR.                                         &
+             IF ( .NOT. BTEST(wall_flags_total_0(k,j+1,i),3)                       .OR.            &
                       ( ( bc_dirichlet_s .OR. bc_radiation_s ) .AND. j == nys   )  .OR.            &
                       ( ( bc_dirichlet_n .OR. bc_radiation_n ) .AND. j == nyn   ) )                &
              THEN
                 advc_flags_m(k,j,i) = IBSET( advc_flags_m(k,j,i), 21 )
-             ELSEIF ( ( .NOT. BTEST(topo_flags(k,j+2,i),3)  .AND.                                  &
-                              BTEST(topo_flags(k,j+1,i),3)  .OR.                                   &
-                        .NOT. BTEST(topo_flags(k,j-1,i),3) )                                       &
+             ELSEIF ( ( .NOT. BTEST(wall_flags_total_0(k,j+2,i),3)  .AND.                          &
+                              BTEST(wall_flags_total_0(k,j+1,i),3)  .OR.                           &
+                        .NOT. BTEST(wall_flags_total_0(k,j-1,i),3) )                               &
                                               .OR.                                                 &
                       ( ( bc_dirichlet_s .OR. bc_radiation_s ) .AND. j == nysv  )  .OR.            &
                       ( ( bc_dirichlet_n .OR. bc_radiation_n ) .AND. j == nyn-1 ) )                &
@@ -678,9 +771,9 @@
 !
 !--             Clear flag for WS1
                 advc_flags_m(k,j,i) = IBCLR( advc_flags_m(k,j,i), 21 )
-             ELSEIF ( BTEST(topo_flags(k,j+1,i),3)  .AND.                                          &
-                      BTEST(topo_flags(k,j+2,i),3)  .AND.                                          &
-                      BTEST(topo_flags(k,j-1,i),3) )                                               &
+             ELSEIF ( BTEST(wall_flags_total_0(k,j+1,i),3)  .AND.                                  &
+                      BTEST(wall_flags_total_0(k,j+2,i),3)  .AND.                                  &
+                      BTEST(wall_flags_total_0(k,j-1,i),3) )                                       &
              THEN
                 advc_flags_m(k,j,i) = IBSET( advc_flags_m(k,j,i), 23 )
 !
@@ -709,10 +802,10 @@
              ENDIF
 
              flag_set = .FALSE.
-             IF ( ( .NOT. BTEST(topo_flags(k,j,i),3)                  .AND.                        &
-                          BTEST(topo_flags(k+1,j,i),3) )              .OR.                         &
-                  ( .NOT. BTEST(topo_flags(k+1,j,i),3)                .AND.                        &
-                          BTEST(topo_flags(k,j,i),3) )                .OR.                         &
+             IF ( ( .NOT. BTEST(wall_flags_total_0(k,j,i),3)          .AND.                        &
+                          BTEST(wall_flags_total_0(k+1,j,i),3) )      .OR.                         &
+                  ( .NOT. BTEST(wall_flags_total_0(k+1,j,i),3)        .AND.                        &
+                          BTEST(wall_flags_total_0(k,j,i),3) )        .OR.                         &
                   k == nzt -1 )                                                                    &
              THEN
 !
@@ -722,23 +815,23 @@
 !--             0nzb_w_inner(j,i)+1.
                 advc_flags_m(k,j,i) = IBSET( advc_flags_m(k,j,i), 24 )
                 flag_set = .TRUE.
-             ELSEIF ( ( .NOT. BTEST(topo_flags(k-1,j,i),3)            .AND.                        &
-                              BTEST(topo_flags(k,j,i),3)              .AND.                        &
-                              BTEST(topo_flags(k+1,j,i),3)            .AND.                        &
-                              BTEST(topo_flags(k_pp,j,i),3) )         .OR.                         &
-                      ( .NOT. BTEST(topo_flags(k_pp,j,i),3)           .AND.                        &
-                              BTEST(topo_flags(k+1,j,i),3)            .AND.                        &
-                              BTEST(topo_flags(k,j,i),3)              .AND.                        &
-                              BTEST(topo_flags(k-1,j,i),3) )          .AND.                        &
+             ELSEIF ( ( .NOT. BTEST(wall_flags_total_0(k-1,j,i),3)    .AND.                        &
+                              BTEST(wall_flags_total_0(k,j,i),3)      .AND.                        &
+                              BTEST(wall_flags_total_0(k+1,j,i),3)    .AND.                        &
+                              BTEST(wall_flags_total_0(k_pp,j,i),3) ) .OR.                         &
+                      ( .NOT. BTEST(wall_flags_total_0(k_pp,j,i),3)   .AND.                        &
+                              BTEST(wall_flags_total_0(k+1,j,i),3)    .AND.                        &
+                              BTEST(wall_flags_total_0(k,j,i),3)      .AND.                        &
+                              BTEST(wall_flags_total_0(k-1,j,i),3) )  .AND.                        &
                         .NOT. flag_set                                .OR.                         &
                       k == nzt - 2 )                                                               &
              THEN
                 advc_flags_m(k,j,i) = IBSET( advc_flags_m(k,j,i), 25 )
                 flag_set = .TRUE.
-             ELSEIF ( BTEST(topo_flags(k-1,j,i),3)                    .AND.                        &
-                      BTEST(topo_flags(k,j,i),3)                      .AND.                        &
-                      BTEST(topo_flags(k+1,j,i),3)                    .AND.                        &
-                      BTEST(topo_flags(k_pp,j,i),3)                   .AND.                        &
+             ELSEIF ( BTEST(wall_flags_total_0(k-1,j,i),3)            .AND.                        &
+                      BTEST(wall_flags_total_0(k,j,i),3)              .AND.                        &
+                      BTEST(wall_flags_total_0(k+1,j,i),3)            .AND.                        &
+                      BTEST(wall_flags_total_0(k_pp,j,i),3)           .AND.                        &
                       .NOT. flag_set )                                                             &
              THEN
                 advc_flags_m(k,j,i) = IBSET( advc_flags_m(k,j,i), 26 )
@@ -779,21 +872,18 @@
 !> non-cyclic inflow boundaries, where the order is sucessively degraded.
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE ws_init_flags_scalar( non_cyclic_l, non_cyclic_n, non_cyclic_r, non_cyclic_s,          &
-                                  advc_flag, extensive_degrad, alternative_communicator )
+                                  advc_flag, extensive_degrad )
 
-    INTEGER(iwp), OPTIONAL ::  alternative_communicator  !< alternative MPI communicator to be used
 
-    INTEGER(iwp) ::  i            !< index variable along x
-    INTEGER(iwp) ::  j            !< index variable along y
-    INTEGER(iwp) ::  k            !< index variable along z
-    INTEGER(iwp) ::  k_mm         !< dummy index along z
-    INTEGER(iwp) ::  k_pp         !< dummy index along z
-    INTEGER(iwp) ::  k_ppp        !< dummy index along z
+    INTEGER(iwp) ::  i     !< index variable along x
+    INTEGER(iwp) ::  j     !< index variable along y
+    INTEGER(iwp) ::  k     !< index variable along z
+    INTEGER(iwp) ::  k_mm  !< dummy index along z
+    INTEGER(iwp) ::  k_pp  !< dummy index along z
+    INTEGER(iwp) ::  k_ppp !< dummy index along z
 
     INTEGER(iwp), INTENT(INOUT), DIMENSION(nzb:nzt+1,nysg:nyng,nxlg:nxrg) ::                       &
                                            advc_flag !< flag array to control order of scalar advection
-
-    INTEGER(iwp), DIMENSION(:,:,:), ALLOCATABLE ::  topo_flags_alt !< temporary alternative array for topography flags
 
     LOGICAL ::  flag_set     !< steering variable for advection flags
     LOGICAL ::  non_cyclic_l !< flag that indicates non-cyclic boundary on the left
@@ -805,83 +895,66 @@
                                            !< passive scalars nearby topography along the horizontal directions,
                                            !< as no monotonic limiter can be applied there
 !
-!-- In case an alternative communicator is used, the topography flag on the ghost points needs
-!-- to be set correspondingly. Therefore, set a temporary alternative topography array and exchange
-!-- ghost points using the alternative communicator.
-    ALLOCATE( topo_flags_alt(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-    topo_flags_alt = topo_flags
-
-    IF ( PRESENT( alternative_communicator ) )  THEN
-       CALL exchange_horiz_int( topo_flags_alt, nys, nyn, nxl, nxr, nzt, nbgp,                     &
-                                alternative_communicator = alternative_communicator )
-!
-!--    In case of non-cyclic boundaries set a Neumann condition for the topography.
-       IF ( non_cyclic_l )  topo_flags_alt(:,:,nxl-1) = topo_flags_alt(:,:,nxl)
-       IF ( non_cyclic_r )  topo_flags_alt(:,:,nxr+1) = topo_flags_alt(:,:,nxr)
-       IF ( non_cyclic_n )  topo_flags_alt(:,nyn+1,:) = topo_flags_alt(:,nyn,:)
-       IF ( non_cyclic_s )  topo_flags_alt(:,nys-1,:) = topo_flags_alt(:,nys,:)
-    ENDIF
-!
 !-- Set flags to steer the degradation of the advection scheme in advec_ws near topography, inflow-
 !-- and outflow boundaries as well as bottom and top of model domain. advc_flags_m remains zero for
 !-- all non-prognostic grid points.
     DO  i = nxl, nxr
        DO  j = nys, nyn
           DO  k = nzb+1, nzt
-             IF ( .NOT.  BTEST(topo_flags_alt(k,j,i),0) )  CYCLE
+             IF ( .NOT.  BTEST(wall_flags_total_0(k,j,i),0) )  CYCLE
 !
 !--          scalar - x-direction
 !--          WS1 (0), WS3 (1), WS5 (2)
-             IF ( ( .NOT. BTEST(topo_flags_alt(k,j,i+1),0)              .OR.                       &
-                    .NOT. BTEST(topo_flags_alt(k,j,i+2),0)              .OR.                       &
-                    .NOT. BTEST(topo_flags_alt(k,j,i-1),0) )            .OR.                       &
+             IF ( ( .NOT. BTEST(wall_flags_total_0(k,j,i+1),0)      .OR.                           &
+                    .NOT. BTEST(wall_flags_total_0(k,j,i+2),0)      .OR.                           &
+                    .NOT. BTEST(wall_flags_total_0(k,j,i-1),0) )    .OR.                           &
                     ( non_cyclic_l  .AND.  i == 0  )                .OR.                           &
                     ( non_cyclic_r  .AND.  i == nx ) )                                             &
              THEN
                 advc_flag(k,j,i) = IBSET( advc_flag(k,j,i), 0 )
-             ELSEIF ( ( .NOT. BTEST(topo_flags_alt(k,j,i+3),0)          .AND.                      &
-                              BTEST(topo_flags_alt(k,j,i+1),0)          .AND.                      &
-                              BTEST(topo_flags_alt(k,j,i+2),0)          .AND.                      &
-                              BTEST(topo_flags_alt(k,j,i-1),0)                                     &
+             ELSEIF ( ( .NOT. BTEST(wall_flags_total_0(k,j,i+3),0)  .AND.                          &
+                              BTEST(wall_flags_total_0(k,j,i+1),0)  .AND.                          &
+                              BTEST(wall_flags_total_0(k,j,i+2),0)  .AND.                          &
+                              BTEST(wall_flags_total_0(k,j,i-1),0)                                 &
                       )                       .OR.                                                 &
-                      ( .NOT. BTEST(topo_flags_alt(k,j,i-2),0)          .AND.                      &
-                              BTEST(topo_flags_alt(k,j,i+1),0)          .AND.                      &
-                              BTEST(topo_flags_alt(k,j,i+2),0)          .AND.                      &
-                              BTEST(topo_flags_alt(k,j,i-1),0)                                     &
+                      ( .NOT. BTEST(wall_flags_total_0(k,j,i-2),0)  .AND.                          &
+                              BTEST(wall_flags_total_0(k,j,i+1),0)  .AND.                          &
+                              BTEST(wall_flags_total_0(k,j,i+2),0)  .AND.                          &
+                              BTEST(wall_flags_total_0(k,j,i-1),0)                                 &
                       )                       .OR.                                                 &
                       ( non_cyclic_r  .AND.  i == nx-1 )            .OR.                           &
                       ( non_cyclic_l  .AND.  i == 1    ) )                                         &
              THEN
                 advc_flag(k,j,i) = IBSET( advc_flag(k,j,i), 1 )
-             ELSEIF ( BTEST(topo_flags_alt(k,j,i+1),0)                  .AND.                      &
-                      BTEST(topo_flags_alt(k,j,i+2),0)                  .AND.                      &
-                      BTEST(topo_flags_alt(k,j,i+3),0)                  .AND.                      &
-                      BTEST(topo_flags_alt(k,j,i-1),0)                  .AND.                      &
-                      BTEST(topo_flags_alt(k,j,i-2),0) )                                           &
+             ELSEIF ( BTEST(wall_flags_total_0(k,j,i+1),0)           .AND.                         &
+                      BTEST(wall_flags_total_0(k,j,i+2),0)           .AND.                         &
+                      BTEST(wall_flags_total_0(k,j,i+3),0)           .AND.                         &
+                      BTEST(wall_flags_total_0(k,j,i-1),0)           .AND.                         &
+                      BTEST(wall_flags_total_0(k,j,i-2),0) )                                       &
              THEN
                 advc_flag(k,j,i) = IBSET( advc_flag(k,j,i), 2 )
              ENDIF
 !
 !--          scalar - y-direction
 !--          WS1 (3), WS3 (4), WS5 (5)
-             IF ( ( .NOT. BTEST(topo_flags_alt(k,j+1,i),0)              .OR.                       &
-                    .NOT. BTEST(topo_flags_alt(k,j+2,i),0)              .OR.                       &
-                    .NOT. BTEST(topo_flags_alt(k,j-1,i),0))             .OR.                       &
-                  ( non_cyclic_s  .AND.  j == 0  )                  .OR.                           &
+             IF ( ( .NOT. BTEST(wall_flags_total_0(k,j+1,i),0)        .OR.                         &
+                    .NOT. BTEST(wall_flags_total_0(k,j+2,i),0)        .OR.                         &
+                    .NOT. BTEST(wall_flags_total_0(k,j-1,i),0))       .OR.                         &
+                  ( non_cyclic_s  .AND.  j == 0  )                    .OR.                         &
                   ( non_cyclic_n  .AND.  j == ny ) )                                               &
              THEN
                 advc_flag(k,j,i) = IBSET( advc_flag(k,j,i), 3 )
 !
 !--          WS3
-             ELSEIF ( ( .NOT. BTEST(topo_flags_alt(k,j+3,i),0)          .AND.                      &
-                              BTEST(topo_flags_alt(k,j+1,i),0)          .AND.                      &
-                              BTEST(topo_flags_alt(k,j+2,i),0)          .AND.                      &
-                              BTEST(topo_flags_alt(k,j-1,i),0)                                     &
+             ELSEIF ( ( .NOT. BTEST(wall_flags_total_0(k,j+3,i),0)    .AND.                        &
+                              BTEST(wall_flags_total_0(k,j+1,i),0)    .AND.                        &
+                              BTEST(wall_flags_total_0(k,j+2,i),0)    .AND.                        &
+                              BTEST(wall_flags_total_0(k,j-1,i),0)                                 &
                       )                       .OR.                                                 &
-                      ( .NOT. BTEST(topo_flags_alt(k,j-2,i),0)          .AND.                      &
-                              BTEST(topo_flags_alt(k,j+1,i),0)          .AND.                      &
-                              BTEST(topo_flags_alt(k,j+2,i),0)          .AND.                      &
-                              BTEST(topo_flags_alt(k,j-1,i),0)                                     &
+                      ( .NOT. BTEST(wall_flags_total_0(k,j-2,i),0)    .AND.                        &
+                              BTEST(wall_flags_total_0(k,j+1,i),0)    .AND.                        &
+                              BTEST(wall_flags_total_0(k,j+2,i),0)    .AND.                        &
+                              BTEST(wall_flags_total_0(k,j-1,i),0)                                 &
                       )                       .OR.                                                 &
                       ( non_cyclic_s  .AND.  j == 1    )  .OR.                                     &
                       ( non_cyclic_n  .AND.  j == ny-1 ) )                                         &
@@ -889,18 +962,18 @@
                 advc_flag(k,j,i) = IBSET( advc_flag(k,j,i), 4 )
 !
 !--          WS5
-             ELSEIF ( BTEST(topo_flags_alt(k,j+1,i),0)                  .AND.                      &
-                      BTEST(topo_flags_alt(k,j+2,i),0)                  .AND.                      &
-                      BTEST(topo_flags_alt(k,j+3,i),0)                  .AND.                      &
-                      BTEST(topo_flags_alt(k,j-1,i),0)                  .AND.                      &
-                      BTEST(topo_flags_alt(k,j-2,i),0) )                                           &
+             ELSEIF ( BTEST(wall_flags_total_0(k,j+1,i),0)           .AND.                         &
+                      BTEST(wall_flags_total_0(k,j+2,i),0)           .AND.                         &
+                      BTEST(wall_flags_total_0(k,j+3,i),0)           .AND.                         &
+                      BTEST(wall_flags_total_0(k,j-1,i),0)           .AND.                         &
+                      BTEST(wall_flags_total_0(k,j-2,i),0) )                                       &
              THEN
                 advc_flag(k,j,i) = IBSET( advc_flag(k,j,i), 5 )
              ENDIF
 !
 !--          Near topography, set horizontal advection scheme to 1st order for passive scalars, even
 !--          if only one direction may be blocked by topography. These locations will be identified
-!--          by topo_flags bit 31. Note, since several modules define advection flags but
+!--          by wall_flags_total_0 bit 31. Note, since several modules define advection flags but
 !--          may apply different scalar boundary conditions, bit 31 is temporarily stored on
 !--          advc_flags.
 !--          Moreover, note that this extended degradtion for passive scalars is not required for
@@ -981,7 +1054,7 @@
                 ENDIF
 
 !
-!--             Near lateral boundaries set the flags again. In order to avoid strong numerical
+!--             Near lateral boundaries set the flags again. In order to avoid strong numerical 
 !--             oscillations near the boundaries, which may lead to scalar built-up, also employ
 !--             extended degradation zones here.
 !--             x-direction
@@ -1044,33 +1117,33 @@
              ENDIF
 
              flag_set = .FALSE.
-             IF ( ( .NOT. BTEST(topo_flags_alt(k-1,j,i),0)               .AND.                     &
-                          BTEST(topo_flags_alt(k,j,i),0)                 .AND.                     &
-                          BTEST(topo_flags_alt(k+1,j,i),0) )             .OR.                      &
-                  ( .NOT. BTEST(topo_flags_alt(k_pp,j,i),0)              .AND.                     &
-                          BTEST(topo_flags_alt(k+1,j,i),0)               .AND.                     &
-                          BTEST(topo_flags_alt(k,j,i),0) )               .OR.                      &
+             IF ( ( .NOT. BTEST(wall_flags_total_0(k-1,j,i),0)       .AND.                         &
+                          BTEST(wall_flags_total_0(k,j,i),0)         .AND.                         &
+                          BTEST(wall_flags_total_0(k+1,j,i),0) )     .OR.                          &
+                  ( .NOT. BTEST(wall_flags_total_0(k_pp,j,i),0)      .AND.                         &
+                          BTEST(wall_flags_total_0(k+1,j,i),0)       .AND.                         &
+                          BTEST(wall_flags_total_0(k,j,i),0) )       .OR.                          &
                   ( k == nzt .AND. symmetry_flag == 0 ) )                                          &
              THEN
                 advc_flag(k,j,i) = IBSET( advc_flag(k,j,i), 6 )
                 flag_set = .TRUE.
-             ELSEIF ( ( .NOT. BTEST(topo_flags_alt(k_mm,j,i),0)          .OR.                      &
-                        .NOT. BTEST(topo_flags_alt(k_ppp,j,i),0) )       .AND.                     &
-                              BTEST(topo_flags_alt(k-1,j,i),0)           .AND.                     &
-                              BTEST(topo_flags_alt(k,j,i),0)             .AND.                     &
-                              BTEST(topo_flags_alt(k+1,j,i),0)           .AND.                     &
-                              BTEST(topo_flags_alt(k_pp,j,i),0)          .AND.                     &
-                        .NOT. flag_set                               .OR.                          &
+             ELSEIF ( ( .NOT. BTEST(wall_flags_total_0(k_mm,j,i),0)    .OR.                        &
+                        .NOT. BTEST(wall_flags_total_0(k_ppp,j,i),0) ) .AND.                       &
+                              BTEST(wall_flags_total_0(k-1,j,i),0)     .AND.                       &
+                              BTEST(wall_flags_total_0(k,j,i),0)       .AND.                       &
+                              BTEST(wall_flags_total_0(k+1,j,i),0)     .AND.                       &
+                              BTEST(wall_flags_total_0(k_pp,j,i),0)    .AND.                       &
+                        .NOT. flag_set                                  .OR.                       &
                       ( k == nzt - 1 .AND. symmetry_flag == 0 ) )                                  &
              THEN
                 advc_flag(k,j,i) = IBSET( advc_flag(k,j,i), 7 )
                 flag_set = .TRUE.
-             ELSEIF ( BTEST(topo_flags_alt(k_mm,j,i),0)                  .AND.                     &
-                      BTEST(topo_flags_alt(k-1,j,i),0)                   .AND.                     &
-                      BTEST(topo_flags_alt(k,j,i),0)                     .AND.                     &
-                      BTEST(topo_flags_alt(k+1,j,i),0)                   .AND.                     &
-                      BTEST(topo_flags_alt(k_pp,j,i),0)                  .AND.                     &
-                      BTEST(topo_flags_alt(k_ppp,j,i),0)                 .AND.                     &
+             ELSEIF ( BTEST(wall_flags_total_0(k_mm,j,i),0)         .AND.                          &
+                      BTEST(wall_flags_total_0(k-1,j,i),0)          .AND.                          &
+                      BTEST(wall_flags_total_0(k,j,i),0)            .AND.                          &
+                      BTEST(wall_flags_total_0(k+1,j,i),0)          .AND.                          &
+                      BTEST(wall_flags_total_0(k_pp,j,i),0)         .AND.                          &
+                      BTEST(wall_flags_total_0(k_ppp,j,i),0)        .AND.                          &
                      .NOT. flag_set )                                                              &
              THEN
                 advc_flag(k,j,i) = IBSET( advc_flag(k,j,i), 8 )
@@ -1080,161 +1153,12 @@
        ENDDO
     ENDDO
 !
-!-- Lateral boundary grid points need special treatment if an alternative communicator is used
-!-- which indicates cyclic boundaries, though the boundaries are non-cyclic for the
-!-- momentum, e.g., a nested domain with cyclic conditions for the chemistry. Consider the
-!-- following situation: a flow from the north, no topography on the northern inflow boundary,
-!-- but a hill on the southern outflow boundary boundary. The inflow of momentum is not disturb
-!-- by any topography. However, due to the artificial cyclic conditions for the chemistry,
-!-- topography is considered at the northern inflow boundary for these scalars. The mismatch
-!-- between momentum and scalar boundary treatment can yield to advection of zero scalar values
-!-- from the northern boundary since the flow components do not correspond to the artificial
-!-- topography at the northern boundary considered for the scalar (there is topography but the
-!-- v-component is not zero at the corresponding grid point). This situation is also not
-!-- considered in the advc_flag array. To avoid such effects, set the chemistry specific
-!-- advection flags to zero for these special situations.
-    IF ( PRESENT( alternative_communicator ) )  THEN
+!-- Exchange 3D integer wall_flags.
 !
-!--    Treat left boundary.
-       IF ( .NOT. non_cyclic_l  .AND.  bc_dirichlet_l )  THEN
-          i = nxl
-          DO  j = nys, nyn
-             DO  k = nzb+1, nzt
-                IF ( BTEST( topo_flags_alt(k,j,i), 0 ) )  THEN
+!-- Exchange ghost points for advection flags
+    CALL exchange_horiz_int( advc_flag, nys, nyn, nxl, nxr, nzt, nbgp )
 !
-!--                Topography at i-1 and first order along x - disable advection.
-                   IF ( .NOT. BTEST( topo_flags_alt(k,j,i-1), 0 )  .AND.                           &
-                        BTEST( advc_flag(k,j,i), 0 ) )                                             &
-                   THEN
-                      advc_flag(k,j,i) = IBCLR( advc_flag(k,j,i), 0 )
-!
-!--                Topography at i-1 and first order along x - reduce to first order.
-                   ELSEIF ( .NOT.  BTEST( topo_flags_alt(k,j,i-2), 0 )  .AND.                      &
-                            BTEST( advc_flag(k,j,i), 1 ) )                                         &
-                   THEN
-                      advc_flag(k,j,i) = IBCLR( advc_flag(k,j,i), 1 )
-                      advc_flag(k,j,i) = IBSET( advc_flag(k,j,i), 0 )
-!
-!--                Topography at i-1 and first order along x - reduce to third order.
-                   ELSEIF ( .NOT.  BTEST( topo_flags_alt(k,j,i-3), 0 )  .AND.                      &
-                            BTEST( advc_flag(k,j,i), 2 ) )                                         &
-                   THEN
-                      advc_flag(k,j,i) = IBCLR( advc_flag(k,j,i), 2 )
-                      advc_flag(k,j,i) = IBSET( advc_flag(k,j,i), 1 )
-                   ENDIF
-                ENDIF
-             ENDDO
-          ENDDO
-       ENDIF
-!
-!--    Treat right boundary.
-       IF ( .NOT. non_cyclic_r  .AND.  bc_dirichlet_r )  THEN
-          i = nxr
-          DO  j = nys, nyn
-             DO  k = nzb+1, nzt
-                IF ( BTEST( topo_flags_alt(k,j,i), 0 ) )  THEN
-!
-!--                Topography at i+1 and first order along x - disable advection.
-                   IF ( .NOT. BTEST( topo_flags_alt(k,j,i+1), 0 )  .AND.                           &
-                        BTEST( advc_flag(k,j,i), 0 ) )                                             &
-                   THEN
-                      advc_flag(k,j,i) = IBCLR( advc_flag(k,j,i), 0 )
-!
-!--                Topography at i+1 and first order along x - reduce to first order.
-                   ELSEIF ( .NOT.  BTEST( topo_flags_alt(k,j,i+2), 0 )  .AND.                      &
-                            BTEST( advc_flag(k,j,i), 1 ) )                                         &
-                   THEN
-                      advc_flag(k,j,i) = IBCLR( advc_flag(k,j,i), 1 )
-                      advc_flag(k,j,i) = IBSET( advc_flag(k,j,i), 0 )
-!
-!--                Topography at i+1 and first order along x - reduce to third order.
-                   ELSEIF ( .NOT.  BTEST( topo_flags_alt(k,j,i+3), 0 )  .AND.                      &
-                            BTEST( advc_flag(k,j,i), 2 ) )                                         &
-                   THEN
-                      advc_flag(k,j,i) = IBCLR( advc_flag(k,j,i), 2 )
-                      advc_flag(k,j,i) = IBSET( advc_flag(k,j,i), 1 )
-                   ENDIF
-                ENDIF
-             ENDDO
-          ENDDO
-       ENDIF
-!
-!--    Treat south boundary.
-       IF ( .NOT. non_cyclic_s  .AND.  bc_dirichlet_s )  THEN
-          j = nys
-          DO  i = nxl, nxr
-             DO  k = nzb+1, nzt
-                IF ( BTEST( topo_flags_alt(k,j,i), 0 ) )  THEN
-!
-!--                Topography at j-1 and first order along y - disable advection.
-                   IF ( .NOT. BTEST( topo_flags_alt(k,j-1,i), 0 )  .AND.                           &
-                        BTEST( advc_flag(k,j,i), 3 ) )                                             &
-                   THEN
-                      advc_flag(k,j,i) = IBCLR( advc_flag(k,j,i), 3 )
-!
-!--                Topography at j-1 and third order along y - reduce to first order.
-                   ELSEIF ( .NOT.  BTEST( topo_flags_alt(k,j-2,i), 0 )  .AND.                      &
-                            BTEST( advc_flag(k,j,i), 4 ) )                                         &
-                   THEN
-                      advc_flag(k,j,i) = IBCLR( advc_flag(k,j,i), 4 )
-                      advc_flag(k,j,i) = IBSET( advc_flag(k,j,i), 3 )
-!
-!--                Topography at j-1 and fifth order along y - reduce to third order.
-                   ELSEIF ( .NOT.  BTEST( topo_flags_alt(k,j-3,i), 0 )  .AND.                      &
-                            BTEST( advc_flag(k,j,i), 5 ) )                                         &
-                   THEN
-                      advc_flag(k,j,i) = IBCLR( advc_flag(k,j,i), 5 )
-                      advc_flag(k,j,i) = IBSET( advc_flag(k,j,i), 4 )
-                   ENDIF
-                ENDIF
-             ENDDO
-          ENDDO
-       ENDIF
-!
-!--    Treat north boundary.
-       IF ( .NOT. non_cyclic_n  .AND.  bc_dirichlet_n )  THEN
-          j = nyn
-          DO  i = nxl, nxr
-             DO  k = nzb+1, nzt
-                IF ( BTEST( topo_flags_alt(k,j,i), 0 ) )  THEN
-!
-!--                Topography at j+1 and first order along y - disable advection.
-                   IF ( .NOT. BTEST( topo_flags_alt(k,j+1,i), 0 )  .AND.                           &
-                        BTEST( advc_flag(k,j,i), 3 ) )                                             &
-                   THEN
-                      advc_flag(k,j,i) = IBCLR( advc_flag(k,j,i), 3 )
-!
-!--                Topography at j+1 and third order along y - reduce to first order.
-                   ELSEIF ( .NOT.  BTEST( topo_flags_alt(k,j+2,i), 0 )  .AND.                      &
-                            BTEST( advc_flag(k,j,i), 4 ) )                                         &
-                   THEN
-                      advc_flag(k,j,i) = IBCLR( advc_flag(k,j,i), 4 )
-                      advc_flag(k,j,i) = IBSET( advc_flag(k,j,i), 3 )
-!
-!--                Topography at j+1 and fifth order along y - reduce to third order.
-                   ELSEIF ( .NOT.  BTEST( topo_flags_alt(k,j+3,i), 0 )  .AND.                      &
-                            BTEST( advc_flag(k,j,i), 5 ) )                                         &
-                   THEN
-                      advc_flag(k,j,i) = IBCLR( advc_flag(k,j,i), 5 )
-                      advc_flag(k,j,i) = IBSET( advc_flag(k,j,i), 4 )
-                   ENDIF
-                ENDIF
-             ENDDO
-          ENDDO
-       ENDIF
-
-    ENDIF
-!
-!-- Exchange ghost points for advection flags.
-    IF ( PRESENT( alternative_communicator ) )  THEN
-       CALL exchange_horiz_int( advc_flag, nys, nyn, nxl, nxr, nzt, nbgp,                          &
-                                alternative_communicator = alternative_communicator )
-    ELSE
-       CALL exchange_horiz_int( advc_flag, nys, nyn, nxl, nxr, nzt, nbgp )
-    ENDIF
-
-!
-!-- Set the flags at inflow and outflow boundary in case of non-cyclic boundary conditions.
+!-- Set boundary flags at inflow and outflow boundary in case of non-cyclic boundary conditions.
     IF ( non_cyclic_l )  THEN
        advc_flag(:,:,nxl-1) = advc_flag(:,:,nxl)
     ENDIF
@@ -1251,10 +1175,9 @@
        advc_flag(:,nys-1,:) = advc_flag(:,nys,:)
     ENDIF
 
-    DEALLOCATE( topo_flags_alt )
+
 
  END SUBROUTINE ws_init_flags_scalar
-
 
 !--------------------------------------------------------------------------------------------------!
 ! Description:
@@ -1397,10 +1320,8 @@
           ibit5 = REAL( IBITS(advc_flag(k,j-1,i),5,1), KIND = wp )
           ibit4 = REAL( IBITS(advc_flag(k,j-1,i),4,1), KIND = wp )
           ibit3 = REAL( IBITS(advc_flag(k,j-1,i),3,1), KIND = wp )
-!
-!--       Multiply Stokes velocity with topography flags to avoid possible fluxes at walls.
-          v_comp                  = v(k,j,i) - v_gtrans + v_stokes_zu(k)                           &
-                                    * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 2 ) )
+
+          v_comp                  = v(k,j,i) - v_gtrans + v_stokes_zu(k)
           swap_flux_y_local(k,tn) = v_comp *         (                                             &
                                             ( 37.0_wp * ibit5 * adv_sca_5                          &
                                          +     7.0_wp * ibit4 * adv_sca_3                          &
@@ -1413,7 +1334,7 @@
                                               * ( sk(k,j+2,i) + sk(k,j-3,i) )                      &
                                                      )
 
-          swap_diss_y_local(k,tn) = -ABS( v_comp ) * (                                             &
+          swap_diss_y_local(k,tn) = - ABS( v_comp ) * (                                            &
                                             ( 10.0_wp * ibit5 * adv_sca_5                          &
                                          +     3.0_wp * ibit4 * adv_sca_3                          &
                                          +              ibit3 * adv_sca_1                          &
@@ -1423,7 +1344,7 @@
                                             ) * ( sk(k,j+1,i) - sk(k,j-2,i) )                      &
                                          +  (           ibit5 * adv_sca_5   )                      &
                                               * ( sk(k,j+2,i) - sk(k,j-3,i)  )                     &
-                                                     )
+                                                      )
 
        ENDDO
 !
@@ -1435,11 +1356,11 @@
                                               - 8.0_wp * ( sk(k,j+1,i) + sk(k,j-2,i) )             &
                                               + ( sk(k,j+2,i) + sk(k,j-3,i) )                      &
                                              ) * adv_sca_5
-          swap_diss_y_local(k,tn) = -ABS( v_comp ) * (                                             &
+          swap_diss_y_local(k,tn) = - ABS( v_comp ) * (                                            &
                                      10.0_wp * ( sk(k,j,i)   - sk(k,j-1,i) )                       &
                                     - 5.0_wp * ( sk(k,j+1,i) - sk(k,j-2,i) )                       &
                                     +            sk(k,j+2,i) - sk(k,j-3,i)                         &
-                                                     ) * adv_sca_5
+                                                      ) * adv_sca_5
 
        ENDDO
 
@@ -1453,10 +1374,8 @@
           ibit2 = REAL( IBITS(advc_flag(k,j,i-1),2,1), KIND = wp )
           ibit1 = REAL( IBITS(advc_flag(k,j,i-1),1,1), KIND = wp )
           ibit0 = REAL( IBITS(advc_flag(k,j,i-1),0,1), KIND = wp )
-!
-!--       Multiply Stokes velocity with topography flags to avoid possible fluxes at walls.
-          u_comp                    = u(k,j,i) - u_gtrans + u_stokes_zu(k)                         &
-                                      * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 1 ) )
+
+          u_comp                    = u(k,j,i) - u_gtrans + u_stokes_zu(k)
           swap_flux_x_local(k,j,tn) = u_comp * (                                                   &
                                             ( 37.0_wp * ibit2 * adv_sca_5                          &
                                          +     7.0_wp * ibit1 * adv_sca_3                          &
@@ -1469,7 +1388,7 @@
                                             ) * ( sk(k,j,i+2) + sk(k,j,i-3) )                      &
                                                )
 
-          swap_diss_x_local(k,j,tn) = -ABS( u_comp ) * (                                           &
+          swap_diss_x_local(k,j,tn) = - ABS( u_comp ) * (                                          &
                                             ( 10.0_wp * ibit2 * adv_sca_5                          &
                                          +     3.0_wp * ibit1 * adv_sca_3                          &
                                          +              ibit0 * adv_sca_1                          &
@@ -1479,7 +1398,7 @@
                                             ) * ( sk(k,j,i+1) - sk(k,j,i-2) )                      &
                                          +  (           ibit2 * adv_sca_5                          &
                                             ) * ( sk(k,j,i+2) - sk(k,j,i-3)    )                   &
-                                                      )
+                                                       )
 
        ENDDO
 
@@ -1492,11 +1411,11 @@
                                       +           ( sk(k,j,i+2) + sk(k,j,i-3) )                    &
                                                 ) * adv_sca_5
 
-          swap_diss_x_local(k,j,tn) = -ABS( u_comp ) * (                                           &
+          swap_diss_x_local(k,j,tn) = - ABS( u_comp ) * (                                          &
                                         10.0_wp * ( sk(k,j,i)   - sk(k,j,i-1) )                    &
                                        - 5.0_wp * ( sk(k,j,i+1) - sk(k,j,i-2) )                    &
                                        +          ( sk(k,j,i+2) - sk(k,j,i-3) )                    &
-                                                       ) * adv_sca_5
+                                                        ) * adv_sca_5
 
        ENDDO
 
@@ -1509,10 +1428,8 @@
        ibit2 = REAL( IBITS(advc_flag(k,j,i),2,1), KIND = wp )
        ibit1 = REAL( IBITS(advc_flag(k,j,i),1,1), KIND = wp )
        ibit0 = REAL( IBITS(advc_flag(k,j,i),0,1), KIND = wp )
-!
-!--    Multiply Stokes velocity with topography flags to avoid possible fluxes at walls.
-       u_comp    = u(k,j,i+1) - u_gtrans + u_stokes_zu(k)                                          &
-                   * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i+1), 1 ) )
+
+       u_comp    = u(k,j,i+1) - u_gtrans + u_stokes_zu(k)
        flux_r(k) = u_comp * (                                                                      &
                    (  37.0_wp * ibit2 * adv_sca_5                                                  &
                    +   7.0_wp * ibit1 * adv_sca_3                                                  &
@@ -1522,22 +1439,20 @@
                    + (          ibit2 * adv_sca_5 ) * ( sk(k,j,i+3) + sk(k,j,i-2) )                &
                             )
 
-       diss_r(k) = -ABS( u_comp ) * (                                                              &
+       diss_r(k) = - ABS( u_comp ) * (                                                             &
                    (  10.0_wp * ibit2 * adv_sca_5                                                  &
                    +   3.0_wp * ibit1 * adv_sca_3                                                  &
                    +            ibit0 * adv_sca_1 ) * ( sk(k,j,i+1) - sk(k,j,i) )                  &
                    - ( 5.0_wp * ibit2 * adv_sca_5                                                  &
                    +            ibit1 * adv_sca_3 ) * ( sk(k,j,i+2) - sk(k,j,i-1) )                &
                    + (          ibit2 * adv_sca_5 ) * ( sk(k,j,i+3) - sk(k,j,i-2) )                &
-                                    )
+                                     )
 
        ibit5 = REAL( IBITS(advc_flag(k,j,i),5,1), KIND = wp )
        ibit4 = REAL( IBITS(advc_flag(k,j,i),4,1), KIND = wp )
        ibit3 = REAL( IBITS(advc_flag(k,j,i),3,1), KIND = wp )
-!
-!--    Multiply Stokes velocity with topography flags to avoid possible fluxes at walls.
-       v_comp    = v(k,j+1,i) - v_gtrans + v_stokes_zu(k)                                          &
-                   * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j+1,i), 2 ) )
+
+       v_comp    = v(k,j+1,i) - v_gtrans + v_stokes_zu(k)
        flux_n(k) = v_comp * (                                                                      &
                    (  37.0_wp * ibit5 * adv_sca_5                                                  &
                    +   7.0_wp * ibit4 * adv_sca_3                                                  &
@@ -1547,14 +1462,14 @@
                    + (          ibit5 * adv_sca_5 ) * ( sk(k,j+3,i) + sk(k,j-2,i) )                &
                             )
 
-       diss_n(k) = -ABS( v_comp ) * (                                                              &
+       diss_n(k) = - ABS( v_comp ) * (                                                             &
                    (  10.0_wp * ibit5 * adv_sca_5                                                  &
                    +   3.0_wp * ibit4 * adv_sca_3                                                  &
                    +            ibit3 * adv_sca_1 ) * ( sk(k,j+1,i) - sk(k,j,i)   )                &
                    - ( 5.0_wp * ibit5 * adv_sca_5                                                  &
                    +            ibit4 * adv_sca_3 ) * ( sk(k,j+2,i) - sk(k,j-1,i) )                &
                    + (          ibit5 * adv_sca_5 ) * ( sk(k,j+3,i) - sk(k,j-2,i) )                &
-                                    )
+                                     )
     ENDDO
 !
 !-- Now compute the fluxes for the horizontal terms above the topography
@@ -1567,7 +1482,7 @@
                      37.0_wp * ( sk(k,j,i+1) + sk(k,j,i)   )                                       &
                    -  8.0_wp * ( sk(k,j,i+2) + sk(k,j,i-1) )                                       &
                    +           ( sk(k,j,i+3) + sk(k,j,i-2) ) ) * adv_sca_5
-       diss_r(k) = -ABS( u_comp ) * (                                                              &
+       diss_r(k) = - ABS( u_comp ) * (                                                             &
                      10.0_wp * ( sk(k,j,i+1) - sk(k,j,i)   )                                       &
                    -  5.0_wp * ( sk(k,j,i+2) - sk(k,j,i-1) )                                       &
                    +           ( sk(k,j,i+3) - sk(k,j,i-2) ) ) * adv_sca_5
@@ -1577,7 +1492,7 @@
                      37.0_wp * ( sk(k,j+1,i) + sk(k,j,i)   )                                       &
                    -  8.0_wp * ( sk(k,j+2,i) + sk(k,j-1,i) )                                       &
                    +           ( sk(k,j+3,i) + sk(k,j-2,i) ) ) * adv_sca_5
-       diss_n(k) = -ABS( v_comp ) * (                                                              &
+       diss_n(k) = - ABS( v_comp ) * (                                                             &
                      10.0_wp * ( sk(k,j+1,i) - sk(k,j,i)   )                                       &
                    -  5.0_wp * ( sk(k,j+2,i) - sk(k,j-1,i) )                                       &
                    +           ( sk(k,j+3,i) - sk(k,j-2,i) ) ) * adv_sca_5
@@ -1611,14 +1526,14 @@
                    + (          ibit8 * adv_sca_5 ) * ( sk(k_ppp,j,i)+ sk(k_mm,j,i) )              &
                                                )
 
-       diss_t(k) = -ABS( w(k,j,i) ) * rho_air_zw(k) * (                                            &
+       diss_t(k) = - ABS( w(k,j,i) ) * rho_air_zw(k) * (                                           &
                    (  10.0_wp * ibit8 * adv_sca_5                                                  &
                    +   3.0_wp * ibit7 * adv_sca_3                                                  &
                    +            ibit6 * adv_sca_1 ) * ( sk(k+1,j,i)   - sk(k,j,i)    )             &
                    - ( 5.0_wp * ibit8 * adv_sca_5                                                  &
                    +            ibit7 * adv_sca_3 ) * ( sk(k_pp,j,i)  - sk(k-1,j,i)  )             &
                    + (          ibit8 * adv_sca_5 ) * ( sk(k_ppp,j,i) - sk(k_mm,j,i) )             &
-                                                      )
+                                                       )
     ENDDO
 
     DO  k = nzb+2, nzt-2
@@ -1635,14 +1550,14 @@
                    + (          ibit8 * adv_sca_5 ) * ( sk(k+3,j,i)  + sk(k-2,j,i) )               &
                                               )
 
-       diss_t(k) = -ABS( w(k,j,i) ) * rho_air_zw(k) * (                                            &
+       diss_t(k) = - ABS( w(k,j,i) ) * rho_air_zw(k) * (                                           &
                    (  10.0_wp * ibit8 * adv_sca_5                                                  &
                    +   3.0_wp * ibit7 * adv_sca_3                                                  &
                    +            ibit6 * adv_sca_1 ) * ( sk(k+1,j,i) - sk(k,j,i)   )                &
                    - ( 5.0_wp * ibit8 * adv_sca_5                                                  &
                    +            ibit7 * adv_sca_3 ) * ( sk(k+2,j,i) - sk(k-1,j,i) )                &
                    + (          ibit8 * adv_sca_5 ) * ( sk(k+3,j,i) - sk(k-2,j,i) )                &
-                                                      )
+                                                       )
     ENDDO
 
     DO  k = nzt-1, nzt-symmetry_flag
@@ -1650,13 +1565,9 @@
        ibit7 = REAL( IBITS(advc_flag(k,j,i),7,1), KIND = wp )
        ibit6 = REAL( IBITS(advc_flag(k,j,i),6,1), KIND = wp )
 !
-!--    k index needs to be modified near bottom and top, else array subscripts will be exceeded.
-!--    (k_ppp = k+3, k_mm = k) if 5th order scheme is employed, else (k_ppp = k, k_mm = k).
-!--    Special treatment is required for k_pp. This must be limited at k = nzt, where either
-!--    the first order scheme is employed (ibit6), or all bit flags are zero (in case there is a
-!--    rigid lid defined at or near the domain top).
+!--    k index has to be modified near bottom and top, else array subscripts will be exceeded.
        k_ppp = k + 3 * ibit8
-       k_pp  = k + 2 * ( 1 - ibit6  ) * ( ibit6 + ibit7 + ibit8 )
+       k_pp  = k + 2 * ( 1 - ibit6  )
        k_mm  = k - 2 * ibit8
 
 
@@ -1669,14 +1580,14 @@
                    + (          ibit8 * adv_sca_5 ) * ( sk(k_ppp,j,i)+ sk(k_mm,j,i) )              &
                                               )
 
-       diss_t(k) = -ABS( w(k,j,i) ) * rho_air_zw(k) * (                                            &
+       diss_t(k) = - ABS( w(k,j,i) ) * rho_air_zw(k) * (                                           &
                    (  10.0_wp * ibit8 * adv_sca_5                                                  &
                    +   3.0_wp * ibit7 * adv_sca_3                                                  &
                    +            ibit6 * adv_sca_1 ) * ( sk(k+1,j,i)   - sk(k,j,i)    )             &
                    - ( 5.0_wp * ibit8 * adv_sca_5                                                  &
                    +            ibit7 * adv_sca_3 ) * ( sk(k_pp,j,i)  - sk(k-1,j,i)  )             &
                    + (          ibit8 * adv_sca_5 ) * ( sk(k_ppp,j,i) - sk(k_mm,j,i) )             &
-                                                      )
+                                                       )
     ENDDO
 
 !
@@ -1697,8 +1608,8 @@
        flux_t_1st(nzb) = 0.0_wp
        DO  k = nzb+1, nzb_max_l
           flux_t_1st(k) = (      w(k,j,i)   * ( sk(k+1,j,i) + sk(k,j,i) )                          &
-                           -ABS( w(k,j,i) ) * ( sk(k+1,j,i) - sk(k,j,i) ) )                        &
-                           * rho_air_zw(k) * adv_sca_1
+                          - ABS( w(k,j,i) ) * ( sk(k+1,j,i) - sk(k,j,i) ) )                        &
+                          * rho_air_zw(k) * adv_sca_1
 !
 !--       In flux limitation the total flux will be corrected. For the sake of cleariness the
 !--       higher-order advective and disspative fluxes will be merged onto flux_t.
@@ -2140,7 +2051,7 @@
                            + (          ibit5 * adv_mom_5 ) *  ( u(k,j+2,i) + u(k,j-3,i) )         &
                                        )
 
-          diss_s_u(k,tn) = -ABS ( v_comp(k) ) * (                                                  &
+          diss_s_u(k,tn) = - ABS ( v_comp(k) ) * (                                                 &
                            (  10.0_wp * ibit5 * adv_mom_5                                          &
                            +   3.0_wp * ibit4 * adv_mom_3                                          &
                            +            ibit3 * adv_mom_1 ) * ( u(k,j,i)   - u(k,j-1,i) )          &
@@ -2158,7 +2069,7 @@
                              37.0_wp * ( u(k,j,i)   + u(k,j-1,i) )                                 &
                            -  8.0_wp * ( u(k,j+1,i) + u(k,j-2,i) )                                 &
                            +           ( u(k,j+2,i) + u(k,j-3,i) ) ) * adv_mom_5
-          diss_s_u(k,tn) = -ABS(v_comp(k)) * (                                                     &
+          diss_s_u(k,tn) = - ABS(v_comp(k)) * (                                                    &
                                     10.0_wp * ( u(k,j,i)   - u(k,j-1,i) )                          &
                                   -  5.0_wp * ( u(k,j+1,i) - u(k,j-2,i) )                          &
                                   +           ( u(k,j+2,i) - u(k,j-3,i) ) ) * adv_mom_5
@@ -2186,14 +2097,14 @@
                              + (          ibit2 * adv_mom_5 ) * ( u(k,j,i+2) + u(k,j,i-3) )        &
                                         )
 
-          diss_l_u(k,j,tn) = -ABS( u_comp_l ) * (                                                  &
+          diss_l_u(k,j,tn) = - ABS( u_comp_l ) * (                                                 &
                              (  10.0_wp * ibit2 * adv_mom_5                                        &
                              +   3.0_wp * ibit1 * adv_mom_3                                        &
                              +           ibit0  * adv_mom_1 ) * ( u(k,j,i)   - u(k,j,i-1) )        &
                              - ( 5.0_wp * ibit2 * adv_mom_5                                        &
                              +            ibit1 * adv_mom_3 ) * ( u(k,j,i+1) - u(k,j,i-2) )        &
                              + (          ibit2 * adv_mom_5 ) * ( u(k,j,i+2) - u(k,j,i-3) )        &
-                                                )
+                                                 )
 
        ENDDO
 
@@ -2204,7 +2115,7 @@
                                37.0_wp * ( u(k,j,i)   + u(k,j,i-1) )                               &
                              -  8.0_wp * ( u(k,j,i+1) + u(k,j,i-2) )                               &
                              +           ( u(k,j,i+2) + u(k,j,i-3) ) ) * adv_mom_5
-          diss_l_u(k,j,tn) = -ABS(u_comp_l) * (                                                    &
+          diss_l_u(k,j,tn) = - ABS(u_comp_l) * (                                                   &
                                10.0_wp * ( u(k,j,i)   - u(k,j,i-1) )                               &
                              -  5.0_wp * ( u(k,j,i+1) - u(k,j,i-2) )                               &
                              +           ( u(k,j,i+2) - u(k,j,i-3) ) ) * adv_mom_5
@@ -2230,14 +2141,14 @@
                    + (          ibit2 * adv_mom_5 ) * ( u(k,j,i+3) + u(k,j,i-2) )                  &
                                         )
 
-       diss_r(k) = -ABS( u_comp(k) - gu ) * (                                                      &
+       diss_r(k) = - ABS( u_comp(k) - gu ) * (                                                     &
                    (  10.0_wp * ibit2 * adv_mom_5                                                  &
                    +   3.0_wp * ibit1 * adv_mom_3                                                  &
                    +            ibit0 * adv_mom_1 ) * ( u(k,j,i+1) - u(k,j,i)   )                  &
                    - ( 5.0_wp * ibit2 * adv_mom_5                                                  &
                    +            ibit1 * adv_mom_3 ) * ( u(k,j,i+2) - u(k,j,i-1) )                  &
                    + (          ibit2 * adv_mom_5 ) * ( u(k,j,i+3) - u(k,j,i-2) )                  &
-                                            )
+                                             )
 
        ibit5 = REAL( IBITS(advc_flags_m(k,j,i),5,1), KIND = wp )
        ibit4 = REAL( IBITS(advc_flags_m(k,j,i),4,1), KIND = wp )
@@ -2253,14 +2164,14 @@
                    + (          ibit5 * adv_mom_5 ) * ( u(k,j+3,i) + u(k,j-2,i) )                  &
                                )
 
-       diss_n(k) = -ABS ( v_comp(k) ) * (                                                          &
+       diss_n(k) = - ABS ( v_comp(k) ) * (                                                         &
                    (  10.0_wp * ibit5 * adv_mom_5                                                  &
                    +   3.0_wp * ibit4 * adv_mom_3                                                  &
                    +    ibit3 * adv_mom_1 ) * ( u(k,j+1,i) - u(k,j,i)   )                          &
                    - ( 5.0_wp * ibit5 * adv_mom_5                                                  &
                    +    ibit4 * adv_mom_3 ) * ( u(k,j+2,i) - u(k,j-1,i) )                          &
                    + (  ibit5 * adv_mom_5 ) * ( u(k,j+3,i) - u(k,j-2,i) )                          &
-                                        )
+                                         )
     ENDDO
 
     DO  k = nzb_max_l+1, nzt
@@ -2270,7 +2181,7 @@
                       37.0_wp * ( u(k,j,i+1) + u(k,j,i)   )                                        &
                     -  8.0_wp * ( u(k,j,i+2) + u(k,j,i-1) )                                        &
                     +           ( u(k,j,i+3) + u(k,j,i-2) ) ) * adv_mom_5
-       diss_r(k) = -ABS( u_comp(k) - gu ) * (                                                      &
+       diss_r(k) = - ABS( u_comp(k) - gu ) * (                                                     &
                       10.0_wp * ( u(k,j,i+1) - u(k,j,i)   )                                        &
                     -  5.0_wp * ( u(k,j,i+2) - u(k,j,i-1) )                                        &
                     +           ( u(k,j,i+3) - u(k,j,i-2) ) ) * adv_mom_5
@@ -2280,7 +2191,7 @@
                       37.0_wp * ( u(k,j+1,i) + u(k,j,i)   )                                        &
                     -  8.0_wp * ( u(k,j+2,i) + u(k,j-1,i) )                                        &
                     +           ( u(k,j+3,i) + u(k,j-2,i) ) ) * adv_mom_5
-       diss_n(k) = -ABS( v_comp(k) ) * (                                                           &
+       diss_n(k) = - ABS( v_comp(k) ) * (                                                          &
                       10.0_wp * ( u(k,j+1,i) - u(k,j,i)   )                                        &
                     -  5.0_wp * ( u(k,j+2,i) - u(k,j-1,i) )                                        &
                     +           ( u(k,j+3,i) - u(k,j-2,i) ) ) * adv_mom_5
@@ -2317,14 +2228,14 @@
                    + (          ibit8 * adv_mom_5 ) * ( u(k_ppp,j,i) + u(k_mm,j,i) )               &
                                                )
 
-       diss_t(k) = -ABS( w_comp(k) ) * rho_air_zw(k) * (                                           &
+       diss_t(k) = - ABS( w_comp(k) ) * rho_air_zw(k) * (                                          &
                    (  10.0_wp * ibit8 * adv_mom_5                                                  &
                    +   3.0_wp * ibit7 * adv_mom_3                                                  &
                    +            ibit6 * adv_mom_1 ) * ( u(k+1,j,i)   - u(k,j,i)    )               &
                    - ( 5.0_wp * ibit8 * adv_mom_5                                                  &
                    +            ibit7 * adv_mom_3 ) * ( u(k_pp,j,i)  - u(k-1,j,i)  )               &
                    + (          ibit8 * adv_mom_5 ) * ( u(k_ppp,j,i) - u(k_mm,j,i) )               &
-                                                       )
+                                                        )
     ENDDO
 
     DO  k = nzb+2, nzt-2
@@ -2343,14 +2254,14 @@
                    + (          ibit8 * adv_mom_5 ) * ( u(k+3,j,i) + u(k-2,j,i) )                  &
                                                )
 
-       diss_t(k) = -ABS( w_comp(k) ) * rho_air_zw(k) * (                                           &
+       diss_t(k) = - ABS( w_comp(k) ) * rho_air_zw(k) * (                                          &
                    (  10.0_wp * ibit8 * adv_mom_5                                                  &
                    +   3.0_wp * ibit7 * adv_mom_3                                                  &
                    +            ibit6 * adv_mom_1 ) * ( u(k+1,j,i)  - u(k,j,i)   )                 &
                    - ( 5.0_wp * ibit8 * adv_mom_5                                                  &
                    +            ibit7 * adv_mom_3 ) * ( u(k+2,j,i)  - u(k-1,j,i) )                 &
                    + (          ibit8 * adv_mom_5 ) * ( u(k+3,j,i) - u(k-2,j,i)  )                 &
-                                                       )
+                                                        )
     ENDDO
 
     DO  k = nzt-1, nzt-symmetry_flag
@@ -2359,14 +2270,9 @@
        ibit8 = REAL( IBITS(advc_flags_m(k,j,i),8,1), KIND = wp )
        ibit7 = REAL( IBITS(advc_flags_m(k,j,i),7,1), KIND = wp )
        ibit6 = REAL( IBITS(advc_flags_m(k,j,i),6,1), KIND = wp )
-!
-!--    k index needs to be modified near bottom and top, else array subscripts will be exceeded.
-!--    (k_ppp = k+3, k_mm = k) if 5th order scheme is employed, else (k_ppp = k, k_mm = k).
-!--    Special treatment is required for k_pp. This must be limited at k = nzt, where either
-!--    the first order scheme is employed (ibit6), or all bit flags are zero (in case there is a
-!--    rigid lid defined at or near the domain top).
+
        k_ppp = k + 3 * ibit8
-       k_pp  = k + 2 * ( 1 - ibit6 ) * ( ibit6 + ibit7 + ibit8 )
+       k_pp  = k + 2 * ( 1 - ibit6 )
        k_mm  = k - 2 * ibit8
 
        w_comp(k) = w(k,j,i) + w(k,j,i-1)
@@ -2379,14 +2285,14 @@
                    + (          ibit8 * adv_mom_5 ) * ( u(k_ppp,j,i) + u(k_mm,j,i) )               &
                                                )
 
-       diss_t(k) = -ABS( w_comp(k) ) * rho_air_zw(k) * (                                           &
+       diss_t(k) = - ABS( w_comp(k) ) * rho_air_zw(k) * (                                          &
                    (  10.0_wp * ibit8 * adv_mom_5                                                  &
                    +   3.0_wp * ibit7 * adv_mom_3                                                  &
                    +            ibit6 * adv_mom_1 ) * ( u(k+1,j,i)   - u(k,j,i)    )               &
                    - ( 5.0_wp * ibit8 * adv_mom_5                                                  &
                    +            ibit7 * adv_mom_3 ) * ( u(k_pp,j,i)  - u(k-1,j,i)  )               &
                    + (          ibit8 * adv_mom_5 ) * ( u(k_ppp,j,i) - u(k_mm,j,i) )               &
-                                                       )
+                                                        )
     ENDDO
 
 !
@@ -2622,14 +2528,14 @@
                              + (          ibit11 * adv_mom_5 ) * ( v(k,j,i+2) + v(k,j,i-3) )       &
                                          )
 
-          diss_l_v(k,j,tn) = -ABS( u_comp(k) ) * (                                                 &
+          diss_l_v(k,j,tn) = - ABS( u_comp(k) ) * (                                                &
                              (  10.0_wp * ibit11 * adv_mom_5                                       &
                              +   3.0_wp * ibit10 * adv_mom_3                                       &
                              +            ibit9  * adv_mom_1 ) * ( v(k,j,i)   - v(k,j,i-1) )       &
                              - ( 5.0_wp * ibit11 * adv_mom_5                                       &
                              +            ibit10 * adv_mom_3 ) * ( v(k,j,i+1) - v(k,j,i-2) )       &
                              + (          ibit11 * adv_mom_5 ) * ( v(k,j,i+2) - v(k,j,i-3) )       &
-                                                 )
+                                                  )
 
        ENDDO
 
@@ -2640,7 +2546,7 @@
                                37.0_wp * ( v(k,j,i)   + v(k,j,i-1) )                               &
                              -  8.0_wp * ( v(k,j,i+1) + v(k,j,i-2) )                               &
                              +           ( v(k,j,i+2) + v(k,j,i-3) ) ) * adv_mom_5
-          diss_l_v(k,j,tn) = -ABS( u_comp(k) ) * (                                                 &
+          diss_l_v(k,j,tn) = - ABS( u_comp(k) ) * (                                                &
                                10.0_wp * ( v(k,j,i)   - v(k,j,i-1) )                               &
                              -  5.0_wp * ( v(k,j,i+1) - v(k,j,i-2) )                               &
                              +           ( v(k,j,i+2) - v(k,j,i-3) ) ) * adv_mom_5
@@ -2668,27 +2574,27 @@
                          + (          ibit14 * adv_mom_5 ) * ( v(k,j+2,i) + v(k,j-3,i) )           &
                                       )
 
-          diss_s_v(k,tn) = -ABS( v_comp_l ) * (                                                    &
+          diss_s_v(k,tn) = - ABS( v_comp_l ) * (                                                   &
                            (  10.0_wp * ibit14 * adv_mom_5                                         &
                            +   3.0_wp * ibit13 * adv_mom_3                                         &
                            +            ibit12 * adv_mom_1 ) * ( v(k,j,i)   - v(k,j-1,i) )         &
                            - ( 5.0_wp * ibit14 * adv_mom_5                                         &
                            +            ibit13 * adv_mom_3 ) * ( v(k,j+1,i) - v(k,j-2,i) )         &
                            + (          ibit14 * adv_mom_5 ) * ( v(k,j+2,i) - v(k,j-3,i) )         &
-                                              )
+                                               )
 
        ENDDO
 
        DO  k = nzb_max_l+1, nzt
 
           v_comp_l       = v(k,j,i) + v(k,j-1,i) - gv
-          flux_s_v(k,tn) = v_comp_l * (                                                            &
-                        37.0_wp * ( v(k,j,i)   + v(k,j-1,i)   )                                    &
-                      -  8.0_wp * ( v(k,j+1,i) + v(k,j-2,i) )                                      &
+          flux_s_v(k,tn) = v_comp_l * (                                     &
+                        37.0_wp * ( v(k,j,i)   + v(k,j-1,i)   )             &
+                      -  8.0_wp * ( v(k,j+1,i) + v(k,j-2,i) )               &
                       +           ( v(k,j+2,i) + v(k,j-3,i) ) ) * adv_mom_5
-          diss_s_v(k,tn) = -ABS( v_comp_l ) * (                                                    &
-                        10.0_wp * ( v(k,j,i)   - v(k,j-1,i)   )                                    &
-                      -  5.0_wp * ( v(k,j+1,i) - v(k,j-2,i) )                                      &
+          diss_s_v(k,tn) = - ABS( v_comp_l ) * (                            &
+                        10.0_wp * ( v(k,j,i)   - v(k,j-1,i)   )             &
+                      -  5.0_wp * ( v(k,j+1,i) - v(k,j-2,i) )               &
                       +           ( v(k,j+2,i) - v(k,j-3,i) ) ) * adv_mom_5
 
        ENDDO
@@ -2713,14 +2619,14 @@
                   + (          ibit11 * adv_mom_5 ) * ( v(k,j,i+3) + v(k,j,i-2) )                  &
                                )
 
-       diss_r(k) = -ABS( u_comp(k) ) * (                                                           &
+       diss_r(k) = - ABS( u_comp(k) ) * (                                                          &
                   (  10.0_wp * ibit11 * adv_mom_5                                                  &
                   +   3.0_wp * ibit10 * adv_mom_3                                                  &
                   +            ibit9  * adv_mom_1 ) * ( v(k,j,i+1) - v(k,j,i)  )                   &
                   - ( 5.0_wp * ibit11 * adv_mom_5                                                  &
                   +            ibit10 * adv_mom_3 ) * ( v(k,j,i+2) - v(k,j,i-1) )                  &
                   + (          ibit11 * adv_mom_5 ) * ( v(k,j,i+3) - v(k,j,i-2) )                  &
-                                       )
+                                        )
 
        ibit14 = REAL( IBITS(advc_flags_m(k,j,i),14,1), KIND = wp )
        ibit13 = REAL( IBITS(advc_flags_m(k,j,i),13,1), KIND = wp )
@@ -2737,14 +2643,14 @@
                    + (          ibit14 * adv_mom_5 ) * ( v(k,j+3,i) + v(k,j-2,i) )                 &
                                         )
 
-       diss_n(k) = -ABS( v_comp(k) - gv ) * (                                                      &
+       diss_n(k) = - ABS( v_comp(k) - gv ) * (                                                     &
                    (  10.0_wp * ibit14 * adv_mom_5                                                 &
                    +   3.0_wp * ibit13 * adv_mom_3                                                 &
                    +            ibit12 * adv_mom_1 ) * ( v(k,j+1,i) - v(k,j,i)   )                 &
                    - ( 5.0_wp * ibit14 * adv_mom_5                                                 &
                    +            ibit13 * adv_mom_3 ) * ( v(k,j+2,i) - v(k,j-1,i) )                 &
                    + (          ibit14 * adv_mom_5 ) * ( v(k,j+3,i) - v(k,j-2,i) )                 &
-                                            )
+                                             )
     ENDDO
 
     DO  k = nzb_max_l+1, nzt
@@ -2755,7 +2661,7 @@
                    -  8.0_wp * ( v(k,j,i+2) + v(k,j,i-1) )                                         &
                    +           ( v(k,j,i+3) + v(k,j,i-2) ) ) * adv_mom_5
 
-       diss_r(k) = -ABS( u_comp(k) ) * (                                                           &
+       diss_r(k) = - ABS( u_comp(k) ) * (                                                          &
                      10.0_wp * ( v(k,j,i+1) - v(k,j,i) )                                           &
                    -  5.0_wp * ( v(k,j,i+2) - v(k,j,i-1) )                                         &
                    +           ( v(k,j,i+3) - v(k,j,i-2) ) ) * adv_mom_5
@@ -2767,7 +2673,7 @@
                    -  8.0_wp * ( v(k,j+2,i) + v(k,j-1,i) )                                         &
                    +           ( v(k,j+3,i) + v(k,j-2,i) ) ) * adv_mom_5
 
-       diss_n(k) = -ABS( v_comp(k) - gv ) * (                                                      &
+       diss_n(k) = - ABS( v_comp(k) - gv ) * (                                                     &
                      10.0_wp * ( v(k,j+1,i) - v(k,j,i)   )                                         &
                    -  5.0_wp * ( v(k,j+2,i) - v(k,j-1,i) )                                         &
                    +           ( v(k,j+3,i) - v(k,j-2,i) ) ) * adv_mom_5
@@ -2804,14 +2710,14 @@
                    + (          ibit17 * adv_mom_5 ) * ( v(k_ppp,j,i) + v(k_mm,j,i) )              &
                                                )
 
-       diss_t(k) = -ABS( w_comp(k) ) * rho_air_zw(k) * (                                           &
+       diss_t(k) = - ABS( w_comp(k) ) * rho_air_zw(k) * (                                          &
                    (  10.0_wp * ibit17 * adv_mom_5                                                 &
                    +   3.0_wp * ibit16 * adv_mom_3                                                 &
                    +            ibit15 * adv_mom_1 ) * ( v(k+1,j,i)   - v(k,j,i)    )              &
                    - ( 5.0_wp * ibit17 * adv_mom_5                                                 &
                    +            ibit16 * adv_mom_3 ) * ( v(k_pp,j,i)  - v(k-1,j,i)  )              &
                    + (          ibit17 * adv_mom_5 ) * ( v(k_ppp,j,i) - v(k_mm,j,i) )              &
-                                                       )
+                                                        )
     ENDDO
 
     DO  k = nzb+2, nzt-2
@@ -2830,14 +2736,14 @@
                   + (          ibit17 * adv_mom_5 ) * ( v(k+3,j,i) + v(k-2,j,i) )                  &
                                                )
 
-       diss_t(k) = -ABS( w_comp(k) ) * rho_air_zw(k) * (                                           &
+       diss_t(k) = - ABS( w_comp(k) ) * rho_air_zw(k) * (                                          &
                    (  10.0_wp * ibit17 * adv_mom_5                                                 &
                    +   3.0_wp * ibit16 * adv_mom_3                                                 &
                    +            ibit15 * adv_mom_1 ) * ( v(k+1,j,i) - v(k,j,i)   )                 &
                    - ( 5.0_wp * ibit17 * adv_mom_5                                                 &
                    +            ibit16 * adv_mom_3 ) * ( v(k+2,j,i) - v(k-1,j,i) )                 &
                    + (          ibit17 * adv_mom_5 ) * ( v(k+3,j,i) - v(k-2,j,i) )                 &
-                                                       )
+                                                        )
     ENDDO
 
     DO  k = nzt-1, nzt-symmetry_flag
@@ -2846,14 +2752,9 @@
        ibit17 = REAL( IBITS(advc_flags_m(k,j,i),17,1), KIND = wp )
        ibit16 = REAL( IBITS(advc_flags_m(k,j,i),16,1), KIND = wp )
        ibit15 = REAL( IBITS(advc_flags_m(k,j,i),15,1), KIND = wp )
-!
-!--    k index needs to be modified near bottom and top, else array subscripts will be exceeded.
-!--    (k_ppp = k+3, k_mm = k) if 5th order scheme is employed, else (k_ppp = k, k_mm = k).
-!--    Special treatment is required for k_pp. This must be limited at k = nzt, where either
-!--    the first order scheme is employed (ibit15), or all bit flags are zero (in case there is a
-!--    rigid lid defined at or near the domain top).
+
        k_ppp = k + 3 * ibit17
-       k_pp  = k + 2 * ( 1 - ibit15  ) * ( ibit15 + ibit16 + ibit17 )
+       k_pp  = k + 2 * ( 1 - ibit15  )
        k_mm  = k - 2 * ibit17
 
        w_comp(k) = w(k,j-1,i) + w(k,j,i)
@@ -2866,14 +2767,14 @@
                    + (          ibit17 * adv_mom_5 ) * ( v(k_ppp,j,i) + v(k_mm,j,i) )              &
                                                )
 
-       diss_t(k) = -ABS( w_comp(k) ) * rho_air_zw(k) * (                                           &
+       diss_t(k) = - ABS( w_comp(k) ) * rho_air_zw(k) * (                                          &
                    (  10.0_wp * ibit17 * adv_mom_5                                                 &
                    +   3.0_wp * ibit16 * adv_mom_3                                                 &
                    +            ibit15 * adv_mom_1 ) * ( v(k+1,j,i)   - v(k,j,i)    )              &
                    - ( 5.0_wp * ibit17 * adv_mom_5                                                 &
                    +            ibit16 * adv_mom_3 ) * ( v(k_pp,j,i)  - v(k-1,j,i)  )              &
                    + (          ibit17 * adv_mom_5 ) * ( v(k_ppp,j,i) - v(k_mm,j,i) )              &
-                                                       )
+                                                        )
     ENDDO
 
 !
@@ -3109,14 +3010,14 @@
                            + (          ibit23 * adv_mom_5 ) * ( w(k,j+2,i) + w(k,j-3,i) )         &
                                        )
 
-          diss_s_w(k,tn) = -ABS( v_comp(k) ) * (                                                   &
+          diss_s_w(k,tn) = - ABS( v_comp(k) ) * (                                                  &
                            (  10.0_wp * ibit23 * adv_mom_5                                         &
                            +   3.0_wp * ibit22 * adv_mom_3                                         &
                            +            ibit21 * adv_mom_1 ) * ( w(k,j,i)   - w(k,j-1,i) )         &
                            - ( 5.0_wp * ibit23 * adv_mom_5                                         &
                            +            ibit22 * adv_mom_3 ) * ( w(k,j+1,i) - w(k,j-2,i) )         &
                            + (          ibit23 * adv_mom_5 ) * ( w(k,j+2,i) - w(k,j-3,i) )         &
-                                               )
+                                                )
 
        ENDDO
 
@@ -3127,7 +3028,7 @@
                              37.0_wp * ( w(k,j,i)   + w(k,j-1,i) )                                 &
                            -  8.0_wp * ( w(k,j+1,i) + w(k,j-2,i) )                                 &
                            +           ( w(k,j+2,i) + w(k,j-3,i) ) ) * adv_mom_5
-          diss_s_w(k,tn) = -ABS( v_comp(k) ) * (                                                   &
+          diss_s_w(k,tn) = - ABS( v_comp(k) ) * (                                                  &
                              10.0_wp * ( w(k,j,i)   - w(k,j-1,i) )                                 &
                            -  5.0_wp * ( w(k,j+1,i) - w(k,j-2,i) )                                 &
                            +           ( w(k,j+2,i) - w(k,j-3,i) ) ) * adv_mom_5
@@ -3155,14 +3056,14 @@
                              + (          ibit20 * adv_mom_5 ) * ( w(k,j,i+2) + w(k,j,i-3) )       &
                                          )
 
-          diss_l_w(k,j,tn) = -ABS( u_comp(k) ) * (                                                 &
+          diss_l_w(k,j,tn) = - ABS( u_comp(k) ) * (                                                &
                              (  10.0_wp * ibit20 * adv_mom_5                                       &
                              +   3.0_wp * ibit19 * adv_mom_3                                       &
                              +            ibit18 * adv_mom_1 ) * ( w(k,j,i)   - w(k,j,i-1) )       &
                              - ( 5.0_wp * ibit20 * adv_mom_5                                       &
                              +            ibit19 * adv_mom_3 ) * ( w(k,j,i+1) - w(k,j,i-2) )       &
                              + (          ibit20 * adv_mom_5 ) * ( w(k,j,i+2) - w(k,j,i-3) )       &
-                                                 )
+                                                  )
 
        ENDDO
 
@@ -3173,7 +3074,7 @@
                                37.0_wp * ( w(k,j,i)   + w(k,j,i-1) )                               &
                              -  8.0_wp * ( w(k,j,i+1) + w(k,j,i-2) )                               &
                              +           ( w(k,j,i+2) + w(k,j,i-3) ) ) * adv_mom_5
-          diss_l_w(k,j,tn) = -ABS( u_comp(k) ) * (                                                 &
+          diss_l_w(k,j,tn) = - ABS( u_comp(k) ) * (                                                &
                                10.0_wp * ( w(k,j,i)   - w(k,j,i-1) )                               &
                              -  5.0_wp * ( w(k,j,i+1) - w(k,j,i-2) )                               &
                              +           ( w(k,j,i+2) - w(k,j,i-3) ) ) * adv_mom_5
@@ -3199,14 +3100,14 @@
                    + (          ibit20 * adv_mom_5 ) * ( w(k,j,i+3) + w(k,j,i-2) )                 &
                                )
 
-       diss_r(k) = -ABS( u_comp(k) ) * (                                                           &
+       diss_r(k) = - ABS( u_comp(k) ) * (                                                          &
                    (  10.0_wp * ibit20 * adv_mom_5                                                 &
                    +   3.0_wp * ibit19 * adv_mom_3                                                 &
                    +            ibit18 * adv_mom_1 ) * ( w(k,j,i+1) - w(k,j,i)   )                 &
                    - ( 5.0_wp * ibit20 * adv_mom_5                                                 &
                    +            ibit19 * adv_mom_3 ) * ( w(k,j,i+2) - w(k,j,i-1) )                 &
                    + (          ibit20 * adv_mom_5 ) * ( w(k,j,i+3) - w(k,j,i-2) )                 &
-                                       )
+                                        )
 
        ibit23 = REAL( IBITS(advc_flags_m(k,j,i),23,1), KIND = wp )
        ibit22 = REAL( IBITS(advc_flags_m(k,j,i),22,1), KIND = wp )
@@ -3222,14 +3123,14 @@
                   + (          ibit23 * adv_mom_5)  * ( w(k,j+3,i) + w(k,j-2,i) )                  &
                                )
 
-       diss_n(k) = -ABS( v_comp(k) ) * (                                                           &
+       diss_n(k) = - ABS( v_comp(k) ) * (                                                          &
                    (  10.0_wp * ibit23 * adv_mom_5                                                 &
                    +   3.0_wp * ibit22 * adv_mom_3                                                 &
                    +            ibit21 * adv_mom_1 ) * ( w(k,j+1,i) - w(k,j,i)   )                 &
                    - ( 5.0_wp * ibit23 * adv_mom_5                                                 &
                    +            ibit22 * adv_mom_3 ) * ( w(k,j+2,i)  - w(k,j-1,i) )                &
                    + (          ibit23 * adv_mom_5 ) * ( w(k,j+3,i)  - w(k,j-2,i) )                &
-                                       )
+                                        )
     ENDDO
 
     DO  k = nzb_max_l+1, nzt-1
@@ -3240,7 +3141,7 @@
                    -  8.0_wp * ( w(k,j,i+2) + w(k,j,i-1) )                                         &
                    +           ( w(k,j,i+3) + w(k,j,i-2) ) ) * adv_mom_5
 
-       diss_r(k) = -ABS( u_comp(k) ) * (                                                           &
+       diss_r(k) = - ABS( u_comp(k) ) * (                                                          &
                      10.0_wp * ( w(k,j,i+1) - w(k,j,i)   )                                         &
                    -  5.0_wp * ( w(k,j,i+2) - w(k,j,i-1) )                                         &
                    +           ( w(k,j,i+3) - w(k,j,i-2) ) ) * adv_mom_5
@@ -3251,7 +3152,7 @@
                    -  8.0_wp * ( w(k,j+2,i) + w(k,j-1,i) )                                         &
                    +           ( w(k,j+3,i) + w(k,j-2,i) ) ) * adv_mom_5
 
-       diss_n(k) = -ABS( v_comp(k) ) * (                                                           &
+       diss_n(k) = - ABS( v_comp(k) ) * (                                                          &
                      10.0_wp * ( w(k,j+1,i) - w(k,j,i)   )                                         &
                    -  5.0_wp * ( w(k,j+2,i) - w(k,j-1,i) )                                         &
                    +           ( w(k,j+3,i) - w(k,j-2,i) ) ) * adv_mom_5
@@ -3266,8 +3167,8 @@
 !--    First, compute flux at lowest level, located at z=dz/2.
     k         = nzb + 1
     w_comp(k) = w(k,j,i) + w(k-1,j,i)
-    flux_t(0) =  w_comp(k)      * rho_air(k) * ( w(k,j,i) + w(k-1,j,i) ) * adv_mom_1
-    diss_t(0) = -ABS(w_comp(k)) * rho_air(k) * ( w(k,j,i) - w(k-1,j,i) ) * adv_mom_1
+    flux_t(0) =  w_comp(k)       * rho_air(k) * ( w(k,j,i) + w(k-1,j,i) ) * adv_mom_1
+    diss_t(0) = - ABS(w_comp(k)) * rho_air(k) * ( w(k,j,i) - w(k-1,j,i) ) * adv_mom_1
 
     DO  k = nzb+1, nzb+1
 !
@@ -3290,14 +3191,14 @@
                    + (          ibit26 * adv_mom_5 ) * ( w(k_ppp,j,i) + w(k_mm,j,i) )              &
                                               )
 
-       diss_t(k) = -ABS( w_comp(k) ) * rho_air(k+1) * (                                            &
+       diss_t(k) = - ABS( w_comp(k) ) * rho_air(k+1) * (                                           &
                    (  10.0_wp * ibit26 * adv_mom_5                                                 &
                    +   3.0_wp * ibit25 * adv_mom_3                                                 &
                    +            ibit24 * adv_mom_1 ) * ( w(k+1,j,i)   - w(k,j,i)    )              &
                    - ( 5.0_wp * ibit26 * adv_mom_5                                                 &
                    +            ibit25 * adv_mom_3 ) * ( w(k_pp,j,i)  - w(k-1,j,i)  )              &
                    + (          ibit26 * adv_mom_5 ) * ( w(k_ppp,j,i) - w(k_mm,j,i) )              &
-                                                      )
+                                                       )
     ENDDO
 
     DO  k = nzb+2, nzt-2
@@ -3316,14 +3217,14 @@
                    + (          ibit26 * adv_mom_5 ) * ( w(k+3,j,i)  + w(k-2,j,i) )                &
                                               )
 
-       diss_t(k) = -ABS( w_comp(k) ) * rho_air(k+1) * (                                            &
+       diss_t(k) = - ABS( w_comp(k) ) * rho_air(k+1) * (                                           &
                    (  10.0_wp * ibit26 * adv_mom_5                                                 &
                    +   3.0_wp * ibit25 * adv_mom_3                                                 &
                    +            ibit24 * adv_mom_1 ) * ( w(k+1,j,i) - w(k,j,i)    )                &
                    - ( 5.0_wp * ibit26 * adv_mom_5                                                 &
                    +            ibit25 * adv_mom_3 ) * ( w(k+2,j,i) - w(k-1,j,i)  )                &
                    + (          ibit26 * adv_mom_5 ) * ( w(k+3,j,i) - w(k-2,j,i)  )                &
-                                                      )
+                                                       )
     ENDDO
 
     DO  k = nzt-1, nzt-1
@@ -3332,14 +3233,9 @@
        ibit26 = REAL( IBITS(advc_flags_m(k,j,i),26,1), KIND = wp )
        ibit25 = REAL( IBITS(advc_flags_m(k,j,i),25,1), KIND = wp )
        ibit24 = REAL( IBITS(advc_flags_m(k,j,i),24,1), KIND = wp )
-!
-!--    k index needs to be modified near bottom and top, else array subscripts will be exceeded.
-!--    (k_ppp = k+3, k_mm = k) if 5th order scheme is employed, else (k_ppp = k, k_mm = k).
-!--    Special treatment is required for k_pp. This must be limited at k = nzt, where either
-!--    the first order scheme is employed (ibit24), or all bit flags are zero (in case there is a
-!--    rigid lid defined at or near the domain top).
+
        k_ppp = k + 3 * ibit26
-       k_pp  = k + 2 * ( 1 - ibit24  ) * ( ibit24 + ibit25 + ibit26 )
+       k_pp  = k + 2 * ( 1 - ibit24  )
        k_mm  = k - 2 * ibit26
 
        w_comp(k) = w(k+1,j,i) + w(k,j,i)
@@ -3352,14 +3248,14 @@
                    + (          ibit26 * adv_mom_5 ) * ( w(k_ppp,j,i) + w(k_mm,j,i) )              &
                                               )
 
-       diss_t(k) = -ABS( w_comp(k) ) * rho_air(k+1) * (                                            &
+       diss_t(k) = - ABS( w_comp(k) ) * rho_air(k+1) * (                                           &
                    (  10.0_wp * ibit26 * adv_mom_5                                                 &
                    +   3.0_wp * ibit25 * adv_mom_3                                                 &
                    +            ibit24 * adv_mom_1 ) * ( w(k+1,j,i)   - w(k,j,i)    )              &
                    - ( 5.0_wp * ibit26 * adv_mom_5                                                 &
                    +            ibit25 * adv_mom_3 ) * ( w(k_pp,j,i)  - w(k-1,j,i)  )              &
                    + (          ibit26 * adv_mom_5 ) * ( w(k_ppp,j,i) - w(k_mm,j,i) )              &
-                                                      )
+                                                       )
     ENDDO
 
 !
@@ -3666,10 +3562,8 @@
                 ibit2 = REAL( IBITS(advc_flag(k,j,i-1),2,1), KIND = wp )
                 ibit1 = REAL( IBITS(advc_flag(k,j,i-1),1,1), KIND = wp )
                 ibit0 = REAL( IBITS(advc_flag(k,j,i-1),0,1), KIND = wp )
-!
-!--             Multiply Stokes velocity with topography flags to avoid possible fluxes at walls.
-                u_comp                    = u(k,j,i) - u_gtrans + u_stokes_zu(k)                   &
-                                            * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 1 ) )
+
+                u_comp                    = u(k,j,i) - u_gtrans + u_stokes_zu(k)
                 swap_flux_x_local(k,j)    = u_comp * (                                             &
                                               ( 37.0_wp * ibit2 * adv_sca_5                        &
                                             +    7.0_wp * ibit1 * adv_sca_3                        &
@@ -3685,7 +3579,7 @@
                                               ( sk(k,j,i+2) + sk(k,j,i-3)    )                     &
                                                      )
 
-                swap_diss_x_local(k,j)    = -ABS( u_comp ) * (                                     &
+                swap_diss_x_local(k,j)    = - ABS( u_comp ) * (                                    &
                                               ( 10.0_wp * ibit2 * adv_sca_5                        &
                                             +    3.0_wp * ibit1 * adv_sca_3                        &
                                             +             ibit0 * adv_sca_1                        &
@@ -3698,7 +3592,7 @@
                                             + (           ibit2 * adv_sca_5                        &
                                               ) *                                                  &
                                               ( sk(k,j,i+2) - sk(k,j,i-3)    )                     &
-                                                             )
+                                                              )
 
              ENDDO
 
@@ -3711,11 +3605,11 @@
                                             +           ( sk(k,j,i+2) + sk(k,j,i-3) )              &
                                                      ) * adv_sca_5
 
-                swap_diss_x_local(k,j)    = -ABS( u_comp ) * (                                     &
+                swap_diss_x_local(k,j)    = - ABS( u_comp ) * (                                    &
                                               10.0_wp * ( sk(k,j,i)   - sk(k,j,i-1) )              &
                                             -  5.0_wp * ( sk(k,j,i+1) - sk(k,j,i-2) )              &
                                             +           ( sk(k,j,i+2) - sk(k,j,i-3) )              &
-                                                             ) * adv_sca_5
+                                                              ) * adv_sca_5
 
              ENDDO
 
@@ -3730,10 +3624,8 @@
                 ibit5 = REAL( IBITS(advc_flag(k,j-1,i),5,1), KIND = wp )
                 ibit4 = REAL( IBITS(advc_flag(k,j-1,i),4,1), KIND = wp )
                 ibit3 = REAL( IBITS(advc_flag(k,j-1,i),3,1), KIND = wp )
-!
-!--             Multiply Stokes velocity with topography flags to avoid possible fluxes at walls.
-                v_comp                  = v(k,j,i) - v_gtrans + v_stokes_zu(k)                     &
-                                          * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 2 ) )
+
+                v_comp                  = v(k,j,i) - v_gtrans + v_stokes_zu(k)
                 swap_flux_y_local(k)    = v_comp *         (                                       &
                                              ( 37.0_wp * ibit5 * adv_sca_5                         &
                                           +     7.0_wp * ibit4 * adv_sca_3                         &
@@ -3749,7 +3641,7 @@
                                              ( sk(k,j+2,i) + sk(k,j-3,i)    )                      &
                                                            )
 
-                swap_diss_y_local(k)    = -ABS( v_comp ) * (                                       &
+                swap_diss_y_local(k)    = - ABS( v_comp ) * (                                      &
                                             ( 10.0_wp * ibit5 * adv_sca_5                          &
                                           +    3.0_wp * ibit4 * adv_sca_3                          &
                                           +             ibit3 * adv_sca_1                          &
@@ -3762,7 +3654,7 @@
                                           + (           ibit5 * adv_sca_5                          &
                                             ) *                                                    &
                                             ( sk(k,j+2,i) - sk(k,j-3,i)  )                         &
-                                                           )
+                                                            )
 
              ENDDO
 !
@@ -3775,11 +3667,11 @@
                                           -  8.0_wp * ( sk(k,j+1,i) + sk(k,j-2,i) )                &
                                           +           ( sk(k,j+2,i) + sk(k,j-3,i) )                &
                                                    ) * adv_sca_5
-                swap_diss_y_local(k)    = -ABS( v_comp ) * (                                       &
+                swap_diss_y_local(k)    = - ABS( v_comp ) * (                                      &
                                             10.0_wp * ( sk(k,j,i)   - sk(k,j-1,i) )                &
                                           -  5.0_wp * ( sk(k,j+1,i) - sk(k,j-2,i) )                &
                                           +             sk(k,j+2,i) - sk(k,j-3,i)                  &
-                                                           ) * adv_sca_5
+                                                            ) * adv_sca_5
 
              ENDDO
 
@@ -3795,10 +3687,8 @@
              ibit2 = REAL( IBITS(advc_flag(k,j,i),2,1), KIND = wp )
              ibit1 = REAL( IBITS(advc_flag(k,j,i),1,1), KIND = wp )
              ibit0 = REAL( IBITS(advc_flag(k,j,i),0,1), KIND = wp )
-!
-!--          Multiply Stokes velocity with topography flags to avoid possible fluxes at walls.
-             u_comp    = u(k,j,i+1) - u_gtrans + u_stokes_zu(k)                                    &
-                         * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i+1), 1 ) )
+
+             u_comp    = u(k,j,i+1) - u_gtrans + u_stokes_zu(k)
              flux_r(k) = u_comp * (                                                                &
                          (  37.0_wp * ibit2 * adv_sca_5                                            &
                          +   7.0_wp * ibit1 * adv_sca_3                                            &
@@ -3808,24 +3698,22 @@
                          + (          ibit2 * adv_sca_5 ) * ( sk(k,j,i+3) + sk(k,j,i-2) )          &
                                   )
 
-             diss_r(k) = -ABS( u_comp ) * (                                                        &
+             diss_r(k) = - ABS( u_comp ) * (                                                       &
                            (  10.0_wp * ibit2 * adv_sca_5                                          &
                            +   3.0_wp * ibit1 * adv_sca_3                                          &
                            +            ibit0 * adv_sca_1 ) * ( sk(k,j,i+1) - sk(k,j,i)  )         &
                            - ( 5.0_wp * ibit2 * adv_sca_5                                          &
                            +            ibit1 * adv_sca_3 ) * ( sk(k,j,i+2) - sk(k,j,i-1) )        &
                            + (          ibit2 * adv_sca_5 ) * ( sk(k,j,i+3) - sk(k,j,i-2) )        &
-                                          )
+                                           )
 #ifdef _OPENACC
 !
 !--          Recompute the left fluxes.
              ibit2_l = REAL( IBITS(advc_flag(k,j,i-1),2,1), KIND = wp )
              ibit1_l = REAL( IBITS(advc_flag(k,j,i-1),1,1), KIND = wp )
              ibit0_l = REAL( IBITS(advc_flag(k,j,i-1),0,1), KIND = wp )
-!
-!--          Multiply Stokes velocity with topography flags to avoid possible fluxes at walls.
-             u_comp_l                  = u(k,j,i) - u_gtrans + u_stokes_zu(k)                      &
-                                         * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 1 ) )
+
+             u_comp_l                  = u(k,j,i) - u_gtrans + u_stokes_zu(k)
              flux_l(k)                 = u_comp_l * (                                              &
                                            ( 37.0_wp * ibit2_l * adv_sca_5                         &
                                          +    7.0_wp * ibit1_l * adv_sca_3                         &
@@ -3841,7 +3729,7 @@
                                            ( sk(k,j,i+2) + sk(k,j,i-3)    )                        &
                                                     )
 
-             diss_l(k)                 = -ABS( u_comp_l ) * (                                      &
+             diss_l(k)                 = - ABS( u_comp_l ) * (                                     &
                                            ( 10.0_wp * ibit2_l * adv_sca_5                         &
                                          +    3.0_wp * ibit1_l * adv_sca_3                         &
                                          +             ibit0_l * adv_sca_1                         &
@@ -3854,7 +3742,7 @@
                                          + (           ibit2_l * adv_sca_5                         &
                                            ) *                                                     &
                                            ( sk(k,j,i+2) - sk(k,j,i-3) )                           &
-                                                            )
+                                                             )
 #else
              flux_l(k) = swap_flux_x_local(k,j)
              diss_l(k) = swap_diss_x_local(k,j)
@@ -3862,10 +3750,8 @@
              ibit5 = REAL( IBITS(advc_flag(k,j,i),5,1), KIND = wp )
              ibit4 = REAL( IBITS(advc_flag(k,j,i),4,1), KIND = wp )
              ibit3 = REAL( IBITS(advc_flag(k,j,i),3,1), KIND = wp )
-!
-!--          Multiply Stokes velocity with topography flags to avoid possible fluxes at walls.
-             v_comp    = v(k,j+1,i) - v_gtrans + v_stokes_zu(k)                                    &
-                         * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j+1,i), 2 ) )
+
+             v_comp    = v(k,j+1,i) - v_gtrans + v_stokes_zu(k)
              flux_n(k) = v_comp * (                                                                &
                          (  37.0_wp * ibit5 * adv_sca_5                                            &
                          +   7.0_wp * ibit4 * adv_sca_3                                            &
@@ -3875,24 +3761,22 @@
                          + (          ibit5 * adv_sca_5 ) * ( sk(k,j+3,i) + sk(k,j-2,i) )          &
                                   )
 
-             diss_n(k) = -ABS( v_comp ) * (                                                        &
+             diss_n(k) = - ABS( v_comp ) * (                                                       &
                          (  10.0_wp * ibit5 * adv_sca_5                                            &
                          +   3.0_wp * ibit4 * adv_sca_3                                            &
                          +            ibit3 * adv_sca_1 ) * ( sk(k,j+1,i) - sk(k,j,i)   )          &
                          - ( 5.0_wp * ibit5 * adv_sca_5                                            &
                          +            ibit4 * adv_sca_3 ) * ( sk(k,j+2,i) - sk(k,j-1,i) )          &
                          + (          ibit5 * adv_sca_5 ) * ( sk(k,j+3,i) - sk(k,j-2,i) )          &
-                                          )
+                                           )
 #ifdef _OPENACC
 !
 !--          Recompute the south fluxes.
              ibit5_s = REAL( IBITS(advc_flag(k,j-1,i),5,1), KIND = wp )
              ibit4_s = REAL( IBITS(advc_flag(k,j-1,i),4,1), KIND = wp )
              ibit3_s = REAL( IBITS(advc_flag(k,j-1,i),3,1), KIND = wp )
-!
-!--          Multiply Stokes velocity with topography flags to avoid possible fluxes at walls.
-             v_comp_s                = v(k,j,i) - v_gtrans + v_stokes_zu(k)                        &
-                                       * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 2 ) )
+
+             v_comp_s                = v(k,j,i) - v_gtrans + v_stokes_zu(k)
              flux_s(k)               = v_comp_s * (                                                &
                                          ( 37.0_wp * ibit5_s * adv_sca_5                           &
                                        +    7.0_wp * ibit4_s * adv_sca_3                           &
@@ -3908,7 +3792,7 @@
                                        ( sk(k,j+2,i) + sk(k,j-3,i)    )                            &
                                                   )
 
-             diss_s(k)               = -ABS( v_comp_s ) * (                                        &
+             diss_s(k)               = - ABS( v_comp_s ) * (                                       &
                                          ( 10.0_wp * ibit5_s * adv_sca_5                           &
                                        +    3.0_wp * ibit4_s * adv_sca_3                           &
                                        +             ibit3_s * adv_sca_1                           &
@@ -3921,7 +3805,7 @@
                                        + (           ibit5_s * adv_sca_5                           &
                                           ) *                                                      &
                                        ( sk(k,j+2,i) - sk(k,j-3,i)    )                            &
-                                                         )
+                                                          )
 #else
              flux_s(k) = swap_flux_y_local(k)
              diss_s(k) = swap_diss_y_local(k)
@@ -3938,7 +3822,7 @@
                            37.0_wp * ( sk(k,j,i+1) + sk(k,j,i)   )                                 &
                          -  8.0_wp * ( sk(k,j,i+2) + sk(k,j,i-1) )                                 &
                          +           ( sk(k,j,i+3) + sk(k,j,i-2) ) ) * adv_sca_5
-             diss_r(k) = -ABS( u_comp ) * (                                                        &
+             diss_r(k) = - ABS( u_comp ) * (                                                       &
                            10.0_wp * ( sk(k,j,i+1) - sk(k,j,i)   )                                 &
                          -  5.0_wp * ( sk(k,j,i+2) - sk(k,j,i-1) )                                 &
                          +           ( sk(k,j,i+3) - sk(k,j,i-2) ) ) * adv_sca_5
@@ -3951,7 +3835,7 @@
                          -  8.0_wp * ( sk(k,j,i+1) + sk(k,j,i-2) )                                 &
                          +           ( sk(k,j,i+2) + sk(k,j,i-3) ) ) * adv_sca_5
 
-             diss_l(k) = -ABS( u_comp_l ) * (                                                      &
+             diss_l(k) = - ABS( u_comp_l ) * (                                                     &
                             10.0_wp * ( sk(k,j,i)   - sk(k,j,i-1) )                                &
                          -   5.0_wp * ( sk(k,j,i+1) - sk(k,j,i-2) )                                &
                          +            ( sk(k,j,i+2) - sk(k,j,i-3) ) ) * adv_sca_5
@@ -3966,7 +3850,7 @@
                            37.0_wp * ( sk(k,j+1,i) + sk(k,j,i)   )                                 &
                          -  8.0_wp * ( sk(k,j+2,i) + sk(k,j-1,i) )                                 &
                          +           ( sk(k,j+3,i) + sk(k,j-2,i) ) ) * adv_sca_5
-             diss_n(k) = -ABS( v_comp ) * (                                                        &
+             diss_n(k) = - ABS( v_comp ) * (                                                       &
                            10.0_wp * ( sk(k,j+1,i) - sk(k,j,i)   )                                 &
                          -  5.0_wp * ( sk(k,j+2,i) - sk(k,j-1,i) )                                 &
                          +           ( sk(k,j+3,i) - sk(k,j-2,i) ) ) * adv_sca_5
@@ -3978,7 +3862,7 @@
                            37.0_wp * ( sk(k,j,i)   + sk(k,j-1,i) )                                 &
                          -  8.0_wp * ( sk(k,j+1,i) + sk(k,j-2,i) )                                 &
                          +           ( sk(k,j+2,i) + sk(k,j-3,i) ) ) * adv_sca_5
-             diss_s(k) = -ABS( v_comp_s ) * (                                                      &
+             diss_s(k) = - ABS( v_comp_s ) * (                                                     &
                            10.0_wp * ( sk(k,j,i)   - sk(k,j-1,i) )                                 &
                          -  5.0_wp * ( sk(k,j+1,i) - sk(k,j-2,i) )                                 &
                          +           ( sk(k,j+2,i) - sk(k,j-3,i) ) ) * adv_sca_5
@@ -4001,10 +3885,12 @@
              ibit8 = REAL( IBITS(advc_flag(k,j,i),8,1), KIND = wp )
              ibit7 = REAL( IBITS(advc_flag(k,j,i),7,1), KIND = wp )
              ibit6 = REAL( IBITS(advc_flag(k,j,i),6,1), KIND = wp )
-
+!
+!--          k index has to be modified near bottom and top, else array subscripts will be exceeded.
              k_ppp = k + 3 * ibit8
              k_pp  = k + 2 * ( 1 - ibit6  )
              k_mm  = k - 2 * ibit8
+
 
              flux_t(k) = w(k,j,i) * rho_air_zw(k) * (                                              &
                          (  37.0_wp * ibit8 * adv_sca_5                                            &
@@ -4015,14 +3901,14 @@
                          + (          ibit8 * adv_sca_5 ) * ( sk(k_ppp,j,i) + sk(k_mm,j,i) )       &
                                                     )
 
-             diss_t(k) = -ABS( w(k,j,i) ) * rho_air_zw(k) * (                                      &
+             diss_t(k) = - ABS( w(k,j,i) ) * rho_air_zw(k) * (                                     &
                          (  10.0_wp * ibit8 * adv_sca_5                                            &
                          +   3.0_wp * ibit7 * adv_sca_3                                            &
                          +            ibit6 * adv_sca_1 ) * ( sk(k+1,j,i)   - sk(k,j,i)    )       &
                          - ( 5.0_wp * ibit8 * adv_sca_5                                            &
                          +            ibit7 * adv_sca_3 ) * ( sk(k_pp,j,i)  - sk(k-1,j,i)  )       &
                          + (          ibit8 * adv_sca_5 ) * ( sk(k_ppp,j,i) - sk(k_mm,j,i) )       &
-                                                            )
+                                                             )
           ENDDO
 
           DO  k = nzb+2, nzt-2
@@ -4039,14 +3925,14 @@
                          + (          ibit8 * adv_sca_5 ) * ( sk(k+3,j,i) + sk(k-2,j,i) )          &
                                                     )
 
-             diss_t(k) = -ABS( w(k,j,i) ) * rho_air_zw(k) * (                                      &
+             diss_t(k) = - ABS( w(k,j,i) ) * rho_air_zw(k) * (                                     &
                          (  10.0_wp * ibit8 * adv_sca_5                                            &
                          +   3.0_wp * ibit7 * adv_sca_3                                            &
                          +            ibit6 * adv_sca_1 ) * ( sk(k+1,j,i)   - sk(k,j,i)    )       &
                          - ( 5.0_wp * ibit8 * adv_sca_5                                            &
                          +            ibit7 * adv_sca_3 ) * ( sk(k+2,j,i)  - sk(k-1,j,i)  )        &
                          + (          ibit8 * adv_sca_5 ) * ( sk(k+3,j,i) - sk(k-2,j,i) )          &
-                                                            )
+                                                             )
           ENDDO
 
           DO  k = nzt-1, nzt-symmetry_flag
@@ -4054,13 +3940,9 @@
              ibit7 = REAL( IBITS(advc_flag(k,j,i),7,1), KIND = wp )
              ibit6 = REAL( IBITS(advc_flag(k,j,i),6,1), KIND = wp )
 !
-!--          k index needs to be modified near bottom and top, else array subscripts will be
-!--          exceeded. (k_ppp = k+3, k_mm = k) if 5th order scheme is employed, else
-!--          (k_ppp = k, k_mm = k). Special treatment is required for k_pp. This must be limited
-!--          at k = nzt, where either the first order scheme is employed (ibit6), or all bit flags
-!--          are zero (in case there is a rigid lid defined at or near the domain top).
+!--          k index has to be modified near bottom and top, else array subscripts will be exceeded.
              k_ppp = k + 3 * ibit8
-             k_pp  = k + 2 * ( 1 - ibit6  ) * ( ibit6 + ibit7 + ibit8 )
+             k_pp  = k + 2 * ( 1 - ibit6  )
              k_mm  = k - 2 * ibit8
 
              flux_t(k) = w(k,j,i) * rho_air_zw(k) * (                                              &
@@ -4072,14 +3954,14 @@
                          + (          ibit8 * adv_sca_5 ) * ( sk(k_ppp,j,i)+ sk(k_mm,j,i) )        &
                                                     )
 
-             diss_t(k) = -ABS( w(k,j,i) ) * rho_air_zw(k) * (                                      &
+             diss_t(k) = - ABS( w(k,j,i) ) * rho_air_zw(k) * (                                     &
                          (  10.0_wp * ibit8 * adv_sca_5                                            &
                          +   3.0_wp * ibit7 * adv_sca_3                                            &
                          +            ibit6 * adv_sca_1 ) * ( sk(k+1,j,i)   - sk(k,j,i)    )       &
                          - ( 5.0_wp * ibit8 * adv_sca_5                                            &
                          +            ibit7 * adv_sca_3 ) * ( sk(k_pp,j,i)  - sk(k-1,j,i)  )       &
                          + (          ibit8 * adv_sca_5 ) * ( sk(k_ppp,j,i) - sk(k_mm,j,i) )       &
-                                                            )
+                                                             )
           ENDDO
 
 !
@@ -4358,741 +4240,6 @@
 !--------------------------------------------------------------------------------------------------!
 ! Description:
 ! ------------
-!> Scalar advection with advanced divergence correction. Call for all grid points.
-!> The fifth-order scheme of Wicker and Skamarock is only conditionally convervative, meaning
-!> scalar is only conserved as long as the flow divergence is negligible. In case of topography,
-!> however, the remaining flow divergence can be still significant near walls, leading to numerical
-!> errors in the advection discretization affecting the scalar conservation. To maintain scalar
-!> conservation, an advanced divergence correction has been implemented according to the method
-!> implemented in the Bott-Clond scheme. With this method, scalar is almost fully conserved.
-!> Please note, this method has not been extensively tested yet. Further, please note, this method
-!> alters the stability properties of the advection discretization. Tests showed that scalar
-!> advection can become unstable for Courant numbers >= 0.5.
-!--------------------------------------------------------------------------------------------------!
- SUBROUTINE advec_s_ws_div_bc( advc_flag, sk, sk_char,                                             &
-                               non_cyclic_l, non_cyclic_n, non_cyclic_r, non_cyclic_s,             &
-                               advanced_divergence_correction )
-
-
-    CHARACTER (LEN = *), INTENT(IN) ::  sk_char !< string identifier, used for assign fluxes
-                                                !< to the correct dimension in the analysis array
-
-    INTEGER(iwp) ::  i         !< grid index along x-direction
-    INTEGER(iwp) ::  j         !< grid index along y-direction
-    INTEGER(iwp) ::  k         !< grid index along z-direction
-    INTEGER(iwp) ::  k_mm      !< k-2 index in disretization, can be modified to avoid segmentation faults
-    INTEGER(iwp) ::  k_pp      !< k+2 index in disretization, can be modified to avoid segmentation faults
-    INTEGER(iwp) ::  k_ppp     !< k+3 index in disretization, can be modified to avoid segmentation faults
-    INTEGER(iwp) ::  nzb_max_l !< index indicating upper bound for order degradation of horizontal advection terms
-    INTEGER(iwp) ::  sk_num    !< integer identifier, used for assign fluxes to the correct dimension in the analysis array
-    INTEGER(iwp) ::  tn = 0    !< number of OpenMP thread (is always zero here)
-
-    INTEGER(iwp), INTENT(IN), DIMENSION(nzb:nzt+1,nysg:nyng,nxlg:nxrg) ::                          &
-                                               advc_flag !< flag array to control order of scalar advection
-
-    LOGICAL  ::  advanced_divergence_correction !< flag to trigger advanced flow-divergence correction
-    LOGICAL  ::  non_cyclic_l                   !< flag that indicates non-cyclic boundary on the left
-    LOGICAL  ::  non_cyclic_n                   !< flag that indicates non-cyclic boundary on the north
-    LOGICAL  ::  non_cyclic_r                   !< flag that indicates non-cyclic boundary on the right
-    LOGICAL  ::  non_cyclic_s                   !< flag that indicates non-cyclic boundary on the south
-
-    REAL(wp) ::  d_new         !< component-wise divergence
-    REAL(wp) ::  ibit0         !< flag indicating 1st-order scheme along x-direction
-    REAL(wp) ::  ibit1         !< flag indicating 3rd-order scheme along x-direction
-    REAL(wp) ::  ibit2         !< flag indicating 5th-order scheme along x-direction
-    REAL(wp) ::  ibit3         !< flag indicating 1st-order scheme along y-direction
-    REAL(wp) ::  ibit4         !< flag indicating 3rd-order scheme along y-direction
-    REAL(wp) ::  ibit5         !< flag indicating 5th-order scheme along y-direction
-    REAL(wp) ::  ibit6         !< flag indicating 1st-order scheme along z-direction
-    REAL(wp) ::  ibit7         !< flag indicating 3rd-order scheme along z-direction
-    REAL(wp) ::  ibit8         !< flag indicating 5th-order scheme along z-direction
-    REAL(wp) ::  tendcy        !< tendency resulting from component-wise flux divergence
-    REAL(wp) ::  u_comp        !< advection velocity along x-direction
-    REAL(wp) ::  v_comp        !< advection velocity along y-direction
-
-
-    REAL(wp), DIMENSION(nzb:nzt+1)         ::  diss_n     !< discretized artificial dissipation at northward-side
-    REAL(wp), DIMENSION(nzb:nzt+1)         ::  diss_r     !< discretized artificial dissipation at rightward-side
-    REAL(wp), DIMENSION(nzb:nzt+1)         ::  diss_t     !< discretized artificial dissipation at top of the grid box
-    REAL(wp), DIMENSION(nzb:nzt+1)         ::  flux_n     !< discretized 6th-order flux at northward-side of the grid box
-    REAL(wp), DIMENSION(nzb:nzt+1)         ::  flux_r     !< discretized 6th-order flux at rightward-side of the grid box
-    REAL(wp), DIMENSION(nzb:nzt+1)         ::  flux_t     !< discretized 6th-order flux at top of the grid box
-
-    REAL(wp), DIMENSION(nzb+1:nzt)         ::  swap_diss_y_local !< discretized artificial dissipation at southward-side
-    REAL(wp), DIMENSION(nzb+1:nzt)         ::  swap_flux_y_local !< discretized 6th-order flux at northward-side
-
-    REAL(wp), DIMENSION(nzb+1:nzt,nys:nyn) ::  swap_diss_x_local !< discretized artificial dissipation at leftward-side
-    REAL(wp), DIMENSION(nzb+1:nzt,nys:nyn) ::  swap_flux_x_local !< discretized 6th-order flux at leftward-side
-
-    REAL(wp), DIMENSION(:,:,:), POINTER    ::  s1                !< pointer used to swap old and updated scalar values
-    REAL(wp), DIMENSION(:,:,:), POINTER    ::  s2                !< pointer used to swap old and updated scalar values
-!
-!-- sk is an array from parameter list. It should not be a pointer, because in that case the
-!-- compiler can not assume a stride 1 and cannot perform a strided one vector load. Adding the
-!-- CONTIGUOUS keyword makes things even worse, because the compiler cannot assume strided one in
-!-- the caller side.
-    REAL(wp), DIMENSION(nzb+1:nzt,nysg:nyng,nxlg:nxrg)             ::  d      !< component-wise divergence
-    REAL(wp), DIMENSION(nzb:nzt+1,nysg:nyng,nxlg:nxrg), INTENT(IN) ::  sk     !< advected scalar
-    REAL(wp), DIMENSION(nzb:nzt+1,nysg:nyng,nxlg:nxrg), TARGET     ::  sk_t1  !< target array used to swap old and updated scalar values
-    REAL(wp), DIMENSION(nzb:nzt+1,nysg:nyng,nxlg:nxrg), TARGET     ::  sk_t2  !< target array used to swap old and updated scalar values
-
-    CALL cpu_log( log_point_s(49), 'advec_s_ws_div_bc', 'start' )
-
-    SELECT CASE ( sk_char )
-
-       CASE ( 'pt' )
-          sk_num = 1
-       CASE ( 'sa' )
-          sk_num = 2
-       CASE ( 'q' )
-          sk_num = 3
-       CASE ( 'qc' )
-          sk_num = 4
-       CASE ( 'qr' )
-          sk_num = 5
-       CASE ( 'nc' )
-          sk_num = 6
-       CASE ( 'nr' )
-          sk_num = 7
-       CASE ( 's' )
-          sk_num = 8
-       CASE ( 'aerosol_mass', 'aerosol_number', 'salsa_gas' )
-          sk_num = 9
-       CASE ( 'ni' )
-          sk_num = 10
-       CASE ( 'qi' )
-          sk_num = 11
-       CASE ( 'ng' )
-          sk_num = 12
-       CASE ( 'qg' )
-          sk_num = 13
-       CASE ( 'ns' )
-          sk_num = 14
-       CASE ( 'qs' )
-          sk_num = 15
-       CASE DEFAULT
-          sk_num = 0
-
-    END SELECT
-!
-!-- Store originally passed scalar array.
-    s1 => sk_t1
-    s2 => sk_t2
-    s1 = sk
-!
-!-- To avoid compiler complaints.
-    advanced_divergence_correction = advanced_divergence_correction
-
-    DO  i = nxl, nxr
-       DO  j = nys, nyn
-!
-!--       Used local modified copy of nzb_max (used to degrade order of discretization) at
-!--       non-cyclic boundaries. Modify only at relevant points instead of the entire subdomain.
-!--       This should lead to better load balance between boundary and non-boundary PEs.
-          IF( non_cyclic_l  .AND.  i <= nxl + 2  .OR.                                              &
-              non_cyclic_r  .AND.  i >= nxr - 2  .OR.                                              &
-              non_cyclic_s  .AND.  j <= nys + 2  .OR.                                              &
-              non_cyclic_n  .AND.  j >= nyn - 2 )  THEN
-             nzb_max_l = nzt
-          ELSE
-             nzb_max_l = nzb_max
-          END IF
-!
-!--       Compute leftside fluxes of the respective PE bounds.
-          IF ( i == nxl )  THEN
-
-             DO  k = nzb+1, nzb_max_l
-
-                ibit2 = REAL( IBITS(advc_flag(k,j,i-1),2,1), KIND = wp )
-                ibit1 = REAL( IBITS(advc_flag(k,j,i-1),1,1), KIND = wp )
-                ibit0 = REAL( IBITS(advc_flag(k,j,i-1),0,1), KIND = wp )
-!
-!--             Multiply Stokes velocity with topography flags to avoid possible fluxes at walls.
-                u_comp                    = u(k,j,i) - u_gtrans + u_stokes_zu(k)                   &
-                                            * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 1 ) )
-                swap_flux_x_local(k,j)    = u_comp * (                                             &
-                                              ( 37.0_wp * ibit2 * adv_sca_5                        &
-                                            +    7.0_wp * ibit1 * adv_sca_3                        &
-                                            +             ibit0 * adv_sca_1                        &
-                                              ) *                                                  &
-                                              ( s1(k,j,i)   + s1(k,j,i-1)    )                     &
-                                            - (  8.0_wp * ibit2 * adv_sca_5                        &
-                                            +             ibit1 * adv_sca_3                        &
-                                              ) *                                                  &
-                                              ( s1(k,j,i+1) + s1(k,j,i-2)    )                     &
-                                            + (           ibit2 * adv_sca_5                        &
-                                              ) *                                                  &
-                                              ( s1(k,j,i+2) + s1(k,j,i-3)    )                     &
-                                                     )
-
-                swap_diss_x_local(k,j)    = -ABS( u_comp ) * (                                     &
-                                              ( 10.0_wp * ibit2 * adv_sca_5                        &
-                                            +    3.0_wp * ibit1 * adv_sca_3                        &
-                                            +             ibit0 * adv_sca_1                        &
-                                              ) *                                                  &
-                                              ( s1(k,j,i)   - s1(k,j,i-1)    )                     &
-                                            - (  5.0_wp * ibit2 * adv_sca_5                        &
-                                            +             ibit1 * adv_sca_3                        &
-                                              ) *                                                  &
-                                              ( s1(k,j,i+1) - s1(k,j,i-2)    )                     &
-                                            + (           ibit2 * adv_sca_5                        &
-                                              ) *                                                  &
-                                              ( s1(k,j,i+2) - s1(k,j,i-3)    )                     &
-                                                             )
-
-             ENDDO
-
-             DO  k = nzb_max_l+1, nzt
-
-                u_comp                    = u(k,j,i) - u_gtrans + u_stokes_zu(k)
-                swap_flux_x_local(k,j)    = u_comp * (                                             &
-                                              37.0_wp * ( s1(k,j,i)   + s1(k,j,i-1) )              &
-                                            -  8.0_wp * ( s1(k,j,i+1) + s1(k,j,i-2) )              &
-                                            +           ( s1(k,j,i+2) + s1(k,j,i-3) )              &
-                                                     ) * adv_sca_5
-
-                swap_diss_x_local(k,j)    = -ABS( u_comp ) * (                                     &
-                                              10.0_wp * ( s1(k,j,i)   - s1(k,j,i-1) )              &
-                                            -  5.0_wp * ( s1(k,j,i+1) - s1(k,j,i-2) )              &
-                                            +           ( s1(k,j,i+2) - s1(k,j,i-3) )              &
-                                                             ) * adv_sca_5
-
-             ENDDO
-
-          ENDIF
-
-!
-!--       Now compute the fluxes and tendency terms for the horizontal and vertical parts up to the
-!--       top of the highest topography.
-          DO  k = nzb+1, nzb_max_l
-!
-!--          Note: It is faster to conduct all multiplications explicitly, e.g. * adv_sca_5 ... than
-!--          to determine a factor and multiplicate the flux at the end.
-             ibit2 = REAL( IBITS(advc_flag(k,j,i),2,1), KIND = wp )
-             ibit1 = REAL( IBITS(advc_flag(k,j,i),1,1), KIND = wp )
-             ibit0 = REAL( IBITS(advc_flag(k,j,i),0,1), KIND = wp )
-!
-!--          Multiply Stokes velocity with topography flags to avoid possible fluxes at walls.
-             u_comp    = u(k,j,i+1) - u_gtrans + u_stokes_zu(k)                                    &
-                         * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i+1), 1 ) )
-             flux_r(k) = u_comp * (                                                                &
-                         (  37.0_wp * ibit2 * adv_sca_5                                            &
-                         +   7.0_wp * ibit1 * adv_sca_3                                            &
-                         +            ibit0 * adv_sca_1 ) * ( s1(k,j,i+1) + s1(k,j,i)   )          &
-                         - ( 8.0_wp * ibit2 * adv_sca_5                                            &
-                         +            ibit1 * adv_sca_3 ) * ( s1(k,j,i+2) + s1(k,j,i-1) )          &
-                         + (          ibit2 * adv_sca_5 ) * ( s1(k,j,i+3) + s1(k,j,i-2) )          &
-                                  )
-
-             diss_r(k) = -ABS( u_comp ) * (                                                        &
-                           (  10.0_wp * ibit2 * adv_sca_5                                          &
-                           +   3.0_wp * ibit1 * adv_sca_3                                          &
-                           +            ibit0 * adv_sca_1 ) * ( s1(k,j,i+1) - s1(k,j,i)  )         &
-                           - ( 5.0_wp * ibit2 * adv_sca_5                                          &
-                           +            ibit1 * adv_sca_3 ) * ( s1(k,j,i+2) - s1(k,j,i-1) )        &
-                           + (          ibit2 * adv_sca_5 ) * ( s1(k,j,i+3) - s1(k,j,i-2) )        &
-                                          )
-!
-!--          Component-wise divergence correction. Therefore, compute temporay new solution using
-!--          an Euler scheme with only advection along x (attention: conditionally unstable
-!--          with WS-scheme!).
-             d_new = d(k,j,i) - ( u(k,j,i+1) - u(k,j,i) ) * dt_3d * ddx
-
-             tendcy = - ( flux_r(k)             + diss_r(k) - (                                    &
-                          swap_flux_x_local(k,j) + swap_diss_x_local(k,j) ) ) * ddx
-
-             s2(k,j,i) = ( ( 1.0_wp + d(k,j,i) ) * s1(k,j,i) + tendcy * dt_3d ) / ( 1.0_wp + d_new )
-
-             d(k,j,i) = d_new
-
-             swap_flux_x_local(k,j) = flux_r(k)
-             swap_diss_x_local(k,j) = diss_r(k)
-
-          ENDDO
-!
-!--       Now compute the fluxes and tendency terms for the horizontal and vertical parts above the
-!--       top of the highest topography. No degradation for the horizontal parts, but for the
-!--       vertical it is still needed.
-          DO  k = nzb_max_l+1, nzt
-
-             u_comp    = u(k,j,i+1) - u_gtrans + u_stokes_zu(k)
-             flux_r(k) = u_comp * (                                                                &
-                           37.0_wp * ( s1(k,j,i+1) + s1(k,j,i)   )                                 &
-                         -  8.0_wp * ( s1(k,j,i+2) + s1(k,j,i-1) )                                 &
-                         +           ( s1(k,j,i+3) + s1(k,j,i-2) ) ) * adv_sca_5
-             diss_r(k) = -ABS( u_comp ) * (                                                        &
-                           10.0_wp * ( s1(k,j,i+1) - s1(k,j,i)   )                                 &
-                         -  5.0_wp * ( s1(k,j,i+2) - s1(k,j,i-1) )                                 &
-                         +           ( s1(k,j,i+3) - s1(k,j,i-2) ) ) * adv_sca_5
-!
-!--          Component-wise divergence correction. Therefore, compute temporay new solution using
-!--          an Euler scheme with only advection along x (attention: conditionally unstable
-!--          with WS-scheme!).
-             d_new = d(k,j,i) - ( u(k,j,i+1) - u(k,j,i) ) * dt_3d * ddx
-
-             tendcy = - ( flux_r(k)             + diss_r(k) - (                                    &
-                          swap_flux_x_local(k,j) + swap_diss_x_local(k,j) ) ) * ddx
-
-             s2(k,j,i) = ( ( 1.0_wp + d(k,j,i) ) * s1(k,j,i) + tendcy * dt_3d ) / ( 1.0_wp + d_new )
-
-             d(k,j,i) = d_new
-
-             swap_flux_x_local(k,j) = flux_r(k)
-             swap_diss_x_local(k,j) = diss_r(k)
-
-          ENDDO
-       ENDDO
-    ENDDO
-
-    CALL exchange_horiz( s2, nbgp )
-
-    s1 => sk_t2
-    s2 => sk_t1
-
-    DO  i = nxl, nxr
-       DO  j = nys, nyn
-!
-!--       Used local modified copy of nzb_max (used to degrade order of discretization) at
-!--       non-cyclic boundaries. Modify only at relevant points instead of the entire subdomain.
-!--       This should lead to better load balance between boundary and non-boundary PEs.
-          IF( non_cyclic_l  .AND.  i <= nxl + 2  .OR.                                              &
-              non_cyclic_r  .AND.  i >= nxr - 2  .OR.                                              &
-              non_cyclic_s  .AND.  j <= nys + 2  .OR.                                              &
-              non_cyclic_n  .AND.  j >= nyn - 2 )  THEN
-             nzb_max_l = nzt
-          ELSE
-             nzb_max_l = nzb_max
-          END IF
-!
-!--       Compute southside fluxes of the respective PE bounds.
-          IF ( j == nys )  THEN
-!
-!--          Up to the top of the highest topography.
-             DO  k = nzb+1, nzb_max_l
-
-                ibit5 = REAL( IBITS(advc_flag(k,j-1,i),5,1), KIND = wp )
-                ibit4 = REAL( IBITS(advc_flag(k,j-1,i),4,1), KIND = wp )
-                ibit3 = REAL( IBITS(advc_flag(k,j-1,i),3,1), KIND = wp )
-!
-!--             Multiply Stokes velocity with topography flags to avoid possible fluxes at walls.
-                v_comp                  = v(k,j,i) - v_gtrans + v_stokes_zu(k)                     &
-                                          * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 2 ) )
-                swap_flux_y_local(k)    = v_comp *         (                                       &
-                                             ( 37.0_wp * ibit5 * adv_sca_5                         &
-                                          +     7.0_wp * ibit4 * adv_sca_3                         &
-                                          +              ibit3 * adv_sca_1                         &
-                                             ) *                                                   &
-                                             ( s1(k,j,i)   + s1(k,j-1,i)    )                      &
-                                          -  (  8.0_wp * ibit5 * adv_sca_5                         &
-                                          +              ibit4 * adv_sca_3                         &
-                                             ) *                                                   &
-                                             ( s1(k,j+1,i) + s1(k,j-2,i)    )                      &
-                                          +  (           ibit5 * adv_sca_5                         &
-                                             ) *                                                   &
-                                             ( s1(k,j+2,i) + s1(k,j-3,i)    )                      &
-                                                           )
-
-                swap_diss_y_local(k)    = -ABS( v_comp ) * (                                       &
-                                            ( 10.0_wp * ibit5 * adv_sca_5                          &
-                                          +    3.0_wp * ibit4 * adv_sca_3                          &
-                                          +             ibit3 * adv_sca_1                          &
-                                            ) *                                                    &
-                                            ( s1(k,j,i)   - s1(k,j-1,i)  )                         &
-                                          - (  5.0_wp * ibit5 * adv_sca_5                          &
-                                          +             ibit4 * adv_sca_3                          &
-                                            ) *                                                    &
-                                            ( s1(k,j+1,i) - s1(k,j-2,i)  )                         &
-                                          + (           ibit5 * adv_sca_5                          &
-                                            ) *                                                    &
-                                            ( s1(k,j+2,i) - s1(k,j-3,i)  )                         &
-                                                           )
-
-             ENDDO
-!
-!--          Above to the top of the highest topography. No degradation necessary.
-             DO  k = nzb_max_l+1, nzt
-
-                v_comp                  = v(k,j,i) - v_gtrans + v_stokes_zu(k)
-                swap_flux_y_local(k)    = v_comp * (                                               &
-                                            37.0_wp * ( s1(k,j,i)   + s1(k,j-1,i) )                &
-                                          -  8.0_wp * ( s1(k,j+1,i) + s1(k,j-2,i) )                &
-                                          +           ( s1(k,j+2,i) + s1(k,j-3,i) )                &
-                                                   ) * adv_sca_5
-                swap_diss_y_local(k)    = -ABS( v_comp ) * (                                       &
-                                            10.0_wp * ( s1(k,j,i)   - s1(k,j-1,i) )                &
-                                          -  5.0_wp * ( s1(k,j+1,i) - s1(k,j-2,i) )                &
-                                          +             s1(k,j+2,i) - s1(k,j-3,i)                  &
-                                                           ) * adv_sca_5
-
-             ENDDO
-
-          ENDIF
-!
-!--       Now compute the fluxes and tendency terms for the horizontal and vertical parts up to the
-!--       top of the highest topography.
-          DO  k = nzb+1, nzb_max_l
-             ibit5 = REAL( IBITS(advc_flag(k,j,i),5,1), KIND = wp )
-             ibit4 = REAL( IBITS(advc_flag(k,j,i),4,1), KIND = wp )
-             ibit3 = REAL( IBITS(advc_flag(k,j,i),3,1), KIND = wp )
-!
-!--          Multiply Stokes velocity with topography flags to avoid possible fluxes at walls.
-             v_comp    = v(k,j+1,i) - v_gtrans + v_stokes_zu(k)                                    &
-                         * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j+1,i), 2 ) )
-             flux_n(k) = v_comp * (                                                                &
-                         (  37.0_wp * ibit5 * adv_sca_5                                            &
-                         +   7.0_wp * ibit4 * adv_sca_3                                            &
-                         +            ibit3 * adv_sca_1 ) * ( s1(k,j+1,i) + s1(k,j,i)   )          &
-                         - ( 8.0_wp * ibit5 * adv_sca_5                                            &
-                         +            ibit4 * adv_sca_3 ) * ( s1(k,j+2,i) + s1(k,j-1,i) )          &
-                         + (          ibit5 * adv_sca_5 ) * ( s1(k,j+3,i) + s1(k,j-2,i) )          &
-                                  )
-
-             diss_n(k) = -ABS( v_comp ) * (                                                        &
-                         (  10.0_wp * ibit5 * adv_sca_5                                            &
-                         +   3.0_wp * ibit4 * adv_sca_3                                            &
-                         +            ibit3 * adv_sca_1 ) * ( s1(k,j+1,i) - s1(k,j,i)   )          &
-                         - ( 5.0_wp * ibit5 * adv_sca_5                                            &
-                         +            ibit4 * adv_sca_3 ) * ( s1(k,j+2,i) - s1(k,j-1,i) )          &
-                         + (          ibit5 * adv_sca_5 ) * ( s1(k,j+3,i) - s1(k,j-2,i) )          &
-                                          )
-!
-!--          Component-wise divergence correction. Therefore, compute temporay new solution using
-!--          an Euler scheme with only advection along y (attention: conditionally unstable
-!--          with WS-scheme!).
-             d_new = d(k,j,i) - ( v(k,j+1,i) - v(k,j,i) ) * dt_3d * ddy
-
-             tendcy = - ( flux_n(k)            + diss_n(k) - (                                     &
-                          swap_flux_y_local(k) + swap_diss_y_local(k) ) ) * ddy
-
-             s2(k,j,i) = ( ( 1.0_wp + d(k,j,i) ) * s1(k,j,i) + tendcy * dt_3d ) / ( 1.0_wp + d_new )
-
-             d(k,j,i) = d_new
-
-             swap_flux_y_local(k)   = flux_n(k)
-             swap_diss_y_local(k)   = diss_n(k)
-          ENDDO
-
-          DO  k = nzb_max_l+1, nzt
-
-             v_comp    = v(k,j+1,i) - v_gtrans + v_stokes_zu(k)
-             flux_n(k) = v_comp * (                                                                &
-                           37.0_wp * ( s1(k,j+1,i) + s1(k,j,i)   )                                 &
-                         -  8.0_wp * ( s1(k,j+2,i) + s1(k,j-1,i) )                                 &
-                         +           ( s1(k,j+3,i) + s1(k,j-2,i) ) ) * adv_sca_5
-             diss_n(k) = -ABS( v_comp ) * (                                                        &
-                           10.0_wp * ( s1(k,j+1,i) - s1(k,j,i)   )                                 &
-                         -  5.0_wp * ( s1(k,j+2,i) - s1(k,j-1,i) )                                 &
-                         +           ( s1(k,j+3,i) - s1(k,j-2,i) ) ) * adv_sca_5
-!
-!--          Component-wise divergence correction. Therefore, compute temporay new solution using
-!--          an Euler scheme with only advection along y (attention: conditionally unstable
-!--          with WS-scheme!).
-             d_new = d(k,j,i) - ( v(k,j+1,i) - v(k,j,i) ) * dt_3d * ddy
-
-             tendcy = - ( flux_n(k)            + diss_n(k) - (                                     &
-                          swap_flux_y_local(k) + swap_diss_y_local(k) ) ) * ddy
-
-             s2(k,j,i) = ( ( 1.0_wp + d(k,j,i) ) * s1(k,j,i) + tendcy * dt_3d ) / ( 1.0_wp + d_new )
-
-             d(k,j,i) = d_new
-
-             swap_flux_y_local(k)   = flux_n(k)
-             swap_diss_y_local(k)   = diss_n(k)
-          ENDDO
-
-       ENDDO
-    ENDDO
-
-    CALL exchange_horiz( s2, nbgp )
-
-    s1 => sk_t1
-    s2 => sk_t2
-
-    DO  i = nxl, nxr
-       DO  j = nys, nyn
-!
-!--       Now, compute vertical fluxes. Split loop into a part treating the lowest grid points with
-!--       indirect indexing, a main loop without indirect indexing, and a loop for the uppermost
-!--       grid points with indirect indexing. This allows better vectorization for the main loop.
-!--       First, compute the flux at model surface, which need has to be calculated explicetely for
-!--       the tendency at the first w-level. For topography wall this is done implicitely by
-!--       advc_flag.
-          flux_t(nzb) = 0.0_wp
-          diss_t(nzb) = 0.0_wp
-
-          DO  k = nzb+1, nzb+1
-             ibit8 = REAL( IBITS(advc_flag(k,j,i),8,1), KIND = wp )
-             ibit7 = REAL( IBITS(advc_flag(k,j,i),7,1), KIND = wp )
-             ibit6 = REAL( IBITS(advc_flag(k,j,i),6,1), KIND = wp )
-
-             k_ppp = k + 3 * ibit8
-             k_pp  = k + 2 * ( 1 - ibit6  )
-             k_mm  = k - 2 * ibit8
-
-             flux_t(k) = w(k,j,i) * rho_air_zw(k) * (                                              &
-                         (  37.0_wp * ibit8 * adv_sca_5                                            &
-                         +   7.0_wp * ibit7 * adv_sca_3                                            &
-                         +            ibit6 * adv_sca_1 ) * ( s1(k+1,j,i)   + s1(k,j,i)    )       &
-                         - ( 8.0_wp * ibit8 * adv_sca_5                                            &
-                         +            ibit7 * adv_sca_3 ) * ( s1(k_pp,j,i)  + s1(k-1,j,i)  )       &
-                         + (          ibit8 * adv_sca_5 ) * ( s1(k_ppp,j,i) + s1(k_mm,j,i) )       &
-                                                    )
-
-             diss_t(k) = -ABS( w(k,j,i) ) * rho_air_zw(k) * (                                      &
-                         (  10.0_wp * ibit8 * adv_sca_5                                            &
-                         +   3.0_wp * ibit7 * adv_sca_3                                            &
-                         +            ibit6 * adv_sca_1 ) * ( s1(k+1,j,i)   - s1(k,j,i)    )       &
-                         - ( 5.0_wp * ibit8 * adv_sca_5                                            &
-                         +            ibit7 * adv_sca_3 ) * ( s1(k_pp,j,i)  - s1(k-1,j,i)  )       &
-                         + (          ibit8 * adv_sca_5 ) * ( s1(k_ppp,j,i) - s1(k_mm,j,i) )       &
-                                                            )
-          ENDDO
-
-          DO  k = nzb+2, nzt-2
-             ibit8 = REAL( IBITS(advc_flag(k,j,i),8,1), KIND = wp )
-             ibit7 = REAL( IBITS(advc_flag(k,j,i),7,1), KIND = wp )
-             ibit6 = REAL( IBITS(advc_flag(k,j,i),6,1), KIND = wp )
-
-             flux_t(k) = w(k,j,i) * rho_air_zw(k) * (                                              &
-                         (  37.0_wp * ibit8 * adv_sca_5                                            &
-                         +   7.0_wp * ibit7 * adv_sca_3                                            &
-                         +            ibit6 * adv_sca_1 ) * ( s1(k+1,j,i) + s1(k,j,i)   )          &
-                         - ( 8.0_wp * ibit8 * adv_sca_5                                            &
-                         +            ibit7 * adv_sca_3 ) * ( s1(k+2,j,i) + s1(k-1,j,i) )          &
-                         + (          ibit8 * adv_sca_5 ) * ( s1(k+3,j,i) + s1(k-2,j,i) )          &
-                                                    )
-
-             diss_t(k) = -ABS( w(k,j,i) ) * rho_air_zw(k) * (                                      &
-                         (  10.0_wp * ibit8 * adv_sca_5                                            &
-                         +   3.0_wp * ibit7 * adv_sca_3                                            &
-                         +            ibit6 * adv_sca_1 ) * ( s1(k+1,j,i) - s1(k,j,i)    )         &
-                         - ( 5.0_wp * ibit8 * adv_sca_5                                            &
-                         +            ibit7 * adv_sca_3 ) * ( s1(k+2,j,i) - s1(k-1,j,i)  )         &
-                         + (          ibit8 * adv_sca_5 ) * ( s1(k+3,j,i) - s1(k-2,j,i) )          &
-                                                            )
-          ENDDO
-
-          DO  k = nzt-1, nzt-symmetry_flag
-             ibit8 = REAL( IBITS(advc_flag(k,j,i),8,1), KIND = wp )
-             ibit7 = REAL( IBITS(advc_flag(k,j,i),7,1), KIND = wp )
-             ibit6 = REAL( IBITS(advc_flag(k,j,i),6,1), KIND = wp )
-!
-!--          k index needs to be modified near bottom and top, else array subscripts will be
-!--          exceeded. (k_ppp = k+3, k_mm = k) if 5th order scheme is employed, else
-!--          (k_ppp = k, k_mm = k). Special treatment is required for k_pp. This must be limited
-!--          at k = nzt, where either the first order scheme is employed (ibit6), or all bit flags
-!--          are zero (in case there is a rigid lid defined at or near the domain top).
-             k_ppp = k + 3 * ibit8
-             k_pp  = k + 2 * ( 1 - ibit6  ) * ( ibit6 + ibit7 + ibit8 )
-             k_mm  = k - 2 * ibit8
-
-             flux_t(k) = w(k,j,i) * rho_air_zw(k) * (                                              &
-                         (  37.0_wp * ibit8 * adv_sca_5                                            &
-                         +   7.0_wp * ibit7 * adv_sca_3                                            &
-                         +            ibit6 * adv_sca_1 ) * ( s1(k+1,j,i)  + s1(k,j,i)    )        &
-                         - ( 8.0_wp * ibit8 * adv_sca_5                                            &
-                         +            ibit7 * adv_sca_3 ) * ( s1(k_pp,j,i) + s1(k-1,j,i)  )        &
-                         + (          ibit8 * adv_sca_5 ) * ( s1(k_ppp,j,i)+ s1(k_mm,j,i) )        &
-                                                    )
-
-             diss_t(k) = -ABS( w(k,j,i) ) * rho_air_zw(k) * (                                      &
-                         (  10.0_wp * ibit8 * adv_sca_5                                            &
-                         +   3.0_wp * ibit7 * adv_sca_3                                            &
-                         +            ibit6 * adv_sca_1 ) * ( s1(k+1,j,i)   - s1(k,j,i)    )       &
-                         - ( 5.0_wp * ibit8 * adv_sca_5                                            &
-                         +            ibit7 * adv_sca_3 ) * ( s1(k_pp,j,i)  - s1(k-1,j,i)  )       &
-                         + (          ibit8 * adv_sca_5 ) * ( s1(k_ppp,j,i) - s1(k_mm,j,i) )       &
-                                                            )
-          ENDDO
-!
-!--       Set resolved/turbulent flux at model top to zero (w-level). In case that a symmetric
-!--       behavior between bottom and top shall be guaranteed (closed channel flow), the flux at nzt
-!--       is also set to zero.
-          IF ( symmetry_flag == 1 ) THEN
-             flux_t(nzt) = 0.0_wp
-             diss_t(nzt) = 0.0_wp
-          ENDIF
-          flux_t(nzt+1) = 0.0_wp
-          diss_t(nzt+1) = 0.0_wp
-!
-!--       Component-wise divergence correction. Therefore, compute temporay new solution using
-!--       an Euler scheme with only advection along y (attention: conditionally unstable
-!--       with WS-scheme!).
-          DO  k = nzb+1, nzt
-             d_new = d(k,j,i) - ( w(k,j,i) * rho_air_zw(k) - w(k-1,j,i) * rho_air_zw(k-1) )         &
-                              * drho_air(k) * ddzw(k) * dt_3d
-
-             tendcy = -( flux_t(k)   + diss_t(k) - (                                                &
-                         flux_t(k-1) + diss_t(k-1) ) ) * ddzw(k) * drho_air(k)
-
-             s2(k,j,i) = ( ( 1.0_wp + d(k,j,i) ) * s1(k,j,i) + tendcy * dt_3d ) / ( 1.0_wp + d_new )
-             d(k,j,i) = d_new
-          ENDDO
-!
-!--       Evaluation of statistics.
-          DO  k = nzb+1, nzt
-             SELECT CASE ( sk_num )
-
-                CASE ( 1 )
-                   sums_wspts_ws_l(k,tn) = sums_wspts_ws_l(k,tn) +                                 &
-                                           ( flux_t(k)                                             &
-                                               / ( w(k,j,i) + SIGN( 1.0E-20_wp, w(k,j,i) ) )       &
-                                               * ( w(k,j,i) - hom(k,1,3,0)                 )       &
-                                           + diss_t(k)                                             &
-                                               / ( ABS(w(k,j,i)) + 1.0E-20_wp              )       &
-                                               *   ABS(w(k,j,i)  - hom(k,1,3,0)            )       &
-                                           ) * weight_substep(intermediate_timestep_count)
-                CASE ( 2 )
-                   sums_wssas_ws_l(k,tn) = sums_wssas_ws_l(k,tn) +                                 &
-                                           ( flux_t(k)                                             &
-                                               / ( w(k,j,i) + SIGN( 1.0E-20_wp, w(k,j,i) ) )       &
-                                               * ( w(k,j,i) - hom(k,1,3,0)                 )       &
-                                           + diss_t(k)                                             &
-                                               / ( ABS(w(k,j,i)) + 1.0E-20_wp              )       &
-                                               *   ABS(w(k,j,i)  - hom(k,1,3,0)            )       &
-                                           ) * weight_substep(intermediate_timestep_count)
-                CASE ( 3 )
-                   sums_wsqs_ws_l(k,tn)  = sums_wsqs_ws_l(k,tn) +                                  &
-                                           ( flux_t(k)                                             &
-                                               / ( w(k,j,i) + SIGN( 1.0E-20_wp, w(k,j,i) ) )       &
-                                               * ( w(k,j,i) - hom(k,1,3,0)                 )       &
-                                           + diss_t(k)                                             &
-                                               / ( ABS(w(k,j,i)) + 1.0E-20_wp              )       &
-                                               *   ABS(w(k,j,i)  - hom(k,1,3,0)            )       &
-                                           ) * weight_substep(intermediate_timestep_count)
-                CASE ( 4 )
-                   sums_wsqcs_ws_l(k,tn)  = sums_wsqcs_ws_l(k,tn) +                                &
-                                            ( flux_t(k)                                            &
-                                                / ( w(k,j,i) + SIGN( 1.0E-20_wp, w(k,j,i) ) )      &
-                                                * ( w(k,j,i) - hom(k,1,3,0)                 )      &
-                                            + diss_t(k)                                            &
-                                                / ( ABS(w(k,j,i)) + 1.0E-20_wp              )      &
-                                                *   ABS(w(k,j,i)  - hom(k,1,3,0)            )      &
-                                            ) * weight_substep(intermediate_timestep_count)
-                CASE ( 5 )
-                   sums_wsqrs_ws_l(k,tn)  = sums_wsqrs_ws_l(k,tn) +                                &
-                                            ( flux_t(k)                                            &
-                                                / ( w(k,j,i) + SIGN( 1.0E-20_wp, w(k,j,i) ) )      &
-                                                * ( w(k,j,i) - hom(k,1,3,0)                 )      &
-                                            + diss_t(k)                                            &
-                                                / ( ABS(w(k,j,i)) + 1.0E-20_wp              )      &
-                                                *   ABS(w(k,j,i)  - hom(k,1,3,0)            )      &
-                                            ) * weight_substep(intermediate_timestep_count)
-                CASE ( 6 )
-                   sums_wsncs_ws_l(k,tn)  = sums_wsncs_ws_l(k,tn) +                                &
-                                            ( flux_t(k)                                            &
-                                                / ( w(k,j,i) + SIGN( 1.0E-20_wp, w(k,j,i) ) )      &
-                                                * ( w(k,j,i) - hom(k,1,3,0)                 )      &
-                                            + diss_t(k)                                            &
-                                                / ( ABS(w(k,j,i)) + 1.0E-20_wp              )      &
-                                                *   ABS(w(k,j,i)  - hom(k,1,3,0)            )      &
-                                            ) * weight_substep(intermediate_timestep_count)
-                CASE ( 7 )
-                   sums_wsnrs_ws_l(k,tn)  = sums_wsnrs_ws_l(k,tn) +                                &
-                                            ( flux_t(k)                                            &
-                                                / ( w(k,j,i) + SIGN( 1.0E-20_wp, w(k,j,i) ) )      &
-                                                * ( w(k,j,i) - hom(k,1,3,0)                 )      &
-                                            + diss_t(k)                                            &
-                                                / ( ABS(w(k,j,i)) + 1.0E-20_wp              )      &
-                                                *   ABS(w(k,j,i)  - hom(k,1,3,0)            )      &
-                                            ) * weight_substep(intermediate_timestep_count)
-                CASE ( 8 )
-                   sums_wsss_ws_l(k,tn)  = sums_wsss_ws_l(k,tn) +                                  &
-                                           ( flux_t(k)                                             &
-                                               / ( w(k,j,i) + SIGN( 1.0E-20_wp, w(k,j,i) ) )       &
-                                               * ( w(k,j,i) - hom(k,1,3,0)                 )       &
-                                           + diss_t(k)                                             &
-                                               / ( ABS(w(k,j,i)) + 1.0E-20_wp              )       &
-                                               *   ABS(w(k,j,i) - hom(k,1,3,0)             )       &
-                                           ) * weight_substep(intermediate_timestep_count)
-                CASE ( 9 )
-                   sums_salsa_ws_l(k,tn)  = sums_salsa_ws_l(k,tn) +                                &
-                                            ( flux_t(k)                                            &
-                                                / ( w(k,j,i) + SIGN( 1.0E-20_wp, w(k,j,i) ) )      &
-                                                * ( w(k,j,i) - hom(k,1,3,0)                 )      &
-                                            + diss_t(k)                                            &
-                                                / ( ABS(w(k,j,i)) + 1.0E-20_wp              )      &
-                                                *   ABS(w(k,j,i)  - hom(k,1,3,0)            )      &
-                                            ) * weight_substep(intermediate_timestep_count)
-                CASE ( 10 )
-                   sums_wsnis_ws_l(k,tn)  = sums_wsnis_ws_l(k,tn) +                                &
-                                            ( flux_t(k)                                            &
-                                                / ( w(k,j,i) + SIGN( 1.0E-20_wp, w(k,j,i) ) )      &
-                                                * ( w(k,j,i) - hom(k,1,3,0)                 )      &
-                                            + diss_t(k)                                            &
-                                                / ( ABS(w(k,j,i)) + 1.0E-20_wp              )      &
-                                                *   ABS(w(k,j,i) - hom(k,1,3,0)             )      &
-                                            ) * weight_substep(intermediate_timestep_count)
-                CASE ( 11 )
-                   sums_wsqis_ws_l(k,tn)  = sums_wsqis_ws_l(k,tn) +                                &
-                                            ( flux_t(k)                                            &
-                                                / ( w(k,j,i) + SIGN( 1.0E-20_wp, w(k,j,i) ) )      &
-                                                * ( w(k,j,i) - hom(k,1,3,0)                 )      &
-                                            + diss_t(k)                                            &
-                                                / ( ABS(w(k,j,i)) + 1.0E-20_wp              )      &
-                                                *   ABS(w(k,j,i) - hom(k,1,3,0)             )      &
-                                            ) * weight_substep(intermediate_timestep_count)
-                CASE ( 12 )
-                   sums_wsngs_ws_l(k,tn)  = sums_wsngs_ws_l(k,tn) +                                &
-                                            ( flux_t(k)                                            &
-                                                / ( w(k,j,i) + SIGN( 1.0E-20_wp, w(k,j,i) ) )      &
-                                                * ( w(k,j,i) - hom(k,1,3,0)                 )      &
-                                            + diss_t(k)                                            &
-                                                / ( ABS(w(k,j,i)) + 1.0E-20_wp              )      &
-                                                *   ABS(w(k,j,i) - hom(k,1,3,0)             )      &
-                                            ) * weight_substep(intermediate_timestep_count)
-                CASE ( 13 )
-                   sums_wsqgs_ws_l(k,tn)  = sums_wsqgs_ws_l(k,tn) +                                &
-                                            ( flux_t(k)                                            &
-                                                / ( w(k,j,i) + SIGN( 1.0E-20_wp, w(k,j,i) ) )      &
-                                                * ( w(k,j,i) - hom(k,1,3,0)                 )      &
-                                            + diss_t(k)                                            &
-                                                / ( ABS(w(k,j,i)) + 1.0E-20_wp              )      &
-                                                *   ABS(w(k,j,i) - hom(k,1,3,0)             )      &
-                                            ) * weight_substep(intermediate_timestep_count)
-
-                CASE ( 14 )
-                   sums_wsnss_ws_l(k,tn)  = sums_wsnss_ws_l(k,tn) +                                &
-                                            ( flux_t(k)                                            &
-                                                / ( w(k,j,i) + SIGN( 1.0E-20_wp, w(k,j,i) ) )      &
-                                                * ( w(k,j,i) - hom(k,1,3,0)                 )      &
-                                            + diss_t(k)                                            &
-                                                / ( ABS(w(k,j,i)) + 1.0E-20_wp              )      &
-                                                *   ABS(w(k,j,i) - hom(k,1,3,0)             )      &
-                                            ) * weight_substep(intermediate_timestep_count)
-                CASE ( 15 )
-                   sums_wsqss_ws_l(k,tn)  = sums_wsqss_ws_l(k,tn) +                                &
-                                            ( flux_t(k)                                            &
-                                                / ( w(k,j,i) + SIGN( 1.0E-20_wp, w(k,j,i) ) )      &
-                                                * ( w(k,j,i) - hom(k,1,3,0)                 )      &
-                                            + diss_t(k)                                            &
-                                                / ( ABS(w(k,j,i)) + 1.0E-20_wp              )      &
-                                                *   ABS(w(k,j,i) - hom(k,1,3,0)             )      &
-                                            ) * weight_substep(intermediate_timestep_count)
-
-             END SELECT
-
-          ENDDO
-
-       ENDDO
-    ENDDO
-!
-!-- Re-calculate tendency term which is further used within the RK time-integration.
-    DO  i = nxl, nxr
-       DO  j = nys, nyn
-          DO  k = nzb+1, nzt
-              tend(k,j,i) = ( s2(k,j,i) - sk(k,j,i) ) / dt_3d
-          ENDDO
-       ENDDO
-    ENDDO
-
-    CALL cpu_log( log_point_s(49), 'advec_s_ws_div_bc', 'stop' )
-
- END SUBROUTINE advec_s_ws_div_bc
-
-!--------------------------------------------------------------------------------------------------!
-! Description:
-! ------------
 !> Advection of u - Call for all grid points
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE advec_u_ws
@@ -5204,14 +4351,14 @@
                                + (          ibit5 * adv_mom_5 ) * ( u(k,j+2,i) + u(k,j-3,i) )      &
                                             )
 
-                diss_s_u(k,tn) = -ABS ( v_comp_s ) * (                                             &
+                diss_s_u(k,tn) = - ABS ( v_comp_s ) * (                                            &
                                (  10.0_wp * ibit5 * adv_mom_5                                      &
                                +   3.0_wp * ibit4 * adv_mom_3                                      &
                                +            ibit3 * adv_mom_1 ) * ( u(k,j,i)   - u(k,j-1,i) )      &
                                - ( 5.0_wp * ibit5 * adv_mom_5                                      &
                                +            ibit4 * adv_mom_3 ) * ( u(k,j+1,i) - u(k,j-2,i) )      &
                                + (          ibit5 * adv_mom_5 ) * ( u(k,j+2,i) - u(k,j-3,i) )      &
-                                                     )
+                                                      )
 
              ENDDO
 
@@ -5222,7 +4369,7 @@
                                  37.0_wp * ( u(k,j,i)   + u(k,j-1,i) )                             &
                                -  8.0_wp * ( u(k,j+1,i) + u(k,j-2,i) )                             &
                                +           ( u(k,j+2,i) + u(k,j-3,i) ) ) * adv_mom_5
-                diss_s_u(k,tn) = -ABS( v_comp_s ) * (                                              &
+                diss_s_u(k,tn) = - ABS( v_comp_s ) * (                                             &
                                  10.0_wp * ( u(k,j,i)   - u(k,j-1,i) )                             &
                                -  5.0_wp * ( u(k,j+1,i) - u(k,j-2,i) )                             &
                                +           ( u(k,j+2,i) - u(k,j-3,i) ) ) * adv_mom_5
@@ -5250,14 +4397,14 @@
                                  + (          ibit2 * adv_mom_5 ) * ( u(k,j,i+2) + u(k,j,i-3) )    &
                                               )
 
-                diss_l_u(k,j,tn) = -ABS( u_comp_l ) * (                                            &
+                diss_l_u(k,j,tn) = - ABS( u_comp_l ) * (                                           &
                                  (  10.0_wp * ibit2 * adv_mom_5                                    &
                                  +   3.0_wp * ibit1 * adv_mom_3                                    &
                                  +           ibit0  * adv_mom_1 ) * ( u(k,j,i)   - u(k,j,i-1) )    &
                                  - ( 5.0_wp * ibit2 * adv_mom_5                                    &
                                  +            ibit1 * adv_mom_3 ) * ( u(k,j,i+1) - u(k,j,i-2) )    &
                                  + (          ibit2 * adv_mom_5 ) * ( u(k,j,i+2) - u(k,j,i-3) )    &
-                                                      )
+                                                       )
 
              ENDDO
 
@@ -5268,7 +4415,7 @@
                                      37.0_wp * ( u(k,j,i)   + u(k,j,i-1) )                         &
                                    -  8.0_wp * ( u(k,j,i+1) + u(k,j,i-2) )                         &
                                    +           ( u(k,j,i+2) + u(k,j,i-3) ) ) * adv_mom_5
-                diss_l_u(k,j,tn) = -ABS(u_comp_l) * (                                              &
+                diss_l_u(k,j,tn) = - ABS(u_comp_l) * (                                             &
                                      10.0_wp * ( u(k,j,i)   - u(k,j,i-1) )                         &
                                    -  5.0_wp * ( u(k,j,i+1) - u(k,j,i-2) )                         &
                                    +           ( u(k,j,i+2) - u(k,j,i-3) ) ) * adv_mom_5
@@ -5296,14 +4443,14 @@
                          + (          ibit2 * adv_mom_5 ) * ( u(k,j,i+3) + u(k,j,i-2) )            &
                                               )
 
-             diss_r(k) = -ABS( u_comp(k) - gu ) * (                                                &
+             diss_r(k) = - ABS( u_comp(k) - gu ) * (                                               &
                          (  10.0_wp * ibit2 * adv_mom_5                                            &
                          +   3.0_wp * ibit1 * adv_mom_3                                            &
                          +            ibit0 * adv_mom_1 ) * ( u(k,j,i+1) - u(k,j,i)   )            &
                          - ( 5.0_wp * ibit2 * adv_mom_5                                            &
                          +            ibit1 * adv_mom_3 ) * ( u(k,j,i+2) - u(k,j,i-1) )            &
                          + (          ibit2 * adv_mom_5 ) * ( u(k,j,i+3) - u(k,j,i-2) )            &
-                                                  )
+                                                   )
 
 #ifdef _OPENACC
 !
@@ -5322,14 +4469,14 @@
                                  + (          ibit2_l * adv_mom_5 ) * ( u(k,j,i+2) + u(k,j,i-3) )  &
                                             )
 
-             diss_l_u(k,j,tn)  = -ABS( u_comp_l ) * (                                              &
+             diss_l_u(k,j,tn)  = - ABS( u_comp_l ) * (                                             &
                                  (  10.0_wp * ibit2_l * adv_mom_5                                  &
                                  +   3.0_wp * ibit1_l * adv_mom_3                                  &
                                  +           ibit0_l  * adv_mom_1 ) * ( u(k,j,i)   - u(k,j,i-1) )  &
                                  - ( 5.0_wp * ibit2_l * adv_mom_5                                  &
                                  +            ibit1_l * adv_mom_3 ) * ( u(k,j,i+1) - u(k,j,i-2) )  &
                                  + (          ibit2_l * adv_mom_5 ) * ( u(k,j,i+2) - u(k,j,i-3) )  &
-                                                    )
+                                                     )
 #endif
 
 
@@ -5347,14 +4494,14 @@
                          + (          ibit5 * adv_mom_5 ) * ( u(k,j+3,i) + u(k,j-2,i) )            &
                                      )
 
-             diss_n(k) = -ABS ( v_comp(k) ) * (                                                    &
+             diss_n(k) = - ABS ( v_comp(k) ) * (                                                   &
                          (  10.0_wp * ibit5 * adv_mom_5                                            &
                          +   3.0_wp * ibit4 * adv_mom_3                                            &
                          +            ibit3 * adv_mom_1 ) * ( u(k,j+1,i) - u(k,j,i)   )            &
                          - ( 5.0_wp * ibit5 * adv_mom_5                                            &
                          +            ibit4 * adv_mom_3 ) * ( u(k,j+2,i) - u(k,j-1,i) )            &
                          + (          ibit5 * adv_mom_5 ) * ( u(k,j+3,i) - u(k,j-2,i) )            &
-                                              )
+                                               )
 
 #ifdef _OPENACC
 !
@@ -5373,14 +4520,14 @@
                                 + (          ibit5_s * adv_mom_5 ) * ( u(k,j+2,i) + u(k,j-3,i) )   &
                                            )
 
-             diss_s_u(k,tn)   = -ABS ( v_comp_s ) * (                                              &
+             diss_s_u(k,tn)   = - ABS ( v_comp_s ) * (                                             &
                                 (  10.0_wp * ibit5_s * adv_mom_5                                   &
                                 +   3.0_wp * ibit4_s * adv_mom_3                                   &
                                 +            ibit3_s * adv_mom_1 ) * ( u(k,j,i)   - u(k,j-1,i) )   &
                                 - ( 5.0_wp * ibit5_s * adv_mom_5                                   &
                                 +            ibit4_s * adv_mom_3 ) * ( u(k,j+1,i) - u(k,j-2,i) )   &
                                 + (          ibit5_s * adv_mom_5 ) * ( u(k,j+2,i) - u(k,j-3,i) )   &
-                                                    )
+                                                     )
 #endif
           ENDDO
 
@@ -5391,7 +4538,7 @@
                             37.0_wp * ( u(k,j,i+1) + u(k,j,i)   )                                  &
                          -   8.0_wp * ( u(k,j,i+2) + u(k,j,i-1) )                                  &
                          +           ( u(k,j,i+3) + u(k,j,i-2) ) ) * adv_mom_5
-             diss_r(k) = -ABS( u_comp(k) - gu ) * (                                                &
+             diss_r(k) = - ABS( u_comp(k) - gu ) * (                                               &
                             10.0_wp * ( u(k,j,i+1) - u(k,j,i)   )                                  &
                           -  5.0_wp * ( u(k,j,i+2) - u(k,j,i-1) )                                  &
                           +           ( u(k,j,i+3) - u(k,j,i-2) ) ) * adv_mom_5
@@ -5403,7 +4550,7 @@
                                     37.0_wp * ( u(k,j,i) + u(k,j,i-1)   )                          &
                                   -  8.0_wp * ( u(k,j,i+1) + u(k,j,i-2) )                          &
                                   +           ( u(k,j,i+2) + u(k,j,i-3) ) ) * adv_mom_5
-             diss_l_u(k,j,tn)   = -ABS(u_comp_l) * (                                               &
+             diss_l_u(k,j,tn)   = - ABS(u_comp_l) * (                                              &
                                     10.0_wp * ( u(k,j,i) - u(k,j,i-1)   )                          &
                                   -  5.0_wp * ( u(k,j,i+1) - u(k,j,i-2) )                          &
                                   +           ( u(k,j,i+2) - u(k,j,i-3) ) ) * adv_mom_5
@@ -5414,7 +4561,7 @@
                             37.0_wp * ( u(k,j+1,i) + u(k,j,i)   )                                  &
                          -   8.0_wp * ( u(k,j+2,i) + u(k,j-1,i) )                                  &
                          +            ( u(k,j+3,i) + u(k,j-2,i) ) ) * adv_mom_5
-             diss_n(k) = -ABS( v_comp(k) ) * (                                                     &
+             diss_n(k) = - ABS( v_comp(k) ) * (                                                    &
                             10.0_wp * ( u(k,j+1,i) - u(k,j,i)   )                                  &
                          -   5.0_wp * ( u(k,j+2,i) - u(k,j-1,i) )                                  &
                          +            ( u(k,j+3,i) - u(k,j-2,i) ) ) * adv_mom_5
@@ -5426,7 +4573,7 @@
                                   37.0_wp * ( u(k,j,i) + u(k,j-1,i)   )                            &
                                 -  8.0_wp * ( u(k,j+1,i) + u(k,j-2,i) )                            &
                                 +           ( u(k,j+2,i) + u(k,j-3,i) ) ) * adv_mom_5
-             diss_s_u(k,tn)   = -ABS( v_comp_s ) * (                                               &
+             diss_s_u(k,tn)   = - ABS( v_comp_s ) * (                                              &
                                    10.0_wp * ( u(k,j,i) - u(k,j-1,i)   )                           &
                                 -   5.0_wp * ( u(k,j+1,i) - u(k,j-2,i) )                           &
                                 +            ( u(k,j+2,i) - u(k,j-3,i) ) ) * adv_mom_5
@@ -5463,14 +4610,14 @@
                         + (          ibit8 * adv_mom_5 ) * ( u(k_ppp,j,i) + u(k_mm,j,i) )          &
                                                      )
 
-             diss_t(k) = -ABS( w_comp(k) ) * rho_air_zw(k) * (                                     &
+             diss_t(k) = - ABS( w_comp(k) ) * rho_air_zw(k) * (                                    &
                         (  10.0_wp * ibit8 * adv_mom_5                                             &
                         +   3.0_wp * ibit7 * adv_mom_3                                             &
                         +            ibit6 * adv_mom_1 ) * ( u(k+1,j,i)   - u(k,j,i)    )          &
                         - ( 5.0_wp * ibit8 * adv_mom_5                                             &
                         +            ibit7 * adv_mom_3 ) * ( u(k_pp,j,i)  - u(k-1,j,i)  )          &
                         + (          ibit8 * adv_mom_5 ) * ( u(k_ppp,j,i) - u(k_mm,j,i) )          &
-                                                             )
+                                                              )
           ENDDO
 
           DO  k = nzb+2, nzt-2
@@ -5489,14 +4636,14 @@
                         + (          ibit8 * adv_mom_5 ) * ( u(k+3,j,i)  + u(k-2,j,i) )            &
                                                      )
 
-             diss_t(k) = -ABS( w_comp(k) ) * rho_air_zw(k) * (                                     &
+             diss_t(k) = - ABS( w_comp(k) ) * rho_air_zw(k) * (                                    &
                          (  10.0_wp * ibit8 * adv_mom_5                                            &
                          +   3.0_wp * ibit7 * adv_mom_3                                            &
                          +            ibit6 * adv_mom_1 ) * ( u(k+1,j,i)  - u(k,j,i)    )          &
                          - ( 5.0_wp * ibit8 * adv_mom_5                                            &
                          +            ibit7 * adv_mom_3 ) * ( u(k+2,j,i)  - u(k-1,j,i)  )          &
                          + (          ibit8 * adv_mom_5 ) * ( u(k+3,j,i)  - u(k-2,j,i)  )          &
-                                                             )
+                                                              )
           ENDDO
 
           DO  k = nzt-1, nzt-symmetry_flag
@@ -5505,14 +4652,9 @@
              ibit8 = REAL( IBITS(advc_flags_m(k,j,i),8,1), KIND = wp )
              ibit7 = REAL( IBITS(advc_flags_m(k,j,i),7,1), KIND = wp )
              ibit6 = REAL( IBITS(advc_flags_m(k,j,i),6,1), KIND = wp )
-!
-!--          k index needs to be modified near bottom and top, else array subscripts will be
-!--          exceeded. (k_ppp = k+3, k_mm = k) if 5th order scheme is employed, else
-!--          (k_ppp = k, k_mm = k). Special treatment is required for k_pp. This must be limited
-!--          at k = nzt, where either the first order scheme is employed (ibit6), or all bit flags
-!--          are zero (in case there is a rigid lid defined at or near the domain top).
+
              k_ppp = k + 3 * ibit8
-             k_pp  = k + 2 * ( 1 - ibit6 ) * ( ibit6 + ibit7 + ibit8 )
+             k_pp  = k + 2 * ( 1 - ibit6 )
              k_mm  = k - 2 * ibit8
 
              w_comp(k) = w(k,j,i) + w(k,j,i-1)
@@ -5525,14 +4667,14 @@
                          + (          ibit8 * adv_mom_5 ) * ( u(k_ppp,j,i) + u(k_mm,j,i) )         &
                                                      )
 
-             diss_t(k) = -ABS( w_comp(k) ) * rho_air_zw(k) * (                                     &
+             diss_t(k) = - ABS( w_comp(k) ) * rho_air_zw(k) * (                                    &
                          (  10.0_wp * ibit8 * adv_mom_5                                            &
                          +   3.0_wp * ibit7 * adv_mom_3                                            &
                          +            ibit6 * adv_mom_1 ) * ( u(k+1,j,i)   - u(k,j,i)    )         &
                          - ( 5.0_wp * ibit8 * adv_mom_5                                            &
                          +            ibit7 * adv_mom_3 ) * ( u(k_pp,j,i)  - u(k-1,j,i)  )         &
                          + (          ibit8 * adv_mom_5 ) * ( u(k_ppp,j,i) - u(k_mm,j,i) )         &
-                                                             )
+                                                              )
           ENDDO
 !
 !--       Set resolved/turbulent flux at model top to zero (w-level). In case that a symmetric
@@ -5804,14 +4946,14 @@
                                    + (          ibit11 * adv_mom_5 ) * ( v(k,j,i+2) + v(k,j,i-3) ) &
                                                )
 
-                diss_l_v(k,j,tn) = -ABS( u_comp(k) ) * (                                           &
+                diss_l_v(k,j,tn) = - ABS( u_comp(k) ) * (                                          &
                                    (  10.0_wp * ibit11 * adv_mom_5                                 &
                                    +   3.0_wp * ibit10 * adv_mom_3                                 &
                                    +             ibit9 * adv_mom_1 ) * ( v(k,j,i)   - v(k,j,i-1) ) &
                                    - ( 5.0_wp * ibit11 * adv_mom_5                                 &
                                    +            ibit10 * adv_mom_3 ) * ( v(k,j,i+1) - v(k,j,i-2) ) &
                                    + (          ibit11 * adv_mom_5 ) * ( v(k,j,i+2) - v(k,j,i-3) ) &
-                                                       )
+                                                        )
 
              ENDDO
 
@@ -5822,7 +4964,7 @@
                                      37.0_wp * ( v(k,j,i) + v(k,j,i-1)   )                         &
                                    -  8.0_wp * ( v(k,j,i+1) + v(k,j,i-2) )                         &
                                    +           ( v(k,j,i+2) + v(k,j,i-3) ) ) * adv_mom_5
-                diss_l_v(k,j,tn) = -ABS( u_comp(k) ) * (                                           &
+                diss_l_v(k,j,tn) = - ABS( u_comp(k) ) * (                                          &
                                      10.0_wp * ( v(k,j,i) - v(k,j,i-1)   )                         &
                                    -  5.0_wp * ( v(k,j,i+1) - v(k,j,i-2) )                         &
                                    +           ( v(k,j,i+2) - v(k,j,i-3) ) ) * adv_mom_5
@@ -5847,14 +4989,14 @@
                                  + (          ibit14 * adv_mom_5 ) * ( v(k,j+2,i) + v(k,j-3,i) )   &
                                              )
 
-                diss_s_v(k,tn) = -ABS( v_comp(k) ) * (                                             &
+                diss_s_v(k,tn) = - ABS( v_comp(k) ) * (                                            &
                                    (  10.0_wp * ibit14 * adv_mom_5                                 &
                                    +   3.0_wp * ibit13 * adv_mom_3                                 &
                                    +            ibit12 * adv_mom_1 ) * ( v(k,j,i)   - v(k,j-1,i) ) &
                                    - ( 5.0_wp * ibit14 * adv_mom_5                                 &
                                    +            ibit13 * adv_mom_3 ) * ( v(k,j+1,i) - v(k,j-2,i) ) &
                                    + (          ibit14 * adv_mom_5 ) * ( v(k,j+2,i) - v(k,j-3,i) ) &
-                                                     )
+                                                      )
 
              ENDDO
 
@@ -5865,7 +5007,7 @@
                                    37.0_wp * ( v(k,j,i) + v(k,j-1,i)   )                           &
                                  -  8.0_wp * ( v(k,j+1,i) + v(k,j-2,i) )                           &
                                  +           ( v(k,j+2,i) + v(k,j-3,i) ) ) * adv_mom_5
-                diss_s_v(k,tn) = -ABS( v_comp(k) ) * (                                             &
+                diss_s_v(k,tn) = - ABS( v_comp(k) ) * (                                            &
                                    10.0_wp * ( v(k,j,i) - v(k,j-1,i)   )                           &
                                  -  5.0_wp * ( v(k,j+1,i) - v(k,j-2,i) )                           &
                                  +           ( v(k,j+2,i) - v(k,j-3,i) ) ) * adv_mom_5
@@ -5890,14 +5032,14 @@
                          + (          ibit11 * adv_mom_5 ) * ( v(k,j,i+3) + v(k,j,i-2) )           &
                                      )
 
-             diss_r(k) = -ABS( u_comp(k) ) * (                                                     &
+             diss_r(k) = - ABS( u_comp(k) ) * (                                                    &
                          (  10.0_wp * ibit11 * adv_mom_5                                           &
                          +   3.0_wp * ibit10 * adv_mom_3                                           &
                          +             ibit9 * adv_mom_1 ) * ( v(k,j,i+1) - v(k,j,i)  )            &
                          - ( 5.0_wp * ibit11 * adv_mom_5                                           &
                          +            ibit10 * adv_mom_3 ) * ( v(k,j,i+2) - v(k,j,i-1) )           &
                          + (          ibit11 * adv_mom_5 ) * ( v(k,j,i+3) - v(k,j,i-2) )           &
-                                             )
+                                              )
 
 #ifdef _OPENACC
 !
@@ -5916,14 +5058,14 @@
                                  + (          ibit11_l * adv_mom_5 ) * ( v(k,j,i+2) + v(k,j,i-3) ) &
                                             )
 
-              diss_l_v(k,j,tn) = -ABS( u_comp_l ) * (                                              &
+              diss_l_v(k,j,tn) = - ABS( u_comp_l ) * (                                             &
                                  (  10.0_wp * ibit11_l * adv_mom_5                                 &
                                  +   3.0_wp * ibit10_l * adv_mom_3                                 &
                                  +             ibit9_l * adv_mom_1 ) * ( v(k,j,i)   - v(k,j,i-1) ) &
                                  - ( 5.0_wp * ibit11_l * adv_mom_5                                 &
                                  +            ibit10_l * adv_mom_3 ) * ( v(k,j,i+1) - v(k,j,i-2) ) &
                                  + (          ibit11_l * adv_mom_5 ) * ( v(k,j,i+2) - v(k,j,i-3) ) &
-                                                    )
+                                                     )
 #endif
 
              ibit14 = REAL( IBITS(advc_flags_m(k,j,i),14,1), KIND = wp )
@@ -5940,14 +5082,14 @@
                          + (          ibit14 * adv_mom_5 ) * ( v(k,j+3,i) + v(k,j-2,i) )           &
                                               )
 
-             diss_n(k) = -ABS( v_comp(k) - gv ) * (                                                &
+             diss_n(k) = - ABS( v_comp(k) - gv ) * (                                               &
                          (  10.0_wp * ibit14 * adv_mom_5                                           &
                          +   3.0_wp * ibit13 * adv_mom_3                                           &
                          +            ibit12 * adv_mom_1 ) * ( v(k,j+1,i) - v(k,j,i)  )            &
                          - ( 5.0_wp * ibit14 * adv_mom_5                                           &
                          +            ibit13 * adv_mom_3 ) * ( v(k,j+2,i) - v(k,j-1,i) )           &
                          + (          ibit14 * adv_mom_5 ) * ( v(k,j+3,i) - v(k,j-2,i) )           &
-                                                  )
+                                                   )
 
 #ifdef _OPENACC
 !
@@ -5966,14 +5108,14 @@
                                 + (          ibit14_s * adv_mom_5 ) * ( v(k,j+2,i) + v(k,j-3,i) )  &
                                            )
 
-            diss_s_v(k,tn)   = -ABS( v_comp_s ) * (                                                &
+            diss_s_v(k,tn)   = - ABS( v_comp_s ) * (                                               &
                                (  10.0_wp * ibit14_s * adv_mom_5                                   &
                                +   3.0_wp * ibit13_s * adv_mom_3                                   &
                                +            ibit12_s * adv_mom_1 ) * ( v(k,j,i)   - v(k,j-1,i) )   &
                                - ( 5.0_wp * ibit14_s * adv_mom_5                                   &
                                +            ibit13_s * adv_mom_3 ) * ( v(k,j+1,i) - v(k,j-2,i) )   &
                                + (          ibit14_s * adv_mom_5 ) * ( v(k,j+2,i) - v(k,j-3,i) )   &
-                                                  )
+                                                   )
 #endif
           ENDDO
 
@@ -5985,7 +5127,7 @@
                          -  8.0_wp * ( v(k,j,i+2) + v(k,j,i-1) )                                   &
                          +           ( v(k,j,i+3) + v(k,j,i-2) ) ) * adv_mom_5
 
-             diss_r(k) = -ABS( u_comp(k) ) * (                                                     &
+             diss_r(k) = - ABS( u_comp(k) ) * (                                                    &
                            10.0_wp * ( v(k,j,i+1) - v(k,j,i) )                                     &
                          -  5.0_wp * ( v(k,j,i+2) - v(k,j,i-1) )                                   &
                          +           ( v(k,j,i+3) - v(k,j,i-2) ) ) * adv_mom_5
@@ -5998,7 +5140,7 @@
                                     37.0_wp * ( v(k,j,i) + v(k,j,i-1)   )                          &
                                   -  8.0_wp * ( v(k,j,i+1) + v(k,j,i-2) )                          &
                                   +           ( v(k,j,i+2) + v(k,j,i-3) ) ) * adv_mom_5
-             diss_l_v(k,j,tn)   = -ABS( u_comp_l ) * (                                             &
+             diss_l_v(k,j,tn)   = - ABS( u_comp_l ) * (                                            &
                                     10.0_wp * ( v(k,j,i) - v(k,j,i-1)   )                          &
                                   -  5.0_wp * ( v(k,j,i+1) - v(k,j,i-2) )                          &
                                   +           ( v(k,j,i+2) - v(k,j,i-3) ) ) * adv_mom_5
@@ -6010,7 +5152,7 @@
                          -  8.0_wp * ( v(k,j+2,i) + v(k,j-1,i) )                                   &
                          +           ( v(k,j+3,i) + v(k,j-2,i) ) ) * adv_mom_5
 
-             diss_n(k) = -ABS( v_comp(k) - gv ) * (                                                &
+             diss_n(k) = - ABS( v_comp(k) - gv ) * (                                               &
                            10.0_wp * ( v(k,j+1,i) - v(k,j,i)   )                                   &
                          -  5.0_wp * ( v(k,j+2,i) - v(k,j-1,i) )                                   &
                          +           ( v(k,j+3,i) - v(k,j-2,i) ) ) * adv_mom_5
@@ -6023,7 +5165,7 @@
                                   37.0_wp * ( v(k,j,i) + v(k,j-1,i)   )                            &
                                 -  8.0_wp * ( v(k,j+1,i) + v(k,j-2,i) )                            &
                                 +           ( v(k,j+2,i) + v(k,j-3,i) ) ) * adv_mom_5
-             diss_s_v(k,tn)   = -ABS( v_comp_s ) * (                                               &
+             diss_s_v(k,tn)   = - ABS( v_comp_s ) * (                                              &
                                   10.0_wp * ( v(k,j,i) - v(k,j-1,i)   )                            &
                                 -  5.0_wp * ( v(k,j+1,i) - v(k,j-2,i) )                            &
                                 +           ( v(k,j+2,i) - v(k,j-3,i) ) ) * adv_mom_5
@@ -6061,14 +5203,14 @@
                          + (          ibit17 * adv_mom_5 ) * ( v(k_ppp,j,i) + v(k_mm,j,i) )        &
                                                      )
 
-             diss_t(k) = -ABS( w_comp(k) ) * rho_air_zw(k) * (                                     &
+             diss_t(k) = - ABS( w_comp(k) ) * rho_air_zw(k) * (                                    &
                          (  10.0_wp * ibit17 * adv_mom_5                                           &
                          +   3.0_wp * ibit16 * adv_mom_3                                           &
                          +            ibit15 * adv_mom_1 ) * ( v(k+1,j,i)   - v(k,j,i)    )        &
                          - ( 5.0_wp * ibit17 * adv_mom_5                                           &
                          +            ibit16 * adv_mom_3 ) * ( v(k_pp,j,i)  - v(k-1,j,i)  )        &
                          + (          ibit17 * adv_mom_5 ) * ( v(k_ppp,j,i) - v(k_mm,j,i) )        &
-                                                             )
+                                                              )
           ENDDO
 
           DO  k = nzb+2, nzt-2
@@ -6086,14 +5228,14 @@
                        + (          ibit17 * adv_mom_5 ) * ( v(k+3,j,i) + v(k-2,j,i)   )           &
                                                      )
 
-             diss_t(k) = -ABS( w_comp(k) ) * rho_air_zw(k) * (                                     &
+             diss_t(k) = - ABS( w_comp(k) ) * rho_air_zw(k) * (                                    &
                          (  10.0_wp * ibit17 * adv_mom_5                                           &
                          +   3.0_wp * ibit16 * adv_mom_3                                           &
                          +            ibit15 * adv_mom_1 ) * ( v(k+1,j,i) - v(k,j,i)     )         &
                          - ( 5.0_wp * ibit17 * adv_mom_5                                           &
                          +            ibit16 * adv_mom_3 ) * ( v(k+2,j,i) - v(k-1,j,i)   )         &
                          + (          ibit17 * adv_mom_5 ) * ( v(k+3,j,i) - v(k-2,j,i)   )         &
-                                                             )
+                                                              )
           ENDDO
 
           DO  k = nzt-1, nzt-symmetry_flag
@@ -6102,14 +5244,9 @@
              ibit17 = REAL( IBITS(advc_flags_m(k,j,i),17,1), KIND = wp )
              ibit16 = REAL( IBITS(advc_flags_m(k,j,i),16,1), KIND = wp )
              ibit15 = REAL( IBITS(advc_flags_m(k,j,i),15,1), KIND = wp )
-!
-!--          k index needs to be modified near bottom and top, else array subscripts will be
-!--          exceeded. (k_ppp = k+3, k_mm = k) if 5th order scheme is employed, else
-!--          (k_ppp = k, k_mm = k). Special treatment is required for k_pp. This must be limited
-!--          at k = nzt, where either the first order scheme is employed (ibit15), or all bit flags
-!--          are zero (in case there is a rigid lid defined at or near the domain top).
+
              k_ppp = k + 3 * ibit17
-             k_pp  = k + 2 * ( 1 - ibit15  ) * ( ibit15 + ibit16 + ibit17 )
+             k_pp  = k + 2 * ( 1 - ibit15  )
              k_mm  = k - 2 * ibit17
 
              w_comp(k) = w(k,j-1,i) + w(k,j,i)
@@ -6122,14 +5259,14 @@
                          + (          ibit17 * adv_mom_5 ) * ( v(k_ppp,j,i) + v(k_mm,j,i) )        &
                                                      )
 
-             diss_t(k) = -ABS( w_comp(k) ) * rho_air_zw(k) * (                                     &
+             diss_t(k) = - ABS( w_comp(k) ) * rho_air_zw(k) * (                                    &
                          (  10.0_wp * ibit17 * adv_mom_5                                           &
                          +   3.0_wp * ibit16 * adv_mom_3                                           &
                          +            ibit15 * adv_mom_1 ) * ( v(k+1,j,i)   - v(k,j,i)    )        &
                          - ( 5.0_wp * ibit17 * adv_mom_5                                           &
                          +            ibit16 * adv_mom_3 ) * ( v(k_pp,j,i)  - v(k-1,j,i)  )        &
                          + (          ibit17 * adv_mom_5 ) * ( v(k_ppp,j,i) - v(k_mm,j,i) )        &
-                                                             )
+                                                              )
           ENDDO
 
 !
@@ -6195,13 +5332,13 @@
                    ) * 0.5_wp
 
 
-             tend(k,j,i) = tend(k,j,i) - (                                                         &
-                             ( ( flux_r(k) + diss_r(k) )                                           &
-                           -   ( flux_l_v(k,j,tn) + diss_l_v(k,j,tn) ) ) * ddx                     &
-                           + ( ( flux_n(k) + diss_n(k) )                                           &
-                           -   ( flux_s_v(k,tn) + diss_s_v(k,tn) ) ) * ddy                         &
-                           + ( ( flux_t(k) + diss_t(k) )                                           &
-                           -   ( flux_d + diss_d ) ) * drho_air(k) * ddzw(k)                       &
+             tend(k,j,i) = tend(k,j,i) - (                                  &
+                             ( ( flux_r(k) + diss_r(k) )                             &
+                           -   ( flux_l_v(k,j,tn) + diss_l_v(k,j,tn) ) ) * ddx       &
+                           + ( ( flux_n(k) + diss_n(k) )                             &
+                           -   ( flux_s_v(k,tn) + diss_s_v(k,tn) ) ) * ddy           &
+                           + ( ( flux_t(k) + diss_t(k) )                             &
+                           -   ( flux_d + diss_d ) ) * drho_air(k) * ddzw(k)         &
                                                   )  + v(k,j,i) * div
 
 #ifndef _OPENACC
@@ -6419,14 +5556,14 @@
                                    + (          ibit20 * adv_mom_5 ) * ( w(k,j,i+2) + w(k,j,i-3) ) &
                                                )
 
-                diss_l_w(k,j,tn) = -ABS( u_comp(k) ) * (                                           &
+                diss_l_w(k,j,tn) = - ABS( u_comp(k) ) * (                                          &
                                    (  10.0_wp * ibit20 * adv_mom_5                                 &
                                    +   3.0_wp * ibit19 * adv_mom_3                                 &
                                    +            ibit18 * adv_mom_1 ) * ( w(k,j,i)   - w(k,j,i-1) ) &
                                    - ( 5.0_wp * ibit20 * adv_mom_5                                 &
                                    +            ibit19 * adv_mom_3 ) * ( w(k,j,i+1) - w(k,j,i-2) ) &
                                    + (          ibit20 * adv_mom_5 ) * ( w(k,j,i+2) - w(k,j,i-3) ) &
-                                                       )
+                                                        )
 
              ENDDO
 
@@ -6437,7 +5574,7 @@
                                      37.0_wp * ( w(k,j,i)   + w(k,j,i-1)   )                       &
                                    -  8.0_wp * ( w(k,j,i+1) + w(k,j,i-2) )                         &
                                    +           ( w(k,j,i+2) + w(k,j,i-3) ) ) * adv_mom_5
-                diss_l_w(k,j,tn) = -ABS( u_comp(k) ) * (                                           &
+                diss_l_w(k,j,tn) = - ABS( u_comp(k) ) * (                                          &
                                      10.0_wp * ( w(k,j,i)   - w(k,j,i-1)   )                       &
                                    -  5.0_wp * ( w(k,j,i+1) - w(k,j,i-2) )                         &
                                    +           ( w(k,j,i+2) - w(k,j,i-3) ) ) * adv_mom_5
@@ -6463,14 +5600,14 @@
                                  + (          ibit23 * adv_mom_5 ) * ( w(k,j+2,i) + w(k,j-3,i) )   &
                                              )
 
-                diss_s_w(k,tn) = -ABS( v_comp(k) ) * (                                             &
+                diss_s_w(k,tn) = - ABS( v_comp(k) ) * (                                            &
                                  (  10.0_wp * ibit23 * adv_mom_5                                   &
                                  +   3.0_wp * ibit22 * adv_mom_3                                   &
                                  +            ibit21 * adv_mom_1 ) * ( w(k,j,i)   - w(k,j-1,i) )   &
                                  - ( 5.0_wp * ibit23 * adv_mom_5                                   &
                                  +            ibit22 * adv_mom_3 ) * ( w(k,j+1,i) - w(k,j-2,i) )   &
                                  + (          ibit23 * adv_mom_5 ) * ( w(k,j+2,i) - w(k,j-3,i) )   &
-                                                     )
+                                                      )
 
              ENDDO
 
@@ -6481,7 +5618,7 @@
                                    37.0_wp * ( w(k,j,i) + w(k,j-1,i)   )                           &
                                  -  8.0_wp * ( w(k,j+1,i) +w(k,j-2,i)  )                           &
                                  +           ( w(k,j+2,i) + w(k,j-3,i) ) ) * adv_mom_5
-                diss_s_w(k,tn) = -ABS( v_comp(k) ) * (                                             &
+                diss_s_w(k,tn) = - ABS( v_comp(k) ) * (                                            &
                                    10.0_wp * ( w(k,j,i) - w(k,j-1,i)   )                           &
                                  -  5.0_wp * ( w(k,j+1,i) - w(k,j-2,i) )                           &
                                  +           ( w(k,j+2,i) - w(k,j-3,i) ) ) * adv_mom_5
@@ -6505,14 +5642,14 @@
                          + (          ibit20 * adv_mom_5 ) * ( w(k,j,i+3) + w(k,j,i-2) )           &
                                      )
 
-             diss_r(k) = -ABS( u_comp(k) ) * (                                                     &
+             diss_r(k) = - ABS( u_comp(k) ) * (                                                    &
                          (  10.0_wp * ibit20 * adv_mom_5                                           &
                          +   3.0_wp * ibit19 * adv_mom_3                                           &
                          +            ibit18 * adv_mom_1 ) * ( w(k,j,i+1) - w(k,j,i)  )            &
                          - ( 5.0_wp * ibit20 * adv_mom_5                                           &
                          +            ibit19 * adv_mom_3 ) * ( w(k,j,i+2) - w(k,j,i-1) )           &
                          + (          ibit20 * adv_mom_5 ) * ( w(k,j,i+3) - w(k,j,i-2) )           &
-                                             )
+                                              )
 
 #ifdef _OPENACC
 !
@@ -6531,14 +5668,14 @@
                                   + (          ibit20_l * adv_mom_5 ) * ( w(k,j,i+2) + w(k,j,i-3) )&
                                              )
 
-             diss_l_w(k,j,tn)   = -ABS( u_comp_l ) * (                                             &
+             diss_l_w(k,j,tn)   = - ABS( u_comp_l ) * (                                            &
                                   (  10.0_wp * ibit20_l * adv_mom_5                                &
                                   +   3.0_wp * ibit19_l * adv_mom_3                                &
                                   +            ibit18_l * adv_mom_1 ) * ( w(k,j,i)   - w(k,j,i-1) )&
                                   - ( 5.0_wp * ibit20_l * adv_mom_5                                &
                                   +            ibit19_l * adv_mom_3 ) * ( w(k,j,i+1) - w(k,j,i-2) )&
                                   + (          ibit20_l * adv_mom_5 ) * ( w(k,j,i+2) - w(k,j,i-3) )&
-                                                     )
+                                                      )
 #endif
 
 
@@ -6556,14 +5693,14 @@
                          + (          ibit23 * adv_mom_5 ) * ( w(k,j+3,i) + w(k,j-2,i) )           &
                                      )
 
-             diss_n(k) = -ABS( v_comp(k) ) * (                                                     &
+             diss_n(k) = - ABS( v_comp(k) ) * (                                                    &
                        (  10.0_wp * ibit23 * adv_mom_5                                             &
                        +   3.0_wp * ibit22 * adv_mom_3                                             &
                        +            ibit21 * adv_mom_1 ) * ( w(k,j+1,i) - w(k,j,i)  )              &
                        - ( 5.0_wp * ibit23 * adv_mom_5                                             &
                        +            ibit22 * adv_mom_3 ) * ( w(k,j+2,i) - w(k,j-1,i) )             &
                        + (          ibit23 * adv_mom_5 ) * ( w(k,j+3,i) - w(k,j-2,i) )             &
-                                             )
+                                              )
 
 #ifdef _OPENACC
 !
@@ -6582,14 +5719,14 @@
                                 + (          ibit23_s * adv_mom_5 ) * ( w(k,j+2,i) + w(k,j-3,i) )  &
                                            )
 
-             diss_s_w(k,tn)   = -ABS( v_comp_s ) * (                                               &
+             diss_s_w(k,tn)   = - ABS( v_comp_s ) * (                                              &
                                 (  10.0_wp * ibit23_s * adv_mom_5                                  &
                                 +   3.0_wp * ibit22_s * adv_mom_3                                  &
                                 +            ibit21_s * adv_mom_1 ) * ( w(k,j,i)   - w(k,j-1,i) )  &
                                 - ( 5.0_wp * ibit23_s * adv_mom_5                                  &
                                 +            ibit22_s * adv_mom_3 ) * ( w(k,j+1,i) - w(k,j-2,i) )  &
                                 + (          ibit23_s * adv_mom_5 ) * ( w(k,j+2,i) - w(k,j-3,i) )  &
-                                                   )
+                                                    )
 #endif
           ENDDO
 
@@ -6601,7 +5738,7 @@
                          -  8.0_wp * ( w(k,j,i+2) + w(k,j,i-1) )                                   &
                          +           ( w(k,j,i+3) + w(k,j,i-2) ) ) * adv_mom_5
 
-             diss_r(k) = -ABS( u_comp(k) ) * (                                                     &
+             diss_r(k) = - ABS( u_comp(k) ) * (                                                    &
                            10.0_wp * ( w(k,j,i+1) - w(k,j,i)   )                                   &
                          -  5.0_wp * ( w(k,j,i+2) - w(k,j,i-1) )                                   &
                          +           ( w(k,j,i+3) - w(k,j,i-2) ) ) * adv_mom_5
@@ -6614,7 +5751,7 @@
                                     37.0_wp * ( w(k,j,i)   + w(k,j,i-1)   )                        &
                                   -  8.0_wp * ( w(k,j,i+1) + w(k,j,i-2) )                          &
                                   +           ( w(k,j,i+2) + w(k,j,i-3) ) ) * adv_mom_5
-             diss_l_w(k,j,tn)   = -ABS( u_comp_l ) * (                                             &
+             diss_l_w(k,j,tn)   = - ABS( u_comp_l ) * (                                            &
                                     10.0_wp * ( w(k,j,i)   - w(k,j,i-1)   )                        &
                                   -  5.0_wp * ( w(k,j,i+1) - w(k,j,i-2) )                          &
                                   +           ( w(k,j,i+2) - w(k,j,i-3) ) ) * adv_mom_5
@@ -6626,7 +5763,7 @@
                          -  8.0_wp * ( w(k,j+2,i) + w(k,j-1,i) )                                   &
                          +           ( w(k,j+3,i) + w(k,j-2,i) ) ) * adv_mom_5
 
-             diss_n(k) = -ABS( v_comp(k) ) * (                                                     &
+             diss_n(k) = - ABS( v_comp(k) ) * (                                                    &
                            10.0_wp * ( w(k,j+1,i) - w(k,j,i)   )                                   &
                          -  5.0_wp * ( w(k,j+2,i) - w(k,j-1,i) )                                   &
                          +           ( w(k,j+3,i) - w(k,j-2,i) ) ) * adv_mom_5
@@ -6639,7 +5776,7 @@
                                   37.0_wp * ( w(k,j,i)   + w(k,j-1,i) )                            &
                                 -  8.0_wp * ( w(k,j+1,i) + w(k,j-2,i)  )                           &
                                 +           ( w(k,j+2,i) + w(k,j-3,i) ) ) * adv_mom_5
-             diss_s_w(k,tn)   = -ABS( v_comp_s ) * (                                               &
+             diss_s_w(k,tn)   = - ABS( v_comp_s ) * (                                              &
                                   10.0_wp * ( w(k,j,i)   - w(k,j-1,i) )                            &
                                 -  5.0_wp * ( w(k,j+1,i) - w(k,j-2,i) )                            &
                                 +           ( w(k,j+2,i) - w(k,j-3,i) ) ) * adv_mom_5
@@ -6654,8 +5791,8 @@
 !--       advc_flags_m.
           k         = nzb + 1
           w_comp(k) = w(k,j,i) + w(k-1,j,i)
-          flux_t(0) =  w_comp(k)      * rho_air(k) * ( w(k,j,i) + w(k-1,j,i) ) * adv_mom_1
-          diss_t(0) = -ABS(w_comp(k)) * rho_air(k) * ( w(k,j,i) - w(k-1,j,i) ) * adv_mom_1
+          flux_t(0) =  w_comp(k)       * rho_air(k) * ( w(k,j,i) + w(k-1,j,i) ) * adv_mom_1
+          diss_t(0) = - ABS(w_comp(k)) * rho_air(k) * ( w(k,j,i) - w(k-1,j,i) ) * adv_mom_1
 
           DO  k = nzb+1, nzb+1
 !
@@ -6678,14 +5815,14 @@
                         + (          ibit26 * adv_mom_5 ) * ( w(k_ppp,j,i) + w(k_mm,j,i) )         &
                                                     )
 
-             diss_t(k) = -ABS( w_comp(k) ) * rho_air(k+1) * (                                      &
+             diss_t(k) = - ABS( w_comp(k) ) * rho_air(k+1) * (                                     &
                          (  10.0_wp * ibit26 * adv_mom_5                                           &
                          +   3.0_wp * ibit25 * adv_mom_3                                           &
                          +            ibit24 * adv_mom_1 ) * ( w(k+1,j,i)   - w(k,j,i)    )        &
                          - ( 5.0_wp * ibit26 * adv_mom_5                                           &
                          +            ibit25 * adv_mom_3 ) * ( w(k_pp,j,i)  - w(k-1,j,i)  )        &
                          + (          ibit26 * adv_mom_5 ) * ( w(k_ppp,j,i) - w(k_mm,j,i) )        &
-                                                            )
+                                                             )
           ENDDO
 
           DO  k = nzb+2, nzt-2
@@ -6704,14 +5841,14 @@
                         + (          ibit26 * adv_mom_5 ) * ( w(k+3,j,i)  + w(k-2,j,i) )           &
                                                     )
 
-             diss_t(k) = -ABS( w_comp(k) ) * rho_air(k+1) * (                                      &
+             diss_t(k) = - ABS( w_comp(k) ) * rho_air(k+1) * (                                     &
                          (  10.0_wp * ibit26 * adv_mom_5                                           &
                          +   3.0_wp * ibit25 * adv_mom_3                                           &
                          +            ibit24 * adv_mom_1 ) * ( w(k+1,j,i) - w(k,j,i)    )          &
                          - ( 5.0_wp * ibit26 * adv_mom_5                                           &
                          +            ibit25 * adv_mom_3 ) * ( w(k+2,j,i) - w(k-1,j,i)  )          &
                          + (          ibit26 * adv_mom_5 ) * ( w(k+3,j,i) - w(k-2,j,i)  )          &
-                                                            )
+                                                             )
           ENDDO
 
           DO  k = nzt-1, nzt-1
@@ -6720,14 +5857,9 @@
              ibit26 = REAL( IBITS(advc_flags_m(k,j,i),26,1), KIND = wp )
              ibit25 = REAL( IBITS(advc_flags_m(k,j,i),25,1), KIND = wp )
              ibit24 = REAL( IBITS(advc_flags_m(k,j,i),24,1), KIND = wp )
-!
-!--          k index needs to be modified near bottom and top, else array subscripts will be
-!--          exceeded. (k_ppp = k+3, k_mm = k) if 5th order scheme is employed, else
-!--          (k_ppp = k, k_mm = k). Special treatment is required for k_pp. This must be limited
-!--          at k = nzt, where either the first order scheme is employed (ibit24), or all bit flags
-!--          are zero (in case there is a rigid lid defined at or near the domain top).
+
              k_ppp = k + 3 * ibit26
-             k_pp  = k + 2 * ( 1 - ibit24  ) * ( ibit24 + ibit25 + ibit26 )
+             k_pp  = k + 2 * ( 1 - ibit24  )
              k_mm  = k - 2 * ibit26
 
              w_comp(k) = w(k+1,j,i) + w(k,j,i)
@@ -6740,14 +5872,14 @@
                          + (          ibit26 * adv_mom_5 ) * ( w(k_ppp,j,i) + w(k_mm,j,i) )        &
                                                     )
 
-             diss_t(k) = -ABS( w_comp(k) ) * rho_air(k+1) * (                                      &
+             diss_t(k) = - ABS( w_comp(k) ) * rho_air(k+1) * (                                     &
                          (  10.0_wp * ibit26 * adv_mom_5                                           &
                          +   3.0_wp * ibit25 * adv_mom_3                                           &
                          +            ibit24 * adv_mom_1 ) * ( w(k+1,j,i)   - w(k,j,i)    )        &
                          - ( 5.0_wp * ibit26 * adv_mom_5                                           &
                          +            ibit25 * adv_mom_3 ) * ( w(k_pp,j,i)  - w(k-1,j,i)  )        &
                          + (          ibit26 * adv_mom_5 ) * ( w(k_ppp,j,i) - w(k_mm,j,i) )        &
-                                                            )
+                                                             )
           ENDDO
 
 !

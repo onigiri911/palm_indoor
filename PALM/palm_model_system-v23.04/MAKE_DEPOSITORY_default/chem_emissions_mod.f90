@@ -13,10 +13,107 @@
 ! You should have received a copy of the GNU General Public License along with PALM. If not, see
 ! <http://www.gnu.org/licenses/>.
 !
-! Copyright 2018-2021 Leibniz Universitaet Hannover
-! Copyright 2018-2021 Freie Universitaet Berlin
-! Copyright 2018-2021 Karlsruhe Institute of Technology
+! Copyright 2018-2020 Leibniz Universitaet Hannover
+! Copyright 2018-2020 Freie Universitaet Berlin
+! Copyright 2018-2020 Karlsruhe Institute of Technology
 !--------------------------------------------------------------------------------------------------!
+!
+! Current revisions:
+! ------------------
+!
+!
+! Former revisions:
+! -----------------
+! $Id: chem_emissions_mod.f90 4671 2020-09-09 20:27:58Z pavelkrc $
+! Implementation of downward facing USM and LSM surfaces
+! 
+! 4559 2020-06-11 08:51:48Z raasch
+! file re-formatted to follow the PALM coding standard
+!
+! 4481 2020-03-31 18:55:54Z maronga
+! Implemented on-demand read mode for LOD 2 (ECC)
+!  - added following module global variables
+!    - input_file_chem (namesake in netcdf_data_input_mod is local)
+!    - timestamps
+!  - added following public subroutines / interfaces
+!    - chem_emisisons_header_init
+!    - chem_emisisons_update_on_demand
+!  - added following local subroutines
+!    - chem_emisisons_header_init_lod2
+!    - chem_emisisons_update_on_demand_lod2
+!  - added following local auxiliary subroutines
+!    - chem_emissions_init_species ( )
+!    - chem_emissions_init_timestamps ( )
+!    - chem_emissions_assign_surface_flux ( )
+!  - added following local functions
+!    - chem_emisisons_convert_base_units ( )
+!    - chem_emissions_mass_2_molar_flux ( )
+!    - chem_emissions_locate_species ( )
+!    - chem_emissions_locate_timestep ( )
+!  - added following error messages
+!    - CM0468 - LOD mismatch (namelist / chemistry file)
+!    - CM0469 - Timestamps no in choronological order
+!  - depreciated unused module variable filename_emis
+!
+! 4356 2019-12-20 17:09:33Z suehring
+! Minor formatting adjustment
+!
+! 4242 2019-09-27 12:59:10Z suehring
+! Adjust index_hh access to new definition accompanied with new
+! palm_date_time_mod. Note, this is just a preleminary fix. (E Chan)
+!
+! 4230 2019-09-11 13:58:14Z suehring
+! Bugfix, consider that time_since_reference_point can be also negative when
+! time indices are determined.
+!
+! 4227 2019-09-10 18:04:34Z gronemeier
+! implement new palm_date_time_mod
+!
+! 4223 2019-09-10 09:20:47Z gronemeier
+! Unused routine chem_emissions_check_parameters commented out due to uninitialized content
+!
+! 4182 2019-08-22 15:20:23Z scharf
+! Corrected "Former revisions" section
+!
+! 4157 2019-08-14 09:19:12Z suehring
+! Replace global arrays also in mode_emis branch
+!
+! 4154 2019-08-13 13:35:59Z suehring
+! Replace global arrays for emissions by local ones.
+!
+! 4144 2019-08-06 09:11:47Z raasch
+! relational operators .EQ., .NE., etc. replaced by ==, /=, etc.
+!
+! 4055 2019-06-27 09:47:29Z suehring
+! - replaced local thermo. constants w/ module definitions in basic_constants_and_equations_mod
+!   (rgas_univ, p_0, r_d_cp)
+! - initialize array emis_distribution immediately following allocation
+! - lots of minor formatting changes based on review sesson in 20190325 (E.C. Chan)
+!
+! 3968 2019-05-13 11:04:01Z suehring
+! - in subroutine chem_emissions_match replace all decision structures relating to mode_emis to
+!   emiss_lod
+! - in subroutine chem_check_parameters replace emt%nspec with emt%n_emiss_species
+! - spring cleaning (E.C. Chan)
+!
+! 3885 2019-04-11 11:29:34Z kanani
+! Changes related to global restructuring of location messages and introduction of additional debug
+! messages
+!
+! 3831 2019-03-28 09:11:22Z forkel
+! added nvar to USE chem_gasphase_mod (chem_modules will not include nvar anymore)
+!
+! 3788 2019-03-07 11:40:09Z banzhafs
+! Removed unused variables from chem_emissions_mod
+!
+! 3772 2019-02-28 15:51:57Z suehring
+! - In case of parametrized emissions, assure that emissions are only on natural surfaces
+!   (i.e. streets) and not on urban surfaces.
+! - some unnecessary if clauses removed
+!
+! 3685 2019 -01-21 01:02:11Z knoop
+! Some interface calls moved to module_interface + cleanup
+! 3286 2018-09-28 07:41:39Z forkel
 !
 ! Authors:
 ! --------
@@ -28,34 +125,28 @@
 ! ------------
 !>  MODULE for reading-in Chemistry Emissions data
 !>
+!> @todo Rename nspec to n_emis to avoid inteferece with nspec from chem_gasphase_mod
+!> @todo Check_parameters routine should be developed: for now it includes just one condition
+!> @todo Use of Restart files not contempled at the moment
+!> @todo revise indices of files read from the netcdf: preproc_emission_data and expert_emission_data
+!> @todo for now emission data may be passed on a singular vertical level: need to be more flexible
+!> @todo fill/activate restart option in chem_emissions_init
+!> @todo discuss dt_emis
 !> @note <Enter notes on the module>
 !> @bug  <Enter known bugs here>
 !--------------------------------------------------------------------------------------------------!
+
  MODULE chem_emissions_mod
 
     USE arrays_3d,                                                                                 &
-        ONLY:  exner,                                                                              &
-               rho_air
+        ONLY:  rho_air
 
     USE basic_constants_and_equations_mod,                                                         &
-        ONLY:  p_0,                                                                                &
-               rd_d_cp,                                                                            &
-               rgas_univ
-
-    USE chem_gasphase_mod,                                                                         &
-        ONLY: nvar,                                                                                &
-              spc_names
-
-    USE chem_modules
+        ONLY:  p_0, rd_d_cp, rgas_univ
 
     USE control_parameters,                                                                        &
-        ONLY:  coupling_start_time,                                                                &
-               debug_output,                                                                       &
-               dt_3d,                                                                              &
-               end_time,                                                                           &
-               initializing_actions,                                                               &
-               intermediate_timestep_count,                                                        &
-               message_string
+        ONLY:  debug_output, end_time, initializing_actions, intermediate_timestep_count,          &
+               message_string, dt_3d
 
     USE indices
 
@@ -66,72 +157,132 @@
 #endif
 
     USE netcdf_data_input_mod,                                                                     &
-        ONLY:  chem_emis_att_type,                                                                 &
-               chem_emis_val_type
+        ONLY: chem_emis_att_type, chem_emis_val_type
+
+    USE chem_gasphase_mod,                                                                         &
+        ONLY: nvar, spc_names
+
+    USE chem_modules
 
     USE statistics,                                                                                &
         ONLY:  weight_pres
 
+!
+!-- 20200203 (ECC)
+!-- Added new palm_date_time_mod for on-demand emission reading
+
+    USE palm_date_time_mod,                                                                        &
+        ONLY:  get_date_time
 
     IMPLICIT NONE
 
-    CHARACTER(LEN=*), PARAMETER ::  input_file_chem = 'PIDS_CHEM'  !< chemistry file
+!
+!-- Declare all global variables within the module
 
-    CHARACTER(LEN=512), ALLOCATABLE, DIMENSION(:) :: timestamps  !< timestamps in chemistry file
+!
+!-- 20200203 (ECC) - variable unused
+!    CHARACTER (LEN=80) ::  filename_emis           !< Variable for the name of the netcdf input file
+
+!
+!-- 20200203 (ECC) new variables for on-demand read mode
+
+    CHARACTER(LEN=*),   PARAMETER   :: input_file_chem = 'PIDS_CHEM' !< chemistry file
+
+    CHARACTER(LEN=512), ALLOCATABLE, DIMENSION(:) :: timestamps      !< timestamps in chemistry file
 
 
-    INTEGER(iwp) ::  dt_emis                  !< time Step Emissions
-    INTEGER(iwp) ::  i                        !< index 1st selected dimension (some dims are not spatial)
-    INTEGER(iwp) ::  j                        !< index 2nd selected dimension
-    INTEGER(iwp) ::  i_end                    !< index to end read variable from netcdf in one dims
-    INTEGER(iwp) ::  i_start                  !< index to start read variable from netcdf along one dims
-    INTEGER(iwp) ::  j_end                    !< index to end read variable from netcdf in additional dims
-    INTEGER(iwp) ::  j_start                  !< index to start read variable from netcdf in additional dims
-    INTEGER(iwp) ::  len_index                !< length of index (used for several indices)
-    INTEGER(iwp) ::  len_index_pm             !< length of PMs index
-    INTEGER(iwp) ::  len_index_voc            !< length of voc index
-    INTEGER(iwp) ::  next_timestamp_index     !< index for current timestamp
-    INTEGER(iwp) ::  previous_timestamp_index !< index for current timestamp
-    INTEGER(iwp) ::  z_end                    !< Index to end read variable from netcdf in additional dims
-    INTEGER(iwp) ::  z_start                  !< Index to start read variable from netcdf in additional dims
+    INTEGER(iwp) ::  dt_emis         !< Time Step Emissions
+    INTEGER(iwp) ::  i               !< index 1st selected dimension (some dims are not spatial)
+    INTEGER(iwp) ::  j               !< index 2nd selected dimension
+    INTEGER(iwp) ::  i_end           !< Index to end read variable from netcdf in one dims
+    INTEGER(iwp) ::  i_start         !< Index to start read variable from netcdf along one dims
+    INTEGER(iwp) ::  j_end           !< Index to end read variable from netcdf in additional dims
+    INTEGER(iwp) ::  j_start         !< Index to start read variable from netcdf in additional dims
+    INTEGER(iwp) ::  len_index       !< length of index (used for several indices)
+    INTEGER(iwp) ::  len_index_pm    !< length of PMs index
+    INTEGER(iwp) ::  len_index_voc   !< length of voc index
+    INTEGER(iwp) ::  previous_timestamp_index !< index for current timestamp (20200203 ECC)
+    INTEGER(iwp) ::  z_end           !< Index to end read variable from netcdf in additional dims
+    INTEGER(iwp) ::  z_start         !< Index to start read variable from netcdf in additional dims
 
-    REAL(wp) ::  conversion_factor                             !< units Conversion Factor
-    REAL(wp) ::  next_time_since_reference_point     = 0.0_wp  !< time_since_reference_point of the next emission timestep
-    REAL(wp) ::  previous_time_since_reference_point = 0.0_wp  !< time_since_reference_point of the previous emission timestep
-
-    REAL(wp), ALLOCATABLE, DIMENSION(:,:,:)     ::  emis_distrib            !< surface emissions
-    REAL(wp), ALLOCATABLE, DIMENSION(:,:,:)     ::  next_emis_distrib       !< surface emissions
-    REAL(wp), ALLOCATABLE, DIMENSION(:,:,:)     ::  previous_emis_distrib   !< surface emissions
+    REAL(wp) ::  conversion_factor                   !< Units Conversion Factor
 
     SAVE
 
+! !
+! !-- Checks Input parameters
+!     INTERFACE chem_emissions_check_parameters
+!        MODULE PROCEDURE chem_emissions_check_parameters
+!     END INTERFACE chem_emissions_check_parameters
+!
+!-- Matching Emissions actions
     INTERFACE chem_emissions_match
        MODULE PROCEDURE chem_emissions_match
     END INTERFACE chem_emissions_match
-
+!
+!-- Initialization actions
     INTERFACE chem_emissions_init
        MODULE PROCEDURE chem_emissions_init
     END INTERFACE chem_emissions_init
-
+!
+!-- Setup of Emissions
     INTERFACE chem_emissions_setup
        MODULE PROCEDURE chem_emissions_setup
     END INTERFACE chem_emissions_setup
 
+!
+!-- 20200203 (ECC) new interfaces for on-demand mode
+
+!
+!-- initialization actions for on-demand mode
     INTERFACE chem_emissions_header_init
        MODULE PROCEDURE chem_emissions_header_init
     END INTERFACE chem_emissions_header_init
-
+!
+!-- load emission data for on-demand mode
     INTERFACE chem_emissions_update_on_demand
        MODULE PROCEDURE chem_emissions_update_on_demand
     END INTERFACE chem_emissions_update_on_demand
 
+!
+!-- 20200203 (ECC) update public routines
+
+!    PUBLIC chem_emissions_init, chem_emissions_match, chem_emissions_setup
+
     PUBLIC chem_emissions_init, chem_emissions_match, chem_emissions_setup,                        &
            chem_emissions_header_init, chem_emissions_update_on_demand
 !
-!-- Public variables.
+!-- Public Variables
     PUBLIC conversion_factor, len_index, len_index_pm, len_index_voc
 
  CONTAINS
+
+! !------------------------------------------------------------------------------------------------!
+! ! Description:
+! ! ------------
+! !> Routine for checking input parameters
+! !------------------------------------------------------------------------------------------------!
+!  SUBROUTINE chem_emissions_check_parameters
+!
+!     IMPLICIT NONE
+!
+!     TYPE(chem_emis_att_type) ::  emt
+!
+! !
+! !-- Check if species count matches the number of names
+! !-- passed for the chemiscal species
+!
+!     IF  ( SIZE(emt%species_name) /= emt%n_emiss_species  )  THEN
+! !    IF  ( SIZE(emt%species_name) /= emt%nspec  )  THEN
+!
+!        message_string = 'Numbers of input emission species names and number of species'     //      &
+!                          'for which emission values are given do not match'
+!        CALL message( 'chem_emissions_check_parameters', 'CM0437', 2, 2, 0, 6, 0 )
+!
+!     ENDIF
+!
+!  END SUBROUTINE chem_emissions_check_parameters
+
 
 !--------------------------------------------------------------------------------------------------!
 ! Description:
@@ -219,26 +370,39 @@ SUBROUTINE chem_emissions_match( emt_att,len_index )
                 DO  ispec = 1, len_index
 
                    IF  ( emiss_factor_main(match_spec_input(ispec) ) < 0    .AND.                  &
-                         emiss_factor_side(match_spec_input(ispec) ) < 0 )                         &
-                   THEN
-                      message_string = 'emission does not match surface type'
-                      CALL message( 'chem_emissions_matching', 'CHM0038', 2, 2, 0, 6, 0 )
+                         emiss_factor_side(match_spec_input(ispec) ) < 0 )  THEN
+
+                      message_string = 'PARAMETERIZED emissions mode selected:'             //     &
+                                       ' EMISSIONS POSSIBLE ONLY ON STREET SURFACES'        //     &
+                                       ' but values of scaling factors for street types'    //     &
+                                       ' emiss_factor_main AND emiss_factor_side'           //     &
+                                       ' not provided for each of the emissions species'    //     &
+                                       ' or not provided at all: PLEASE set a finite value' //     &
+                                       ' for these parameters in the chemistry namelist'
+                      CALL message( 'chem_emissions_matching', 'CM0442', 2, 2, 0, 6, 0 )
 
                    ENDIF
 
-                ENDDO
+                END DO
+
 
              ELSE
-                message_string = 'Non of given emission species matches model chemical ' //        &
-                                 'species.&  Emission routine is not called.'
-                CALL message( 'chem_emissions_matching', 'CHM0039', 0, 0, 0, 6, 0 )
+
+                message_string = 'Non of given Emission Species'           //                      &
+                                 ' matches'                                //                      &
+                                 ' model chemical species'                 //                      &
+                                 ' Emission routine is not called'
+                CALL message( 'chem_emissions_matching', 'CM0443', 0, 0, 0, 6, 0 )
 
              ENDIF
 
           ELSE
 
-             message_string = 'no array(s) for emission species allocated'
-             CALL message( 'chem_emissions_matching', 'CHM0040', 2, 2, 0, 6, 0 )
+             message_string = 'Array of Emission species not allocated: '             //           &
+                              ' Either no emission species are provided as input or'  //           &
+                              ' no chemical species are used by PALM.'                //           &
+                              ' Emission routine is not called'
+             CALL message( 'chem_emissions_matching', 'CM0444', 0, 2, 0, 6, 0 )
 
           ENDIF
 
@@ -452,9 +616,10 @@ SUBROUTINE chem_emissions_match( emt_att,len_index )
 !--          Error reporting (no matching)
              ELSE
 
-                message_string = 'None of given emission species matches model chemical ' //       &
-                                 'species. Emission routine is not called.'
-                CALL message( 'chem_emissions_matching', 'CHM0039', 0, 0, 0, 6, 0 )
+                message_string = 'None of given Emission Species matches'           //             &
+                                 ' model chemical species'                          //             &
+                                 ' Emission routine is not called'
+                CALL message( 'chem_emissions_matching', 'CM0440', 0, 0, 0, 6, 0 )
 
              ENDIF
 
@@ -462,8 +627,11 @@ SUBROUTINE chem_emissions_match( emt_att,len_index )
 !--       Error reporting (no species)
           ELSE
 
-             message_string = 'no array(s) for emission species allocated'
-             CALL message( 'chem_emissions_matching', 'CHM0040', 2, 2, 0, 6, 0 )
+             message_string = 'Array of Emission species not allocated: '             //           &
+                              ' Either no emission species are provided as input or'  //           &
+                              ' no chemical species are used by PALM:'                //           &
+                              ' Emission routine is not called'
+             CALL message( 'chem_emissions_matching', 'CM0441', 0, 2, 0, 6, 0 )
 
           ENDIF
 
@@ -570,9 +738,11 @@ SUBROUTINE chem_emissions_match( emt_att,len_index )
 
 !
 !--             In case there are no species matching (just informational message)
-                message_string = 'Non of given emission species matches model chemical ' //        &
-                                 'species. Emission routine is not called.'
-                CALL message( 'chem_emissions_matching', 'CHM0039', 0, 0, 0, 6, 0 )
+                message_string = 'Non of given emission species'            //                     &
+                                 ' matches'                                //                      &
+                                 ' model chemical species:'                //                      &
+                                 ' Emission routine is not called'
+                CALL message( 'chem_emissions_matching', 'CM0438', 0, 0, 0, 6, 0 )
              ENDIF
 
 !
@@ -581,8 +751,11 @@ SUBROUTINE chem_emissions_match( emt_att,len_index )
 
 !
 !--          Either spc_names is zero or nspec_emis_inp is not allocated
-             message_string = 'no array(s) for emission species allocated'
-             CALL message( 'chem_emissions_matching', 'CHM0040', 2, 2, 0, 6, 0 )
+             message_string = 'Array of Emission species not allocated:'              //           &
+                              ' Either no emission species are provided as input or'  //           &
+                              ' no chemical species are used by PALM:'                //           &
+                              ' Emission routine is not called'
+             CALL message( 'chem_emissions_matching', 'CM0439', 0, 2, 0, 6, 0 )
 
           ENDIF
 
@@ -593,8 +766,10 @@ SUBROUTINE chem_emissions_match( emt_att,len_index )
 !--    Error check (no species)
        CASE DEFAULT
 
-          message_string = 'no valid emission mode'
-          CALL message( 'chem_emissions_matching', 'CHM0041', 2, 2, 0, 6, 0 )
+          message_string = 'Emission Module switched ON, but'                           //         &
+                           ' either no emission mode specified or incorrectly given :'  //         &
+                           ' please, pass the correct value to the namelist parameter "mode_emis"'
+          CALL message( 'chem_emissions_matching', 'CM0445', 2, 2, 0, 6, 0 )
 
        END SELECT
 
@@ -609,15 +784,27 @@ SUBROUTINE chem_emissions_match( emt_att,len_index )
 !> Initialization:
 !> Netcdf reading, arrays allocation and first calculation of cssws fluxes at timestep 0
 !--------------------------------------------------------------------------------------------------!
+
  SUBROUTINE chem_emissions_init
 
     USE netcdf_data_input_mod,                                                                     &
-        ONLY:  chem_emis,                                                                          &
-               chem_emis_att
+        ONLY:  chem_emis, chem_emis_att
 
     IMPLICIT NONE
 
     INTEGER(iwp) :: ispec                        !< running index
+
+!
+!-- Actions for initial runs
+!  IF  (  TRIM( initializing_actions ) /= 'read_restart_data' )  THEN
+!--    ...
+!
+!
+!-- Actions for restart runs
+!  ELSE
+!--    ...
+!
+!  ENDIF
 
 
     IF  ( debug_output )  CALL debug_message( 'chem_emissions_init', 'start' )
@@ -755,29 +942,23 @@ SUBROUTINE chem_emissions_match( emt_att,len_index )
 !>       variables.
 !> @todo Clarify time used in emis_lod=2 mode. ATM, the used time seems strange.
 !--------------------------------------------------------------------------------------------------!
+
  SUBROUTINE chem_emissions_setup( emt_att, emt, n_matched_vars )
 
-    USE arrays_3d,                                                                                 &
-        ONLY:  hyp,                                                                                &
-               pt
+   USE surface_mod,                                                                                &
+       ONLY:  surf_def_h, surf_lsm_h, surf_usm_h
+
+   USE netcdf_data_input_mod,                                                                      &
+       ONLY:  street_type_f
+
+   USE arrays_3d,                                                                                  &
+       ONLY: hyp, pt
 
     USE control_parameters,                                                                        &
-        ONLY:  time_since_reference_point
-
-    USE netcdf_data_input_mod,                                                                     &
-        ONLY:  street_type_f
+        ONLY: time_since_reference_point
 
     USE palm_date_time_mod,                                                                        &
-        ONLY:  days_per_week,                                                                      &
-               get_date_time,                                                                      &
-               hours_per_day,                                                                      &
-               months_per_year,                                                                    &
-               seconds_per_day
-
-    USE surface_mod,                                                                               &
-        ONLY:  surf_def,                                                                           &
-               surf_lsm,                                                                           &
-               surf_usm
+        ONLY: days_per_week, get_date_time, hours_per_day, months_per_year, seconds_per_day
 
     IMPLICIT NONE
 
@@ -883,9 +1064,10 @@ SUBROUTINE chem_emissions_match( emt_att,len_index )
 !
 !--          Error check (need units)
              CASE DEFAULT
-                message_string = 'illegal unit for emission input = "' // TRIM( emt_att%units ) // &
-                                 '"'
-                CALL message( 'chem_emissions_setup', 'CHM0042', 2, 2, 0, 6, 0 )
+                message_string = 'The Units of the provided emission input'                 //     &
+                                 ' are not the ones required by PALM-4U: please check '     //     &
+                                 ' emission module documentation.'
+                CALL message( 'chem_emissions_setup', 'CM0446', 2, 2, 0, 6, 0 )
 
           END SELECT
 
@@ -898,7 +1080,7 @@ SUBROUTINE chem_emissions_match( emt_att,len_index )
 
 !
 !--          Derive Temperature from Potential Temperature
-             tmp_temp(nzb:nzt+1,j,i) = pt(nzb:nzt+1,j,i) * exner(nzb:nzt+1)
+             tmp_temp(nzb:nzt+1,j,i) = pt(nzb:nzt+1,j,i) * ( hyp(nzb:nzt+1) / p_0 )**rd_d_cp
 
 !
 !--          We need to pass to cssws <- (ppm/s) * dz
@@ -910,14 +1092,28 @@ SUBROUTINE chem_emissions_match( emt_att,len_index )
                                              tmp_temp(nzb:nzt+1,j,i) /              &  ! K
                                              hyp(nzb:nzt+1)                            ! Pa
 
+! (ecc) for reference
+!                   m**3/Nmole               (J/mol)*K^-1           K                      Pa
+!             conv_to_ratio(nzb:nzt+1,j,i) = ( (Rgas * tmp_temp(nzb:nzt+1,j,i)) / ((hyp(nzb:nzt+1))) )
+
           ENDDO
        ENDDO
+
+
+! (ecc) moved initialization immediately after allocation
+!
+!-- Initialize
+
+!       emis_distribution(:,nys:nyn,nxl:nxr,:) = 0.0_wp
 
 
 !
 !-- LOD 2 (PRE-PROCESSED MODE)
 
        IF  ( emiss_lod == 2 )  THEN
+
+! for reference (ecc)
+!       IF  ( TRIM( mode_emis ) == "PRE-PROCESSED" )  THEN
 
 !
 !--       Update time indices
@@ -933,6 +1129,9 @@ SUBROUTINE chem_emissions_match( emt_att,len_index )
 !
 !--     LOD 1 (DEFAULT MODE)
         ELSEIF  ( emiss_lod == 1 )  THEN
+
+! for reference (ecc)
+!       ELSEIF  ( TRIM( mode_emis ) == "DEFAULT" )  THEN
 
 !
 !--       Allocate array where to store temporary emission values
@@ -964,9 +1163,9 @@ SUBROUTINE chem_emissions_match( emt_att,len_index )
 !--          Error check (time out of range)
              ELSE
 
-                message_string = '"HOUR" time-factors in the default mode ' //                     &
+                message_string = 'The "HOUR" time-factors in the DEFAULT mode '           //       &
                                  ' are not provided for each hour of the total simulation time'
-                CALL message( 'chem_emissions_setup', 'CHM0043', 2, 2, 0, 6, 0 )
+                CALL message( 'chem_emissions_setup', 'CM0448', 2, 2, 0, 6, 0 )
 
              ENDIF
 
@@ -1011,10 +1210,9 @@ SUBROUTINE chem_emissions_match( emt_att,len_index )
 !--          Error check (MDH time factor not provided)
              ELSE
 
-                message_string = '"MDH" time-factors in the default mode ' //                      &
-                                 'are not provided for each hour/day/month  of the total ' //      &
-                                 'simulation time'
-                CALL message( 'chem_emissions_setup', 'CHM0044', 2, 2, 0, 6, 0 )
+                message_string = 'The "MDH" time-factors in the DEFAULT mode '           //        &
+                           ' are not provided for each hour/day/month  of the total simulation time'
+                CALL message( 'chem_emissions_setup', 'CM0449', 2, 2, 0, 6, 0 )
 
              ENDIF
 
@@ -1022,8 +1220,9 @@ SUBROUTINE chem_emissions_match( emt_att,len_index )
 !--       Error check (no time factor defined)
           ELSE
 
-             message_string = 'no time factor defined'
-             CALL message( 'chem_emissions_setup', 'CHM0045', 2, 2, 0, 6, 0 )
+             message_string = 'In the DEFAULT mode the time factor'           //                   &
+                              ' has to be defined in the NAMELIST'
+             CALL message( 'chem_emissions_setup', 'CM0450', 2, 2, 0, 6, 0 )
 
           ENDIF
 
@@ -1031,6 +1230,9 @@ SUBROUTINE chem_emissions_match( emt_att,len_index )
 !--    PARAMETERIZED MODE
        ELSEIF ( emiss_lod == 0 )  THEN
 
+
+! for reference (ecc)
+!       ELSEIF  ( TRIM( mode_emis ) == "PARAMETERIZED" )  THEN
 
 !
 !--       Assign constant values of time factors, diurnal profile for traffic sector
@@ -1054,7 +1256,12 @@ SUBROUTINE chem_emissions_match( emt_att,len_index )
 !
 !--  Emission distribution calculation
 
+!
+!--    LOD 0 (PARAMETERIZED mode)
        IF  ( emiss_lod == 0 )  THEN
+
+! for reference (ecc)
+!       IF  ( TRIM( mode_emis ) == "PARAMETERIZED" )  THEN
 
           DO  ispec = 1, n_matched_vars
 
@@ -1069,6 +1276,9 @@ SUBROUTINE chem_emissions_match( emt_att,len_index )
 !
 !--    LOD 1 (DEFAULT mode)
        ELSEIF  ( emiss_lod == 1 )  THEN
+
+! for referene (ecc)
+!       ELSEIF  ( TRIM( mode_emis ) == "DEFAULT" )  THEN
 
 !
 !--       Allocate array for the emission value corresponding to a specific category and time factor
@@ -1237,15 +1447,24 @@ SUBROUTINE chem_emissions_match( emt_att,len_index )
 !--    LOD 2 (PRE-PROCESSED mode)
        ELSEIF  ( emiss_lod == 2 )  THEN
 
+! for reference (ecc)
+!       ELSEIF  ( TRIM( mode_emis ) == "PRE-PROCESSED" )  THEN
+
 !
 !--       Cycle over species: n_matched_vars represents the number of species in common between the
 !--       emission input data and the chemistry mechanism used
           DO  ispec = 1, n_matched_vars
 
+! (ecc)
              emis_distribution(1,nys:nyn,nxl:nxr,ispec) = emt(match_spec_input(ispec))%            &
                                        preproc_emission_data(index_hh+1,1,nys+1:nyn+1,nxl+1:nxr+1) &
                                        * conversion_factor
 
+
+!             emis_distribution(1,nys:nyn,nxl:nxr,ispec) =                                &
+!                       emt(match_spec_input(ispec))%                                     &
+!                           preproc_emission_data(index_hh,1,:,:) *   &
+!                       conversion_factor
           ENDDO
 
        ENDIF  ! emiss_lod
@@ -1259,261 +1478,281 @@ SUBROUTINE chem_emissions_match( emt_att,len_index )
 !--    LOD 0 (PARAMETERIZED mode)
 !--    Units of inputs are micromoles/m2/s
        IF  ( emiss_lod == 0 )  THEN
+! for reference (ecc)
+!       IF  ( TRIM( mode_emis ) == "PARAMETERIZED" )  THEN
 
           IF  (street_type_f%from_file)  THEN
 
 !
-!--          Streets are lsm surfaces, hence, no usm surface treatment required.
-!--          However, urban surface may be initialized via default initialization in surface_mod,
-!--          e.g. at horizontal urban walls that are at k == 0 (building is lower than the first
-!--          grid point). Hence, in order to have only emissions at streets, set the surfaces
-!--          emissions to zero at urban walls.
-             IF  ( surf_usm%ns >=1 )  surf_usm%cssws = 0.0_wp
+!-- Streets are lsm surfaces, hence, no usm surface treatment required.
+!-- However, urban surface may be initialized via default initialization in surface_mod, e.g. at
+!-- horizontal urban walls that are at k == 0 (building is lower than the first grid point). Hence,
+!-- in order to have only emissions at streets, set the surfaces emissions to zero at urban walls.
+             IF  ( surf_usm_h(0)%ns >=1 )  surf_usm_h(0)%cssws = 0.0_wp
 
 !
 !--          Treat land-surfaces.
-             DO  m = 1, surf_lsm%ns
+             DO  m = 1, surf_lsm_h(0)%ns
 
-                i = surf_lsm%i(m)
-                j = surf_lsm%j(m)
-                k = surf_lsm%k(m)
+                i = surf_lsm_h(0)%i(m)
+                j = surf_lsm_h(0)%j(m)
+                k = surf_lsm_h(0)%k(m)
 
 !
 !--             Set everything to zero then reassign according to street type
-                surf_lsm%cssws(:,m) = 0.0_wp
+                surf_lsm_h(0)%cssws(:,m) = 0.0_wp
 
-                IF ( surf_lsm%upward(m) )  THEN
+                IF  ( street_type_f%var(j,i) >= main_street_id  .AND.                              &
+                      street_type_f%var(j,i) < max_street_id   )  THEN
 
-                   IF  ( street_type_f%var(j,i) >= main_street_id  .AND.                           &
-                         street_type_f%var(j,i) < max_street_id   )                                &
-                   THEN
 !
-!--                   Cycle over matched species
-                      DO  ispec = 1, n_matched_vars
+!--                Cycle over matched species
+                   DO  ispec = 1, n_matched_vars
+
 !
-!--                      PMs are already in kilograms
-                         IF  ( TRIM( spc_names( match_spec_model(ispec) ) ) == "PM1"     .OR.      &
-                               TRIM( spc_names( match_spec_model(ispec) ) ) == "PM25"    .OR.      &
-                               TRIM( spc_names( match_spec_model(ispec) ) ) == "PM10" )            &
-                         THEN
+!--                   PMs are already in kilograms
+                      IF  ( TRIM( spc_names( match_spec_model(ispec) ) ) == "PM1"     .OR.         &
+                            TRIM( spc_names( match_spec_model(ispec) ) ) == "PM25"    .OR.         &
+                            TRIM( spc_names( match_spec_model(ispec) ) ) == "PM10" )  THEN
+
 !
-!--                         kg/(m^2*s) * kg/m^3
-                            surf_lsm%cssws(match_spec_model(ispec),m) =                            &
+!--                      kg/(m^2*s) * kg/m^3
+                         surf_lsm_h(0)%cssws(match_spec_model(ispec),m) =                          &
                                    emiss_factor_main(match_spec_input(ispec)) *                    &
                                    emis_distribution(1,j,i,ispec)             *   &     ! kg/(m^2*s)
                                    rho_air(k)                                           ! kg/m^3
+
 !
-!--                      Other Species
-!--                      Inputs are micromoles
-                         ELSE
+!--                   Other Species
+!--                   Inputs are micromoles
+                      ELSE
+
 !
-!--                         ppm/s *m *kg/m^3
-                            surf_lsm%cssws(match_spec_model(ispec),m) =                            &
+!--                      ppm/s *m *kg/m^3
+                         surf_lsm_h(0)%cssws(match_spec_model(ispec),m) =                          &
                                    emiss_factor_main( match_spec_input(ispec) ) *                  &
                                    emis_distribution(1,j,i,ispec) *       &     ! micromoles/(m^2*s)
                                    conv_to_ratio(k,j,i) *                 &     ! m^3/Nmole
                                    rho_air(k)                                   ! kg/m^3
 
-                         ENDIF
+                      ENDIF
 
-                      ENDDO  ! ispec
+                   ENDDO  ! ispec
 
-                   ELSEIF  ( street_type_f%var(j,i) >= side_street_id   .AND.                      &
-                             street_type_f%var(j,i) < main_street_id )                             &
-                   THEN
+
+                ELSEIF  ( street_type_f%var(j,i) >= side_street_id   .AND.                         &
+                          street_type_f%var(j,i) < main_street_id )  THEN
+
 !
-!--                   Cycle over matched species
-                      DO  ispec = 1, n_matched_vars
+!--                Cycle over matched species
+                   DO  ispec = 1, n_matched_vars
+
 !
-!--                      PMs are already in kilograms
-                         IF  ( TRIM( spc_names( match_spec_model(ispec) ) ) == "PM1"      .OR.     &
-                               TRIM( spc_names( match_spec_model(ispec) ) ) == "PM25"     .OR.     &
-                               TRIM( spc_names( match_spec_model(ispec) ) ) == "PM10" )            &
-                         THEN
+!--                   PMs are already in kilograms
+                      IF  ( TRIM( spc_names( match_spec_model(ispec) ) ) == "PM1"      .OR.        &
+                            TRIM( spc_names( match_spec_model(ispec) ) ) == "PM25"     .OR.        &
+                            TRIM( spc_names( match_spec_model(ispec) ) ) == "PM10" )  THEN
+
 !
-!--                         kg/(m^2*s) * kg/m^3
-                            surf_lsm%cssws(match_spec_model(ispec),m) =                            &
+!--                      kg/(m^2*s) * kg/m^3
+                         surf_lsm_h(0)%cssws(match_spec_model(ispec),m) =                          &
                                    emiss_factor_side( match_spec_input(ispec) ) *                  &
                                    emis_distribution(1,j,i,ispec)               * &     ! kg/(m^2*s)
                                    rho_air(k)                                           ! kg/m^3
 !
-!--                      Other species
-!--                      Inputs are micromoles
-                         ELSE
+!--                   Other species
+!--                   Inputs are micromoles
+                      ELSE
+
 !
-!--                         ppm/s *m *kg/m^3
-                            surf_lsm%cssws(match_spec_model(ispec),m) =                            &
+!--                      ppm/s *m *kg/m^3
+                         surf_lsm_h(0)%cssws(match_spec_model(ispec),m) =                          &
                                    emiss_factor_side( match_spec_input(ispec) ) *                  &
                                    emis_distribution(1,j,i,ispec)        *   &  ! micromoles/(m^2*s)
                                    conv_to_ratio(k,j,i)                  *   &  ! m^3/Nmole
                                    rho_air(k)                                  ! kg/m^3
 
-                         ENDIF
+                      ENDIF
 
-                      ENDDO  ! ispec
+                   ENDDO  ! ispec
 
-                   ENDIF  ! street type
+!
+!-- If no street type is defined, then assign zero emission to all the species
+! (ecc) moved to front (for reference)
+!                ELSE
+!
+!                   surf_lsm_h(0)%cssws(:,m) = 0.0_wp
 
-                ENDIF
+                ENDIF  ! street type
 
              ENDDO  ! m
 
           ENDIF  ! street_type_f%from_file
 
+
 !
 !--    LOD 1 (DEFAULT) and LOD 2 (PRE-PROCESSED)
        ELSE
+
 
           DO  ispec = 1, n_matched_vars
 
 !
 !--          Default surfaces
-             DO  m = 1, surf_def%ns
+             DO  m = 1, surf_def_h(0)%ns
 
-                IF ( surf_def%upward(m) )  THEN
+                i = surf_def_h(0)%i(m)
+                j = surf_def_h(0)%j(m)
 
-                   i = surf_def%i(m)
-                   j = surf_def%j(m)
+                IF  ( emis_distribution(1,j,i,ispec) > 0.0_wp )  THEN
 
-                   IF  ( emis_distribution(1,j,i,ispec) > 0.0_wp )  THEN
 !
-!--                   PMs
-                      IF  ( TRIM( spc_names( match_spec_model(ispec) ) ) == "PM1"     .OR.         &
-                            TRIM( spc_names( match_spec_model(ispec) ) ) == "PM25"    .OR.         &
-                            TRIM( spc_names( match_spec_model(ispec) ) ) == "PM10" )               &
-                      THEN
-                         surf_def%cssws(match_spec_model(ispec),m) =        &     ! kg/m2/s * kg/m3
+!--                PMs
+                   IF  ( TRIM( spc_names( match_spec_model(ispec) ) ) == "PM1"     .OR.            &
+                         TRIM( spc_names( match_spec_model(ispec) ) ) == "PM25"    .OR.            &
+                         TRIM( spc_names( match_spec_model(ispec) ) ) == "PM10" )  THEN
+
+                      surf_def_h(0)%cssws(match_spec_model(ispec),m) =      &     ! kg/m2/s * kg/m3
                                            emis_distribution(1,j,i,ispec) * &     ! kg/m2/s
                                            rho_air(nzb)                           ! kg/m^3
-                      ELSE
+
+                   ELSE
 
 !
-!--                      VOCs
-                         IF  ( len_index_voc > 0  .AND.                                            &
-                               emt_att%species_name(match_spec_input(ispec)) == "VOC" )            &
-                         THEN
-                            surf_def%cssws(match_spec_model(ispec),m) =       &  ! ppm/s * m * kg/m3
+!--                   VOCs
+                      IF  ( len_index_voc > 0  .AND.                                               &
+                            emt_att%species_name(match_spec_input(ispec)) == "VOC" )  THEN
+
+                         surf_def_h(0)%cssws(match_spec_model(ispec),m) =     &  ! ppm/s * m * kg/m3
                                emis_distribution(1,j,i,ispec) *               &  ! mole/m2/s
                                conv_to_ratio(nzb,j,i)         *               &  ! m^3/mole
                                ratio2ppm                      *               &  ! ppm
                                rho_air(nzb)                                      ! kg/m^3
+
+
 !
-!--                      Other species
-                         ELSE
-                            surf_def%cssws(match_spec_model(ispec),m) =      &   ! ppm/s * m * kg/m3
+!--                   Other species
+                      ELSE
+
+                         surf_def_h(0)%cssws(match_spec_model(ispec),m) =    &   ! ppm/s * m * kg/m3
                                emis_distribution(1,j,i,ispec) *              &   ! kg/m2/s
                                ( 1.0_wp / emt_att%xm(ispec) ) *              &   ! mole/kg
                                conv_to_ratio(nzb,j,i)         *              &   ! m^3/mole
                                ratio2ppm                      *              &   ! ppm
                                rho_air(nzb)                                      !  kg/m^3
-                         ENDIF  ! VOC
 
-                      ENDIF  ! PM
+                      ENDIF  ! VOC
 
-                   ENDIF  ! emis_distribution > 0
+                   ENDIF  ! PM
 
-                ENDIF
+                ENDIF  ! emis_distribution > 0
 
              ENDDO  ! m
 
 !
 !--          LSM surfaces
-             DO  m = 1, surf_lsm%ns
+             DO  m = 1, surf_lsm_h(0)%ns
 
-                IF ( surf_lsm%upward(m) )  THEN
+                i = surf_lsm_h(0)%i(m)
+                j = surf_lsm_h(0)%j(m)
+                k = surf_lsm_h(0)%k(m)
 
-                   i = surf_lsm%i(m)
-                   j = surf_lsm%j(m)
-                   k = surf_lsm%k(m)
+                IF  ( emis_distribution(1,j,i,ispec) > 0.0_wp )  THEN
 
-                   IF  ( emis_distribution(1,j,i,ispec) > 0.0_wp )  THEN
 !
-!--                   PMs
-                      IF  ( TRIM( spc_names( match_spec_model(ispec) ) ) == "PM1"     .OR.         &
-                            TRIM( spc_names( match_spec_model(ispec) ) ) == "PM25"    .OR.         &
-                            TRIM( spc_names( match_spec_model(ispec) ) ) == "PM10" )               &
-                      THEN
-                         surf_lsm%cssws(match_spec_model(ispec),m) =             &    ! kg/m2/s * kg/m3
+!--                PMs
+                   IF  ( TRIM( spc_names( match_spec_model(ispec) ) ) == "PM1"     .OR.            &
+                         TRIM( spc_names( match_spec_model(ispec) ) ) == "PM25"    .OR.            &
+                         TRIM( spc_names( match_spec_model(ispec) ) ) == "PM10" )  THEN
+
+                      surf_lsm_h(0)%cssws(match_spec_model(ispec),m) =           &    ! kg/m2/s * kg/m3
                                              emis_distribution(1,j,i,ispec) *    &    ! kg/m2/s
                                              rho_air(k)                               ! kg/m^3
-                      ELSE
+
+                   ELSE
+
 !
-!--                      VOCs
-                         IF  ( len_index_voc > 0                                           .AND.   &
-                               emt_att%species_name(match_spec_input(ispec)) == "VOC" )            &
-                         THEN
-                            surf_lsm%cssws(match_spec_model(ispec),m) =        &   ! ppm/s * m * kg/m3
+!--                   VOCs
+                      IF  ( len_index_voc > 0                                           .AND.      &
+                            emt_att%species_name(match_spec_input(ispec)) == "VOC" )  THEN
+
+                         surf_lsm_h(0)%cssws(match_spec_model(ispec),m) =      &   ! ppm/s * m * kg/m3
                                emis_distribution(1,j,i,ispec) *                &   ! mole/m2/s
                                conv_to_ratio(k,j,i)           *                &   ! m^3/mole
                                ratio2ppm                      *                &   ! ppm
                                rho_air(k)                                          ! kg/m^3
+
 !
-!--                      Other species
-                         ELSE
-                            surf_lsm%cssws(match_spec_model(ispec),m) =         &   ! ppm/s * m * kg/m3
+!--                   Other species
+                      ELSE
+
+                         surf_lsm_h(0)%cssws(match_spec_model(ispec),m) =       &   ! ppm/s * m * kg/m3
                                emis_distribution(1,j,i,ispec) *                 &   ! kg/m2/s
                                ( 1.0_wp / emt_att%xm(ispec) ) *                 &   ! mole/kg
                                conv_to_ratio(k,j,i)           *                 &   ! m^3/mole
                                ratio2ppm                      *                 &   ! ppm
                                rho_air(k)                                           ! kg/m^3
 
-                         ENDIF  ! VOC
+                      ENDIF  ! VOC
 
-                      ENDIF  ! PM
+                   ENDIF  ! PM
 
-                   ENDIF  ! emis_distribution
-
-                ENDIF
+                ENDIF  ! emis_distribution
 
              ENDDO  ! m
 
+
+
 !
 !--          USM surfaces
-             DO  m = 1, surf_usm%ns
+             DO  m = 1, surf_usm_h(0)%ns
 
-                IF ( surf_usm%upward(m) )  THEN
+                i = surf_usm_h(0)%i(m)
+                j = surf_usm_h(0)%j(m)
+                k = surf_usm_h(0)%k(m)
 
-                   i = surf_usm%i(m)
-                   j = surf_usm%j(m)
-                   k = surf_usm%k(m)
+                IF  ( emis_distribution(1,j,i,ispec) > 0.0_wp )  THEN
 
-                   IF  ( emis_distribution(1,j,i,ispec) > 0.0_wp )  THEN
 !
-!--                   PMs
-                      IF  ( TRIM( spc_names( match_spec_model(ispec) ) ) == "PM1"     .OR.         &
-                            TRIM( spc_names( match_spec_model(ispec) ) ) == "PM25"    .OR.         &
-                            TRIM( spc_names( match_spec_model(ispec) ) ) == "PM10" )               &
-                      THEN
-                         surf_usm%cssws(match_spec_model(ispec),m) =             &    ! kg/m2/s * kg/m3
+!--                PMs
+                   IF  ( TRIM( spc_names( match_spec_model(ispec) ) ) == "PM1"     .OR.            &
+                         TRIM( spc_names( match_spec_model(ispec) ) ) == "PM25"    .OR.            &
+                         TRIM( spc_names( match_spec_model(ispec) ) ) == "PM10" )  THEN
+
+                      surf_usm_h(0)%cssws(match_spec_model(ispec),m) =           &    ! kg/m2/s * kg/m3
                                emis_distribution(1,j,i,ispec) *                  &    ! kg/m2/s
                                rho_air(k)                                             ! kg/m^3
-                      ELSE
+
+                   ELSE
+
 !
-!--                      VOCs
-                         IF  ( len_index_voc > 0  .AND.                                            &
-                               emt_att%species_name(match_spec_input(ispec)) == "VOC" )            &
-                         THEN
-                            surf_usm%cssws(match_spec_model(ispec),m) =         &   ! ppm/s * m * kg/m3
+!-- VOCs
+                      IF  ( len_index_voc > 0  .AND.                                               &
+                            emt_att%species_name(match_spec_input(ispec)) == "VOC" )  THEN
+
+                         surf_usm_h(0)%cssws(match_spec_model(ispec),m) =       &   ! ppm/s * m * kg/m3
                                emis_distribution(1,j,i,ispec) *                 &   ! m2/s
                                conv_to_ratio(k,j,i)           *                 &   ! m^3/mole
                                ratio2ppm                      *                 &   ! ppm
                                rho_air(k)                                           ! kg/m^3
+
 !
-!--                      Other species
-                         ELSE
-                            surf_usm%cssws(match_spec_model(ispec),m) =         &   ! ppm/s * m * kg/m3
+!-- Other species
+                      ELSE
+
+                         surf_usm_h(0)%cssws(match_spec_model(ispec),m) =       &   ! ppm/s * m * kg/m3
                                emis_distribution(1,j,i,ispec) *                 &   ! kg/m2/s
                                ( 1.0_wp / emt_att%xm(ispec) ) *                 &   ! mole/kg
                                conv_to_ratio(k,j,i)           *                 &   ! m^3/mole
                                ratio2ppm                      *                 &   ! ppm
                                rho_air(k)                                           ! kg/m^3
-                         ENDIF  ! VOC
 
-                      ENDIF  ! PM
 
-                   ENDIF  ! emis_distribution
+                      ENDIF  ! VOC
 
-                ENDIF
+                   ENDIF  ! PM
+
+                ENDIF  ! emis_distribution
 
              ENDDO  ! m
 
@@ -1522,12 +1761,25 @@ SUBROUTINE chem_emissions_match( emt_att,len_index )
        ENDIF
 
 !
-!--    Deallocate time_factor in case of DEFAULT mode)
+!-- Deallocate time_factor in case of DEFAULT mode)
        IF  ( ALLOCATED( time_factor ) )  DEALLOCATE( time_factor )
 
-    ENDIF
+   ENDIF
 
  END SUBROUTINE chem_emissions_setup
+
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!
+!! 20200203 (ECC) - ON DEMAND EMISSION UPDATE MODE
+!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -1540,7 +1792,7 @@ SUBROUTINE chem_emissions_match( emt_att,len_index )
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
 !
-!-- 20200203 NB
+!-- 20200203 (ECC)
 !
 !--------------------------------------------------------------------------------------------------!
 ! Description:
@@ -1566,13 +1818,14 @@ SUBROUTINE chem_emissions_match( emt_att,len_index )
 
 
 !
-!-- 20200203 NB
+!-- 20200203 (ECC)
 !
 !--------------------------------------------------------------------------------------------------!
 ! Description:
 ! ------------
 !>  interface for initiation of emission arrays based on emission LOD
 !--------------------------------------------------------------------------------------------------!
+
  SUBROUTINE chem_emissions_update_on_demand
 
     IMPLICIT NONE
@@ -1586,35 +1839,41 @@ SUBROUTINE chem_emissions_match( emt_att,len_index )
           CALL chem_emissions_update_on_demand_lod2
     END SELECT
 
- END SUBROUTINE chem_emissions_update_on_demand
+ END SUBROUTINE        ! chem_emisisons_update_on_demand
 
 
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!
+!! SUBROUTINES SPECIFIC FOR LOD 2
+!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+!
+!-- 20200203 (ECC)
+!
 !--------------------------------------------------------------------------------------------------!
 ! Description:
 ! ------------
 !>  Initiates header for emissions data attributes for LOD 2
 !--------------------------------------------------------------------------------------------------!
+
  SUBROUTINE chem_emissions_header_init_lod2
 
     USE control_parameters,                                                                        &
-        ONLY:  coupling_char,                                                                      &
-               message_string
+        ONLY: coupling_char, message_string
 
     USE netcdf_data_input_mod,                                                                     &
-        ONLY:  chem_emis_att,                                                                      &
-               close_input_file,                                                                   &
-               get_attribute,                                                                      &
-               get_dimension_length,                                                               &
-               get_variable,                                                                       &
-               open_read_file
+        ONLY: chem_emis_att, close_input_file, get_attribute, get_dimension_length, get_variable,  &
+              open_read_file
+
 
     IMPLICIT NONE
+
 
     INTEGER(iwp) ::  att_lod   !<  lod attribute in chemistry file
     INTEGER(iwp) ::  ncid      !< chemistry file netCDF handle
 
-
-    IF ( debug_output )  CALL debug_message( 'chem_emissions_header_init_lod2', 'start' )
+    IF  ( debug_output )  CALL debug_message( 'chem_emissions_header_init_lod2', 'start' )
 
 !
 !-- Opens _chemistry input file and obtain header information
@@ -1623,298 +1882,228 @@ SUBROUTINE chem_emissions_match( emt_att,len_index )
 !-- Check if LOD in chemistry file matches LOD in namelist
     CALL get_attribute ( ncid, 'lod', att_lod, .TRUE. )
 
-    IF ( att_lod /= emiss_lod )  THEN
-       WRITE ( message_string, * ) 'LOD mismatch between namelist (emiss_lod=', emiss_lod,         &
-                                   ') and chemistry input file (att_lod=', att_lod, ')'
-       CALL message( 'chem_emissions_header_init_lod2', 'CHM0046', 1, 2, 0, 6, 0 )
+    IF  ( att_lod /= emiss_lod )  THEN
+       message_string = ''   ! to get around unused variable warning / error
+       WRITE ( message_string, * ) 'LOD mismatch between namelist (emiss_lod) and',                &
+               CHAR( 10 ), '                    ', 'chemistry input file (global attributes>lod)'
+       CALL message( 'chem_emissions_header_init_lod2', 'CM0468', 1, 2, 0, 6, 0 )
     ENDIF
 !
 !-- Obtain unit conversion factor
-    CALL get_attribute( ncid, 'units', chem_emis_att%units, .FALSE., "emission_values" )
+    CALL get_attribute ( ncid, 'units', chem_emis_att%units, .FALSE., "emission_values" )
     conversion_factor = chem_emissions_convert_base_units ( chem_emis_att%units )
 !
 !-- Obtain header attributes
-    CALL chem_emissions_init_species( ncid )
-    CALL chem_emissions_init_timestamps( ncid )
+    CALL chem_emissions_init_species    ( ncid )
+    CALL chem_emissions_init_timestamps ( ncid )
 !
 !-- Done reading file
-    CALL close_input_file( ncid )
+    CALL close_input_file (ncid)
 
 !
 !-- Set previous timestamp index to something different to trigger a read event later on
     previous_timestamp_index = -1
-    IF ( emiss_interpolate )  THEN
-       next_timestamp_index = -1
-       next_time_since_reference_point = -1
-       previous_time_since_reference_point = -1
-       ALLOCATE ( emis_distrib(n_matched_vars,nys:nyn,nxl:nxr) )
-       ALLOCATE ( next_emis_distrib(n_matched_vars,nys:nyn,nxl:nxr) )
-       ALLOCATE ( previous_emis_distrib(n_matched_vars,nys:nyn,nxl:nxr) )
-    ENDIF
 
     IF  ( debug_output )  CALL debug_message( 'chem_emissions_header_init_lod2', 'end' )
 
  END SUBROUTINE chem_emissions_header_init_lod2
 
-
+!
+!-- 20200203 (ECC)
+!
 !--------------------------------------------------------------------------------------------------!
 ! Description:
 ! ------------
 !> Reads emission data on demand for LOD2
 !--------------------------------------------------------------------------------------------------!
- SUBROUTINE chem_emission_read_timestamp( time_index_location, emis_distrib )
+
+ SUBROUTINE chem_emissions_update_on_demand_lod2
 
     USE control_parameters,                                                                        &
-        ONLY:  coupling_char
+        ONLY: coupling_char, time_since_reference_point
 
     USE netcdf_data_input_mod,                                                                     &
-        ONLY:  chem_emis_att,                                                                      &
-               close_input_file,                                                                   &
-               get_variable,                                                                       &
-               open_read_file
+        ONLY: chem_emis_att, close_input_file, get_variable, open_read_file
+
+    USE arrays_3d,                                                                                 &
+        ONLY: hyp, pt
+
+    USE surface_mod,                                                                               &
+        ONLY: surf_def_h, surf_lsm_h, surf_usm_h
+
 
     IMPLICIT NONE
 
-    INTEGER(iwp), INTENT(IN) ::  time_index_location  !< location of required timestamp
+    CHARACTER(LEN=80) ::  this_timestamp    !< writes out timestamp
 
-    REAL(wp), DIMENSION(:,:,:), INTENT(OUT) ::  emis_distrib  !<  surface emissions
+    INTEGER(iwp) ::  i,j,k,m                !< generic counters
+    INTEGER(iwp) ::  kmatch                 !< index of matched species
+    INTEGER(iwp) ::  ncid                   !< netCDF file handle (chemistry file)
+    INTEGER(iwp) ::  time_index_location    !< location of most recent timestamp
 
-    INTEGER(iwp)                                         ::  i                    !< loop index x-direction
-    INTEGER(iwp)                                         ::  j                    !< loop index y-direction
-    INTEGER(iwp)                                         ::  k                    !< generic counter
-    INTEGER(iwp)                                         ::  kmatch               !< index of matched species
-    INTEGER(iwp)                                         ::  ncid                 !< netCDF file handle (chemistry file)
-    REAL(wp), ALLOCATABLE, DIMENSION(:,:,:,:,:)          ::  emissions_raw        !< raw emissions data
+    REAL(wp), ALLOCATABLE, DIMENSION(:,:)       ::  cssws_def_h    !< dummy default surface array
+    REAL(wp), ALLOCATABLE, DIMENSION(:,:)       ::  cssws_lsm_h    !< dummy LSM surface array
+    REAL(wp), ALLOCATABLE, DIMENSION(:,:)       ::  cssws_usm_h    !< dummy USM surface array
+    REAL(wp), ALLOCATABLE, DIMENSION(:,:)       ::  mass2mole      !< conversion factor mass 2 molar (ppm) flux
+
+    REAL(wp), ALLOCATABLE, DIMENSION(:,:,:)     ::  emis_distrib   !< surface emissions
+
+    REAL(wp), ALLOCATABLE, DIMENSION(:,:,:,:,:) ::  emissions_raw  !< raw emissions data
+
+    IF  ( debug_output )  CALL debug_message ( 'chem_emissions_update_on_demand_lod2', 'start' )
+!
+!-- Obtain current timestamp and locate index for most recent timestamp element
+!-- end subroutine (RETURN) if it is still the same index as the existing time index
+
+    this_timestamp = ''   ! string must be initiated before using
+    CALL get_date_time( time_since_reference_point, date_time_str=this_timestamp )
+
+    time_index_location = chem_emissions_locate_timestep                                           &
+                                        ( this_timestamp, timestamps, 1, chem_emis_att%dt_emission )
+
+    IF  ( time_index_location == previous_timestamp_index )  RETURN
 
 !
-!-- Open netCDF file and allocate temp memory.
+!-- Begin extract emission data for matched species from netCDF file
+    previous_timestamp_index = time_index_location
+
+    ALLOCATE ( emis_distrib(n_matched_vars,nys:nyn,nxl:nxr) )
+    emis_distrib = 0.0_wp
+
+!
+!-- Open netCDF file and allocate temp memory
     CALL open_read_file( TRIM( input_file_chem ) // TRIM( coupling_char ), ncid )
     ALLOCATE( emissions_raw(1,1,nys:nyn,nxl:nxr,1) )
-    emis_distrib(:,:,:) = 0.0_wp
 
-    DO  k = 1, n_matched_vars
+    DO k = 1, n_matched_vars
 !
-!--    Get index for matching species.
+!-- Get index for matching species
        kmatch = chem_emissions_locate_species( spc_names(match_spec_model(k)),                     &
                                                chem_emis_att%species_name )
 !
-!--    Extract variable as-is.
-!--    Note C index notations for nx and ny due to MPI and reversed index dimension order for NetCDF
-!--    Fortran API.
+!-- Extract variable as-is
+!-- Note C index notations for nx and ny due to MPI and reversed index dimension order for netCDF
+!-- Fortran API)
        emissions_raw = 0.0_wp
 
-       CALL get_variable ( ncid, 'emission_values', emissions_raw, kmatch, nxl+1, nys+1, 1,        &
-                           time_index_location, 1, nxr-nxl+1, nyn-nys+1, 1, 1, .FALSE. )
+       CALL get_variable ( ncid, 'emission_values', emissions_raw,                                 &
+                           kmatch, nxl+1, nys+1, 1, time_index_location,                           &
+                           1, nxr-nxl+1, nyn-nys+1, 1, 1, .FALSE. )
 !
-!--    Transfer emission data (assumed array emis_distrib is indexed from 1).
-       DO  j = nys, nyn
-          DO  i = nxl, nxr
-             emis_distrib(k,j-nys+1,i-nxl+1) = emissions_raw(1,1,j,i,1) * conversion_factor
-          ENDDO
+!--    Transfer emission data
+       DO j = nys,nyn
+         DO i = nxl,nxr
+            emis_distrib(k,j,i) = emissions_raw(1,1,j,i,1) * conversion_factor
+         ENDDO
        ENDDO
 
-    ENDDO
+    ENDDO  ! k = n_matched_vars
 !
-!-- NetCDF handle and temp memory no longer needed.
+!-- netCDF handle and temp memory no longer needed
     DEALLOCATE( emissions_raw )
     CALL close_input_file( ncid )
-
- END SUBROUTINE chem_emission_read_timestamp
-
-
-!--------------------------------------------------------------------------------------------------!
-! Description:
-! ------------
-!> Reads emission data on demand for LOD2
-!--------------------------------------------------------------------------------------------------!
- SUBROUTINE chem_emissions_update_on_demand_lod2
-
-    USE arrays_3d,                                                                                 &
-        ONLY:  hyp,                                                                                &
-               pt
-
-    USE control_parameters,                                                                        &
-        ONLY:  time_since_reference_point
-
-    USE netcdf_data_input_mod,                                                                     &
-        ONLY:  chem_emis_att,                                                                      &
-               close_input_file,                                                                   &
-               get_variable,                                                                       &
-               open_read_file
-
-    USE palm_date_time_mod,                                                                        &
-        ONLY:  date_time_str_len,                                                                  &
-               diff_in_sec_to_reference_date,                                                      &
-               get_date_time
-
-    USE surface_mod,                                                                               &
-        ONLY:  surf_def,                                                                           &
-               surf_lsm,                                                                           &
-               surf_usm
-
-    IMPLICIT NONE
-
-    CHARACTER(LEN=date_time_str_len) ::  this_timestamp  !< writes out timestamp
-
-    INTEGER(iwp) ::  i  !< generic counter
-    INTEGER(iwp) ::  j  !< generic counter
-    INTEGER(iwp) ::  k  !< generic counter
-    INTEGER(iwp) ::  m  !< generic counter
-    INTEGER(iwp) ::  time_index_location  !< location of most recent timestamp
-
-    LOGICAL ::  read_previous_timestamp  !<
-
-    REAL(wp), ALLOCATABLE, DIMENSION(:,:) ::  cssws_def  !< dummy default surface array
-    REAL(wp), ALLOCATABLE, DIMENSION(:,:) ::  cssws_lsm  !< dummy LSM surface array
-    REAL(wp), ALLOCATABLE, DIMENSION(:,:) ::  cssws_usm  !< dummy USM surface array
-    REAL(wp), ALLOCATABLE, DIMENSION(:,:) ::  mass2mole  !< conversion factor mass 2 molar (ppm) flux
-
-!
-!-- Obtain current timestamp and locate index for most recent timestamp element
-!-- end subroutine (RETURN) if it is still the same index as the existing time index.
-!-- String must be initialized before using.
-    this_timestamp = ''
-    CALL get_date_time( time_since_reference_point, date_time_str=this_timestamp )
-
-    time_index_location = chem_emissions_locate_timestep( this_timestamp, timestamps, 1,           &
-                                                          chem_emis_att%dt_emission )
-
-    IF  ( .NOT. emiss_interpolate  .AND.  time_index_location == previous_timestamp_index )  RETURN
-
-    IF ( debug_output )  CALL debug_message ( 'chem_emissions_update_on_demand_lod2', 'start' )
-
-    IF  ( time_index_location /= previous_timestamp_index )  THEN
-       IF  ( emiss_interpolate )  THEN
-!
-!--       Extract emission data for matched species from netCDF file.
-          read_previous_timestamp = ( time_index_location - previous_timestamp_index > 1 )
-          previous_timestamp_index = time_index_location
-          next_timestamp_index = MIN( previous_timestamp_index + 1, chem_emis_att%dt_emission )
-
-          IF  ( read_previous_timestamp ) THEN
-             previous_time_since_reference_point =                                                 &
-                              diff_in_sec_to_reference_date( timestamps(previous_timestamp_index) )
-             CALL chem_emission_read_timestamp( previous_timestamp_index, previous_emis_distrib )
-          ELSE
-             previous_emis_distrib = next_emis_distrib
-             previous_time_since_reference_point = next_time_since_reference_point
-          ENDIF
-          next_time_since_reference_point =                                                        &
-                                  diff_in_sec_to_reference_date( timestamps(next_timestamp_index) )
-          CALL chem_emission_read_timestamp( next_timestamp_index, next_emis_distrib )
-       ELSE
-!
-!--       Extract emission data for matched species from netCDF file.
-          previous_timestamp_index = time_index_location
-!
-!--       In case of emis_interpolate=.false., the array emis_distrib is allocated and deallocated
-!--       in every reading step.
-          ALLOCATE ( emis_distrib(n_matched_vars,nys:nyn,nxl:nxr) )
-          CALL chem_emission_read_timestamp( time_index_location, emis_distrib )
-       ENDIF
-    ENDIF
-
-    IF  ( emiss_interpolate )  THEN
-!
-!--    Calculate interpolated emis_distrib.
-       IF  ( next_timestamp_index == previous_timestamp_index )  THEN
-          emis_distrib = previous_emis_distrib
-       ELSE
-          emis_distrib = ( previous_emis_distrib *                                                 &
-                           ( next_time_since_reference_point - time_since_reference_point ) +      &
-                           next_emis_distrib *                                                     &
-                           ( time_since_reference_point - previous_time_since_reference_point )    &
-                         ) /                                                                       &
-                         ( next_time_since_reference_point - previous_time_since_reference_point )
-       ENDIF
-    ENDIF
-
 !
 !-- Set emis_dt since chemistry ODEs can be stiff, the option to solve them at every RK substep is
-!-- present to help improve stability should the need arise.
+!-- present to help improve stability should the need arise
     dt_emis = dt_3d
 
-    IF ( call_chem_at_all_substeps )  dt_emis = dt_emis * weight_pres(intermediate_timestep_count)
+    IF  ( call_chem_at_all_substeps )  dt_emis = dt_emis * weight_pres(intermediate_timestep_count)
 !
-!-- Calculate conversion factor from mass flux to molar flux (mixing ratio).
+!-- Calculate conversion factor from mass flux to molar flux (mixing ratio)
     ALLOCATE ( mass2mole(nys:nyn,nxl:nxr) )
     mass2mole = 0.0_wp
-    DO  i = nxl, nxr
-       DO  j = nys, nyn
-          mass2mole(j,i) = mass_2_molar_flux( hyp(nzb), pt(nzb,j,i) )
+
+    DO i = nxl, nxr
+       DO j = nys, nyn
+          mass2mole(j,i) = mass_2_molar_flux ( hyp(nzb), pt(nzb,j,i) )
        ENDDO
     ENDDO
 
 !
-!-- Calculate surface fluxes.
+!-- Calculate surface fluxes
 !-- NOTE - For some reason I can not pass surf_xxx%cssws as output argument into subroutine
 !--        assign_surface_flux ( ).  The contents got mixed up once the subroutine is finished. I
 !--        don't know why and I don't have time to investigate. As workaround I declared dummy
 !--        variables and reassign them one by one (i.e., in a loop)
+!-- ECC 20200206
 
 !
 !-- Allocate and initialize dummy surface fluxes
-    ALLOCATE( cssws_def(n_matched_vars,surf_def%ns) )
-    cssws_def = 0.0_wp
+    ALLOCATE( cssws_def_h(n_matched_vars,surf_def_h(0)%ns) )
+    cssws_def_h = 0.0_wp
 
-    ALLOCATE( cssws_lsm(n_matched_vars,surf_lsm%ns) )
-    cssws_lsm = 0.0_wp
+    ALLOCATE( cssws_lsm_h(n_matched_vars,surf_lsm_h(0)%ns) )
+    cssws_lsm_h = 0.0_wp
 
-    ALLOCATE( cssws_usm(n_matched_vars,surf_usm%ns) )
-    cssws_usm = 0.0_wp
+    ALLOCATE( cssws_usm_h(n_matched_vars,surf_usm_h(0)%ns) )
+    cssws_usm_h = 0.0_wp
 
 !
-!-- Assign and transfer emissions as surface fluxes.
-    CALL assign_surface_flux( cssws_def, surf_def%ns, surf_def%j, surf_def%i, emis_distrib,        &
-                              mass2mole )
-    CALL assign_surface_flux( cssws_lsm, surf_lsm%ns, surf_lsm%j, surf_lsm%i, emis_distrib,        &
-                              mass2mole )
-    CALL assign_surface_flux( cssws_usm, surf_usm%ns, surf_usm%j, surf_usm%i, emis_distrib,        &
-                              mass2mole )
+!-- Assign and transfer emissions as surface fluxes
+    CALL assign_surface_flux ( cssws_def_h, surf_def_h(0)%ns,                                      &
+                               surf_def_h(0)%j, surf_def_h(0)%i,                                   &
+                               emis_distrib, mass2mole )
 
-    DO  k = 1, n_matched_vars
 
-       DO  m = 1, surf_def%ns
-          IF ( surf_def%upward(m) )  surf_def%cssws(k,m) = cssws_def(k,m)
+    CALL assign_surface_flux ( cssws_lsm_h, surf_lsm_h(0)%ns,                                      &
+                               surf_lsm_h(0)%j, surf_lsm_h(0)%i,                                   &
+                               emis_distrib, mass2mole )
+
+
+    CALL assign_surface_flux ( cssws_usm_h, surf_usm_h(0)%ns,                                      &
+                               surf_usm_h(0)%j, surf_usm_h(0)%i,                                   &
+                               emis_distrib, mass2mole )
+
+    DO k = 1, n_matched_vars
+
+       DO m = 1, surf_def_h(0)%ns
+          surf_def_h(0)%cssws(k,m) = cssws_def_h(k,m)
        ENDDO
 
-       DO  m = 1, surf_lsm%ns
-          IF ( surf_lsm%upward(m) )  surf_lsm%cssws(k,m) = cssws_lsm(k,m)
+       DO m = 1, surf_lsm_h(0)%ns
+          surf_lsm_h(0)%cssws(k,m)  = cssws_lsm_h(k,m)
        ENDDO
 
-       DO  m = 1, surf_usm%ns
-          IF ( surf_usm%upward(m) )  surf_usm%cssws(k,m) = cssws_usm(k,m)
+       DO m = 1, surf_usm_h(0)%ns
+          surf_usm_h(0)%cssws(k,m)    = cssws_usm_h(k,m)
        ENDDO
 
     ENDDO
 
-    DEALLOCATE( cssws_def )
-    DEALLOCATE( cssws_lsm )
-    DEALLOCATE( cssws_usm )
+!
+!-- Cleaning up
+    DEALLOCATE( cssws_def_h )
+    DEALLOCATE( cssws_lsm_h )
+    DEALLOCATE( cssws_usm_h )
+
+    DEALLOCATE ( emis_distrib )
     DEALLOCATE ( mass2mole )
-    IF ( .NOT. emiss_interpolate )  THEN
-       DEALLOCATE ( emis_distrib )
-    ENDIF
 
     IF  ( debug_output )  CALL debug_message ( 'chem_emissions_update_on_demand_lod2', 'end' )
 
- END SUBROUTINE chem_emissions_update_on_demand_lod2
+ END SUBROUTINE        ! chem_emissions_update_on_demand_lod2
 
 
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!
+!! AUXILIARY SUBROUTINES
+!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+!
+!-- 20200203 (ECC)
+!
 !--------------------------------------------------------------------------------------------------!
 ! Description:
 ! ------------
 !> Look for matched species between emissions attributes and selected chemical mechanisms and
-!> determine corresponding molecular weights.
+!> determine corresponding molecular weights
 !--------------------------------------------------------------------------------------------------!
+
  SUBROUTINE chem_emissions_init_species ( ncid )
 
     USE netcdf_data_input_mod,                                                                     &
-        ONLY:  chem_emis_att,                                                                      &
-               close_input_file,                                                                   &
-               get_dimension_length,                                                               &
-               get_variable,                                                                       &
-               open_read_file
+        ONLY: chem_emis_att, close_input_file, get_dimension_length, get_variable, open_read_file
 
     IMPLICIT NONE
 
@@ -1929,7 +2118,7 @@ SUBROUTINE chem_emissions_match( emt_att,len_index )
     CALL get_variable ( ncid, 'emission_name', chem_emis_att%species_name,                         &
                         chem_emis_att%n_emiss_species )
 !
-!-  Backward compatibility for salsa_mod NB
+!-  Backward compatibility for salsa_mod (ECC)
     chem_emis_att%nspec = chem_emis_att%n_emiss_species
 !
 !-- Get a list of matched species between emission_attributes and selected chemical mechanism
@@ -1970,24 +2159,21 @@ SUBROUTINE chem_emissions_match( emt_att,len_index )
 
 
 !
-!-- 20200203 NB
+!-- 20200203 (ECC)
 !
 !--------------------------------------------------------------------------------------------------!
 ! Description:
 ! ------------
 !> Extract timestamps from netCDF input
 !--------------------------------------------------------------------------------------------------!
+
  SUBROUTINE chem_emissions_init_timestamps ( ncid )
 
     USE control_parameters,                                                                        &
-        ONLY:  message_string
+        ONLY: message_string
 
     USE netcdf_data_input_mod,                                                                     &
-        ONLY:  chem_emis_att,                                                                      &
-               close_input_file,                                                                   &
-               get_dimension_length,                                                               &
-               get_variable,                                                                       &
-               open_read_file
+        ONLY: chem_emis_att, close_input_file, get_dimension_length, get_variable, open_read_file
 
     IMPLICIT NONE
 
@@ -2002,7 +2188,6 @@ SUBROUTINE chem_emissions_match( emt_att,len_index )
     CALL get_dimension_length ( ncid, chem_emis_att%dt_emission, 'time' )
     CALL get_dimension_length ( ncid, fld_len, 'field_length' )
     CALL get_variable ( ncid, 'timestamp', timestamps, chem_emis_att%dt_emission, fld_len )
-
 !
 !-- Throw error at first instance of timestamps not in listed in chronological order.
     DO itime = 2,chem_emis_att%dt_emission
@@ -2016,7 +2201,7 @@ SUBROUTINE chem_emissions_match( emt_att,len_index )
                   CHAR( 10 ), '                    ',                                              &
                   'index ', (itime),   ' : ', TRIM( timestamps(itime) )
 
-          CALL message( 'chem_emissions_read_timestamps', 'CHM0047', 1, 2, 0, 6, 0 )
+          CALL message( 'chem_emissions_read_timestamps', 'CM0469', 1, 2, 0, 6, 0 )
 
        ENDIF
 
@@ -2028,7 +2213,7 @@ SUBROUTINE chem_emissions_match( emt_att,len_index )
 
 
 !
-!-- 20200203 NB
+!-- 20200203 (ECC)
 !
 !--------------------------------------------------------------------------------------------------!
 ! Description:
@@ -2038,15 +2223,16 @@ SUBROUTINE chem_emissions_match( emt_att,len_index )
 !> NOTE:  For arguments, I originally wanted to use unspecified dimensions, but I could not get
 !>        this to work properly, hence the dimensioned array arguments.
 !--------------------------------------------------------------------------------------------------!
- SUBROUTINE assign_surface_flux( surf_array, nsurfs, surf_j, surf_i, emis_dist, conv_mole )
+
+SUBROUTINE assign_surface_flux ( surf_array, nsurfs, surf_j, surf_i, emis_dist, conv_mole )
 
     USE arrays_3d,                                                                                 &
-        ONLY:  rho_air
+        ONLY: rho_air
 
     USE netcdf_data_input_mod,                                                                     &
-        ONLY:  chem_emis_att
+        ONLY: chem_emis_att
 
-    USE surface_mod
+    USE surface_mod   !< for surf_type
 
     IMPLICIT NONE
 !
@@ -2091,11 +2277,11 @@ SUBROUTINE chem_emissions_match( emt_att,len_index )
           flux_conv_factor = rho_air(nzb)
 !
 !--       Account for conversion to different types of emisison species
-          IF ( TRIM( this_species_name( 1:LEN( sp_PM ) ) )  == sp_PM  )  THEN
+          IF       ( TRIM( this_species_name( 1:LEN( sp_PM ) ) )  == sp_PM  )  THEN
 
                 ! do nothing (use mass flux directly)
 
-          ELSEIF ( TRIM( this_species_name( 1:LEN( sp_VOC ) ) ) == sp_VOC )  THEN
+          ELSE IF  ( TRIM( this_species_name( 1:LEN( sp_VOC ) ) ) == sp_VOC )  THEN
 
              flux_conv_factor = flux_conv_factor * conv_mole(j,i) * mol2ppm
 
@@ -2125,7 +2311,7 @@ END SUBROUTINE assign_surface_flux
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
 !
-!-- 20200203 NB
+!-- 20200203 (ECC)
 !
 !--------------------------------------------------------------------------------------------------!
 ! Description:
@@ -2133,6 +2319,7 @@ END SUBROUTINE assign_surface_flux
 !> Given incoming flux units ( mass / area / time ) provide single-valued onversion factor to
 !> ( kg / m2 / s )
 !--------------------------------------------------------------------------------------------------!
+
  FUNCTION chem_emissions_convert_base_units ( units_in ) RESULT ( conv_factor )
 
     IMPLICIT NONE
@@ -2197,28 +2384,28 @@ END SUBROUTINE assign_surface_flux
        CASE ( 'micrograms/m2/day'  );   conv_factor = miug_to_kg * day_to_s
        CASE ( 'micrograms/m2/year' );   conv_factor = miug_to_kg * year_to_s
        CASE DEFAULT
-          WRITE ( message_string, * ) 'specified emission unit "', TRIM( units_in ),               &
-                                      '" not recognized'
-          CALL message ( 'chem_emission_convert_units', 'CHM0048', 2, 2, 0, 6, 0 )
+          message_string = ''   ! to get around unused variable warning / error
+          WRITE ( message_string, * ) 'Specified emission units (', TRIM( units_in ),              &
+                                      ') not recognized in PALM-4U'
+          CALL message ( 'chem_emission_convert_units', 'CM0446', 2, 2, 0, 6, 0 )
     END SELECT
 
  END FUNCTION chem_emissions_convert_base_units
 
 
 !
-!-- 20200203 NB
+!-- 20200203 (ECC)
 !
 !--------------------------------------------------------------------------------------------------!
 ! Description:
 ! ------------
 !> Calculates conversion factor from mass flux to ppm (molar flux)
 !--------------------------------------------------------------------------------------------------!
- FUNCTION mass_2_molar_flux( rhogh, theta ) RESULT ( conv_factor )
+
+ FUNCTION mass_2_molar_flux ( rhogh, theta ) RESULT ( conv_factor )
 
     USE basic_constants_and_equations_mod,                                                         &
-        ONLY:  p_0,                                                                                &
-               rd_d_cp,                                                                            &
-               rgas_univ
+        ONLY: p_0, rd_d_cp, rgas_univ
 
     IMPLICIT NONE
 !
@@ -2233,7 +2420,7 @@ END SUBROUTINE assign_surface_flux
 
 
 !
-!-- 20200203 NB
+!-- 20200203 (ECC)
 !
 !--------------------------------------------------------------------------------------------------!
 ! Description:
@@ -2270,7 +2457,7 @@ END SUBROUTINE assign_surface_flux
 
 
 !
-!-- 20200203 NB
+!-- 20200203 (ECC)
 !
 !--------------------------------------------------------------------------------------------------!
 ! Description:
@@ -2285,8 +2472,8 @@ END SUBROUTINE assign_surface_flux
 
 !
 !-- Function arguments
-    CHARACTER(LEN=*), INTENT(IN) ::  this_timestamp       !> target timestamp
-    CHARACTER(LEN=*), INTENT(IN) ::  timestamp_array(:)   !> array of timestamps
+    CHARACTER(LEN=*),   INTENT(IN) ::  this_timestamp       !> target timestamp
+    CHARACTER(LEN=512), INTENT(IN) ::  timestamp_array(:)   !> array of timestamps
 
     INTEGER(iwp), INTENT(IN) ::  lower_bound, upper_bound   !> timestamp_array index bounds
 

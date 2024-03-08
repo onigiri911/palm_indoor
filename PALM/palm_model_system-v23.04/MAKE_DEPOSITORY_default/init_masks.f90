@@ -13,8 +13,49 @@
 ! You should have received a copy of the GNU General Public License along with PALM. If not, see
 ! <http://www.gnu.org/licenses/>.
 !
-! Copyright 1997-2021 Leibniz Universitaet Hannover
+! Copyright 1997-2020 Leibniz Universitaet Hannover
 !--------------------------------------------------------------------------------------------------!
+!
+! Current revisions:
+! -----------------
+!
+!
+! Former revisions:
+! -----------------
+! $Id: init_masks.f90 4742 2020-10-14 15:11:02Z schwenkel $
+! Implement snow and graupel (bulk microphysics)
+!
+! 4648 2020-08-25 07:52:08Z raasch
+! file re-formatted to follow the PALM coding standard
+!
+! 4521 2020-05-06 11:39:49Z schwenkel
+! Rename variable
+!
+! 4502 2020-04-17 16:14:16Z schwenkel
+! Implementation of ice microphysics
+!
+! 4444 2020-03-05 15:59:50Z raasch
+! bugfix: cpp-directives for serial mode added
+!
+! 4360 2020-01-07 11:25:50Z suehring
+! Corrected "Former revisions" section
+!
+! 4069 2019-07-01 14:05:51Z Giersch
+! Masked output running index mid has been introduced as a local variable to avoid runtime error
+! (Loop variable has been modified) in time_integration
+!
+! 3766 2019-02-26 16:23:41Z raasch
+! unused variables removed
+!
+! 3687 2019-01-22 10:42:06Z knoop
+! unused variables removed
+!
+! 3655 2019-01-07 16:51:22Z knoop
+! Move the control parameter "salsa" from salsa_mod to control_parameters (M. Kurppa)
+!
+! 410 2009-12-04 17:05:40Z letzel
+! Initial revision
+!
 !
 ! Description:
 ! ------------
@@ -22,77 +63,27 @@
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE init_masks
 
-#if defined( __parallel )
-    USE MPI
-#endif
-
     USE arrays_3d,                                                                                 &
-        ONLY:  zu,                                                                                 &
-               zw
+        ONLY:  zu, zw
 
     USE bulk_cloud_model_mod,                                                                      &
-        ONLY: bulk_cloud_model,                                                                    &
-              graupel,                                                                             &
-              microphysics_ice_phase,                                                              &
-              microphysics_morrison,                                                               &
-              microphysics_seifert,                                                                &
-              snow
+        ONLY: bulk_cloud_model, microphysics_ice_phase, microphysics_morrison,                     &
+              microphysics_seifert, snow, graupel
 
 
     USE control_parameters,                                                                        &
-        ONLY:  constant_diffusion,                                                                 &
-               cloud_droplets,                                                                     &
-               data_output_masks,                                                                  &
-               data_output_masks_user,                                                             &
-               doav,                                                                               &
-               doav_n,                                                                             &
-               domask,                                                                             &
-               domask_no,                                                                          &
-               dz,                                                                                 &
-               dz_stretch_level_start,                                                             &
-               humidity,                                                                           &
-               mask,                                                                               &
-               masks,                                                                              &
-               mask_scale,                                                                         &
-               mask_i,                                                                             &
-               mask_i_global,                                                                      &
-               mask_j,                                                                             &
-               mask_j_global,                                                                      &
-               mask_k,                                                                             &
-               mask_k_global,                                                                      &
-               mask_k_over_surface,                                                                &
-               mask_loop,                                                                          &
-               mask_size,                                                                          &
-               mask_size_l,                                                                        &
-               mask_start_l,                                                                       &
-               mask_surface,                                                                       &
-               mask_x,                                                                             &
-               mask_x_loop,                                                                        &
-               mask_xyz_dimension,                                                                 &
-               mask_y,                                                                             &
-               mask_y_loop,                                                                        &
-               mask_z,                                                                             &
-               mask_z_loop,                                                                        &
-               max_masks,                                                                          &
-               message_string,                                                                     &
-               passive_scalar,                                                                     &
-               ocean_mode,                                                                         &
-               varnamelength
+        ONLY:  constant_diffusion, cloud_droplets, data_output_masks, data_output_masks_user, doav,&
+               doav_n, domask, domask_no, dz, dz_stretch_level_start, humidity, mask, masks,       &
+               mask_scale, mask_i, mask_i_global, mask_j, mask_j_global, mask_k, mask_k_global,    &
+               mask_k_over_surface, mask_loop, mask_size, mask_size_l, mask_start_l, mask_surface, &
+               mask_x, mask_x_loop, mask_xyz_dimension, mask_y, mask_y_loop, mask_z, mask_z_loop,  &
+               max_masks,  message_string, passive_scalar, ocean_mode, varnamelength
 
     USE grid_variables,                                                                            &
-        ONLY:  dx,                                                                                 &
-               dy
+        ONLY:  dx, dy
 
     USE indices,                                                                                   &
-        ONLY:  nx,                                                                                 &
-               nxl,                                                                                &
-               nxr,                                                                                &
-               ny,                                                                                 &
-               nyn,                                                                                &
-               nys,                                                                                &
-               nz,                                                                                 &
-               nzb,                                                                                &
-               nzt
+        ONLY:  nx, nxl, nxr, ny, nyn, nys, nz, nzb, nzt
 
     USE kinds
 
@@ -100,8 +91,7 @@
         ONLY:  module_interface_init_masks
 
     USE netcdf_interface,                                                                          &
-        ONLY:  domask_unit,                                                                        &
-               netcdf_data_format
+        ONLY:  domask_unit, netcdf_data_format
 
     USE particle_attributes,                                                                       &
         ONLY:  particle_advection
@@ -155,21 +145,21 @@
 !-- Parallel mask output not yet supported. In check_parameters data format is restricted and is
 !-- switched back to non-parallel output. Therefore the following error can not occur at the moment.
     IF ( netcdf_data_format > 4 )  THEN
-       message_string = 'netCDF file formats 5 and 6 (with parallel I/O support) ' //              &
-                        ' are currently not supported'
-       CALL message( 'init_masks', 'PAC0219', 1, 2, 0, 6, 0 )
+       message_string = 'netCDF file formats '//                                                   &
+                        '5 and 6 (with parallel I/O support)'//                                    &
+                        ' are currently not supported.'
+       CALL message( 'init_masks', 'PA0328', 1, 2, 0, 6, 0 )
     ENDIF
 
 !
 !-- Store data output parameters for masked data output in few shared arrays
     DO  mid = 1, masks
 
-       do_mask(mid,:)      = data_output_masks(mid,:)
+       do_mask     (mid,:) = data_output_masks(mid,:)
        do_mask_user(mid,:) = data_output_masks_user(mid,:)
-
-       mask(mid,1,:) = mask_x(mid,:)
-       mask(mid,2,:) = mask_y(mid,:)
-       mask(mid,3,:) = mask_z(mid,:)
+       mask      (mid,1,:) = mask_x(mid,:)
+       mask      (mid,2,:) = mask_y(mid,:)
+       mask      (mid,3,:) = mask_z(mid,:)
 !
 !--    Flag a mask as terrain following
        IF ( mask_k_over_surface(mid,1) /= -1_iwp )  THEN
@@ -224,9 +214,10 @@
           j = 1
           DO  WHILE ( do_mask_user(mid,j) /= ' '  .AND.  j <= 100 )
              IF ( i > 100 )  THEN
-                message_string = 'number of output quantitities given by data_output_mask and ' // &
-                                 'data_output_mask_user exceeds the limit of 100'
-                CALL message( 'init_masks', 'PAC0220', 1, 2, 0, 6, 0 )
+                WRITE ( message_string, * ) 'number of output quantitities ',                      &
+                                            'given by data_output_mask and data_output_mask_user ',&
+                                            'exceeds the limit of 100'
+                CALL message( 'init_masks', 'PA0329', 1, 2, 0, 6, 0 )
              ENDIF
              do_mask(mid,i) = do_mask_user(mid,j)
              i = i + 1
@@ -257,7 +248,7 @@
                 IF ( constant_diffusion )  THEN
                    WRITE ( message_string, * ) 'output of "', TRIM( var ),                         &
                                                '" requires constant_diffusion = .FALSE.'
-                   CALL message( 'init_masks', 'PAC0120', 1, 2, 0, 6, 0 )
+                   CALL message( 'init_masks', 'PA0103', 1, 2, 0, 6, 0 )
                 ENDIF
                 unit = 'm2/s2'
 
@@ -265,7 +256,7 @@
                 IF ( .NOT. bulk_cloud_model )  THEN
                    WRITE ( message_string, * ) 'output of "', TRIM( var ),                         &
                                                '" requires bulk_cloud_model = .TRUE.'
-                   CALL message( 'init_masks', 'PAC0121', 1, 2, 0, 6, 0 )
+                   CALL message( 'init_masks', 'PA0108', 1, 2, 0, 6, 0 )
                 ENDIF
                 unit = 'K'
 
@@ -273,11 +264,10 @@
                 IF ( .NOT. bulk_cloud_model )  THEN
                    WRITE ( message_string, * ) 'output of "', TRIM( var ),                         &
                                                '" requires bulk_cloud_model = .TRUE.'
-                   CALL message( 'init_masks', 'PAC0121', 1, 2, 0, 6, 0 )
+                   CALL message( 'init_masks', 'PA0108', 1, 2, 0, 6, 0 )
                 ELSEIF ( .NOT. microphysics_morrison )  THEN
-                   message_string = 'output of "' // TRIM( var ) // '" ' //                        &
-                                    'requires microphysics_morrison = .TRUE.'
-                   CALL message( 'check_parameters', 'PAC0221', 1, 2, 0, 6, 0 )
+                   message_string = 'output of "' // TRIM( var ) // '" ' // 'requires  = morrison'
+                   CALL message( 'check_parameters', 'PA0359', 1, 2, 0, 6, 0 )
                 ENDIF
                 unit = '1/m3'
 
@@ -285,11 +275,11 @@
                 IF ( .NOT. bulk_cloud_model )  THEN
                    WRITE ( message_string, * ) 'output of "', TRIM( var ),                         &
                                                '" requires bulk_cloud_model = .TRUE.'
-                   CALL message( 'init_masks', 'PAC0121', 1, 2, 0, 6, 0 )
+                   CALL message( 'init_masks', 'PA0108', 1, 2, 0, 6, 0 )
                  ELSEIF ( .NOT. microphysics_ice_phase )  THEN
                    message_string = 'output of "' // TRIM( var ) // '" ' //                        &
                                     'requires  microphysics_ice_phase = .TRUE.'
-                   CALL message( 'check_parameters', 'PAC0221', 1, 2, 0, 6, 0 )
+                   CALL message( 'check_parameters', 'PA0359', 1, 2, 0, 6, 0 )
                 ENDIF
                 unit = '1/m3'
 
@@ -297,11 +287,11 @@
                 IF ( .NOT. bulk_cloud_model )  THEN
                    WRITE ( message_string, * ) 'output of "', TRIM( var ),                         &
                         '" requires bulk_cloud_model = .TRUE.'
-                   CALL message( 'init_masks', 'PAC0121', 1, 2, 0, 6, 0 )
+                   CALL message( 'init_masks', 'PA0108', 1, 2, 0, 6, 0 )
                  ELSEIF ( .NOT. microphysics_ice_phase  .OR.  .NOT.  graupel )  THEN
                    message_string = 'output of "' // TRIM( var ) // '" ' //                        &
-                         'requires microphysics_ice_phase = .TRUE. and graupel = .TRUE.'
-                   CALL message( 'check_parameters', 'PAC0221', 1, 2, 0, 6, 0 )
+                         'requires  microphysics_ice_phase = .TRUE.'
+                   CALL message( 'check_parameters', 'PA0359', 1, 2, 0, 6, 0 )
                 ENDIF
                 unit = '1/m3'
 
@@ -310,11 +300,11 @@
                 IF ( .NOT. bulk_cloud_model )  THEN
                    WRITE ( message_string, * ) 'output of "', TRIM( var ),                         &
                                                '" requires bulk_cloud_model = .TRUE.'
-                   CALL message( 'init_masks', 'PAC0121', 1, 2, 0, 6, 0 )
+                   CALL message( 'init_masks', 'PA0108', 1, 2, 0, 6, 0 )
                 ELSEIF ( .NOT. microphysics_seifert )  THEN
                    message_string = 'output of "' // TRIM( var ) // '"' //                         &
-                                    'requires microphysics_seifert = .TRUE.'
-                   CALL message( 'check_parameters', 'PAC0221', 1, 2, 0, 6, 0 )
+                                    'requires cloud_scheme = seifert_beheng'
+                   CALL message( 'check_parameters', 'PA0359', 1, 2, 0, 6, 0 )
                 ENDIF
                 unit = '1/m3'
 
@@ -322,11 +312,11 @@
                 IF ( .NOT. bulk_cloud_model )  THEN
                    WRITE ( message_string, * ) 'output of "', TRIM( var ),                         &
                         '" requires bulk_cloud_model = .TRUE.'
-                   CALL message( 'init_masks', 'PAC0121', 1, 2, 0, 6, 0 )
+                   CALL message( 'init_masks', 'PA0108', 1, 2, 0, 6, 0 )
                  ELSEIF ( .NOT. microphysics_seifert  .OR.  .NOT.  snow)  THEN
                    message_string = 'output of "' // TRIM( var ) // '"' //                         &
-                         'requires microphysics_seifert = .TRUE. and snow = .TRUE.'
-                   CALL message( 'check_parameters', 'PAC0221', 1, 2, 0, 6, 0 )
+                         'requires cloud_scheme = seifert_beheng'
+                   CALL message( 'check_parameters', 'PA0359', 1, 2, 0, 6, 0 )
                 ENDIF
                 unit = '1/m3'
 
@@ -334,17 +324,18 @@
              CASE ( 'pc', 'pr' )
                 IF ( .NOT. particle_advection )  THEN
                    WRITE ( message_string, * ) 'output of "', TRIM( var ),                         &
-                                               '" requires a "particle_parameters" namelist in ',  &
-                                               'the parameter file (PARIN)'
-                   CALL message( 'init_masks', 'PAC0122', 1, 2, 0, 6, 0 )
+                                               '" requires a "particles_par"-NAMELIST in the ',    &
+                                               'parameter file (PARIN)'
+                   CALL message( 'init_masks', 'PA0104', 1, 2, 0, 6, 0 )
                 ENDIF
                 IF ( TRIM( var ) == 'pc' )  unit = 'number'
                 IF ( TRIM( var ) == 'pr' )  unit = 'm'
 
              CASE ( 'q', 'thetav' )
                 IF ( .NOT. humidity )  THEN
-                   message_string = 'output of "' // TRIM( var ) // '" requires humidity = .TRUE.'
-                   CALL message( 'init_masks', 'PAC0123', 1, 2, 0, 6, 0 )
+                   WRITE ( message_string, * ) 'output of "', TRIM( var ),                         &
+                                               '" requires humidity = .TRUE.'
+                   CALL message( 'init_masks', 'PA0105', 1, 2, 0, 6, 0 )
                 ENDIF
                 IF ( TRIM( var ) == 'q'   )  unit = 'kg/kg'
                 IF ( TRIM( var ) == 'thetav' )  unit = 'K'
@@ -353,7 +344,7 @@
                 IF ( .NOT. bulk_cloud_model )  THEN
                    message_string = 'output of "' // TRIM( var ) // '"' //                         &
                                     'requires bulk_cloud_model = .TRUE.'
-                   CALL message( 'check_parameters', 'PAC0121', 1, 2, 0, 6, 0 )
+                   CALL message( 'check_parameters', 'PA0108', 1, 2, 0, 6, 0 )
                 ENDIF
                 unit = 'kg/kg'
 
@@ -362,7 +353,7 @@
                    WRITE ( message_string, * ) 'output of "', TRIM( var ),                         &
                                                '" requires bulk_cloud_model = .TRUE. or ',         &
                                                'cloud_droplets = .TRUE.'
-                   CALL message( 'init_masks', 'PAC0124', 1, 2, 0, 6, 0 )
+                   CALL message( 'init_masks', 'PA0106', 1, 2, 0, 6, 0 )
                 ENDIF
                 unit = 'kg/kg'
 
@@ -370,7 +361,7 @@
                 IF ( .NOT. cloud_droplets )  THEN
                    WRITE ( message_string, * ) 'output of "', TRIM( var ),                         &
                                                '" requires cloud_droplets = .TRUE.'
-                   CALL message( 'init_masks', 'PAC0125', 1, 2, 0, 6, 0 )
+                   CALL message( 'init_masks', 'PA0107', 1, 2, 0, 6, 0 )
                 ENDIF
                 IF ( TRIM( var ) == 'ql_c'  )  unit = 'kg/kg'
                 IF ( TRIM( var ) == 'ql_v'  )  unit = 'm3'
@@ -380,7 +371,7 @@
                 IF ( .NOT. bulk_cloud_model )  THEN
                    WRITE ( message_string, * ) 'output of "', TRIM( var ),                         &
                         '                      " requires bulk_cloud_model = .TRUE.'
-                   CALL message( 'init_masks', 'PAC0121', 1, 2, 0, 6, 0 )
+                   CALL message( 'init_masks', 'PA0108', 1, 2, 0, 6, 0 )
                 ENDIF
                 unit = 'kg/kg'
 
@@ -388,11 +379,11 @@
                 IF ( .NOT. bulk_cloud_model )  THEN
                    message_string = 'output of "' // TRIM( var ) // '" ' //                        &
                             'requires bulk_cloud_model = .TRUE.'
-                   CALL message( 'check_parameters', 'PAC0121', 1, 2, 0, 6, 0 )
+                   CALL message( 'check_parameters', 'PA0108', 1, 2, 0, 6, 0 )
                 ELSEIF ( .NOT. microphysics_ice_phase  .OR.  .NOT.  graupel )  THEN
                    message_string = 'output of "' // TRIM( var ) // '" ' //                        &
-                            'requires microphysics_ice_phase = .TRUE. and graupel = .TRUE.'
-                   CALL message( 'check_parameters', 'PAC0221', 1, 2, 0, 6, 0 )
+                            'requires microphysics_ice_phase = .TRUE.'
+                   CALL message( 'check_parameters', 'PA0359', 1, 2, 0, 6, 0 )
                 ENDIF
                 unit = 'kg/kg'
 
@@ -400,11 +391,11 @@
                 IF ( .NOT. bulk_cloud_model )  THEN
                    message_string = 'output of "' // TRIM( var ) // '" ' //                        &
                                     'requires bulk_cloud_model = .TRUE.'
-                   CALL message( 'check_parameters', 'PAC0121', 1, 2, 0, 6, 0 )
+                   CALL message( 'check_parameters', 'PA0108', 1, 2, 0, 6, 0 )
                 ELSEIF ( .NOT. microphysics_ice_phase ) THEN
                    message_string = 'output of "' // TRIM( var ) // '" ' //                        &
                                     'requires microphysics_ice_phase = .TRUE.'
-                   CALL message( 'check_parameters', 'PAC0221', 1, 2, 0, 6, 0 )
+                   CALL message( 'check_parameters', 'PA0359', 1, 2, 0, 6, 0 )
                 ENDIF
                 unit = 'kg/kg'
 
@@ -412,11 +403,11 @@
                 IF ( .NOT. bulk_cloud_model )  THEN
                    message_string = 'output of "' // TRIM( var ) // '" ' //                        &
                                     'requires bulk_cloud_model = .TRUE.'
-                   CALL message( 'check_parameters', 'PAC0121', 1, 2, 0, 6, 0 )
+                   CALL message( 'check_parameters', 'PA0108', 1, 2, 0, 6, 0 )
                 ELSEIF ( .NOT. microphysics_seifert ) THEN
                    message_string = 'output of "' // TRIM( var ) // '" ' //                        &
-                                    'requires microphysics_seifert = .TRUE.'
-                   CALL message( 'check_parameters', 'PAC0221', 1, 2, 0, 6, 0 )
+                                    'requires cloud_scheme = seifert_beheng'
+                   CALL message( 'check_parameters', 'PA0359', 1, 2, 0, 6, 0 )
                 ENDIF
                 unit = 'kg/kg'
 
@@ -424,19 +415,20 @@
                 IF ( .NOT. bulk_cloud_model )  THEN
                    message_string = 'output of "' // TRIM( var ) // '" ' //                        &
                             'requires bulk_cloud_model = .TRUE.'
-                   CALL message( 'check_parameters', 'PAC0121', 1, 2, 0, 6, 0 )
+                   CALL message( 'check_parameters', 'PA0108', 1, 2, 0, 6, 0 )
                 ELSEIF ( .NOT. microphysics_seifert  .OR.  snow )  THEN
                    message_string = 'output of "' // TRIM( var ) // '" ' //                        &
-                            'requires microphysics_seifert = .TRUE.'
-                   CALL message( 'check_parameters', 'PAC0221', 1, 2, 0, 6, 0 )
+                            'requires cloud_scheme = seifert_beheng'
+                   CALL message( 'check_parameters', 'PA0359', 1, 2, 0, 6, 0 )
                 ENDIF
                 unit = 'kg/kg'
 
 
              CASE ( 'rho_sea_water' )
                 IF ( .NOT. ocean_mode )  THEN
-                   WRITE ( message_string, * ) 'output of "', TRIM( var ), '" requires ocean mode'
-                   CALL message( 'init_masks', 'PAC0223', 1, 2, 0, 6, 0 )
+                   WRITE ( message_string, * ) 'output of "', TRIM( var ),                         &
+                                               '" requires ocean mode'
+                   CALL message( 'init_masks', 'PA0109', 1, 2, 0, 6, 0 )
                 ENDIF
                 unit = 'kg/m3'
 
@@ -444,22 +436,21 @@
                 IF ( .NOT. passive_scalar )  THEN
                    WRITE ( message_string, * ) 'output of "', TRIM( var ),                         &
                                                '" requires passive_scalar = .TRUE.'
-                   CALL message( 'init_masks', 'PAC0126', 1, 2, 0, 6, 0 )
+                   CALL message( 'init_masks', 'PA0110', 1, 2, 0, 6, 0 )
                 ENDIF
                 unit = 'conc'
 
              CASE ( 'sa' )
                 IF ( .NOT. ocean_mode )  THEN
                    WRITE ( message_string, * ) 'output of "', TRIM( var ), '" requires ocean mode'
-                   CALL message( 'init_masks', 'PAC0223', 1, 2, 0, 6, 0 )
+                   CALL message( 'init_masks', 'PA0109', 1, 2, 0, 6, 0 )
                 ENDIF
                 unit = 'psu'
 
              CASE ( 'us*', 't*', 'lwp*', 'pra*', 'prr*', 'z0*', 'z0h*' )
-                WRITE ( message_string, * ) 'illegal value for data_output: "', TRIM( var ),       &
-                                            '" only 2d-horizontal cross sections are allowed ',    &
-                                            'for this value'
-                CALL message( 'init_masks', 'PAC0127', 1, 2, 0, 6, 0 )
+                WRITE ( message_string, * ) 'illegal value for data_', 'output: "', TRIM( var ),   &
+                                            '" is only allowed', 'for horizontal cross section'
+                CALL message( 'init_masks', 'PA0111', 1, 2, 0, 6, 0 )
 
              CASE ( 'p', 'theta', 'u', 'v', 'w' )
                 IF ( TRIM( var ) == 'p'  )  unit = 'Pa'
@@ -479,11 +470,11 @@
                       WRITE ( message_string, * ) 'illegal value for data_',                       &
                                                   'output_masks or data_output_masks_user: "',     &
                                                   TRIM( do_mask(mid,i) ), '"'
-                      CALL message( 'init_masks', 'PAC0224', 1, 2, 0, 6, 0 )
+                      CALL message( 'init_masks', 'PA0018', 1, 2, 0, 6, 0 )
                    ELSE
                       WRITE ( message_string, * ) 'illegal value for data_',                       &
                                                   ' output_masks : "', TRIM( do_mask(mid,i) ), '"'
-                      CALL message( 'init_masks', 'PAC0225', 1, 2, 0, 6, 0 )
+                      CALL message( 'init_masks', 'PA0330', 1, 2, 0, 6, 0 )
                    ENDIF
                 ENDIF
 
@@ -529,16 +520,11 @@
           count = 0
           DO  WHILE ( mask_k_over_surface(mid, count+1) >= 0 )
              m = mask_k_over_surface(mid, count+1)
-             IF ( m < 1 )  THEN
-                WRITE ( message_string, '(A,I3,A,I3,A)' )  'values <= 0 in mask_k_over_surface ',  &
-                                                           'index ', m, ' in mask ', mid
-                CALL message( 'init_masks', 'PAC0226', 1, 2, 0, 6, 0 )
-             ENDIF
              IF ( m > nz+1 )  THEN
                 WRITE ( message_string, '(I3,A,I3,A,I1,3A,I3)' )  m, ' in mask ', mid,             &
                                                                   ' along dimension ', 3,          &
                                                                   ' exceeds (nz+1) = ', nz+1
-                CALL message( 'init_masks', 'PAC0227', 1, 2, 0, 6, 0 )
+                CALL message( 'init_masks', 'PA0331', 1, 2, 0, 6, 0 )
              ENDIF
              count = count + 1
              mask_k(mid,count) = mask_k_over_surface(mid, count)
@@ -703,7 +689,7 @@
                                                                   ' along dimension ' ,dim,        &
                                                                   ' exceeds (' ,nxyz_string,       &
                                                                   '+1) = ', nxyz+1
-                CALL message( 'init_masks', 'PAC0227', 1, 2, 0, 6, 0 )
+                CALL message( 'init_masks', 'PA0331', 1, 2, 0, 6, 0 )
              ENDIF
              IF ( ( m >= lb  .AND.  m <= ub )  .OR.  ( m == (nxyz+1)  .AND.  ub == nxyz )  )  THEN
                 IF ( count_l == 0 )  mask_start_l(mid,dim) = count
@@ -741,7 +727,7 @@
                      ' and/or mask_loop(', mid, ',', dim, ',2)=', mask_loop(mid,dim,2),            &
                      ' exceed (', nxyz_string,'+1)*',dxyz_string,'/mask_scale(',dim,')=',          &
                      (nxyz+1)*dxyz/mask_scale(dim)
-                CALL message( 'init_masks', 'PAC0228', 1, 2, 0, 6, 0 )
+                CALL message( 'init_masks', 'PA0332', 1, 2, 0, 6, 0 )
              ENDIF
              loop_begin  = NINT( mask_loop(mid,dim,1) * mask_scale(dim) * ddxyz - 0.5_wp )
              loop_end    = NINT( mask_loop(mid,dim,2) * mask_scale(dim) * ddxyz - 0.5_wp )
@@ -757,7 +743,7 @@
                       'mask_loop(', mid, ',', dim, ',1)=', mask_loop(mid,dim,1),                   &
                       ' and/or mask_loop(', mid, ',', dim, ',2)=', mask_loop(mid,dim,2),           &
                       ' exceed zu(nz+1)/mask_scale(', dim, ')=',zu(nz+1)/mask_scale(dim)
-                CALL message( 'init_masks', 'PAC0229', 1, 2, 0, 6, 0 )
+                CALL message( 'init_masks', 'PA0333', 1, 2, 0, 6, 0 )
              ENDIF
              ind_array  = MINLOC( ABS( mask_loop(mid,dim,1) * mask_scale(dim) - zu ) )
              loop_begin = ind_array(1) - 1 + nzb ! MINLOC uses lower array bound 1
@@ -772,10 +758,12 @@
              loop_stride = NINT( mask_loop(mid,dim,3) * mask_scale(dim) * ddxyz )
 
              IF ( mask_loop(mid,dim,2) * mask_scale(dim) > ABS( dz_stretch_level_start(1) ) )  THEN
-                WRITE ( message_string, '(A,I3,A,I1,A,F9.3,A,F8.2)' )                              &
+                WRITE ( message_string, '(A,I3,A,I1,A,F9.3,A,F8.2,3A)' )                           &
                       'mask_loop(', mid, ',', dim, ',2)=', mask_loop(mid,dim,2),                   &
-                      ' exceeds dz_stretch_level=', dz_stretch_level_start(1)
-                CALL message( 'init_masks', 'PAC0230', 0, 1, 0, 6, 0 )
+                      ' exceeds dz_stretch_level=', dz_stretch_level_start(1),                     &
+                      '.&Vertical mask locations will not ',                                       &
+                      'match the desired heights within the stretching ', 'region.'
+                CALL message( 'init_masks', 'PA0334', 0, 1, 0, 6, 0 )
              ENDIF
 
           ENDIF

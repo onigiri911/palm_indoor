@@ -13,9 +13,155 @@
 ! You should have received a copy of the GNU General Public License along with PALM. If not, see
 ! <http://www.gnu.org/licenses/>.
 !
-! Copyright 1997-2021 Leibniz Universitaet Hannover
+! Copyright 1997-2020 Leibniz Universitaet Hannover
 !--------------------------------------------------------------------------------------------------!
 !
+!
+! Current revisions:
+! -----------------
+!
+!
+! Former revisions:
+! -----------------
+! $Id: synthetic_turbulence_generator_mod.f90 4671 2020-09-09 20:27:58Z pavelkrc $
+! Implementation of downward facing USM and LSM surfaces
+!
+! 4647 2020-08-24 16:36:18Z suehring
+! Change default value of synthetic turbulence adjustment as well as compute_velocity_seeds_local 
+! By default, the random-seed computation is now distributed among several cores. Especially for 
+! large length scales this is significantly faster.
+!
+! 4640 2020-08-11 16:28:32Z suehring
+! - to avoid that the correction term in r11/r22 computation becomes unrealistically high, limit 
+!   Obukhov length (term is not valid for near neutral conditions)
+! - to avoid unrealistically large perturbations, change computation of r21 so that this resembles
+!   the vertical transport of horizontal momentum
+!
+! 4629 2020-07-29 09:37:56Z raasch
+! support for MPI Fortran77 interface (mpif.h) removed
+!
+! 4603 2020-07-14 16:08:30Z suehring
+! Bugfix in initialization from ASCII file - x-length scales at the bottom boundary were not
+! initialized properly
+! 
+! 4566 2020-06-16 10:11:51Z suehring
+! - revise parametrization for reynolds-stress components, turbulent length- and time scales
+! - revise computation of velocity disturbances to be consistent to Xie and Castro (2008)
+! - change default value of time interval to adjust turbulence parametrization
+! - bugfix in computation of amplitude-tensor (vertical flux of horizontal momentum)
+! 
+! 4562 2020-06-12 08:38:47Z raasch
+! Parts of r4559 re-formatted
+! 
+! 4559 2020-06-11 08:51:48Z raasch
+! File re-formatted to follow the PALM coding standard
+!
+! 4535 2020-05-15 12:07:23Z raasch
+! Bugfix for restart data format query
+!
+! 4495 2020-04-13 20:11:20Z raasch
+! Restart data handling with MPI-IO added
+!
+! 4481 2020-03-31 18:55:54Z maronga
+! Bugfix: cpp-directives for serial mode added, dummy statements to prevent compile errors added
+!
+! 4442 2020-03-04 19:21:13Z suehring
+! Set back turbulent length scale to 8 x grid spacing in the parametrized mode
+! (was accidantly changed).
+!
+! 4441 2020-03-04 19:20:35Z suehring
+! Correct misplaced preprocessor directive
+!
+! 4438 2020-03-03 20:49:28Z suehring
+! Performance optimizations in velocity-seed calculation:
+!  - Random number array is only defined and computed locally (except for normalization to zero mean
+!    and unit variance)
+!  - Parallel random number generator is applied independent on the 2D random numbers in other
+!    routines
+!  - Option to decide wheter velocity seeds are computed locally without any further communication
+!    or are computed by all processes along the communicator
+!
+! 4346 2019-12-18 11:55:56Z motisi
+! Introduction of wall_flags_total_0, which currently sets bits based on static topography
+! information used in wall_flags_static_0
+!
+! 4335 2019-12-12 16:39:05Z suehring
+! Commentation of last commit
+!
+! 4332 2019-12-10 19:44:12Z suehring
+! Limit initial velocity seeds in restart runs, if not the seed calculation may become unstable.
+! Further, minor bugfix in initial velocity seed calculation.
+!
+! 4329 2019-12-10 15:46:36Z motisi
+! Renamed wall_flags_0 to wall_flags_static_0
+!
+! 4309 2019-11-26 18:49:59Z suehring
+! Computation of velocity seeds optimized. This implies that random numbers are computed now using
+! the parallel random number generator. Random numbers are now only computed and normalized locally,
+! while distributed over all mpi ranks afterwards, instead of computing random numbers on a global
+! array.
+! Further, the number of calls for the time-consuming velocity-seed generation is reduced - now the
+! left and right, as well as the north and south boundary share the same velocity-seed matrices.
+!
+! 4182 2019-08-22 15:20:23Z scharf
+! Corrected "Former revisions" section
+!
+! 4148 2019-08-08 11:26:00Z suehring
+! Remove unused variable
+!
+! 4144 2019-08-06 09:11:47Z raasch
+! Relational operators .EQ., .NE., etc. replaced by ==, /=, etc.
+!
+! 4071 2019-07-03 20:02:00Z suehring
+! Bugfix, initialize mean_inflow_profiles in case turbulence and inflow information is not read from
+! file.
+!
+! 4022 2019-06-12 11:52:39Z suehring
+! Several bugfixes and improvements
+! - Revise bias correction of the imposed perturbations (correction via volume flow can create
+!   instabilities in case the mean volume flow is close to zero)
+! - Introduce lower limits in calculation of coefficient matrix, else the calculation may become
+!   numerically unstable
+! - Impose perturbations every timestep, even though no new set of perturbations is generated in
+!   case dt_stg_call /= dt_3d
+! - Implement a gradual decrease of Reynolds stress and length scales above ABL height (within 1
+!   length scale above ABL depth to 1/10) rather than a discontinuous decrease
+! - Bugfix in non-nested case: use ABL height for parametrized turbulence
+!
+! 3987 2019-05-22 09:52:13Z kanani
+! Introduce alternative switch for debug output during timestepping
+!
+! 3938 2019-04-29 16:06:25Z suehring
+! Remove unused variables
+!
+! 3937 2019-04-29 15:09:07Z suehring
+! Minor bugfix in case of a very early restart where mc_factor is sill not present.
+! Some modification and fixing of potential bugs in the calculation of scaling parameters used for
+! synthetic turbulence parametrization.
+!
+! 3909 2019-04-17 09:13:25Z suehring
+! Minor bugfix for last commit
+!
+! 3900 2019-04-16 15:17:43Z suehring
+! Missing re-calculation of perturbation seeds in case of restarts
+!
+! 3891 2019-04-12 17:52:01Z suehring
+! Bugfix in initialization in case of restart runs.
+!
+! 3885 2019-04-11 11:29:34Z kanani
+! Changes related to global restructuring of location messages and introduction of additional debug
+! messages
+!
+!
+! Removed unused variables
+!
+! 3719 2019-02-06 13:10:18Z kanani
+! Removed log_point measurement from stg_init, since this part is counted to log_point(2)
+! 'initialization' already. Moved other log_points to calls of the subroutines in time_integration
+! for better overview.
+!
+! 2259 2017-06-08 09:09:11Z gronemeier
+! Initial revision
 !
 ! Authors:
 ! --------
@@ -48,13 +194,15 @@
                mean_inflow_profiles,                                                               &
                pt,                                                                                 &
                pt_init,                                                                            &
+               q,                                                                                  &
                q_init,                                                                             &
                u,                                                                                  &
                u_init,                                                                             &
                v,                                                                                  &
                v_init,                                                                             &
                w,                                                                                  &
-               zu
+               zu,                                                                                 &
+               zw
 
     USE basic_constants_and_equations_mod,                                                         &
         ONLY:  g,                                                                                  &
@@ -88,7 +236,6 @@
 
     USE cpulog,                                                                                    &
         ONLY:  cpu_log,                                                                            &
-               log_point,                                                                          &
                log_point_s
 
     USE grid_variables,                                                                            &
@@ -110,7 +257,7 @@
                nys,                                                                                &
                nysv,                                                                               &
                nyn,                                                                                &
-               topo_flags
+               wall_flags_total_0
 
     USE kinds
 
@@ -119,7 +266,8 @@
 #endif
 
     USE nesting_offl_mod,                                                                          &
-        ONLY:  nesting_offl_calc_zi
+        ONLY:  nesting_offl_calc_zi,                                                               &
+               zi_ribulk
 
     USE pegrid,                                                                                    &
         ONLY:  comm1dx,                                                                            &
@@ -128,11 +276,10 @@
                ierr,                                                                               &
                myidx,                                                                              &
                myidy,                                                                              &
-               npex,                                                                               &
-               npey
+               pdims
 
     USE pmc_interface,                                                                             &
-        ONLY:  rans_mode_parent
+        ONLY : rans_mode_parent
 
     USE random_generator_parallel,                                                                 &
         ONLY:  init_parallel_random_generator,                                                     &
@@ -144,10 +291,14 @@
         ONLY:  rrd_mpi_io,                                                                         &
                wrd_mpi_io
 
+    USE transpose_indices,                                                                         &
+        ONLY:  nzb_x,                                                                              &
+               nzt_x
+
     USE surface_mod,                                                                               &
-        ONLY:  surf_def,                                                                           &
-               surf_lsm,                                                                           &
-               surf_usm
+        ONLY:  surf_def_h,                                                                         &
+               surf_lsm_h,                                                                         &
+               surf_usm_h
 
     IMPLICIT NONE
 
@@ -201,29 +352,27 @@
 
     LOGICAL ::  adjustment_step               = .FALSE.  !< control flag indicating that time and lenght scales have been updated and
                                                          !< no time correlation to the timestep before should be considered
-    LOGICAL ::  compute_velocity_seeds_local  = .FALSE.  !< switch to decide whether velocity seeds are computed locally
+    LOGICAL ::  compute_velocity_seeds_local  = .FALSE.   !< switch to decide whether velocity seeds are computed locally
                                                          !< or if computation is distributed over several processes
     LOGICAL ::  parametrize_inflow_turbulence = .FALSE.  !< flag indicating that inflow turbulence is either read from file
                                                          !< (.FALSE.) or if it parametrized
-    LOGICAL ::  file_stg_exist                = .FALSE.  !< flag indicating whether parameter file for Reynolds stress and length scales exist
+    LOGICAL ::  use_syn_turb_gen              = .FALSE.  !< switch to use synthetic turbulence generator
     LOGICAL ::  velocity_seed_initialized     = .FALSE.  !< true after first call of stg_main
 
 
-    REAL(wp) ::  blend                             !< value to create gradually and smooth blending of Reynolds stress and length
-                                                   !< scales above the boundary layer
-    REAL(wp) ::  blend_coeff = -9.3_wp             !< coefficient used to ensure that blending functions decreases to 1/10 after
-                                                   !< one length scale above ABL top
-    REAL(wp) ::  boundary_layer_depth = 1000.0_wp  !< prescribed boundary-layer depth (namelist parameter)
-    REAL(wp) ::  d_l                               !< blend_coeff/length_scale
-    REAL(wp) ::  d_nxy                             !< inverse of the total number of xy-grid points
-    REAL(wp) ::  dt_stg_adjust = 1800.0_wp         !< time interval for adjusting turbulence statistics
-    REAL(wp) ::  dt_stg_call = 0.0_wp              !< time interval for calling synthetic turbulence generator
-    REAL(wp) ::  scale_l                           !< scaling parameter used for turbulence parametrization - Obukhov length
-    REAL(wp) ::  scale_us                          !< scaling parameter used for turbulence parametrization - friction velocity
-    REAL(wp) ::  scale_wm                          !< scaling parameter used for turbulence parametrization - momentum scale
-    REAL(wp) ::  time_stg_adjust = 0.0_wp          !< time counter for adjusting turbulence information
-    REAL(wp) ::  time_stg_call = 0.0_wp            !< time counter for calling generator
-    REAL(wp) ::  zi                                !< boundary-layer depth used for turbulence parametrization
+    REAL(wp) ::  blend                     !< value to create gradually and smooth blending of Reynolds stress and length
+                                           !< scales above the boundary layer
+    REAL(wp) ::  blend_coeff = -9.3_wp     !< coefficient used to ensure that blending functions decreases to 1/10 after
+                                           !< one length scale above ABL top
+    REAL(wp) ::  d_l                       !< blend_coeff/length_scale
+    REAL(wp) ::  d_nxy                     !< inverse of the total number of xy-grid points
+    REAL(wp) ::  dt_stg_adjust = 1800.0_wp !< time interval for adjusting turbulence statistics
+    REAL(wp) ::  dt_stg_call = 0.0_wp      !< time interval for calling synthetic turbulence generator
+    REAL(wp) ::  scale_l                   !< scaling parameter used for turbulence parametrization - Obukhov length
+    REAL(wp) ::  scale_us                  !< scaling parameter used for turbulence parametrization - friction velocity
+    REAL(wp) ::  scale_wm                  !< scaling parameter used for turbulence parametrization - momentum scale
+    REAL(wp) ::  time_stg_adjust = 0.0_wp  !< time counter for adjusting turbulence information
+    REAL(wp) ::  time_stg_call = 0.0_wp    !< time counter for calling generator
 
     REAL(wp), DIMENSION(3) ::  mc_factor = 1.0_wp  !< correction factor for the u,v,w-components to maintain original mass flux
 
@@ -270,52 +419,68 @@
     REAL(wp), DIMENSION(:,:,:), ALLOCATABLE ::  dist_xz !< disturbances for parallel/crosswind/vertical component at north/south boundary
     REAL(wp), DIMENSION(:,:,:), ALLOCATABLE ::  dist_yz !< disturbances for parallel/crosswind/vertical component  at north/south boundary
 
-
-    INTERFACE stg_actions
-       MODULE PROCEDURE stg_actions
-    END INTERFACE stg_actions
-
+!
+!-- PALM interfaces:
+!-- Adjust time and lenght scales, Reynolds stress, and filter functions
     INTERFACE stg_adjust
        MODULE PROCEDURE stg_adjust
     END INTERFACE stg_adjust
-
+!
+!-- Input parameter checks to be done in check_parameters
     INTERFACE stg_check_parameters
        MODULE PROCEDURE stg_check_parameters
     END INTERFACE stg_check_parameters
 
+!
+!-- Calculate filter functions
     INTERFACE stg_filter_func
        MODULE PROCEDURE stg_filter_func
     END INTERFACE stg_filter_func
 
+!
+!-- Generate velocity seeds at south and north domain boundary
     INTERFACE stg_generate_seed_xz
        MODULE PROCEDURE stg_generate_seed_xz
     END INTERFACE stg_generate_seed_xz
-
+!
+!-- Generate velocity seeds at left and/or right domain boundary
     INTERFACE stg_generate_seed_yz
        MODULE PROCEDURE stg_generate_seed_yz
     END INTERFACE stg_generate_seed_yz
 
+!
+!-- Output of information to the header file
     INTERFACE stg_header
        MODULE PROCEDURE stg_header
     END INTERFACE stg_header
 
+!
+!-- Initialization actions
     INTERFACE stg_init
        MODULE PROCEDURE stg_init
     END INTERFACE stg_init
 
+!
+!-- Main procedure of synth. turb. gen.
     INTERFACE stg_main
        MODULE PROCEDURE stg_main
     END INTERFACE stg_main
 
+!
+!-- Reading of NAMELIST parameters
     INTERFACE stg_parin
        MODULE PROCEDURE stg_parin
     END INTERFACE stg_parin
 
+!
+!-- Reading of parameters for restart runs
     INTERFACE stg_rrd_global
        MODULE PROCEDURE stg_rrd_global_ftn
        MODULE PROCEDURE stg_rrd_global_mpi
     END INTERFACE stg_rrd_global
 
+!
+!-- Writing of binary output for restart runs
     INTERFACE stg_wrd_global
        MODULE PROCEDURE stg_wrd_global
     END INTERFACE stg_wrd_global
@@ -326,7 +491,7 @@
 
 !
 !-- Public interfaces
-    PUBLIC  stg_actions,                                                                           &
+    PUBLIC  stg_adjust,                                                                            &
             stg_check_parameters,                                                                  &
             stg_header,                                                                            &
             stg_init,                                                                              &
@@ -337,10 +502,16 @@
 
 !
 !-- Public variables
-    PUBLIC  id_stg_left,                                                                           &
+    PUBLIC  dt_stg_call,                                                                           &
+            dt_stg_adjust,                                                                         &
+            id_stg_left,                                                                           &
             id_stg_north,                                                                          &
             id_stg_right,                                                                          &
-            id_stg_south
+            id_stg_south,                                                                          &
+            parametrize_inflow_turbulence,                                                         &
+            time_stg_adjust,                                                                       &
+            time_stg_call,                                                                         &
+            use_syn_turb_gen
 
 
  CONTAINS
@@ -353,31 +524,31 @@
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE stg_check_parameters
 
-    IF ( .NOT. syn_turb_gen  .AND.  .NOT. rans_mode  .AND.                                         &
+    IF ( .NOT. use_syn_turb_gen  .AND.  .NOT. rans_mode  .AND.                                     &
           nesting_offline )  THEN
-       message_string = 'synthetic turbulence generator is required ' //                           &
-                        'if offline nesting is applied and PALM operates in LES mode'
-       CALL message( 'stg_check_parameters', 'STG0001', 0, 0, 0, 6, 0 )
+       message_string = 'Synthetic turbulence generator is required ' //                           &
+                        'if offline nesting is applied and PALM operates in LES mode.'
+       CALL message( 'stg_check_parameters', 'PA0520', 0, 0, 0, 6, 0 )
     ENDIF
 
-    IF ( .NOT. syn_turb_gen  .AND.  child_domain                                                   &
+    IF ( .NOT. use_syn_turb_gen  .AND.  child_domain                                               &
          .AND. rans_mode_parent  .AND.  .NOT. rans_mode )  THEN
-       message_string = 'synthetic turbulence generator is required when nesting is applied ' //   &
-                        'and parent operates in RANS-mode but current child in LES mode'
-       CALL message( 'stg_check_parameters', 'STG0002', 1, 2, 0, 6, 0 )
+       message_string = 'Synthetic turbulence generator is required when nesting is applied ' //   &
+                        'and parent operates in RANS-mode but current child in LES mode.'
+       CALL message( 'stg_check_parameters', 'PA0524', 1, 2, 0, 6, 0 )
     ENDIF
 
-    IF ( syn_turb_gen )  THEN
+    IF ( use_syn_turb_gen )  THEN
 
        IF ( child_domain  .AND.  .NOT. rans_mode  .AND.  .NOT. rans_mode_parent )  THEN
-          message_string = 'using synthetic turbulence generator not allowed in LES-LES nesting'
-          CALL message( 'stg_check_parameters', 'STG0003', 1, 2, 0, 6, 0 )
+          message_string = 'Using synthetic turbulence generator is not allowed in LES-LES nesting.'
+          CALL message( 'stg_check_parameters', 'PA0620', 1, 2, 0, 6, 0 )
 
        ENDIF
 
        IF ( child_domain  .AND.  rans_mode  .AND.  rans_mode_parent )  THEN
-          message_string = 'using synthetic turbulence generator not allowed in RANS-RANS nesting'
-          CALL message( 'stg_check_parameters', 'STG0003', 1, 2, 0, 6, 0 )
+          message_string = 'Using synthetic turbulence generator is not allowed in RANS-RANS nesting.'
+          CALL message( 'stg_check_parameters', 'PA0621', 1, 2, 0, 6, 0 )
 
        ENDIF
 
@@ -385,68 +556,37 @@
 
           IF ( INDEX( initializing_actions, 'set_constant_profiles' ) == 0                         &
           .AND.  INDEX( initializing_actions, 'read_restart_data' ) == 0 )  THEN
-             message_string = 'using synthetic turbulence generator requires ' //                  &
+             message_string = 'Using synthetic turbulence generator requires ' //                  &
                               '%initializing_actions = "set_constant_profiles" or ' //             &
-                              ' "read_restart_data", if not offline nesting is applied'
-             CALL message( 'stg_check_parameters', 'STG0004', 1, 2, 0, 6, 0 )
+                              ' "read_restart_data", if not offline nesting is applied.'
+             CALL message( 'stg_check_parameters', 'PA0015', 1, 2, 0, 6, 0 )
           ENDIF
 
           IF ( bc_lr /= 'dirichlet/radiation' )  THEN
-             message_string = 'using synthetic turbulence generator requires &bc_lr = ' //         &
-                              ' "dirichlet/radiation", if not offline nesting is applied'
-             CALL message( 'stg_check_parameters', 'STG0005', 1, 2, 0, 6, 0 )
+             message_string = 'Using synthetic turbulence generator requires &bc_lr = ' //         &
+                              ' "dirichlet/radiation", if not offline nesting is applied.'
+             CALL message( 'stg_check_parameters', 'PA0035', 1, 2, 0, 6, 0 )
           ENDIF
           IF ( bc_ns /= 'cyclic' )  THEN
-             message_string = 'using synthetic turbulence generator requires &bc_ns = ' //         &
-                              ' "cyclic", if not offline nesting is applied'
-             CALL message( 'stg_check_parameters', 'STG0006', 1, 2, 0, 6, 0 )
-          ENDIF
-!
-!--       In case of idealized setups (i.e. no mesoscale nesting), a STG_PROFILES file must be
-!--       available. Though turbulence parameters could also be parametrized in this case, this
-!--       has not been tested thoroughly.
-          INQUIRE( FILE = 'STG_PROFILES' // TRIM( coupling_char ), EXIST = file_stg_exist  )
-          IF ( .NOT. file_stg_exist )  THEN
-             message_string = 'input file "' //'STG_PROFILES' // TRIM( coupling_char ) //          &
-                              '" for synthetic turbulence generator is missing'
-             CALL message( 'stg_check_parameters', 'STG0007', 1, 2, 0, 6, 0 )
+             message_string = 'Using synthetic turbulence generator requires &bc_ns = ' //         &
+                              ' "cyclic", if not offline nesting is applied.'
+             CALL message( 'stg_check_parameters', 'PA0037', 1, 2, 0, 6, 0 )
           ENDIF
 
-       ENDIF
-!
-!--    In case of neutral runs, either an STG_PROFILES file is required, or turbulence is
-!--    parametrized. In the latter case, a prescribed boundary-layer depth > 0 is required.
-       IF ( neutral )  THEN
-          INQUIRE( FILE = 'STG_PROFILES' // TRIM( coupling_char ), EXIST = file_stg_exist  )
-          IF ( .NOT. file_stg_exist  .AND.  boundary_layer_depth <= 0.0_wp )  THEN
-             WRITE ( message_string, * )  'boundary_layer_depth = ', boundary_layer_depth, ' <= 0.0'
-             CALL message( 'stg_check_parameters', 'STG0008', 1, 2, 0, 6, 0 )
-          ELSE
-             zi = boundary_layer_depth
-          ENDIF
        ENDIF
 
        IF ( turbulent_inflow )  THEN
-          message_string = 'using synthetic turbulence generator in combination ' //               &
+          message_string = 'Using synthetic turbulence generator in combination ' //               &
                            '&with turbulent_inflow = .T. is not allowed'
-          CALL message( 'stg_check_parameters', 'STG0009', 1, 2, 0, 6, 0 )
+          CALL message( 'stg_check_parameters', 'PA0039', 1, 2, 0, 6, 0 )
        ENDIF
 !
 !--    Synthetic turbulence generator requires the parallel random generator
        IF ( random_generator /= 'random-parallel' )  THEN
-          message_string = 'using synthetic turbulence generator requires random_generator = ' //  &
-                           '"random-parallel"'
-          CALL message( 'stg_check_parameters', 'STG0010', 1, 2, 0, 6, 0 )
+          message_string = 'Using synthetic turbulence generator requires random_generator = ' //  &
+                           'random-parallel.'
+          CALL message( 'stg_check_parameters', 'PA0421', 1, 2, 0, 6, 0 )
        ENDIF
-!
-!--    Distributed computation of velocity seeds requires sufficient number of vertical grid points.
-#if defined( __parallel )
-       IF ( nz / npex < 1.0_wp  .OR.  nz / npey < 1.0_wp )  THEN
-          message_string = 'compute_velocity_seeds_local = .FALSE. requires ratios ' //            &
-                           'nz / npex and nz / npey to be >= 1'
-          CALL message( 'stg_check_parameters', 'STG0011', 1, 2, 0, 6, 0 )
-       ENDIF
-#endif
 
     ENDIF
 
@@ -464,21 +604,25 @@
 
 !
 !-- Write synthetic turbulence generator Header
-    IF ( syn_turb_gen )  THEN
-       WRITE( io, 1 )
-       IF ( parametrize_inflow_turbulence )  THEN
-          WRITE( io, 4 ) dt_stg_adjust
-          IF ( neutral )  WRITE( io, 6 )  boundary_layer_depth
-       ELSE
-          WRITE( io, 5 )
-       ENDIF
+    WRITE( io, 1 )
+    IF ( use_syn_turb_gen )  THEN
+       WRITE( io, 2 )
+    ELSE
+       WRITE( io, 3 )
+    ENDIF
+
+    IF ( parametrize_inflow_turbulence )  THEN
+       WRITE( io, 4 ) dt_stg_adjust
+    ELSE
+       WRITE( io, 5 )
     ENDIF
 
 1   FORMAT (//' Synthetic turbulence generator information:'/                                      &
               ' ------------------------------------------'/)
-4   FORMAT ('    imposed turbulence statistics are parametrized and adjusted to boundary-layer development each ', F8.2, ' s' )
+2   FORMAT ('    synthetic turbulence generator is switched on')
+3   FORMAT ('    synthetic turbulence generator is switched off')
+4   FORMAT ('    imposed turbulence statistics are parametrized and ajdusted to boundary-layer development each ', F8.2, ' s' )
 5   FORMAT ('    imposed turbulence is read from file' )
-6   FORMAT ('    a prescribed boundary-layer depth of ', F8.2, ' m is used for the turbulence parametrization.')
 
  END SUBROUTINE stg_header
 
@@ -501,14 +645,13 @@
 #if defined( __parallel )
     INTEGER(iwp) :: newtype   !< dummy MPI type
     INTEGER(iwp) :: realsize  !< size of REAL variables
-
-    INTEGER(iwp), DIMENSION(2) ::  newsize     !< size of subarray
-    INTEGER(iwp), DIMENSION(2) ::  oldsize     !< original array size
-    INTEGER(iwp), DIMENSION(2) ::  startindex  !< startindex of subarray
 #endif
 
     INTEGER(iwp), DIMENSION(3) ::  nr_non_topo_xz_l = 0 !< number of non-topography grid points at xz-cross-section on subdomain
     INTEGER(iwp), DIMENSION(3) ::  nr_non_topo_yz_l = 0 !< number of non-topography grid points at yz-cross-section on subdomain
+
+
+    LOGICAL ::  file_stg_exist = .FALSE.  !< flag indicating whether parameter file for Reynolds stress and length scales exist
 
 !
 !-- Dummy variables used for reading profiles
@@ -540,91 +683,78 @@
     IF ( .NOT. compute_velocity_seeds_local )  THEN
 #if defined( __parallel )
 !
-!--    Determine processor decomposition of z-axis along x- and y-direction.
-       nnz = nz / npex
+!--    Determine processor decomposition of z-axis along x- and y-direction
+       nnz = nz / pdims(1)
        nzb_x_stg = 1 + myidx * INT( nnz )
        nzt_x_stg = ( myidx + 1 ) * INT( nnz )
 
-       IF ( MOD( nz , npex ) /= 0  .AND.  myidx == id_stg_right )                              &
+       IF ( MOD( nz , pdims(1) ) /= 0  .AND.  myidx == id_stg_right )                              &
           nzt_x_stg = nzt_x_stg + myidx * ( nnz - INT( nnz ) )
 
        IF ( nesting_offline   .OR.  ( child_domain  .AND.  rans_mode_parent                        &
                                .AND.  .NOT.  rans_mode ) )  THEN
-          nnz = nz / npey
+          nnz = nz / pdims(2)
           nzb_y_stg = 1 + myidy * INT( nnz )
           nzt_y_stg = ( myidy + 1 ) * INT( nnz )
 
-          IF ( MOD( nz , npey ) /= 0  .AND.  myidy == id_stg_north )                           &
+          IF ( MOD( nz , pdims(2) ) /= 0  .AND.  myidy == id_stg_north )                           &
              nzt_y_stg = nzt_y_stg + myidy * ( nnz - INT( nnz ) )
        ENDIF
 
 !
-!--    Define MPI type used in stg_generate_seed_yz to gather vertical splitted velocity seeds.
+!--    Define MPI type used in stg_generate_seed_yz to gather vertical splitted velocity seeds
        CALL MPI_TYPE_SIZE( MPI_REAL, realsize, ierr )
        extent = 1 * realsize
 !
 !--    Set-up MPI datatyp to involve all cores for turbulence generation at yz layer
-!--    stg_type_yz: yz-slice with vertical bounds nzb:nzt+1.
-       oldsize = (/ nzt-nzb+2, nyn-nys+1 /)
-       newsize = (/         1, nyn-nys+1 /)
-       startindex = (/ 0, 0 /)
-       CALL MPI_TYPE_CREATE_SUBARRAY( 2, oldsize, newsize, startindex, MPI_ORDER_FORTRAN,          &
-                                      MPI_REAL, newtype, ierr )
+!--    stg_type_yz: yz-slice with vertical bounds nzb:nzt+1
+       CALL MPI_TYPE_CREATE_SUBARRAY( 2, [nzt-nzb+2,nyn-nys+1],                                    &
+               [1,nyn-nys+1], [0,0], MPI_ORDER_FORTRAN, MPI_REAL, newtype, ierr )
        CALL MPI_TYPE_CREATE_RESIZED( newtype, tob, extent, stg_type_yz, ierr )
        CALL MPI_TYPE_COMMIT( stg_type_yz, ierr )
        CALL MPI_TYPE_FREE( newtype, ierr )
-!
-!--    stg_type_yz_small: yz-slice with vertical bounds nzb_x_stg:nzt_x_stg+1.
-       oldsize = (/ nzt_x_stg-nzb_x_stg+2, nyn-nys+1 /)
-       newsize = (/                     1, nyn-nys+1 /)
-       startindex = (/ 0, 0 /)
-       CALL MPI_TYPE_CREATE_SUBARRAY( 2, oldsize, newsize, startindex, MPI_ORDER_FORTRAN,          &
-                                      MPI_REAL, newtype, ierr )
+
+       ! stg_type_yz_small: yz-slice with vertical bounds nzb_x_stg:nzt_x_stg+1
+       CALL MPI_TYPE_CREATE_SUBARRAY( 2, [nzt_x_stg-nzb_x_stg+2,nyn-nys+1],                        &
+               [1,nyn-nys+1], [0,0], MPI_ORDER_FORTRAN, MPI_REAL, newtype, ierr )
        CALL MPI_TYPE_CREATE_RESIZED( newtype, tob, extent, stg_type_yz_small, ierr )
        CALL MPI_TYPE_COMMIT( stg_type_yz_small, ierr )
        CALL MPI_TYPE_FREE( newtype, ierr )
-!
-!--    Receive count and displacement for MPI_GATHERV in stg_generate_seed_yz.
-       ALLOCATE( recv_count_yz(npex), displs_yz(npex) )
 
-       recv_count_yz       = nzt_x_stg-nzb_x_stg + 1
-       recv_count_yz(npex) = recv_count_yz(npex) + 1
+       ! Receive count and displacement for MPI_GATHERV in stg_generate_seed_yz
+       ALLOCATE( recv_count_yz(pdims(1)), displs_yz(pdims(1)) )
 
-       DO  j = 1, npex
+       recv_count_yz           = nzt_x_stg-nzb_x_stg + 1
+       recv_count_yz(pdims(1)) = recv_count_yz(pdims(1)) + 1
+
+       DO  j = 1, pdims(1)
           displs_yz(j) = 0 + (nzt_x_stg-nzb_x_stg+1) * (j-1)
        ENDDO
 !
 !--    Set-up MPI datatyp to involve all cores for turbulence generation at xz layer
-!--    stg_type_xz: xz-slice with vertical bounds nzb:nzt+1.
-       IF ( nesting_offline  .OR.  ( child_domain .AND.  rans_mode_parent                          &
-                                     .AND.  .NOT.  rans_mode ) )                                   &
-       THEN
-          oldsize = (/ nzt-nzb+2, nxr-nxl+1 /)
-          newsize = (/         1, nxr-nxl+1 /)
-          startindex = (/ 0, 0 /)
-          CALL MPI_TYPE_CREATE_SUBARRAY( 2, oldsize, newsize, startindex, MPI_ORDER_FORTRAN,       &
-                                         MPI_REAL, newtype, ierr )
+!--    stg_type_xz: xz-slice with vertical bounds nzb:nzt+1
+       IF ( nesting_offline  .OR.  ( child_domain .AND.  rans_mode_parent      &
+                              .AND.  .NOT.  rans_mode ) )  THEN
+          CALL MPI_TYPE_CREATE_SUBARRAY( 2, [nzt-nzb+2,nxr-nxl+1],             &
+                  [1,nxr-nxl+1], [0,0], MPI_ORDER_FORTRAN, MPI_REAL, newtype, ierr )
           CALL MPI_TYPE_CREATE_RESIZED( newtype, tob, extent, stg_type_xz, ierr )
           CALL MPI_TYPE_COMMIT( stg_type_xz, ierr )
           CALL MPI_TYPE_FREE( newtype, ierr )
-!
-!--       stg_type_yz_small: xz-slice with vertical bounds nzb_x_stg:nzt_x_stg+1.
-          oldsize = (/ nzt_y_stg-nzb_y_stg+2, nxr-nxl+1 /)
-          newsize = (/                     1, nxr-nxl+1 /)
-          startindex = (/ 0, 0 /)
-          CALL MPI_TYPE_CREATE_SUBARRAY( 2, oldsize, newsize, startindex, MPI_ORDER_FORTRAN,       &
-                                         MPI_REAL, newtype, ierr )
+
+          ! stg_type_yz_small: xz-slice with vertical bounds nzb_x_stg:nzt_x_stg+1
+          CALL MPI_TYPE_CREATE_SUBARRAY( 2, [nzt_y_stg-nzb_y_stg+2,nxr-nxl+1], &
+                  [1,nxr-nxl+1], [0,0], MPI_ORDER_FORTRAN, MPI_REAL, newtype, ierr )
           CALL MPI_TYPE_CREATE_RESIZED( newtype, tob, extent, stg_type_xz_small, ierr )
           CALL MPI_TYPE_COMMIT( stg_type_xz_small, ierr )
           CALL MPI_TYPE_FREE( newtype, ierr )
-!
-!--       Receive count and displacement for MPI_GATHERV in stg_generate_seed_yz.
-          ALLOCATE( recv_count_xz(npey), displs_xz(npey) )
 
-          recv_count_xz       = nzt_y_stg-nzb_y_stg + 1
-          recv_count_xz(npey) = recv_count_xz(npey) + 1
+          ! Receive count and displacement for MPI_GATHERV in stg_generate_seed_yz
+          ALLOCATE( recv_count_xz(pdims(2)), displs_xz(pdims(2)) )
 
-          DO  j = 1, npey
+          recv_count_xz           = nzt_y_stg-nzb_y_stg + 1
+          recv_count_xz(pdims(2)) = recv_count_xz(pdims(2)) + 1
+
+          DO  j = 1, pdims(2)
              displs_xz(j) = 0 + (nzt_y_stg-nzb_y_stg+1) * (j-1)
           ENDDO
 
@@ -653,9 +783,9 @@
        ENDIF
     ENDIF
 !
-!-- Assign initial profiles. Note, this is only required if turbulent inflow from the left is
+!-- Assign initial profiles. Note, this is only required if turbulent inflow from the left is 
 !-- desired, not in case of any of the nesting (offline or self nesting) approaches.
-    IF ( .NOT. nesting_offline  .AND.  .NOT.  child_domain )  THEN
+    IF ( .NOT. nesting_offline  .AND.  .NOT.  child_domain )  THEN 
        u_init = mean_inflow_profiles(:,1)
        v_init = mean_inflow_profiles(:,2)
        e_init = MAXVAL( mean_inflow_profiles(:,5) )
@@ -685,7 +815,10 @@
     dist_xz = 0.0_wp
     dist_yz = 0.0_wp
 !
-!-- Check if a STG_PROFILES file exist.
+!-- Read inflow profile
+!-- Height levels of profiles in input profile is as follows:
+!-- zu: luy, luz, tu, lvy, lvz, tv, r11, r21, r22, d1, d2, d5 zw: lwy, lwz, tw, r31, r32, r33, d3
+!-- WARNING: zz is not used at the moment
     INQUIRE( FILE = 'STG_PROFILES' // TRIM( coupling_char ), EXIST = file_stg_exist  )
 
     IF ( file_stg_exist )  THEN
@@ -694,11 +827,7 @@
 !
 !--    Skip header
        READ( 90, * )
-!
-!--    Read inflow profile
-!--    Height levels of profiles in input profile is as follows:
-!--    zu: luy, luz, tu, lvy, lvz, tv, r11, r21, r22, d1, d2, d5 zw: lwy, lwz, tw, r31, r32, r33, d3
-!--    WARNING: zz is not used at the moment
+
        DO  k = nzb, nzt
           READ( 90, * ) zz, luy, luz, tu(k), lvy, lvz, tv(k), lwy, lwz, tw(k), r11(k), r21(k),     &
                         r22(k), r31(k), r32(k), r33(k), d1, d2, d3, d5
@@ -725,10 +854,8 @@
           nvx(k) = nvy(k)
           nux(k) = nuy(k)
 !
-!--       Save Mean inflow profiles. This must not be done in mesoscale- or self-nested runs or in
-!--       case of restart runs.
-          IF ( ( .NOT. nesting_offline  .AND.  .NOT.  child_domain )  .AND.  &
-               TRIM( initializing_actions ) /= 'read_restart_data' )  THEN
+!--       Save Mean inflow profiles
+          IF ( TRIM( initializing_actions ) /= 'read_restart_data' ) THEN
              mean_inflow_profiles(k,1) = d1
              mean_inflow_profiles(k,2) = d2
             !  mean_inflow_profiles(k,4) = d4
@@ -763,9 +890,6 @@
 !--    Calculate coefficient matrix from Reynolds stress tensor (Lund rotation)
        CALL calc_coeff_matrix
 !
-!--    Initial filter functions
-       CALL stg_setup_filter_function
-!
 !-- No information about turbulence and its length scales are available. Instead, parametrize
 !-- turbulence which is imposed at the boundaries. Set flag which indicates that turbulence is
 !-- parametrized, which is done later when energy-balance models are already initialized. This is
@@ -779,11 +903,27 @@
 !--    Set flag indicating that turbulence is parametrized
        parametrize_inflow_turbulence = .TRUE.
 !
-!--    Initialize the turbulence parametrization values, compute the initial coefficient matrix
-!--    and set filter functions based on a parameterized Reynolds-stress tensor
-       CALL stg_adjust
+!--    In case of dirichlet inflow boundary conditions only at one lateral boundary, i.e. in the
+!--    case no offline or self nesting is applied but synthetic turbulence shall be parametrized
+!--    nevertheless, the boundary-layer depth needs to be determined first.
+       IF ( .NOT. nesting_offline  .AND.  .NOT.  child_domain )                                    &
+          CALL nesting_offl_calc_zi
+!
+!--    Determine boundary-layer depth, which is used to initialize lenght scales
+       CALL calc_scaling_variables
+!
+!--    Parametrize Reynolds-stress tensor, diagonal elements as well as r21 (v'u'), r31 (w'u'),
+!--    r32 (w'v'). Parametrization follows Rotach et al. (1996) and is based on boundary-layer depth,
+!--    friction velocity and velocity scale.
+       CALL parametrize_turbulence
+!
+!--    Calculate coefficient matrix from Reynolds stress tensor (Lund rotation)
+       CALL calc_coeff_matrix
 
     ENDIF
+!
+!-- Initial filter functions
+    CALL stg_setup_filter_function
 !
 !-- Allocate velocity seeds for turbulence at xz-layer
     ALLOCATE ( fu_xz(nzb:nzt+1,nxl:nxr), fuo_xz(nzb:nzt+1,nxl:nxr),                                &
@@ -891,14 +1031,14 @@
        IF ( myidx == id_stg_left  )  i = nxl
        IF ( myidx == id_stg_right )  i = nxr+1
 
-       nr_non_topo_yz_l(1) = SUM( MERGE( 1, 0, BTEST( topo_flags(nzb:nzt,nys:nyn,i), 1 ) ) )
+       nr_non_topo_yz_l(1) = SUM( MERGE( 1, 0, BTEST( wall_flags_total_0(nzb:nzt,nys:nyn,i), 1 ) ) )
 !
 !--    Number of grid points where perturbations are imposed on v and w
        IF ( myidx == id_stg_left  )  i = nxl-1
        IF ( myidx == id_stg_right )  i = nxr+1
 
-       nr_non_topo_yz_l(2) = SUM( MERGE( 1, 0, BTEST( topo_flags(nzb:nzt,nysv:nyn,i), 2 ) ) )
-       nr_non_topo_yz_l(3) = SUM( MERGE( 1, 0, BTEST( topo_flags(nzb:nzt,nys:nyn,i), 3 ) ) )
+       nr_non_topo_yz_l(2) = SUM( MERGE( 1, 0, BTEST( wall_flags_total_0(nzb:nzt,nysv:nyn,i), 2 ) ) )
+       nr_non_topo_yz_l(3) = SUM( MERGE( 1, 0, BTEST( wall_flags_total_0(nzb:nzt,nys:nyn,i), 3 ) ) )
 
 #if defined( __parallel )
        CALL MPI_ALLREDUCE( nr_non_topo_yz_l, nr_non_topo_yz, 3, MPI_INTEGER, MPI_SUM, comm1dy, ierr )
@@ -913,14 +1053,14 @@
        IF ( myidy == id_stg_south )  j = nys
        IF ( myidy == id_stg_north )  j = nyn+1
 
-       nr_non_topo_xz_l(2) = SUM( MERGE( 1, 0, BTEST( topo_flags(nzb:nzt,j,nxl:nxr), 2 ) ) )
+       nr_non_topo_xz_l(2) = SUM( MERGE( 1, 0, BTEST( wall_flags_total_0(nzb:nzt,j,nxl:nxr), 2 ) ) )
 !
 !--    Number of grid points where perturbations are imposed on u and w
        IF ( myidy == id_stg_south )  j = nys-1
        IF ( myidy == id_stg_north )  j = nyn+1
 
-       nr_non_topo_xz_l(1) = SUM( MERGE( 1, 0, BTEST( topo_flags(nzb:nzt,j,nxlu:nxr), 1 ) ) )
-       nr_non_topo_xz_l(3) = SUM( MERGE( 1, 0, BTEST( topo_flags(nzb:nzt,j,nxl:nxr), 3 ) ) )
+       nr_non_topo_xz_l(1) = SUM( MERGE( 1, 0, BTEST( wall_flags_total_0(nzb:nzt,j,nxlu:nxr), 1 ) ) )
+       nr_non_topo_xz_l(3) = SUM( MERGE( 1, 0, BTEST( wall_flags_total_0(nzb:nzt,j,nxl:nxr), 3 ) ) )
 
 #if defined( __parallel )
        CALL MPI_ALLREDUCE( nr_non_topo_xz_l, nr_non_topo_xz, 3, MPI_INTEGER, MPI_SUM, comm1dx, ierr )
@@ -1068,43 +1208,38 @@
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE stg_parin
 
-    CHARACTER(LEN=100) ::  line  !< dummy string that contains the current line of the parameter file
+    CHARACTER (LEN=80) ::  line  !< dummy string that contains the current line of the parameter file
 
-    INTEGER(iwp) ::  io_status   !< status after reading the namelist file
 
-    LOGICAL ::  switch_off_module = .FALSE.  !< local namelist parameter to switch off the module
-                                             !< although the respective module namelist appears in
-                                             !< the namelist file
-
-    NAMELIST /stg_par/  boundary_layer_depth,                                                      &
-                        compute_velocity_seeds_local,                                              &
-                        dt_stg_adjust,                                                             &
+    NAMELIST /stg_par/  dt_stg_adjust,                                                             &
                         dt_stg_call,                                                               &
-                        switch_off_module
+                        use_syn_turb_gen,                                                          &
+                        compute_velocity_seeds_local
 
+    line = ' '
+!
+!-- Try to find stg package
+    REWIND ( 11 )
+    line = ' '
+    DO WHILE ( INDEX( line, '&stg_par' ) == 0 )
+       READ ( 11, '(A)', END = 20 )  line
+    ENDDO
+    BACKSPACE ( 11 )
 
 !
-!-- Move to the beginning of the namelist file and try to find and read the namelist.
-    REWIND( 11 )
-    READ( 11, stg_par, IOSTAT=io_status )
+!-- Read namelist
+    READ ( 11, stg_par, ERR = 10, END = 20 )
 
 !
-!-- Action depending on the READ status
-    IF ( io_status == 0 )  THEN
-!
-!--    stg_par namelist was found and read correctly. Set flag that indicates that the synthetic
-!--    turbulence generator is switched on.
-       IF ( .NOT. switch_off_module )  syn_turb_gen = .TRUE.
+!-- Set flag that indicates that the synthetic turbulence generator is switched on
+    syn_turb_gen = .TRUE.
+    GOTO 20
 
-    ELSEIF ( io_status > 0 )  THEN
-!
-!--    stg_par namelist was found but contained errors. Print an error message including the line
-!--    that caused the problem.
-       BACKSPACE( 11 )
-       READ( 11 , '(A)') line
-       CALL parin_fail_message( 'stg_par', line )
+ 10 BACKSPACE( 11 )
+    READ( 11 , '(A)') line
+    CALL parin_fail_message( 'stg_par', line )
 
-    ENDIF
+ 20 CONTINUE
 
  END SUBROUTINE stg_parin
 
@@ -1129,6 +1264,9 @@
        CASE ( 'time_stg_call' )
           READ ( 13 )  time_stg_call
 
+       CASE ( 'use_syn_turb_gen' )
+          READ ( 13 )  use_syn_turb_gen
+
        CASE DEFAULT
 
           found = .FALSE.
@@ -1148,6 +1286,7 @@
 
     CALL rrd_mpi_io( 'time_stg_adjust', time_stg_adjust )
     CALL rrd_mpi_io( 'time_stg_call', time_stg_call )
+    CALL rrd_mpi_io( 'use_syn_turb_gen', use_syn_turb_gen )
 
  END SUBROUTINE stg_rrd_global_mpi
 
@@ -1167,63 +1306,18 @@
        CALL wrd_write_string( 'time_stg_call' )
        WRITE ( 14 )  time_stg_call
 
+       CALL wrd_write_string( 'use_syn_turb_gen' )
+       WRITE ( 14 )  use_syn_turb_gen
+
     ELSEIF ( restart_data_format_output(1:3) == 'mpi' )  THEN
 
        CALL wrd_mpi_io( 'time_stg_adjust', time_stg_adjust )
        CALL wrd_mpi_io( 'time_stg_call', time_stg_call )
+       CALL wrd_mpi_io( 'use_syn_turb_gen', use_syn_turb_gen )
 
     ENDIF
 
  END SUBROUTINE stg_wrd_global
-
-
-!--------------------------------------------------------------------------------------------------!
-! Description:
-! ------------
-!> Call for all grid points
-!--------------------------------------------------------------------------------------------------!
- SUBROUTINE stg_actions( location )
-
-    CHARACTER (LEN=*), INTENT(IN) ::  location !< call location string
-
-
-    SELECT CASE ( location )
-
-       CASE ( 'before_integration' )
-!
-!--       Update parametrization after model is fully initialized
-          IF ( parametrize_inflow_turbulence )  CALL stg_adjust
-
-       CASE ( 'after_integration' )
-!
-!--       Increment time since last turbulence update in stg_main
-          time_stg_call = time_stg_call + dt_3d
-!
-!--       In case of parametrized turbulence information, update the time counter and if required
-!--       and if required adjust the STG parametrization to new atmospheric conditions.
-          IF ( parametrize_inflow_turbulence )  THEN
-!
-!--          Increment time since last call of stg_adjust
-             time_stg_adjust = time_stg_adjust + dt_3d
-
-             IF ( time_stg_adjust >= dt_stg_adjust )  THEN
-
-                CALL cpu_log( log_point(57), 'synthetic_turbulence_gen', 'start' )
-                CALL stg_adjust
-                CALL cpu_log( log_point(57), 'synthetic_turbulence_gen', 'stop' )
-!
-!--             Reset time counter for controlling next adjustment
-                time_stg_adjust = 0.0_wp
-             ENDIF
-
-          ENDIF
-
-       CASE DEFAULT
-          CONTINUE
-
-    END SELECT
-
- END SUBROUTINE stg_actions
 
 
 !--------------------------------------------------------------------------------------------------!
@@ -1329,25 +1423,22 @@
                 IF ( tu(k) == 0.0_wp  .OR.  adjustment_step )  THEN
                    fu_yz(k,j) = fuo_yz(k,j)
                 ELSE
-                   fu_yz(k,j) = fu_yz(k,j) * EXP( -pi * dt_stg * 0.5_wp / ( tu(k) + 1E-5_wp ) ) +  &
-                                fuo_yz(k,j) * SQRT( 1.0_wp - EXP( -pi * dt_stg /                   &
-                                                                  ( tu(k) + 1E-5_wp ) ) )
+                   fu_yz(k,j) = fu_yz(k,j) * EXP( -pi * dt_stg * 0.5_wp / tu(k) ) +                &
+                                fuo_yz(k,j) * SQRT( 1.0_wp - EXP( -pi * dt_stg / tu(k) ) )
                 ENDIF
 
                 IF ( tv(k) == 0.0_wp  .OR.  adjustment_step )  THEN
                    fv_yz(k,j) = fvo_yz(k,j)
                 ELSE
-                   fv_yz(k,j) = fv_yz(k,j) * EXP( -pi * dt_stg * 0.5_wp / ( tv(k) + 1E-5_wp ) ) +  &
-                                fvo_yz(k,j) * SQRT( 1.0_wp - EXP( -pi * dt_stg /                   &
-                                                                  ( tv(k) + 1E-5_wp ) ) )
+                   fv_yz(k,j) = fv_yz(k,j) * EXP( -pi * dt_stg * 0.5_wp / tv(k) ) +                &
+                                fvo_yz(k,j) * SQRT( 1.0_wp - EXP( -pi * dt_stg / tv(k) ) )
                 ENDIF
 
                 IF ( tw(k) == 0.0_wp  .OR.  adjustment_step )  THEN
                    fw_yz(k,j) = fwo_yz(k,j)
                 ELSE
-                   fw_yz(k,j) = fw_yz(k,j) * EXP( -pi * dt_stg * 0.5_wp / ( tw(k) + 1E-5_wp ) ) +  &
-                                fwo_yz(k,j) * SQRT( 1.0_wp - EXP( -pi * dt_stg /                   &
-                                                                  ( tw(k) + 1E-5_wp ) ) )
+                   fw_yz(k,j) = fw_yz(k,j) * EXP( -pi * dt_stg * 0.5_wp / tw(k) ) +                &
+                                fwo_yz(k,j) * SQRT( 1.0_wp - EXP( -pi * dt_stg / tw(k) ) )
                 ENDIF
              ENDDO
           ENDDO
@@ -1363,7 +1454,7 @@
 !
 !--             Lund rotation following Eq. 17 in Xie and Castro (2008).
                 dist_yz(k,j,1) = a11(k) * fu_yz(k,j) *                                             &
-                                 MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 1 ) )
+                                 MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 1 ) )
 
              ENDDO
           ENDDO
@@ -1377,10 +1468,10 @@
 !--             Additional factors are added to improve the variance of v and w experimental test
 !--             of 1.2
                 dist_yz(k,j,2) = ( a21(k) * fu_yz(k,j) + a22(k) * fv_yz(k,j) ) *                   &
-                                 MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 2 ) )
+                                 MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 2 ) )
                 dist_yz(k,j,3) = ( a31(k) * fu_yz(k,j) + a32(k) * fv_yz(k,j) +                     &
                                    a33(k) * fw_yz(k,j) ) *                                         &
-                                 MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 3 ) )
+                                 MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 3 ) )
 
              ENDDO
           ENDDO
@@ -1400,15 +1491,15 @@
           IF ( myidx == id_stg_right )  i = nxr+1
 
           mc_factor_l(1) = SUM( dist_yz(nzb:nzt,nys:nyn,1) *                                       &
-                       MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(nzb:nzt,nys:nyn,i), 1 ) ) )
+                       MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(nzb:nzt,nys:nyn,i), 1 ) ) )
 
           IF ( myidx == id_stg_left  )  i = nxl-1
           IF ( myidx == id_stg_right )  i = nxr+1
 
           mc_factor_l(2) = SUM( dist_yz(nzb:nzt,nysv:nyn,2) *                                      &
-                       MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(nzb:nzt,nysv:nyn,i), 2 ) ) )
+                       MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(nzb:nzt,nysv:nyn,i), 2 ) ) )
           mc_factor_l(3) = SUM( dist_yz(nzb:nzt,nys:nyn,3) *                                       &
-                       MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(nzb:nzt,nys:nyn,i), 3 ) ) )
+                       MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(nzb:nzt,nys:nyn,i), 3 ) ) )
 
 #if defined( __parallel )
           CALL MPI_ALLREDUCE( mc_factor_l, mc_factor, 3, MPI_REAL, MPI_SUM, comm1dy, ierr )
@@ -1423,19 +1514,19 @@
           IF ( myidx == id_stg_right )  i = nxr+1
 
           dist_yz(:,nys:nyn,1) = ( dist_yz(:,nys:nyn,1) - mc_factor(1) ) *                         &
-                                 MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(:,nys:nyn,i), 1 ) )
+                                MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(:,nys:nyn,i), 1 ) )
 
 
           IF ( myidx == id_stg_left  )  i = nxl-1
           IF ( myidx == id_stg_right )  i = nxr+1
 
           dist_yz(:,nys:nyn,2) = ( dist_yz(:,nys:nyn,2) - mc_factor(2) ) *                         &
-                                 MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(:,nys:nyn,i), 2 ) )
+                                MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(:,nys:nyn,i), 2 ) )
 
           dist_yz(:,nys:nyn,3) = ( dist_yz(:,nys:nyn,3) - mc_factor(3) ) *                         &
-                                 MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(:,nys:nyn,i), 3 ) )
+                                MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(:,nys:nyn,i), 3 ) )
 !
-!--       Add disturbances on the left domain boundary.
+!--       Add disturbances
           IF ( myidx == id_stg_left  )  THEN
 !
 !--          For the left boundary distinguish between mesoscale offline / self nesting and
@@ -1447,15 +1538,11 @@
                 DO  j = nys, nyn
                    DO  k = nzb, nzt+1
                       u(k,j,-nbgp+1:0) = ( mean_inflow_profiles(k,1) + dist_yz(k,j,1) ) *          &
-                                         MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,0), 1 ) )
-                      w(k,j,-nbgp:-1)  = dist_yz(k,j,3) *                                          &
-                                         MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,-1), 3 ) )
-                   ENDDO
-                ENDDO
-                DO  j = nysv, nyn
-                   DO  k = nzb, nzt+1
+                                     MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,0), 1 ) )
                       v(k,j,-nbgp:-1)  = ( mean_inflow_profiles(k,2) + dist_yz(k,j,2) ) *          &
-                                      MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,-nbgp:-1), 2 ) )
+                                     MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,-1), 2 ) )
+                      w(k,j,-nbgp:-1)  = dist_yz(k,j,3) *                                          &
+                                     MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,-1), 3 ) )
                    ENDDO
                 ENDDO
              ELSE
@@ -1463,35 +1550,25 @@
                 DO  j = nys, nyn
                    DO  k = nzb+1, nzt
                       u(k,j,0)   = ( u(k,j,0)  + dist_yz(k,j,1) ) *                                &
-                                   MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,0), 1 ) )
+                                   MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,0), 1 ) )
                       u(k,j,-1)  = u(k,j,0)
+                      v(k,j,-1)  = ( v(k,j,-1) + dist_yz(k,j,2) ) *                                &
+                                   MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,-1), 2 ) )
                       w(k,j,-1)  = ( w(k,j,-1) + dist_yz(k,j,3) ) *                                &
-                                   MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,-1), 3 ) )
-                   ENDDO
-                ENDDO
-                DO  j = nysv, nyn
-                   DO  k = nzb, nzt+1
-                      v(k,j,-1)  = ( v(k,j,nxr+1) + dist_yz(k,j,2) ) *                             &
-                                   MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,-1), 2 ) )
+                                   MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,-1), 3 ) )
                    ENDDO
                 ENDDO
              ENDIF
           ENDIF
-!
-!--       Add disturbances on the right domain boundary.
           IF ( myidx == id_stg_right  )  THEN
              DO  j = nys, nyn
                 DO  k = nzb+1, nzt
                    u(k,j,nxr+1) = ( u(k,j,nxr+1) + dist_yz(k,j,1) ) *                              &
-                                  MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,nxr+1), 1 ) )
-                   w(k,j,nxr+1) = ( w(k,j,nxr+1) + dist_yz(k,j,3) ) *                              &
-                                  MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,nxr+1), 3 ) )
-                ENDDO
-             ENDDO
-             DO  j = nysv, nyn
-                DO  k = nzb+1, nzt
+                                  MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,nxr+1), 1 ) )
                    v(k,j,nxr+1) = ( v(k,j,nxr+1) + dist_yz(k,j,2) ) *                              &
-                                  MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,nxr+1), 2 ) )
+                                  MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,nxr+1), 2 ) )
+                   w(k,j,nxr+1) = ( w(k,j,nxr+1) + dist_yz(k,j,3) ) *                              &
+                                  MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,nxr+1), 3 ) )
                 ENDDO
              ENDDO
           ENDIF
@@ -1511,25 +1588,22 @@
                 IF ( tu(k) == 0.0_wp  .OR.  adjustment_step )  THEN
                    fu_xz(k,i) = fuo_xz(k,i)
                 ELSE
-                   fu_xz(k,i) = fu_xz(k,i) * EXP( -pi * dt_stg * 0.5_wp / ( tu(k) + 1E-5_wp ) ) +  &
-                                fuo_xz(k,i) * SQRT( 1.0_wp - EXP( -pi * dt_stg /                   &
-                                                                  ( tu(k) + 1E-5_wp ) ) )
+                   fu_xz(k,i) = fu_xz(k,i) * EXP( -pi * dt_stg * 0.5_wp / tu(k) ) +                &
+                                fuo_xz(k,i) * SQRT( 1.0_wp - EXP( -pi * dt_stg / tu(k) ) )
                 ENDIF
 
                 IF ( tv(k) == 0.0_wp  .OR.  adjustment_step )  THEN
                    fv_xz(k,i) = fvo_xz(k,i)
                 ELSE
-                   fv_xz(k,i) = fv_xz(k,i) * EXP( -pi * dt_stg * 0.5_wp / ( tv(k) + 1E-5_wp ) ) +  &
-                                fvo_xz(k,i) * SQRT( 1.0_wp - EXP( -pi * dt_stg /                   &
-                                                                  ( tv(k) + 1E-5_wp ) ) )
+                   fv_xz(k,i) = fv_xz(k,i) * EXP( -pi * dt_stg * 0.5_wp / tv(k) ) +                &
+                                fvo_xz(k,i) * SQRT( 1.0_wp - EXP( -pi * dt_stg / tv(k) ) )
                 ENDIF
 
                 IF ( tw(k) == 0.0_wp  .OR.  adjustment_step )  THEN
                    fw_xz(k,i) = fwo_xz(k,i)
                 ELSE
-                   fw_xz(k,i) = fw_xz(k,i) * EXP( -pi * dt_stg * 0.5_wp / ( tw(k) + 1E-5_wp ) ) +  &
-                                fwo_xz(k,i) * SQRT( 1.0_wp - EXP( -pi * dt_stg /                   &
-                                                                  ( tw(k) + 1E-5_wp ) ) )
+                   fw_xz(k,i) = fw_xz(k,i) * EXP( -pi * dt_stg * 0.5_wp / tw(k) ) +                &
+                                fwo_xz(k,i) * SQRT( 1.0_wp - EXP( -pi * dt_stg / tw(k) ) )
                 ENDIF
              ENDDO
           ENDDO
@@ -1548,7 +1622,7 @@
 !--             Additional factors are added to improve the variance of v and w
                 !experimental test of 1.2
                 dist_xz(k,i,2) = ( a21(k) * fu_xz(k,i) + a22(k) * fv_xz(k,i) ) *                   &
-                                 MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 2 ) )
+                                 MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 2 ) )
              ENDDO
           ENDDO
 
@@ -1560,11 +1634,11 @@
 !--             Lund rotation following Eq. 17 in Xie and Castro (2008).
 !--             Additional factors are added to improve the variance of v and w
                 dist_xz(k,i,1) = a11(k) * fu_xz(k,i) *                                             &
-                                 MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 1 ) )
+                                 MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 1 ) )
 
                 dist_xz(k,i,3) = ( a31(k) * fu_xz(k,i) + a32(k) * fv_xz(k,i) +                     &
                                    a33(k) * fw_xz(k,i) ) *                                         &
-                                 MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 3 ) )
+                                 MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 3 ) )
              ENDDO
           ENDDO
        ENDIF
@@ -1582,15 +1656,15 @@
           IF ( myidy == id_stg_north )  j = nyn+1
 
           mc_factor_l(2) = SUM( dist_xz(nzb:nzt,nxl:nxr,2) *                                       &
-                           MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(nzb:nzt,j,nxl:nxr), 2 ) ) )
+                       MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(nzb:nzt,j,nxl:nxr), 2 ) ) )
 
           IF ( myidy == id_stg_south ) j = nys-1
           IF ( myidy == id_stg_north ) j = nyn+1
 
           mc_factor_l(1) = SUM( dist_xz(nzb:nzt,nxlu:nxr,1) *                                      &
-                           MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(nzb:nzt,j,nxlu:nxr), 1 ) ) )
+                       MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(nzb:nzt,j,nxlu:nxr), 1 ) ) )
           mc_factor_l(3) = SUM( dist_xz(nzb:nzt,nxl:nxr,3) *                                       &
-                           MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(nzb:nzt,j,nxl:nxr), 3 ) ) )
+                       MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(nzb:nzt,j,nxl:nxr), 3 ) ) )
 
 #if defined( __parallel )
           CALL MPI_ALLREDUCE( mc_factor_l, mc_factor, 3, MPI_REAL, MPI_SUM, comm1dx, ierr )
@@ -1604,52 +1678,42 @@
           IF ( myidy == id_stg_north ) j = nyn+1
 
           dist_xz(:,nxl:nxr,2) = ( dist_xz(:,nxl:nxr,2) - mc_factor(2) ) *                         &
-                                 MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(:,j,nxl:nxr), 2 ) )
+                                MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(:,j,nxl:nxr), 2 ) )
 
 
           IF ( myidy == id_stg_south ) j = nys-1
           IF ( myidy == id_stg_north ) j = nyn+1
 
           dist_xz(:,nxl:nxr,1) = ( dist_xz(:,nxl:nxr,1) - mc_factor(1) ) *                         &
-                                 MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(:,j,nxl:nxr), 1 ) )
+                                MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(:,j,nxl:nxr), 1 ) )
 
           dist_xz(:,nxl:nxr,3) = ( dist_xz(:,nxl:nxr,3) - mc_factor(3) ) *                         &
-                                 MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(:,j,nxl:nxr), 3 ) )
+                                MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(:,j,nxl:nxr), 3 ) )
 !
-!--       Add disturbances on the southern domain boundary.
+!--       Add disturbances
           IF ( myidy == id_stg_south )  THEN
              DO  i = nxl, nxr
                 DO  k = nzb+1, nzt
+                   u(k,-1,i) = ( u(k,-1,i) + dist_xz(k,i,1) )                                      &
+                               * MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,-1,i), 1 ) )
                    v(k,0,i)  = ( v(k,0,i)  + dist_xz(k,i,2) )                                      &
-                               * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,0,i), 2 ) )
+                               * MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,0,i), 2 ) )
                    v(k,-1,i) = v(k,0,i)
                    w(k,-1,i) = ( w(k,-1,i) + dist_xz(k,i,3) )                                      &
-                               * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,-1,i), 3 ) )
-                ENDDO
-             ENDDO
-             DO  i = nxlu, nxr
-                DO  k = nzb+1, nzt
-                   u(k,-1,i) = ( u(k,-1,i) + dist_xz(k,i,1) )                                      &
-                               * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,-1,i), 1 ) )
+                               * MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,-1,i), 3 ) )
                 ENDDO
              ENDDO
           ENDIF
-!
-!--       Add disturbances on the northern domain boundary.
           IF ( myidy == id_stg_north  )  THEN
 
              DO  i = nxl, nxr
                 DO  k = nzb+1, nzt
-                   v(k,nyn+1,i) = ( v(k,nyn+1,i) + dist_xz(k,i,2) ) *                              &
-                                  MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,nyn+1,i), 2 ) )
-                   w(k,nyn+1,i) = ( w(k,nyn+1,i) + dist_xz(k,i,3) ) *                              &
-                                  MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,nyn+1,i), 3 ) )
-                ENDDO
-             ENDDO
-             DO  i = nxlu, nxr
-                DO  k = nzb+1, nzt
                    u(k,nyn+1,i) = ( u(k,nyn+1,i) + dist_xz(k,i,1) ) *                              &
-                                  MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,nyn+1,i), 1 ) )
+                                  MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,nyn+1,i), 1 ) )
+                   v(k,nyn+1,i) = ( v(k,nyn+1,i) + dist_xz(k,i,2) ) *                              &
+                                  MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,nyn+1,i), 2 ) )
+                   w(k,nyn+1,i) = ( w(k,nyn+1,i) + dist_xz(k,i,3) ) *                              &
+                                  MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,nyn+1,i), 3 ) )
                 ENDDO
              ENDDO
           ENDIF
@@ -1742,7 +1806,7 @@
           rand_av = rand_av + rand_it(k,j)
        ENDDO
     ENDDO
-
+    
 #if defined( __parallel )
 !
 !-- Sum-up the local averages of the random numbers
@@ -1872,7 +1936,7 @@
 
     REAL(wp), DIMENSION(-mergp_x:mergp_x,nzb:nzt+1) :: b_x     !< filter function in x-direction
     REAL(wp), DIMENSION(-mergp_z:mergp_z,nzb:nzt+1) :: b_z     !< filter function in z-direction
-
+    
     REAL(wp), DIMENSION(nzb_y_stg:nzt_y_stg+1,nxl:nxr) :: f_n_l   !<  local velocity seed
     REAL(wp), DIMENSION(nzb:nzt+1,nxl:nxr)             :: f_n     !<  velocity seed
 
@@ -1917,7 +1981,7 @@
           rand_av = rand_av + rand_it(k,i)
        ENDDO
     ENDDO
-
+    
 #if defined( __parallel )
 !
 !-- Sum-up the local averages of the random numbers
@@ -2017,7 +2081,7 @@
 !--------------------------------------------------------------------------------------------------!
 ! Description:
 ! ------------
-!> Parametrization of the Reynolds-stress componentes, turbulent length- and time scales. The
+!> Parametrization of the Reynolds-stress componentes, turbulent length- and time scales. The 
 !> parametrization follows Brost et al. (1982) with modifications described in Rotach et al. (1996),
 !> which is applied in state-of-the-art dispserion modelling.
 !--------------------------------------------------------------------------------------------------!
@@ -2050,9 +2114,10 @@
     REAL(wp), DIMENSION(nzb+1:nzt+1) ::  sin_phi    !< sine of angle between mean flow direction and x-axis
 
 !
-!-- Calculate the boundary-layer top index.
-    k_zi = MAX( 1, MINLOC( ABS( zu - zi ), DIM = 1 ) )
-    IF ( zu(k_zi) > zi )  k_zi = k_zi - 1
+!-- Calculate the boundary-layer top index. Boundary-layer top is calculated by Richardson-bulk
+!-- criterion according to Heinze et al. (2017).
+    k_zi = MAX( 1, MINLOC( ABS( zu - zi_ribulk ), DIM = 1 ) )
+    IF ( zu(k_zi) > zi_ribulk )  k_zi = k_zi - 1
     k_zi = MIN( k_zi, nzt )
 !
 !-- Calculate angle between flow direction and x-axis.
@@ -2071,12 +2136,14 @@
 !-- Parametrize Reynolds-stress components. Please note, parametrization is formulated for the
 !-- stream- and spanwise components, while stream- and spanwise direction do not necessarily
 !-- coincide with the grid axis. Hence, components are rotated after computation.
-    d_zi = 1.0_wp / zi
+    d_zi = 1.0_wp / zi_ribulk
     DO  k = nzb+1, k_zi
 
-       corr_term_uh = MERGE( 0.35_wp * ABS( - zi / ( kappa * scale_l - 10E-4_wp )                  &
-                                          )**( 2.0_wp / 3.0_wp ),                                  &
-                             0.0_wp, scale_l < -5.0_wp )
+       corr_term_uh = MERGE( 0.35_wp * ABS(                                                        &
+                        - zi_ribulk / ( kappa * scale_l - 10E-4_wp )                               &
+                                       )**( 2.0_wp / 3.0_wp ),                                     &
+                          0.0_wp,                                                                  &
+                          scale_l < -5.0_wp )
 !
 !--    Determine normalized height coordinate
        zzi = zu(k) * d_zi
@@ -2091,20 +2158,21 @@
        r22(k) = ABS( - sin_phi(k) * rlon1 + cos_phi(k) * rlat1 )
 !
 !--    w'w'
-       r33(k) = scale_wm**2 * ( 1.5_wp * zzi**( 2.0_wp / 3.0_wp ) * EXP( -2.0_wp * zzi ) +         &
-                                ( 1.7_wp - zzi ) * ( scale_us / scale_wm )**2                      &
+       r33(k) = scale_wm**2 * (                                                                    &
+                   1.5_wp * zzi**( 2.0_wp / 3.0_wp ) * EXP( -2.0_wp * zzi )                        &
+                 + ( 1.7_wp - zzi ) * ( scale_us / scale_wm )**2                                   &
                               )
 !
 !--    u'w' and v'w'. After calculation of the longitudinal and crosswind component
-!--    these are projected along the x- and y-direction. Note, it is assumed that
+!--    these are projected along the x- and y-direction. Note, it is assumed that 
 !--    the flux within the boundary points opposite to the vertical gradient.
        rlon2 = scale_us**2 * ( zzi - 1.0_wp )
        rlat2 = scale_us**2 * ( 0.4 * zzi * ( 1.0_wp - zzi ) )
 
        r31(k) = SIGN( ABS(   cos_phi(k) * rlon2 + sin_phi(k) * rlat2 ),                            &
-                      -( u_init(k+1) - u_init(k-1) ) )
+                   - ( u_init(k+1) - u_init(k-1) ) )
        r32(k) = SIGN( ABS( - sin_phi(k) * rlon2 + cos_phi(k) * rlat2 ),                            &
-                      -( v_init(k+1) - v_init(k-1) ) )
+                   - ( v_init(k+1) - v_init(k-1) ) )
 !
 !--    For u'v' no parametrization exist so far. For simplicity assume a similar profile as
 !--    for the vertical transport.
@@ -2112,14 +2180,15 @@
 !
 !--    Compute turbulent time scales according to Brost et al. (1982). Note, time scales are
 !--    limited to the adjustment time scales.
-       tu(k)  = MIN( dt_stg_adjust, 3.33_wp * zzi * ( 1.0 - 0.67_wp * zzi ) / scale_wm * zi )
+       tu(k)  = MIN( dt_stg_adjust,                                                                &
+                     3.33_wp * zzi * ( 1.0 - 0.67_wp * zzi ) / scale_wm * zi_ribulk )
 
        tv(k)  = tu(k)
        tw(k)  = tu(k)
 
-       length_scale_lon  = MIN( SQRT( r11(k) ) * tu(k), zi )
-       length_scale_lat  = MIN( SQRT( r22(k) ) * tv(k), zi )
-       length_scale_vert = MIN( SQRT( r33(k) ) * tw(k), zi )
+       length_scale_lon  = MIN( SQRT( r11(k) ) * tu(k), zi_ribulk )
+       length_scale_lat  = MIN( SQRT( r22(k) ) * tv(k), zi_ribulk )
+       length_scale_vert = MIN( SQRT( r33(k) ) * tw(k), zi_ribulk )
 !
 !--    Assume isotropic turbulence length scales
        nux(k) = MAX( INT( length_scale_lon  * ddx     ), 1 )
@@ -2152,13 +2221,7 @@
     DO  k = k_zi+1, nzt+1
 !
 !--    Calculate function to gradually decrease Reynolds stress above ABL top.
-!--    Limit values to larger than 10E-10 to avoid very small values of the reynolds-stress
-!--    components. Else, in case of shallow boundary layers and high domains, the exponential
-!--    function, and thus the r_ii components, can take very small values, which may potentially
-!--    lead to underflow errors. The limit of 10E-10 is chosen arbitrarily, but should be small
-!--    enough to guarantee almost zero r_ii values above the boundary layer.
-       blend = MIN( 1.0_wp, EXP( d_l * zu(k) - d_l * zi ) )
-       blend = MAX( blend, 10E-10_wp )
+       blend = MIN( 1.0_wp, EXP( d_l * zu(k) - d_l * zi_ribulk ) )
 !
 !--    u'u' and v'v'. Assume isotropy. Note, add a small negative number to the denominator, else
 !--    the mergpe-function can crash if scale_l is zero.
@@ -2234,7 +2297,7 @@
 !-- Calculate coefficient matrix. Split loops to allow for loop vectorization.
     DO  k = nzb+1, nzt+1
        IF ( r11(k) > 10E-6_wp )  THEN
-          a11(k) = SQRT( r11(k) )
+          a11(k) = SQRT( r11(k) ) 
           a21(k) = r21(k) / a11(k)
           a31(k) = r31(k) / a11(k)
        ELSE
@@ -2244,16 +2307,15 @@
        ENDIF
     ENDDO
     DO  k = nzb+1, nzt+1
-       a22(k) = r22(k) - a21(k)**2
+       a22(k) = r22(k) - a21(k)**2 
        IF ( a22(k) > 10E-6_wp )  THEN
           a22(k) = SQRT( a22(k) )
           a32(k) = ( r32(k) - a21(k) * a31(k) ) / a22(k)
-       ELSE
+       ELSE 
           a22(k) = 10E-8_wp
           a32(k) = 10E-8_wp
        ENDIF
     ENDDO
-
     DO  k = nzb+1, nzt+1
        a33(k) = r33(k) - a31(k)**2 - a32(k)**2
        IF ( a33(k) > 10E-6_wp )  THEN
@@ -2283,27 +2345,29 @@
 
     IF ( debug_output_timestep )  CALL debug_message( 'stg_adjust', 'start' )
 !
-!-- Determine the boundary-layer height required for the turbulence parametrization.
-!-- In case of non-neutral conditions, zi is calculated at the lateral boundaries using the
-!-- Richardson-bulk criterion according to Heinze et al. (2017).
-    IF ( .NOT. neutral )  THEN
-       zi = nesting_offl_calc_zi()
-    ENDIF
+!-- In case of dirichlet inflow boundary conditions only at one lateral boundary, i.e. in the case
+!-- no offline or self nesting is applied but synthetic turbulence shall be parametrized
+!-- nevertheless, the boundary-layer depth need to determined first.
+    IF ( .NOT. nesting_offline  .AND.  .NOT.  child_domain )                                       &
+       CALL nesting_offl_calc_zi
 !
 !-- Compute scaling parameters (domain-averaged), such as friction velocity are calculated.
     CALL calc_scaling_variables
 !
-!-- Parametrize Reynolds-stress tensor. Parametrization follows Brost et al. (1982) with
+!-- Parametrize Reynolds-stress tensor. Parametrization follows Brost et al. (1982) with 
 !-- modifications described in Rotach et al. (1996) and is based on boundary-layer depth, friction
-!-- velocity and velocity scale.
+!-- velocity and velocity scale. 
     CALL parametrize_turbulence
 !
-!-- Calculate coefficient matrix from Reynolds stress tensor
+!-- Calculate coefficient matrix from Reynolds stress tensor  
 !-- (Lund rotation)
     CALL calc_coeff_matrix
 !
 !-- Setup filter functions according to updated length scales.
     CALL stg_setup_filter_function
+!
+!-- Reset time counter for controlling next adjustment to zero
+    time_stg_adjust = 0.0_wp
 
     IF ( debug_output_timestep )  CALL debug_message( 'stg_adjust', 'end' )
 
@@ -2334,43 +2398,37 @@
 
 !
 !-- Calculate mean friction velocity, velocity scale, heat flux and near-surface temperature in the
-!-- model domain. Only average over upward facing surfaces.
+!-- model domain.
     pt_surf_mean_l = 0.0_wp
     shf_mean_l     = 0.0_wp
     scale_l_l      = 0.0_wp
     friction_vel_l = 0.0_wp
-    DO  m = 1, surf_def%ns
-       IF ( surf_def%upward(m) )  THEN
-          i = surf_def%i(m)
-          j = surf_def%j(m)
-          k = surf_def%k(m)
-          friction_vel_l = friction_vel_l  + surf_def%us(m)
-          shf_mean_l     = shf_mean_l      + surf_def%shf(m) * drho_air(k)
-          scale_l_l      = scale_l_l       + surf_def%ol(m)
-          pt_surf_mean_l = pt_surf_mean_l  + pt(k,j,i)
-       ENDIF
+    DO  m = 1, surf_def_h(0)%ns
+       i = surf_def_h(0)%i(m)
+       j = surf_def_h(0)%j(m)
+       k = surf_def_h(0)%k(m)
+       friction_vel_l = friction_vel_l  + surf_def_h(0)%us(m)
+       shf_mean_l     = shf_mean_l      + surf_def_h(0)%shf(m) * drho_air(k)
+       scale_l_l      = scale_l_l       + surf_def_h(0)%ol(m)
+       pt_surf_mean_l = pt_surf_mean_l  + pt(k,j,i)
     ENDDO
-    DO  m = 1, surf_lsm%ns
-       IF ( surf_lsm%upward(m) )  THEN
-          i = surf_lsm%i(m)
-          j = surf_lsm%j(m)
-          k = surf_lsm%k(m)
-          friction_vel_l = friction_vel_l  + surf_lsm%us(m)
-          shf_mean_l     = shf_mean_l      + surf_lsm%shf(m) * drho_air(k)
-          scale_l_l      = scale_l_l       + surf_lsm%ol(m)
-          pt_surf_mean_l = pt_surf_mean_l  + pt(k,j,i)
-       ENDIF
+    DO  m = 1, surf_lsm_h(0)%ns
+       i = surf_lsm_h(0)%i(m)
+       j = surf_lsm_h(0)%j(m)
+       k = surf_lsm_h(0)%k(m)
+       friction_vel_l = friction_vel_l  + surf_lsm_h(0)%us(m)
+       shf_mean_l     = shf_mean_l      + surf_lsm_h(0)%shf(m) * drho_air(k)
+       scale_l_l      = scale_l_l       + surf_lsm_h(0)%ol(m)
+       pt_surf_mean_l = pt_surf_mean_l  + pt(k,j,i)
     ENDDO
-    DO  m = 1, surf_usm%ns
-       IF ( surf_usm%upward(m) )  THEN
-          i = surf_usm%i(m)
-          j = surf_usm%j(m)
-          k = surf_usm%k(m)
-          friction_vel_l = friction_vel_l  + surf_usm%us(m)
-          shf_mean_l     = shf_mean_l      + surf_usm%shf(m) * drho_air(k)
-          scale_l_l      = scale_l_l       + surf_usm%ol(m)
-          pt_surf_mean_l = pt_surf_mean_l  + pt(k,j,i)
-       ENDIF
+    DO  m = 1, surf_usm_h(0)%ns
+       i = surf_usm_h(0)%i(m)
+       j = surf_usm_h(0)%j(m)
+       k = surf_usm_h(0)%k(m)
+       friction_vel_l = friction_vel_l  + surf_usm_h(0)%us(m)
+       shf_mean_l     = shf_mean_l      + surf_usm_h(0)%shf(m) * drho_air(k)
+       scale_l_l      = scale_l_l       + surf_usm_h(0)%ol(m)
+       pt_surf_mean_l = pt_surf_mean_l  + pt(k,j,i)
     ENDDO
 
 #if defined( __parallel )
@@ -2393,7 +2451,7 @@
 !-- Compute mean convective velocity scale. Note, in case the mean heat flux is negative, set
 !-- convective velocity scale to zero.
     IF ( shf_mean > 0.0_wp )  THEN
-       w_convective = ( g * shf_mean * zi / pt_surf_mean )**( 1.0_wp / 3.0_wp )
+       w_convective = ( g * shf_mean * zi_ribulk / pt_surf_mean )**( 1.0_wp / 3.0_wp )
     ELSE
        w_convective = 0.0_wp
     ENDIF

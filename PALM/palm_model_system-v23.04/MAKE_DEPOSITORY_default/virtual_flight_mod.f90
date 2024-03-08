@@ -13,22 +13,54 @@
 ! You should have received a copy of the GNU General Public License along with PALM. If not, see
 ! <http://www.gnu.org/licenses/>.
 !
-! Copyright 1997-2021 Leibniz Universitaet Hannover
+! Copyright 1997-2020 Leibniz Universitaet Hannover
 !--------------------------------------------------------------------------------------------------!
 !
-! @author Matthias Suehring
 !
+! Current revisions:
+! -----------------
+! 
+! 
+! Former revisions:
+! -----------------
+! $Id: virtual_flight_mod.f90 4541 2020-05-19 11:02:20Z suehring $
+! Bugfix, use time_since_reference_point instead of simulated_time
+! 
+! 4535 2020-05-15 12:07:23Z raasch
+! bugfix for restart data format query
+! 
+! 4522 2020-05-06 14:17:05Z suehring
+! Modularize user_init_flight in order to provide an explicit interface.
+! 
+! 4497 2020-04-15 10:20:51Z raasch
+! file re-formatted to follow the PALM coding standard
+!
+!
+! 4495 2020-04-13 20:11:20Z raasch
+! restart data handling with MPI-IO added
+! 
+! 4360 2020-01-07 11:25:50Z suehring
+! Corrected "Former revisions" section
+!
+! 4004 2019-05-24 11:32:38Z suehring
+! Allow variable start- and end locations also in return mode
+!
+! 3885 2019-04-11 11:29:34Z kanani
+! Changes related to global restructuring of location messages and introduction of additional
+! debug messages
+!
+! 3655 2019-01-07 16:51:22Z knoop
+! variables documented
+!
+! 1957 2016-07-07 10:43:48Z suehring
+! Initial revision
 !
 ! Description:
 ! ------------
 !> Module for virtual flight measurements.
-!> @todo Err msg VFL0005: flight can be inside topography -> extra check?
+!> @todo Err msg PA0438: flight can be inside topography -> extra check?
 !--------------------------------------------------------------------------------------------------!
  MODULE flight_mod
-
-#if defined( __parallel )
-    USE MPI
-#endif
 
     USE control_parameters,                                                                        &
         ONLY:  debug_output,                                                                       &
@@ -41,11 +73,9 @@
     USE kinds
 
     USE restart_data_mpi_io_mod,                                                                   &
-        ONLY:  rd_mpi_io_check_array,                                                              &
-               rrd_mpi_io_global_array,                                                            &
-               wrd_mpi_io_global_array
+        ONLY:  rd_mpi_io_check_array, rrd_mpi_io_global_array, wrd_mpi_io_global_array
 
-    USE user_init_flight_mod,                                                                      &
+    USE  user_init_flight_mod,                                                                     &
         ONLY:  user_init_flight
 
 
@@ -195,56 +225,90 @@
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE flight_parin
 
+    USE control_parameters,                                                                        &
+        ONLY:  message_string
+
     IMPLICIT NONE
 
-    CHARACTER(LEN=100) ::  line  !< dummy string that contains the current line of the parameter file
+    CHARACTER(LEN=80) ::  line  !< dummy string that contains the current line of the parameter file
 
-    INTEGER(iwp) ::  io_status   !< status after reading the namelist file
+    NAMELIST /flight_par/ flight_angle,                                                            &
+                          flight_begin,                                                            &
+                          flight_end,                                                              &
+                          flight_level,                                                            &
+                          leg_mode,                                                                &
+                          max_elev_change,                                                         &
+                          rate_of_climb,                                                           &
+                          speed_agl,                                                               &
+                          x_end,                                                                   &
+                          x_start,                                                                 &
+                          y_end,                                                                   &
+                          y_start
 
-    LOGICAL ::  switch_off_module = .FALSE.  !< local namelist parameter to switch off the module
-                                             !< although the respective module namelist appears in
-                                             !< the namelist file
 
-    NAMELIST /virtual_flight_parameters/  flight_angle,                                            &
-                                          flight_begin,                                            &
-                                          flight_end,                                              &
-                                          flight_level,                                            &
-                                          leg_mode,                                                &
-                                          max_elev_change,                                         &
-                                          rate_of_climb,                                           &
-                                          speed_agl,                                               &
-                                          switch_off_module,                                       &
-                                          x_end,                                                   &
-                                          x_start,                                                 &
-                                          y_end,                                                   &
-                                          y_start
-
+    NAMELIST /virtual_flight_parameters/ flight_angle,                                             &
+                                         flight_begin,                                             &
+                                         flight_end,                                               &
+                                         flight_level,                                             &
+                                         leg_mode,                                                 &
+                                         max_elev_change,                                          &
+                                         rate_of_climb,                                            &
+                                         speed_agl,                                                &
+                                         x_end,                                                    &
+                                         x_start,                                                  &
+                                         y_end,                                                    &
+                                         y_start
+!
+!-- Try to find the namelist flight_par
+    REWIND ( 11 )
+    line = ' '
+    DO  WHILE ( INDEX( line, '&virtual_flight_parameters' ) == 0 )
+       READ ( 11, '(A)', END = 12 )  line
+    ENDDO
+    BACKSPACE ( 11 )
 
 !
-!-- Move to the beginning of the namelist file and try to find and read the namelist.
-    REWIND( 11 )
-    READ( 11, virtual_flight_parameters, IOSTAT=io_status )
+!-- Read namelist
+    READ ( 11, virtual_flight_parameters, ERR = 10 )
+!
+!-- Set switch so that virtual flights shall be carried out
+    virtual_flight = .TRUE.
 
-!
-!-- Action depending on the READ status
-    IF ( io_status == 0 )  THEN
-!
-!--    virtual_flight_parameters namelist was found and read correctly. Set switch that virtual
-!--    flights are carried out.
-       IF ( .NOT. switch_off_module )  virtual_flight = .TRUE.
+    GOTO 14
 
-    ELSEIF ( io_status > 0 )  THEN
-!
-!--    virtual_flight_parameters namelist was found, but contained errors. Print an error message
-!--    including the line that caused the problem.
-       BACKSPACE( 11 )
-       READ( 11 , '(A)' ) line
+ 10    BACKSPACE( 11 )
+       READ( 11 , '(A)') line
        CALL parin_fail_message( 'virtual_flight_parameters', line )
+!
+!--    Try to find the old namelist
+ 12    REWIND ( 11 )
+       line = ' '
+       DO  WHILE ( INDEX( line, '&flight_par' ) == 0 )
+          READ ( 11, '(A)', END = 14 )  line
+       ENDDO
+       BACKSPACE ( 11 )
 
-    ENDIF
+!
+!-- Read namelist
+    READ ( 11, flight_par, ERR = 13, END = 14 )
+
+    message_string = 'namelist flight_par is deprecated and will be ' //                           &
+                     'removed in near future.& Please use namelist ' //                            &
+                     'virtual_flight_parameters instead'
+    CALL message( 'flight_parin', 'PA0487', 0, 1, 0, 6, 0 )
+!
+!-- Set switch so that virtual flights shall be carried out
+    virtual_flight = .TRUE.
+
+    GOTO 14
+
+ 13    BACKSPACE( 11 )
+       READ( 11 , '(A)') line
+       CALL parin_fail_message( 'flight_par', line )
+
+ 14    CONTINUE
 
  END SUBROUTINE flight_parin
-
 
 !--------------------------------------------------------------------------------------------------!
 ! Description:
@@ -355,14 +419,14 @@
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE flight_init_output
 
+    USE control_parameters,                                                                        &
+       ONLY:  cloud_droplets,                                                                      &
+              humidity,                                                                            &
+              neutral,                                                                             &
+              passive_scalar
+
     USE bulk_cloud_model_mod,                                                                      &
         ONLY:  bulk_cloud_model
-
-    USE control_parameters,                                                                        &
-        ONLY:  cloud_droplets,                                                                     &
-               humidity,                                                                           &
-               neutral,                                                                            &
-               passive_scalar
 
     USE netcdf_interface
 
@@ -401,16 +465,16 @@
        id_s       = num_var_fl
     ENDIF
 !
-!-- Write output strings for the spatial variables x, y, z
+!-- Write output strings for dimensions x, y, z
     DO  l=1, num_leg
 
        IF ( l < 10                    )  WRITE( label_leg, '(I1)' )  l
        IF ( l >= 10   .AND.  l < 100  )  WRITE( label_leg, '(I2)' )  l
        IF ( l >= 100  .AND.  l < 1000 )  WRITE( label_leg, '(I3)' )  l
 
-       dofl_label_x(l)  = 'x_' // TRIM( label_leg )
-       dofl_label_y(l)  = 'y_' // TRIM( label_leg )
-       dofl_label_z(l)  = 'z_' // TRIM( label_leg )
+       dofl_dim_label_x(l)  = 'x_' // TRIM( label_leg )
+       dofl_dim_label_y(l)  = 'y_' // TRIM( label_leg )
+       dofl_dim_label_z(l)  = 'z_' // TRIM( label_leg )
 
     ENDDO
 
@@ -492,9 +556,6 @@
                zu,                                                                                 &
                zw
 
-    USE bulk_cloud_model_mod,                                                                      &
-        ONLY:  bulk_cloud_model
-
     USE control_parameters,                                                                        &
         ONLY:  cloud_droplets,                                                                     &
                dt_3d,                                                                              &
@@ -521,6 +582,9 @@
                nys,                                                                                &
                nyn
 
+    USE bulk_cloud_model_mod,                                                                      &
+        ONLY:  bulk_cloud_model
+
     USE pegrid
 
     IMPLICIT NONE
@@ -530,6 +594,9 @@
     INTEGER(iwp) ::  n  !< loop variable for number of user-defined output quantities
 
     LOGICAL  ::  on_pe  !< flag to check if current flight position is on current PE
+
+    REAL(wp) ::  x  !< distance between left edge of current grid box and flight position
+    REAL(wp) ::  y  !< distance between south edge of current grid box and flight position
 
     CALL cpu_log( log_point(65), 'flight_measurement', 'start' )
 !
@@ -634,8 +701,7 @@
           ENDIF
 !
 !--       Check if maximum elevation change is already reached. If required reflect vertically.
-!--       One have to distinguish between a flight that starts with a descent or a climb.
-          IF ( rate_of_climb(l) > 0.0_wp )  THEN
+          IF ( rate_of_climb(l) /= 0.0_wp )  THEN
 !
 !--          First check if aircraft is too high
              IF (  w_agl(l) > 0.0_wp  .AND.  z_pos(l) - flight_level(l) > max_elev_change(l) )  THEN
@@ -648,25 +714,12 @@
                 w_agl(l) = - w_agl(l)
              ENDIF
 
-          ELSEIF ( rate_of_climb(l) < 0.0_wp )  THEN
-!
-!--          First check if aircraft is too high
-             IF (  w_agl(l) > 0.0_wp  .AND.  z_pos(l) > flight_level(l) )  THEN
-                z_pos(l) = 2.0_wp * flight_level(l) - z_pos(l)
-                w_agl(l) = - w_agl(l)
-!
-!--          Check if aircraft is too low
-             ELSEIF (  w_agl(l) < 0.0_wp  .AND.  flight_level(l) - z_pos(l) > max_elev_change(l) )  THEN
-                z_pos(l) = 2.0_wp * ( flight_level(l) - max_elev_change(l) ) - z_pos(l)
-                w_agl(l) = - w_agl(l)
-
-             ENDIF
           ENDIF
 !
 !--       Determine grid indices for flight position along x- and y-direction. Please note, there is
 !--       a special treatment for the index along z-direction, which is due to vertical grid stretching.
-          i = x_pos(l) * ddx
-          j = y_pos(l) * ddy
+          i = ( x_pos(l) + 0.5_wp * dx ) * ddx
+          j = ( y_pos(l) + 0.5_wp * dy ) * ddy
 !
 !--       Check if indices are on current PE
           on_pe = ( i >= nxl  .AND.  i <= nxr  .AND.  j >= nys  .AND.  j <= nyn )
@@ -675,60 +728,65 @@
 
              var_index = 1
 !
-!--          Recalculate indices for u on the xu-y grid. Indicies are calculated so that no
-!--          case differentiation need to be made but variables only need to be interpolate
-!--          between indices i and i+1, j and j+1, as well as k and k+1.
+!--          Recalculate indices, as u is shifted by -0.5*dx.
              i =   x_pos(l) * ddx
-             j = ( y_pos(l) - 0.5_wp * dy ) * ddy
+             j = ( y_pos(l) + 0.5_wp * dy ) * ddy
+!
+!--          Calculate distance from left and south grid-box edges.
+             x  = x_pos(l) - ( 0.5_wp - i ) * dx
+             y  = y_pos(l) - j * dy
 !
 !--          Interpolate u-component onto current flight position.
-             CALL interpolate_xyz( u, zu, ddzu, var_index, j, i )
+             CALL interpolate_xyz( u, zu, ddzu, 1.0_wp, x, y, var_index, j, i )
              var_index = var_index + 1
 !
-!--          Recalculate indices for v on the x-yv grid.
-             i = ( x_pos(l) - 0.5_wp * dx ) * ddx
+!--          Recalculate indices, as v is shifted by -0.5*dy.
+             i = ( x_pos(l) + 0.5_wp * dx ) * ddx
              j =   y_pos(l) * ddy
-!
-!--          Interpolate v-component onto current flight position.
-             CALL interpolate_xyz( v, zu, ddzu, var_index, j, i )
+
+             x  = x_pos(l) - i * dx
+             y  = y_pos(l) - ( 0.5_wp - j ) * dy
+             CALL interpolate_xyz( v, zu, ddzu, 1.0_wp, x, y, var_index, j, i )
              var_index = var_index + 1
 !
-!--          Interpolate w and scalar quantities. Recalculate indices on the x-y grid.
-             i  = ( x_pos(l) - 0.5_wp * dx ) * ddx
-             j  = ( y_pos(l) - 0.5_wp * dy ) * ddy
+!--          Interpolate w and scalar quantities. Recalculate indices.
+             i  = ( x_pos(l) + 0.5_wp * dx ) * ddx
+             j  = ( y_pos(l) + 0.5_wp * dy ) * ddy
+             x  = x_pos(l) - i * dx
+             y  = y_pos(l) - j * dy
 !
 !--          Interpolate w-velocity component.
-             CALL interpolate_xyz( w, zw, ddzw, var_index, j, i )
+             CALL interpolate_xyz( w, zw, ddzw, 0.0_wp, x, y, var_index, j, i )
              var_index = var_index + 1
 !
 !--          Potential temerature
              IF ( .NOT. neutral )  THEN
-                CALL interpolate_xyz( pt, zu, ddzu, var_index, j, i )
+                CALL interpolate_xyz( pt, zu, ddzu, 1.0_wp, x, y, var_index, j, i )
                 var_index = var_index + 1
              ENDIF
 !
 !--          Humidity
              IF ( humidity )  THEN
-                CALL interpolate_xyz( q, zu, ddzu, var_index, j, i )
+                CALL interpolate_xyz( q, zu, ddzu, 1.0_wp, x, y, var_index, j, i )
                 var_index = var_index + 1
              ENDIF
 !
 !--          Liquid water content
-             IF ( bulk_cloud_model  .OR.  cloud_droplets )  THEN
-                CALL interpolate_xyz( ql, zu, ddzu, var_index, j, i )
+             IF ( bulk_cloud_model .OR. cloud_droplets )  THEN
+                CALL interpolate_xyz( ql, zu, ddzu, 1.0_wp, x, y, var_index, j, i )
                 var_index = var_index + 1
              ENDIF
 !
 !--          Passive scalar
              IF ( passive_scalar )  THEN
-                CALL interpolate_xyz( s, zu, ddzu, var_index, j, i )
+                CALL interpolate_xyz( s, zu, ddzu, 1.0_wp, x, y, var_index, j, i )
                 var_index = var_index + 1
              ENDIF
 !
 !--          Treat user-defined variables if required
              DO  n = 1, num_var_fl_user
                 CALL user_flight( var_u, n )
-                CALL interpolate_xyz( var_u, zu, ddzu, var_index, j, i )
+                CALL interpolate_xyz( var_u, zu, ddzu, 1.0_wp, x, y, var_index, j, i )
                 var_index = var_index + 1
              ENDDO
           ENDIF
@@ -753,12 +811,14 @@
 ! ------------
 !> This subroutine bi-linearly interpolates the respective data onto the current flight position.
 !--------------------------------------------------------------------------------------------------!
- SUBROUTINE interpolate_xyz( var, z_uw, ddz_uw, var_ind, j, i )
+ SUBROUTINE interpolate_xyz( var, z_uw, ddz_uw, fac, x, y, var_ind, j, i )
+
+    USE control_parameters,                                                                        &
+        ONLY:  dz,                                                                                 &
+               dz_stretch_level_start
 
     USE grid_variables,                                                                            &
-       ONLY:  ddx,                                                                                 &
-              ddy,                                                                                 &
-              dx,                                                                                  &
+       ONLY:  dx,                                                                                  &
               dy
 
     USE indices,                                                                                   &
@@ -777,41 +837,62 @@
     INTEGER(iwp) ::  k1       !< dummy variable
     INTEGER(iwp) ::  var_ind  !< index variable for output quantity
 
-    REAL(wp) ::  var_int      !< interpolated variable at current probe position
-    REAL(wp) ::  var_int_l    !< horizontally interpolated variable at k-level
-    REAL(wp) ::  var_int_ly1  !< horizontally interpolated variable at k-level at index j
-    REAL(wp) ::  var_int_ly2  !< horizontally interpolated variable at k-level at index j+1
-    REAL(wp) ::  var_int_u    !< horizontally interpolated variable at (k+1)-level
-    REAL(wp) ::  var_int_uy1  !< horizontally interpolated variable at (k+1)-level at index j
-    REAL(wp) ::  var_int_uy2  !< horizontally interpolated variable at (k+1)-level at index j+1
+    REAL(wp) ::  aa         !< dummy argument for horizontal interpolation
+    REAL(wp) ::  bb         !< dummy argument for horizontal interpolation
+    REAL(wp) ::  cc         !< dummy argument for horizontal interpolation
+    REAL(wp) ::  dd         !< dummy argument for horizontal interpolation
+    REAL(wp) ::  gg         !< dummy argument for horizontal interpolation
+    REAL(wp) ::  fac        !< flag to indentify if quantity is on zu or zw level
+    REAL(wp) ::  var_int    !< horizontal interpolated variable at current position
+    REAL(wp) ::  var_int_l  !< horizontal interpolated variable at k-level
+    REAL(wp) ::  var_int_u  !< horizontal interpolated variable at (k+1)-level
+    REAL(wp) ::  x          !< distance between left edge of current grid box and flight position
+    REAL(wp) ::  y          !< distance between south edge of current grid box and flight position
 
     REAL(wp), DIMENSION(1:nzt+1)   ::  ddz_uw  !< inverse vertical grid spacing
     REAL(wp), DIMENSION(nzb:nzt+1) ::  z_uw    !< height level
 
     REAL(wp), DIMENSION(nzb:nzt+1,nysg:nyng,nxlg:nxrg) ::  var  !< treated quantity
 !
-!-- Obtain vertical index by searching. This is required due to the vertical grid stretching
-!-- as well as due to the asymmetric vertical grid at the lowest grid level between k = 0 and k = 1.
-    DO  k1 = nzb, nzt
-       IF ( z_pos(l) >= z_uw(k1) .AND. z_pos(l) < z_uw(k1+1) )  THEN
-          k = k1
-          EXIT
-       ENDIF
-    ENDDO
+!-- Calculate interpolation coefficients
+    aa = x**2          + y**2
+    bb = ( dx - x )**2 + y**2
+    cc = x**2          + ( dy - y )**2
+    dd = ( dx - x )**2 + ( dy - y )**2
+    gg = aa + bb + cc + dd
 !
-!-- Bi-linearly interpolate the required variable onto its x-y sensor position at discrete levels
-!-- k and (k+1). Therefore, first interpolate the variable along x at its discrete y-locations
-!-- j and (j+1). In a second step interpolate onto the x-y sensor position along y.
-    var_int_ly1 = var(k,j,i)   + ( var(k,j,i+1)   - var(k,j,i)   ) * ddx * ( x_pos(l) - i * dx )
-    var_int_ly2 = var(k,j+1,i) + ( var(k,j+1,i+1) - var(k,j+1,i) ) * ddx * ( x_pos(l) - i * dx )
-    var_int_l   = var_int_ly1 + ( var_int_ly2 - var_int_ly1 ) * ddy * ( y_pos(l) - j * dy )
-
-    var_int_uy1 = var(k+1,j,i)   + ( var(k+1,j,i+1)   - var(k+1,j,i)   ) * ddx * ( x_pos(l) - i * dx )
-    var_int_uy2 = var(k+1,j+1,i) + ( var(k+1,j+1,i+1) - var(k+1,j+1,i) ) * ddx * ( x_pos(l) - i * dx )
-    var_int_u   = var_int_uy1 + ( var_int_uy2 - var_int_uy1 ) * ddy * ( y_pos(l) - j * dy )
+!-- Obtain vertical index. Special treatment for grid index along z-direction if flight position is
+!-- above the vertical grid-stretching level. fac=1 if variable is on scalar grid level, fac=0 for
+!-- w-component.
+    IF ( z_pos(l) < dz_stretch_level_start(1) )  THEN
+       k = ( z_pos(l) + fac * 0.5_wp * dz(1) ) / dz(1)
+    ELSE
 !
-!-- Now interpolate linearly onto the exact z-position.
-    var_int = var_int_l + (var_int_u - var_int_l ) * ddz_uw(k+1) * ( z_pos(l) - z_uw(k) )
+!--    Search for k-index
+       DO  k1 = nzb, nzt
+          IF ( z_pos(l) >= z_uw(k1) .AND. z_pos(l) < z_uw(k1+1) )  THEN
+             k = k1
+             EXIT
+          ENDIF
+       ENDDO
+    ENDIF
+!
+!-- (x,y)-interpolation at k-level
+    var_int_l = ( ( gg - aa ) * var(k,j,i)       +                                                 &
+                  ( gg - bb ) * var(k,j,i+1)     +                                                 &
+                  ( gg - cc ) * var(k,j+1,i)     +                                                 &
+                  ( gg - dd ) * var(k,j+1,i+1)                                                     &
+                ) / ( 3.0_wp * gg )
+!
+!-- (x,y)-interpolation on (k+1)-level
+    var_int_u = ( ( gg - aa ) * var(k+1,j,i)     +                                                 &
+                  ( gg - bb ) * var(k+1,j,i+1)   +                                                 &
+                  ( gg - cc ) * var(k+1,j+1,i)   +                                                 &
+                  ( gg - dd ) * var(k+1,j+1,i+1)                                                   &
+                ) / ( 3.0_wp * gg )
+!
+!-- z-interpolation onto current flight postion
+    var_int = var_int_l + ( z_pos(l) - z_uw(k) ) * ddz_uw(k+1) * (var_int_u - var_int_l )
 !
 !-- Store on local data array
     sensor_l(var_ind,l) = var_int
@@ -842,18 +923,21 @@
                ny,                                                                                 &
                nz
 
+    USE netcdf_interface,                                                                          &
+        ONLY:  netcdf_data_format
+
     IMPLICIT NONE
 
 !
 !-- Check if start positions are properly set.
     DO  l = 1, num_leg
        IF ( x_start(l) < 0.0_wp  .OR.  x_start(l) > ( nx + 1 ) * dx )  THEN
-          message_string = 'start x position is outside the model domain'
-          CALL message( 'flight_check_parameters', 'VFL0001', 1, 2, 0, 6, 0 )
+          message_string = 'Start x position is outside the model domain'
+          CALL message( 'flight_check_parameters', 'PA0431', 1, 2, 0, 6, 0 )
        ENDIF
        IF ( y_start(l) < 0.0_wp  .OR.  y_start(l) > ( ny + 1 ) * dy )  THEN
-          message_string = 'start y position is outside the model domain'
-          CALL message( 'flight_check_parameters', 'VFL0001', 1, 2, 0, 6, 0 )
+          message_string = 'Start y position is outside the model domain'
+          CALL message( 'flight_check_parameters', 'PA0432', 1, 2, 0, 6, 0 )
        ENDIF
 
     ENDDO
@@ -864,19 +948,19 @@
 !--    Check if leg mode matches the overall lateral model boundary conditions.
        IF ( TRIM( leg_mode(l) ) == 'cyclic' )  THEN
           IF ( .NOT. bc_lr_cyc  .OR.  .NOT. bc_ns_cyc )  THEN
-             message_string = 'cyclic flight leg does not match lateral boundary condition'
-             CALL message( 'flight_check_parameters', 'VFL0002', 1, 2, 0, 6, 0 )
+             message_string = 'Cyclic flight leg does not match lateral boundary condition'
+             CALL message( 'flight_check_parameters', 'PA0433', 1, 2, 0, 6, 0 )
           ENDIF
 !
 !--    Check if end-positions are inside the model domain in case of return-legs.
        ELSEIF ( TRIM( leg_mode(l) ) == 'return' )  THEN
           IF ( x_end(l) > ( nx + 1 ) * dx  .OR.  y_end(l) > ( ny + 1 ) * dx )  THEN
-             message_string = 'flight leg or parts of it are outside the model domain'
-             CALL message( 'flight_check_parameters', 'VFL0003', 1, 2, 0, 6, 0 )
+             message_string = 'Flight leg or parts of it are outside the model domain'
+             CALL message( 'flight_check_parameters', 'PA0434', 1, 2, 0, 6, 0 )
           ENDIF
        ELSE
-          message_string = 'unknown flight mode "' // TRIM( leg_mode(l) ) // '"'
-          CALL message( 'flight_check_parameters', 'VFL0004', 1, 2, 0, 6, 0 )
+          message_string = 'Unknown flight mode'
+          CALL message( 'flight_check_parameters', 'PA0435', 1, 2, 0, 6, 0 )
        ENDIF
 
     ENDDO
@@ -884,12 +968,19 @@
 !-- Check if given flight object remains inside model domain if a rate of climb / descent is
 !-- prescribed.
     DO  l = 1, num_leg
-       IF ( flight_level(l) + max_elev_change(l) > zu(nz) .AND. rate_of_climb(l) > 0.0_wp .OR.     &
-            flight_level(l) - max_elev_change(l) <= 0.0_wp .AND. rate_of_climb(l) < 0.0_wp )  THEN
-          message_string = 'flight level is outside the model domain '
-          CALL message( 'flight_check_parameters', 'VFL0005', 1, 2, 0, 6, 0 )
+       IF ( flight_level(l) + max_elev_change(l) > zu(nz) .OR.                                     &
+            flight_level(l) + max_elev_change(l) <= 0.0_wp )  THEN
+          message_string = 'Flight level is outside the model domain '
+          CALL message( 'flight_check_parameters', 'PA0438', 1, 2, 0, 6, 0 )
        ENDIF
     ENDDO
+!
+!-- Check for appropriate NetCDF format. Definition of more than one unlimited dimension is
+!-- unfortunately only possible with NetCDF4/HDF5.
+    IF (  netcdf_data_format <= 2 )  THEN
+       message_string = 'netcdf_data_format must be > 2'
+       CALL message( 'flight_check_parameters', 'PA0439', 1, 2, 0, 6, 0 )
+    ENDIF
 
 
  END SUBROUTINE flight_check_parameters
@@ -947,7 +1038,7 @@
  END SUBROUTINE flight_rrd_global_ftn
 
 
-
+ 
 !------------------------------------------------------------------------------!
 ! Description:
 ! ------------
@@ -994,7 +1085,7 @@
 
  END SUBROUTINE flight_rrd_global_mpi
 
-
+    
     !--------------------------------------------------------------------------------------------------!
 ! Description:
 ! ------------

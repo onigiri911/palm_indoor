@@ -13,8 +13,57 @@
 ! You should have received a copy of the GNU General Public License along with PALM. If not, see
 ! <http://www.gnu.org/licenses/>.
 !
-! Copyright 1997-2021 Leibniz Universitaet Hannover
+! Copyright 1997-2020 Leibniz Universitaet Hannover
 !------------------------------------------------------------------------------!
+!
+! Current revisions:
+! -----------------
+!
+!
+! Former revisions:
+! -----------------
+! $Id: cpulog_mod.f90 4665 2020-09-03 14:04:24Z hellstea $
+! Format descriptor 102 slightly modified.
+! 
+! 4577 2020-06-25 09:53:58Z raasch
+! further re-formatting concerning Fortran parameter variables
+!
+! 4559 2020-06-11 08:51:48Z raasch
+! file re-formatted to follow the PALM coding standard
+!
+! 4549 2020-05-29 09:27:29Z raasch
+! bugfix for r4539: values for min/max/rms stored in separate arrays
+!
+! 4539 2020-05-18 14:05:17Z raasch
+! code re-structured,
+! cpu time per grid point and timestep does not included initialization and spinup any more
+!
+! 4536 2020-05-17 17:24:13Z raasch
+! restart I/O transfer speed added
+!
+! 4429 2020-02-27 15:24:30Z raasch
+! bugfix: cpp-directives added for serial mode
+!
+! 4378 2020-01-16 13:22:48Z Giersch
+! Format of rms output changed to allow values >= 100
+!
+! 4360 2020-01-07 11:25:50Z suehring
+! Corrected "Former revisions" section
+!
+! 4015 2019-06-05 13:25:35Z raasch
+! all reals changed to double precision in order to work with 32-bit working precision, otherwise
+! calculated time intervals would mostly give zero
+!
+! 3885 2019-04-11 11:29:34Z kanani
+! Changes related to global restructuring of location messages and introduction of additional debug
+! messages
+!
+! 3655 2019-01-07 16:51:22Z knoop
+! output format limited to a maximum line length of 80
+!
+! Revision 1.1  1997/07/24 11:12:29  raasch
+! Initial revision
+!
 !
 ! Description:
 ! ------------
@@ -56,25 +105,13 @@
 !--------------------------------------------------------------------------------------------------!
  MODULE cpulog
 
-#if defined( __parallel )
-    USE MPI
-#endif
 
     USE control_parameters,                                                                        &
-        ONLY:  message_string,                                                                     &
-               nr_timesteps_this_run,                                                              &
-               output_3d_file_size,                                                                &
-               restart_data_format_output,                                                         &
-               restart_file_size,                                                                  &
-               run_description_header,                                                             &
-               synchronous_exchange,                                                               &
-               write_binary
+        ONLY: message_string, nr_timesteps_this_run, restart_data_format_output,                   &
+              restart_file_size, run_description_header, synchronous_exchange, write_binary
 
     USE indices,                                                                                   &
-        ONLY:  ngp_3d,                                                                             &
-               nx,                                                                                 &
-               ny,                                                                                 &
-               nz
+        ONLY: ngp_3d, nx, ny, nz
 
     USE kinds
 
@@ -114,12 +151,12 @@
        REAL(dp)           ::  sum        !<
        REAL(dp)           ::  vector     !<
        INTEGER(iwp)       ::  counts     !<
-       CHARACTER (LEN=30) ::  place      !<
+       CHARACTER (LEN=25) ::  place      !<
     END TYPE logpoint
 
-    TYPE(logpoint), DIMENSION(200) ::  log_point = logpoint( 0.0_dp, 0.0_dp, 0.0_dp, 0.0_dp,       &
+    TYPE(logpoint), DIMENSION(100) ::  log_point = logpoint( 0.0_dp, 0.0_dp, 0.0_dp, 0.0_dp,       &
                                                              0.0_dp, 0.0_dp, 0.0_dp, 0, ' ' )
-    TYPE(logpoint), DIMENSION(200) ::  log_point_s = logpoint( 0.0_dp, 0.0_dp, 0.0_dp, 0.0_dp,     &
+    TYPE(logpoint), DIMENSION(100) ::  log_point_s = logpoint( 0.0_dp, 0.0_dp, 0.0_dp, 0.0_dp,     &
                                                                0.0_dp, 0.0_dp, 0.0_dp, 0, ' ' )
 
     SAVE
@@ -155,9 +192,9 @@
        IF ( log_event%place == ' ' )  THEN
           log_event%place = place
        ELSEIF ( log_event%place /= place )  THEN
-          WRITE( message_string, * ) 'wrong argument: "', TRIM( place ), '", expected: "',         &
-                                     TRIM(log_event%place), '"'
-          CALL message( 'cpu_log', 'PAC0179', 1, 2, 0, 6, 0 )
+          WRITE( message_string, * ) 'wrong argument expected: ',                                  &
+                                     TRIM(log_event%place), ' given: ',  TRIM( place )
+          CALL message( 'cpu_log', 'PA0174', 1, 2, 0, 6, 0 )
        ENDIF
 
 !
@@ -194,7 +231,7 @@
              WRITE( message_string, * ) 'negative time interval occured',                          &
                                         '&PE',myid,' L=PAUSE "',TRIM(log_event%place),             &
                                         '" new=', mtime,' last=',log_event%mtime
-             CALL message( 'cpu_log', 'PAC0180', 0, 1, -1, 6, 0 )
+             CALL message( 'cpu_log', 'PA0176', 0, 1, -1, 6, 0 )
              first = .FALSE.
           ENDIF
           log_event%isum     = log_event%isum + mtime - log_event%mtime
@@ -204,7 +241,7 @@
              WRITE( message_string, * ) 'negative time interval occured',                          &
                                         '&PE',myid,' L=STOP "',TRIM(log_event%place),'" new=',     &
                                         mtime,' last=',log_event%mtime,' isum=',log_event%isum
-             CALL message( 'cpu_log', 'PAC0181', 0, 1, -1, 6, 0 )
+             CALL message( 'cpu_log', 'PA0177', 0, 1, -1, 6, 0 )
              first = .FALSE.
           ENDIF
           log_event%mtime    = mtime    - log_event%mtime    + log_event%isum
@@ -214,7 +251,7 @@
              WRITE( message_string, * ) 'negative time interval occured',                          &
                                         '&PE',myid,' L=STOP "',TRIM(log_event%place),'" sum=',     &
                                         log_event%sum,' mtime=',log_event%mtime
-             CALL message( 'cpu_log', 'PAC0182', 0, 1, -1, 6, 0 )
+             CALL message( 'cpu_log', 'PA0178', 0, 1, -1, 6, 0 )
              first = .FALSE.
           ENDIF
           log_event%vector   = log_event%vector + log_event%mtimevec
@@ -222,8 +259,8 @@
           log_event%isum     = 0.0_dp
           log_event%ivect    = 0.0_dp
        ELSE
-          message_string = 'unknown modus of time measurement: "' // TRIM( modus ) // '"'
-          CALL message( 'cpu_log', 'PAC0183', 0, 1, -1, 6, 0 )
+          message_string = 'unknown modus of time measurement: ' // TRIM( modus )
+          CALL message( 'cpu_log', 'PA0179', 0, 1, -1, 6, 0 )
        ENDIF
 
     END SUBROUTINE cpu_log
@@ -420,9 +457,9 @@
 !--       Write cpu-times sorted by size
           CALL check_open( 18 )
 #if defined( __parallel )
-          WRITE ( 18, 100 )  TRIM( run_description_header ), numprocs * threads_per_task, npex,    &
-                             npey, threads_per_task, nx+1, ny+1, nz, nr_timesteps_this_run,        &
-                             average_cputime
+          WRITE ( 18, 100 )  TRIM( run_description_header ), numprocs * threads_per_task,          &
+                             pdims(1), pdims(2), threads_per_task, nx+1, ny+1, nz,                 &
+                             nr_timesteps_this_run, average_cputime
 
           WRITE ( 18, 110 )
 #else
@@ -493,16 +530,8 @@
              WRITE ( 18, 107 )  restart_file_size, restart_file_size / log_point(22)%sum
           ENDIF
 !
-!--       Output of NetCDF data transfer speed
-          IF ( output_3d_file_size /= 0.0_wp  .AND.                                                &
-               ( log_point_s(58)%sum /= 0.0_wp  .OR.  log_point_s(59)%sum /= 0.0_wp ) )            &
-          THEN
-             WRITE ( 18, 108 )  output_3d_file_size,                                               &
-                                output_3d_file_size / ( log_point_s(58)%sum + log_point_s(59)%sum )
-          ENDIF
-!
 !--       Empty lines in order to create a gap to the results from the next restart run
-          WRITE ( 18, 109 )
+          WRITE ( 18, 108 )
 
 !
 !--       Unit 18 is not needed anymore
@@ -523,22 +552,20 @@
                &'-----------------------------------------------------------',                     &
                &'---------------------')
 
-   102 FORMAT (A25,1X,F10.3,1X,F6.2,1X,I7,2(1X,F9.2),1X,F8.2)
+   102 FORMAT (A25,2X,F10.3,2X,F7.2,1X,I7,2(1X,F10.3),1X,F6.2)
    103 FORMAT (/'Barriers are set in front of collective operations')
    104 FORMAT (/'No barriers are set in front of collective operations')
    105 FORMAT (/'Exchange of ghostpoints via MPI_SENDRCV')
    106 FORMAT (/'Exchange of ghostpoints via MPI_ISEND/MPI_IRECV')
    107 FORMAT (/'Restart file size:   ',F12.1,' MByte'/                                            &
                &'I/O transfer speed:  ',F12.1,' MByte / sec')
-   108 FORMAT (/'3d-NetCDF file size: ',F12.1,' MByte'/                                            &
-               &'I/O transfer speed:  ',F12.1,' MByte / sec')
-   109 FORMAT (//)
+   108 FORMAT (//)
    110 FORMAT ('------------------------------------------------------------',                     &
                &'----------'//                                                                     &
-               &'place:                             mean       counts     ',                       &
-               &' min       max      rms'/                                                         &
-               &'                                sec.    %                ',                       &
-               &'sec.      sec.     sec.'/                                                         &
+               &'place:                              mean        counts     ',                     &
+               &' min       max    rms'/                                                           &
+               &'                                sec.      %                ',                     &
+               &'sec.      sec.   sec.'/                                                           &
                &'-----------------------------------------------------------',                     &
                &'---------------------')
    111 FORMAT (/'Barriers are set at beginning (start/continue) of measurements')

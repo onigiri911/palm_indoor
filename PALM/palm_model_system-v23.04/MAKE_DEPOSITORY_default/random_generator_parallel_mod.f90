@@ -13,10 +13,38 @@
 ! You should have received a copy of the GNU General Public License along with PALM. If not, see
 ! <http://www.gnu.org/licenses/>.
 !
-! Copyright 1997-2021 Leibniz Universitaet Hannover
+! Copyright 1997-2020 Leibniz Universitaet Hannover
 !--------------------------------------------------------------------------------------------------!
 !
 !
+! Current revisions:
+! -----------------
+!
+!
+! Former revisions:
+! -----------------
+! $Id: random_generator_parallel_mod.f90 4592 2020-07-08 09:56:29Z raasch $
+! File re-formatted to follow the PALM coding standard
+!
+! 4545 2020-05-22 13:17:57Z schwenkel
+! Add generator (using parallel mode) returning gaussian distributed random number
+!
+! 4438 2020-03-03 20:49:28Z raasch
+! - Rename variables to avoid confusion with subdomain grid indices
+! - Some formatting adjustments
+! - New routine to initialize spatial 1D-arrays independent on the 2D random-number array
+!
+! 4360 2020-01-07 11:25:50Z suehring
+! Corrected "Former revisions" section
+!
+! 3655 2019-01-07 16:51:22Z knoop
+! Unused variable removed
+!
+! 1400 2014-05-09 14:03:54Z knoop
+! Initial revision
+!
+!
+!--------------------------------------------------------------------------------------------------!
 ! Description:
 ! ------------
 !> This module contains and supports the random number generating routine ran_parallel.
@@ -111,7 +139,7 @@
  SUBROUTINE init_parallel_random_generator_1d( nxy, ns, ne, id_rand, seq_rand )
 
     USE control_parameters,                                                                        &
-        ONLY:  ensemble_member_nr
+        ONLY: ensemble_member_nr
 
     INTEGER(isp), INTENT(IN) ::  nxy  !< constant scaling with grid dimensions
     INTEGER(isp), INTENT(IN) ::  ns   !< start index on subdomain
@@ -121,7 +149,6 @@
 
     INTEGER(isp), DIMENSION(ns:ne)   ::  id_rand   !< initial IDs
     INTEGER(isp), DIMENSION(5,ns:ne) ::  seq_rand  !< initial random seeds
-
 
 !
 !-- Asigning an ID to every vertical gridpoint column dependig on the ensemble run number.
@@ -149,7 +176,7 @@
     USE kinds
 
     USE control_parameters,                                                                        &
-        ONLY:  ensemble_member_nr
+        ONLY: ensemble_member_nr
 
     IMPLICIT NONE
 
@@ -162,8 +189,6 @@
     INTEGER(iwp) ::  i  !< grid index x-direction
     INTEGER(iwp) ::  j  !< grid index y-direction
 
-
-!
 !-- Allocate ID-array and state-space-array
     ALLOCATE ( seq_random_array(5,nys_l:nyn_l,nxl_l:nxr_l) )
     ALLOCATE ( id_random_array(nys_l:nyn_l,nxl_l:nxr_l) )
@@ -486,7 +511,6 @@
 
  END SUBROUTINE ran_hash_v
 
-
 !--------------------------------------------------------------------------------------------------!
 ! Description:
 ! ------------
@@ -495,15 +519,14 @@
  SUBROUTINE ran_error( string )
 
     USE control_parameters,                                                                        &
-        ONLY:  message_string
+      ONLY: message_string
 
     CHARACTER(LEN=*), INTENT(IN) ::  string  !< Error message string
 
-    message_string = 'incompatible integer arithmetic: "' // TRIM( string ) // '"'
-    CALL message( 'ran_init', 'PAC0266', 1, 2, 0, 6, 0 )
+    message_string = 'incompatible integer arithmetic: ' // TRIM( string )
+    CALL message( 'ran_init', 'PA0453', 1, 2, 0, 6, 0 )
 
  END SUBROUTINE ran_error
-
 
 !--------------------------------------------------------------------------------------------------!
 ! Description:
@@ -513,7 +536,7 @@
  FUNCTION reallocate_iv( p, n )
 
     USE control_parameters,                                                                        &
-        ONLY:  message_string
+      ONLY: message_string
 
     INTEGER(isp), DIMENSION(:), POINTER ::  p              !<
     INTEGER(isp), DIMENSION(:), POINTER ::  reallocate_iv  !<
@@ -523,12 +546,11 @@
     INTEGER(isp) ::  nold  !<
     INTEGER(isp) ::  ierr  !<
 
-
     ALLOCATE( reallocate_iv(n), stat = ierr )
 
     IF ( ierr /= 0 )  THEN
        message_string = 'problem in attempt to allocate memory'
-       CALL message( 'reallocate_iv', 'PAC0267', 1, 2, 0, 6, 0 )
+       CALL message( 'reallocate_iv', 'PA0454', 1, 2, 0, 6, 0 )
     END IF
 
     IF ( .NOT. ASSOCIATED( p ) )  RETURN
@@ -541,11 +563,10 @@
 
  END FUNCTION reallocate_iv
 
-
  FUNCTION reallocate_im( p, n, m )
 
     USE control_parameters,                                                                        &
-        ONLY:  message_string
+      ONLY: message_string
 
     INTEGER(isp), DIMENSION(:,:), POINTER ::  p              !<
     INTEGER(isp), DIMENSION(:,:), POINTER ::  reallocate_im  !<
@@ -557,12 +578,11 @@
     INTEGER(isp) ::  nold  !<
     INTEGER(isp) ::  ierr  !<
 
-
     ALLOCATE( reallocate_im(n,m), stat = ierr )
 
     IF ( ierr /= 0 )  THEN
        message_string = 'problem in attempt to allocate memory'
-       CALL message( 'reallocate_im', 'PAC0267', 1, 2, 0, 6, 0 )
+       CALL message( 'reallocate_im', 'PA0454', 1, 2, 0, 6, 0 )
     END IF
 
     IF ( .NOT. ASSOCIATED( p ) )  RETURN

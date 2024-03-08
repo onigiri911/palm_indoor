@@ -13,8 +13,121 @@
 ! You should have received a copy of the GNU General Public License along with PALM. If not, see
 ! <http://www.gnu.org/licenses/>.
 !
-! Copyright 1997-2021 Leibniz Universitaet Hannover
+! Copyright 1997-2020 Leibniz Universitaet Hannover
 !--------------------------------------------------------------------------------------------------!
+!
+! Current revisions:
+! ------------------
+!
+!
+! Former revisions:
+! -----------------
+! $Id: init_3d_model.f90 4783 2020-11-13 13:58:45Z raasch $
+! bugfix for reading restart data with MPI-I/O (does not work with blockwise I/O)
+!
+! 4680 2020-09-16 10:20:34Z gronemeier
+! Add option to fix date or time of the simulation
+!
+! 4671 2020-09-09 20:27:58Z pavelkrc
+! Implementation of downward facing USM and LSM surfaces
+!
+! 4648 2020-08-25 07:52:08Z raasch
+! file re-formatted to follow the PALM coding standard
+!
+! 4548 2020-05-28 19:36:45Z suehring
+! Bugfix, move call for lsf_forcing_surf after lsf_init is called
+!
+! 4514 2020-04-30 16:29:59Z suehring
+! Add possibility to initialize surface sensible and latent heat fluxes via a static driver.
+!
+! 4493 2020-04-10 09:49:43Z pavelkrc
+! Overwrite u_init, v_init, pt_init, q_init and s_init with hom for all cyclic_fill-cases, not only
+! for turbulent_inflow = .TRUE.
+!
+! 4360 2020-01-07 11:25:50Z suehring
+! Introduction of wall_flags_total_0, which currently sets bits based on static topography
+! information used in wall_flags_static_0
+!
+! 4329 2019-12-10 15:46:36Z motisi
+! Renamed wall_flags_0 to wall_flags_static_0
+!
+! 4286 2019-10-30 16:01:14Z resler
+! implement new palm_date_time_mod
+!
+! 4223 2019-09-10 09:20:47Z gronemeier
+! Deallocate temporary string array since it may be re-used to read different input data in other
+! modules
+!
+! 4186 2019-08-23 16:06:14Z suehring
+! Design change, use variables defined in netcdf_data_input_mod to read netcd variables rather than
+! define local ones.
+!
+! 4185 2019-08-23 13:49:38Z oliver.maas
+! For initializing_actions = ' cyclic_fill':
+! Overwrite u_init, v_init, pt_init, q_init and s_init with the (temporally) and horizontally
+! averaged vertical profiles from the end of the prerun, because these profiles shall be used as the
+! basic state for the rayleigh damping and the pt_damping.
+!
+! 4182 2019-08-22 15:20:23Z scharf
+! Corrected "Former revisions" section
+!
+! 4168 2019-08-16 13:50:17Z suehring
+! Replace function get_topography_top_index by topo_top_ind
+!
+! 4151 2019-08-09 08:24:30Z suehring
+! Add netcdf directive around input calls (fix for last commit)
+!
+! 4150 2019-08-08 20:00:47Z suehring
+! Input of additional surface variables independent on land- or urban-surface model
+!
+! 4131 2019-08-02 11:06:18Z monakurppa
+! Allocate sums and sums_l to allow profile output for salsa variables.
+!
+! 4130 2019-08-01 13:04:13Z suehring
+! Effectively reduce 3D initialization to 1D initial profiles. This is because 3D initialization
+! produces structures in the w-component that are correlated with the processor grid for some
+! unknown reason
+!
+! 4090 2019-07-11 15:06:47Z Giersch
+! Unused variables removed
+!
+! 4088 2019-07-11 13:57:56Z Giersch
+! Pressure and density profile calculations revised using basic functions
+!
+! 4048 2019-06-21 21:00:21Z knoop
+! Further modularization of particle code components
+!
+! 4017 2019-06-06 12:16:46Z schwenkel
+! Convert most location messages to debug messages to reduce output in job logfile to a minimum
+!
+! unused variable removed
+!
+! 3937 2019-04-29 15:09:07Z suehring
+! Move initialization of synthetic turbulence generator behind initialization of offline nesting.
+! Remove call for stg_adjust, as this is now already done in stg_init.
+!
+! 3900 2019-04-16 15:17:43Z suehring
+! Fix problem with LOD = 2 initialization
+!
+! 3885 2019-04-11 11:29:34Z kanani
+! Changes related to global restructuring of location messages and introduction of additional debug
+! messages
+!
+! 3849 2019-04-01 16:35:16Z knoop
+! Move initialization of rmask before initializing user_init_arrays
+!
+! 3711 2019-01-31 13:44:26Z knoop
+! Introduced module_interface_init_checks for post-init checks in modules
+!
+! 3700 2019-01-26 17:03:42Z knoop
+! Some interface calls moved to module_interface + cleanup
+!
+! 3648 2019-01-02 16:35:46Z suehring
+! Rename subroutines for surface-data output
+!
+! Revision 1.1  1998/03/09 16:22:22  raasch
+! Initial revision
+!
 !
 ! Description:
 ! ------------
@@ -27,41 +140,25 @@
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE init_3d_model
 
-#if defined( __parallel )
-    USE MPI
-#endif
 
     USE advec_ws
 
     USE arrays_3d
 
     USE basic_constants_and_equations_mod,                                                         &
-        ONLY:  barometric_formula,                                                                 &
-               c_p,                                                                                &
-               exner_function,                                                                     &
-               exner_function_invers,                                                              &
-               g,                                                                                  &
-               ideal_gas_law_rho,                                                                  &
-               ideal_gas_law_rho_pt,                                                               &
-               l_v,                                                                                &
-               pi
-
-    USE boundary_settings_mod,                                                                     &
-        ONLY:  set_lateral_neumann_bc
+        ONLY:  barometric_formula, c_p, exner_function, exner_function_invers, g,                  &
+               ideal_gas_law_rho, ideal_gas_law_rho_pt, l_v, pi
 
     USE bulk_cloud_model_mod,                                                                      &
         ONLY:  bulk_cloud_model
 
+    USE chem_modules,                                                                              &
+        ONLY:  max_pr_cs ! ToDo: this dependency needs to be removed cause it is ugly #new_dom
+
     USE control_parameters
 
-    USE exchange_horiz_mod,                                                                        &
-        ONLY:  exchange_horiz_2d
-
     USE grid_variables,                                                                            &
-        ONLY:  dx,                                                                                 &
-               dy,                                                                                 &
-               ddx2_mg,                                                                            &
-               ddy2_mg
+        ONLY:  dx, dy, ddx2_mg, ddy2_mg
 
     USE indices
 
@@ -71,31 +168,21 @@
         ONLY:  ls_forcing_surf
 
     USE model_1d_mod,                                                                              &
-        ONLY:  init_1d_model,                                                                      &
-               l1d,                                                                                &
-               u1d,                                                                                &
-               v1d
+        ONLY:  init_1d_model, l1d, u1d, v1d
 
     USE module_interface,                                                                          &
-        ONLY:  module_interface_check_data_output_ts,                                              &
-               module_interface_init_before_pressure_solver,                                       &
-               module_interface_init_after_pressure_solver,                                        &
-               module_interface_init_arrays,                                                       &
+        ONLY:  module_interface_init_arrays,                                                       &
+               module_interface_init,                                                              &
                module_interface_init_checks
 
     USE multi_agent_system_mod,                                                                    &
         ONLY:  agents_active, mas_init
 
     USE netcdf_interface,                                                                          &
-        ONLY:  dots_label,                                                                         &
-               dots_max,                                                                           &
-               dots_num,                                                                           &
-               dots_unit
-
+        ONLY:  dots_max
 
     USE netcdf_data_input_mod,                                                                     &
-        ONLY:  add_ghost_layers,                                                                   &
-               char_fill,                                                                          &
+        ONLY:  char_fill,                                                                          &
                check_existence,                                                                    &
                close_input_file,                                                                   &
                get_attribute,                                                                      &
@@ -113,17 +200,17 @@
                vars_pids
 
     USE nesting_offl_mod,                                                                          &
-        ONLY:  nesting_offl_init_modules
+        ONLY:  nesting_offl_init
 
     USE palm_date_time_mod,                                                                        &
         ONLY:  init_date_time
 
     USE pegrid
 
+#if defined( __parallel )
     USE pmc_interface,                                                                             &
-        ONLY:  atmosphere_ocean_coupled_run,                                                       &
-               nested_run,                                                                         &
-               nesting_bounds
+        ONLY:  nested_run
+#endif
 
     USE random_function_mod
 
@@ -131,56 +218,56 @@
         ONLY:  init_parallel_random_generator
 
     USE read_restart_data_mod,                                                                     &
-        ONLY:  rrd_global_spinup,                                                                  &
-               rrd_local,                                                                          &
-               rrd_local_spinup,                                                                   &
-               rrd_read_parts_of_global
+        ONLY:  rrd_local, rrd_read_parts_of_global
 
     USE statistics,                                                                                &
-        ONLY:  hom,                                                                                &
-               hom_sum,                                                                            &
-               mean_surface_level_height,                                                          &
-               pr_max,                                                                             &
-               pr_palm,                                                                            &
-               rmask,                                                                              &
-               statistic_regions,                                                                  &
-               sums,                                                                               &
-               sums_divnew_l,                                                                      &
-               sums_divold_l,                                                                      &
-               sums_l,                                                                             &
-               sums_l_l,                                                                           &
-               sums_wsts_bc_l,                                                                     &
-               ts_value,                                                                           &
-               weight_pres,                                                                        &
-               weight_substep
+        ONLY:  hom, hom_sum, mean_surface_level_height, pr_palm, rmask, statistic_regions, sums,   &
+               sums_divnew_l, sums_divold_l, sums_l, sums_l_l, sums_wsts_bc_l, ts_value,           &
+               weight_pres, weight_substep
+
+    USE synthetic_turbulence_generator_mod,                                                        &
+        ONLY:  stg_init, use_syn_turb_gen
 
     USE surface_layer_fluxes_mod,                                                                  &
         ONLY:  init_surface_layer_fluxes
 
     USE surface_mod,                                                                               &
-        ONLY:  init_single_surface_properties,                                                     &
-               init_surface_arrays,                                                                &
-               init_surfaces,                                                                      &
-               surf_def,                                                                           &
-               surf_lsm,                                                                           &
-               surf_usm
+        ONLY :  init_single_surface_properties,                                                    &
+                init_surface_arrays,                                                               &
+                init_surfaces,                                                                     &
+                surf_def_h,                                                                        &
+                surf_def_v,                                                                        &
+                surf_lsm_h,                                                                        &
+                surf_usm_h
+
+#if defined( _OPENACC )
+    USE surface_mod,                                                                               &
+        ONLY :  bc_h
+#endif
 
     USE surface_data_output_mod,                                                                   &
-        ONLY:  surface_data_output_init,                                                           &
-               surface_data_output_init_arrays
+        ONLY:  surface_data_output_init
+
+    USE transpose_indices
+
 
     IMPLICIT NONE
-
 
     INTEGER(iwp) ::  i                    !< grid index in x direction
     INTEGER(iwp) ::  ind_array(1)         !< dummy used to determine start index for external pressure forcing
     INTEGER(iwp) ::  j                    !< grid index in y direction
     INTEGER(iwp) ::  k                    !< grid index in z direction
+    INTEGER(iwp) ::  k_surf               !< surface level index
     INTEGER(iwp) ::  l                    !< running index over surface orientation
-    INTEGER(iwp) ::  nz_s_shift           !< topography-top index on scalar-grid, used to vertically shift initial profiles
+    INTEGER(iwp) ::  m                    !< index of surface element in surface data type
     INTEGER(iwp) ::  nz_u_shift           !< topography-top index on u-grid, used to vertically shift initial profiles
     INTEGER(iwp) ::  nz_v_shift           !< topography-top index on v-grid, used to vertically shift initial profiles
     INTEGER(iwp) ::  nz_w_shift           !< topography-top index on w-grid, used to vertically shift initial profiles
+    INTEGER(iwp) ::  nz_s_shift           !< topography-top index on scalar-grid, used to vertically shift initial profiles
+    INTEGER(iwp) ::  nz_u_shift_l         !< topography-top index on u-grid, used to vertically shift initial profiles
+    INTEGER(iwp) ::  nz_v_shift_l         !< topography-top index on v-grid, used to vertically shift initial profiles
+    INTEGER(iwp) ::  nz_w_shift_l         !< topography-top index on w-grid, used to vertically shift initial profiles
+    INTEGER(iwp) ::  nz_s_shift_l         !< topography-top index on scalar-grid, used to vertically shift initial profiles
     INTEGER(iwp) ::  nzt_l                !< index of top PE boundary for multigrid level
     INTEGER(iwp) ::  sr                   !< index of statistic region
 
@@ -217,12 +304,23 @@
     IF ( debug_output )  CALL debug_message( 'allocating arrays', 'start' )
 !
 !-- Allocate arrays
-    ALLOCATE( sums_divnew_l(0:statistic_regions),                                                  &
+    ALLOCATE( mean_surface_level_height(0:statistic_regions),                                      &
+              mean_surface_level_height_l(0:statistic_regions),                                    &
+              ngp_2dh(0:statistic_regions), ngp_2dh_l(0:statistic_regions),                        &
+              ngp_3d(0:statistic_regions),                                                         &
+              ngp_3d_inner(0:statistic_regions),                                                   &
+              ngp_3d_inner_l(0:statistic_regions),                                                 &
+              ngp_3d_inner_tmp(0:statistic_regions),                                               &
+              sums_divnew_l(0:statistic_regions),                                                  &
               sums_divold_l(0:statistic_regions) )
     ALLOCATE( dp_smooth_factor(nzb:nzt), rdf(nzb+1:nzt), rdf_sc(nzb+1:nzt) )
-    ALLOCATE( rmask(nysg:nyng,nxlg:nxrg,0:statistic_regions),                                      &
-              sums(nzb:nzt+1,pr_max),                                                              &
-              sums_l(nzb:nzt+1,pr_max,0:threads_per_task-1),                                       &
+    ALLOCATE( ngp_2dh_outer(nzb:nzt+1,0:statistic_regions),                                        &
+              ngp_2dh_outer_l(nzb:nzt+1,0:statistic_regions),                                      &
+              ngp_2dh_s_inner(nzb:nzt+1,0:statistic_regions),                                      &
+              ngp_2dh_s_inner_l(nzb:nzt+1,0:statistic_regions),                                    &
+              rmask(nysg:nyng,nxlg:nxrg,0:statistic_regions),                                      &
+              sums(nzb:nzt+1,pr_palm+max_pr_user+max_pr_cs+max_pr_salsa),                          &
+              sums_l(nzb:nzt+1,pr_palm+max_pr_user+max_pr_cs+max_pr_salsa,0:threads_per_task-1),   &
               sums_l_l(nzb:nzt+1,0:statistic_regions,0:threads_per_task-1),                        &
               sums_wsts_bc_l(nzb:nzt+1,0:statistic_regions) )
     ALLOCATE( ts_value(dots_max,0:statistic_regions) )
@@ -263,6 +361,13 @@
 !
 !--    For performance reasons, multigrid is using one ghost layer only
        ALLOCATE( p_loc(nzb:nzt+1,nys-1:nyn+1,nxl-1:nxr+1) )
+    ENDIF
+
+!
+!-- Array for storing constant coeffficients of the tridiagonal solver
+    IF ( psolver == 'poisfft' )  THEN
+       ALLOCATE( tri(nxl_z:nxr_z,nys_z:nyn_z,0:nz-1,2) )
+       ALLOCATE( tric(nxl_z:nxr_z,nys_z:nyn_z,0:nz-1) )
     ENDIF
 
     IF ( humidity )  THEN
@@ -306,41 +411,36 @@
 !-- In case of a Boussinesq approximation, a constant density is calculated mainly for output
 !-- purposes. This density does not need to be considered in the model's system of equations.
     IF ( TRIM( approximation ) == 'anelastic' )  THEN
-
        DO  k = nzb, nzt+1
-          p_hydrostatic(k) = barometric_formula( zu(k), pt_surface *                               &
-                                                 exner_function( surface_pressure * 100.0_wp ),    &
-                                                 surface_pressure * 100.0_wp )
+          p_hydrostatic(k) = barometric_formula(zu(k), pt_surface *                                &
+                                                exner_function(surface_pressure * 100.0_wp),       &
+                                                surface_pressure * 100.0_wp)
 
-          rho_air(k) = ideal_gas_law_rho_pt( p_hydrostatic(k), pt_init(k) )
+          rho_air(k) = ideal_gas_law_rho_pt(p_hydrostatic(k), pt_init(k))
        ENDDO
 
        DO  k = nzb, nzt
           rho_air_zw(k) = 0.5_wp * ( rho_air(k) + rho_air(k+1) )
        ENDDO
+
        rho_air_zw(nzt+1)  = rho_air_zw(nzt) + 2.0_wp * ( rho_air(nzt+1) - rho_air_zw(nzt)  )
 
     ELSE
-!
-!--    Boussinesq-Approximation: density is assumed constant. The actual value of density does not
-!--    effect the fluid simulation. Only some output quantities as dynamic pressure, divergence,
-!--    or flux output in dynamic units rely on it. We use the surface density as the reference
-!--    value here.
-       IF ( ocean_mode )  THEN
-!
-!--       Set density to water density near the ocean surface.
-          rho_air(:) = 1027.62_wp
-       ELSE
-          p_hydrostatic(:) = barometric_formula( zu(nzb), pt_surface *                             &
-                                                 exner_function( surface_pressure * 100.0_wp ),    &
-                                                 surface_pressure * 100.0_wp )
+       DO  k = nzb, nzt+1
+          p_hydrostatic(k) = barometric_formula(zu(nzb), pt_surface *                              &
+                                                exner_function(surface_pressure * 100.0_wp),       &
+                                                surface_pressure * 100.0_wp)
 
-          rho_air(:) = ideal_gas_law_rho_pt( p_hydrostatic(nzb), pt_init(nzb) )
-       ENDIF
-       rho_air_zw(:) = rho_air(:)
+          rho_air(k) = ideal_gas_law_rho_pt(p_hydrostatic(k), pt_init(nzb))
+       ENDDO
+
+       DO  k = nzb, nzt
+          rho_air_zw(k) = 0.5_wp * ( rho_air(k) + rho_air(k+1) )
+       ENDDO
+
+       rho_air_zw(nzt+1)  = rho_air_zw(nzt) + 2.0_wp * ( rho_air(nzt+1) - rho_air_zw(nzt)  )
 
     ENDIF
-
 !
 !-- Compute the inverse density array in order to avoid expencive divisions
     drho_air    = 1.0_wp / rho_air
@@ -348,15 +448,12 @@
 
 !
 !-- Allocation of flux conversion arrays
-    ALLOCATE( heatflux_input_conversion(nzb:nzt+1)      )
-    ALLOCATE( heatflux_output_conversion(nzb:nzt+1)     )
-    ALLOCATE( momentumflux_input_conversion(nzb:nzt+1)  )
+    ALLOCATE( heatflux_input_conversion(nzb:nzt+1) )
+    ALLOCATE( waterflux_input_conversion(nzb:nzt+1) )
+    ALLOCATE( momentumflux_input_conversion(nzb:nzt+1) )
+    ALLOCATE( heatflux_output_conversion(nzb:nzt+1) )
+    ALLOCATE( waterflux_output_conversion(nzb:nzt+1) )
     ALLOCATE( momentumflux_output_conversion(nzb:nzt+1) )
-    ALLOCATE( scalarflux_input_conversion(nzb:nzt+1)    )
-    ALLOCATE( scalarflux_output_conversion(nzb:nzt+1)   )
-    ALLOCATE( waterflux_input_conversion(nzb:nzt+1)     )
-    ALLOCATE( waterflux_output_conversion(nzb:nzt+1)    )
-
 
 !
 !-- Calculate flux conversion factors according to approximation and in-/output mode
@@ -364,26 +461,22 @@
 
         IF ( TRIM( flux_input_mode ) == 'kinematic' )  THEN
             heatflux_input_conversion(k)      = rho_air_zw(k)
-            momentumflux_input_conversion(k)  = rho_air_zw(k)
-            scalarflux_input_conversion(k)    = rho_air_zw(k)
             waterflux_input_conversion(k)     = rho_air_zw(k)
+            momentumflux_input_conversion(k)  = rho_air_zw(k)
         ELSEIF ( TRIM( flux_input_mode ) == 'dynamic' ) THEN
             heatflux_input_conversion(k)      = 1.0_wp / c_p
-            momentumflux_input_conversion(k)  = 1.0_wp
-            scalarflux_input_conversion(k)    = 1.0_wp
             waterflux_input_conversion(k)     = 1.0_wp / l_v
+            momentumflux_input_conversion(k)  = 1.0_wp
         ENDIF
 
         IF ( TRIM( flux_output_mode ) == 'kinematic' )  THEN
             heatflux_output_conversion(k)     = drho_air_zw(k)
-            momentumflux_output_conversion(k) = drho_air_zw(k)
-            scalarflux_output_conversion(k)   = drho_air_zw(k)
             waterflux_output_conversion(k)    = drho_air_zw(k)
+            momentumflux_output_conversion(k) = drho_air_zw(k)
         ELSEIF ( TRIM( flux_output_mode ) == 'dynamic' ) THEN
             heatflux_output_conversion(k)     = c_p
-            momentumflux_output_conversion(k) = 1.0_wp
-            scalarflux_output_conversion(k)   = 1.0_wp
             waterflux_output_conversion(k)    = l_v
+            momentumflux_output_conversion(k) = 1.0_wp
         ENDIF
 
         IF ( .NOT. humidity ) THEN
@@ -463,6 +556,40 @@
     ENDIF
 
 !
+!-- Arrays to store velocity data from t-dt and the phase speeds which are needed for radiation
+!-- boundary conditions.
+    IF ( bc_radiation_l )  THEN
+       ALLOCATE( u_m_l(nzb:nzt+1,nysg:nyng,1:2),                                                   &
+                 v_m_l(nzb:nzt+1,nysg:nyng,0:1),                                                   &
+                 w_m_l(nzb:nzt+1,nysg:nyng,0:1) )
+    ENDIF
+    IF ( bc_radiation_r )  THEN
+       ALLOCATE( u_m_r(nzb:nzt+1,nysg:nyng,nx-1:nx),                                               &
+                 v_m_r(nzb:nzt+1,nysg:nyng,nx-1:nx),                                               &
+                 w_m_r(nzb:nzt+1,nysg:nyng,nx-1:nx) )
+    ENDIF
+    IF ( bc_radiation_l  .OR.  bc_radiation_r )  THEN
+       ALLOCATE( c_u(nzb:nzt+1,nysg:nyng), c_v(nzb:nzt+1,nysg:nyng), c_w(nzb:nzt+1,nysg:nyng) )
+    ENDIF
+    IF ( bc_radiation_s )  THEN
+       ALLOCATE( u_m_s(nzb:nzt+1,0:1,nxlg:nxrg),                                                   &
+                 v_m_s(nzb:nzt+1,1:2,nxlg:nxrg),                                                   &
+                 w_m_s(nzb:nzt+1,0:1,nxlg:nxrg) )
+    ENDIF
+    IF ( bc_radiation_n )  THEN
+       ALLOCATE( u_m_n(nzb:nzt+1,ny-1:ny,nxlg:nxrg),                                               &
+                 v_m_n(nzb:nzt+1,ny-1:ny,nxlg:nxrg),                                               &
+                 w_m_n(nzb:nzt+1,ny-1:ny,nxlg:nxrg) )
+    ENDIF
+    IF ( bc_radiation_s  .OR.  bc_radiation_n )  THEN
+       ALLOCATE( c_u(nzb:nzt+1,nxlg:nxrg), c_v(nzb:nzt+1,nxlg:nxrg), c_w(nzb:nzt+1,nxlg:nxrg) )
+    ENDIF
+    IF ( bc_radiation_l  .OR.  bc_radiation_r  .OR.  bc_radiation_s  .OR.  bc_radiation_n )  THEN
+       ALLOCATE( c_u_m_l(nzb:nzt+1), c_v_m_l(nzb:nzt+1), c_w_m_l(nzb:nzt+1) )
+       ALLOCATE( c_u_m(nzb:nzt+1), c_v_m(nzb:nzt+1), c_w_m(nzb:nzt+1) )
+    ENDIF
+
+!
 !-- Initial assignment of the pointers
     IF ( .NOT. neutral )  THEN
        pt => pt_1;  pt_p => pt_2;  tpt_m => pt_3
@@ -483,18 +610,8 @@
     ENDIF
 
 !
-!-- Initialize potential temperature in case of neutral runs. Although in such a case the prognostic
-!-- equation for temperature isn't calculated, a non-initialized pt might cause aborts at other
-!-- locations, e.g. in TKE production terms, where the temperature gradient is used.
-    IF ( neutral )  pt = pt_surface
-!
 !-- Initialize surface arrays
     CALL init_surface_arrays
-!
-!-- Allocate arrays for surface data output
-    IF ( surface_output )  THEN
-       CALL surface_data_output_init_arrays
-    ENDIF
 !
 !-- Allocate arrays for other modules
     CALL module_interface_init_arrays
@@ -525,25 +642,25 @@
     sums_divold_l  = 0.0_wp
     sums_l_l       = 0.0_wp
     sums_wsts_bc_l = 0.0_wp
+
 !
-!-- Initialize model variables.
+!-- Initialize model variables
     IF ( TRIM( initializing_actions ) /= 'read_restart_data'  .AND.                                &
-         .NOT. cyclic_fill_initialization )                                                        &
-    THEN
+         TRIM( initializing_actions ) /= 'cyclic_fill' )  THEN
 !
-!--    Initialization with provided input data derived from larger-scale model.
-       IF ( INDEX( initializing_actions, 'read_from_file' ) /= 0 )  THEN
-          IF ( debug_output )  CALL debug_message( 'initializing with external data', 'start' )
+!--    Initialization with provided input data derived from larger-scale model
+       IF ( INDEX( initializing_actions, 'inifor' ) /= 0 )  THEN
+          IF ( debug_output )  CALL debug_message( 'initializing with INIFOR', 'start' )
 !
 !--       Read initial 1D profiles or 3D data from NetCDF file, depending on the provided
 !--       level-of-detail.
 !--       At the moment, only u, v, w, pt and q are provided.
           CALL netcdf_data_input_init_3d
 !
-!--       Please note, data from dynamic input file is from nzb+1 to nzt.
-!--       Bottom and top boundary conditions for profiles are already set (just after
+!--       Please note, Inifor provides data from nzb+1 to nzt.
+!--       Bottom and top boundary conditions for Inifor profiles are already set (just after
 !--       reading), so that this is not necessary here.
-!--       Depending on the provided level-of-detail, initial data is either stored on data
+!--       Depending on the provided level-of-detail, initial Inifor data is either stored on data
 !--       type (lod=1), or directly on 3D arrays (lod=2).
 !--       In order to obtain also initial profiles in case of lod=2 (which is required for e.g.
 !--       damping), average over 3D data.
@@ -651,7 +768,7 @@
           ug(nzb)   = ug(nzb+1)
           vg(nzb)   = vg(nzb+1)
 !
-!--       Set inital w to 0.
+!--       Set inital w to 0
           w = 0.0_wp
 
           IF ( passive_scalar )  THEN
@@ -664,25 +781,25 @@
 
 !
 !--       Set velocity components at non-atmospheric / oceanic grid points to zero.
-          u = MERGE( u, 0.0_wp, BTEST( topo_flags, 1 ) )
-          v = MERGE( v, 0.0_wp, BTEST( topo_flags, 2 ) )
-          w = MERGE( w, 0.0_wp, BTEST( topo_flags, 3 ) )
+          u = MERGE( u, 0.0_wp, BTEST( wall_flags_total_0, 1 ) )
+          v = MERGE( v, 0.0_wp, BTEST( wall_flags_total_0, 2 ) )
+          w = MERGE( w, 0.0_wp, BTEST( wall_flags_total_0, 3 ) )
 !
 !--       Initialize surface variables, e.g. friction velocity, momentum fluxes, etc.
           CALL  init_surfaces
 
-          IF ( debug_output )  CALL  debug_message( 'initializing with external data', 'end' )
+          IF ( debug_output )  CALL  debug_message( 'initializing with INIFOR', 'end' )
 !
-!--    Initialization via computed 1D-model profiles.
+!--    Initialization via computed 1D-model profiles
        ELSEIF ( INDEX( initializing_actions, 'set_1d-model_profiles' ) /= 0 )  THEN
 
           IF ( debug_output )  CALL  debug_message( 'initializing with 1D model profiles', 'start' )
 !
-!--       Use solutions of the 1D model as initial profiles.
-!--       Start 1D model.
+!--       Use solutions of the 1D model as initial profiles,
+!--       start 1D model
           CALL init_1d_model
 !
-!--       Transfer initial profiles to the arrays of the 3D model.
+!--       Transfer initial profiles to the arrays of the 3D model
           DO  i = nxlg, nxrg
              DO  j = nysg, nyng
                 pt(:,j,i) = pt_init
@@ -712,9 +829,9 @@
              hom(:,1,25,:) = SPREAD( l1d, 2, statistic_regions+1 )
           ENDIF
 !
-!--       Set velocities back to zero.
-          u = MERGE( u, 0.0_wp, BTEST( topo_flags, 1 ) )
-          v = MERGE( v, 0.0_wp, BTEST( topo_flags, 2 ) )
+!--       Set velocities back to zero
+          u = MERGE( u, 0.0_wp, BTEST( wall_flags_total_0, 1 ) )
+          v = MERGE( v, 0.0_wp, BTEST( wall_flags_total_0, 2 ) )
 !
 !--       WARNING: The extra boundary conditions set after running the 1D model impose an error on
 !--       -------- the divergence one layer below the topography; need to correct later
@@ -737,8 +854,7 @@
 
           IF ( debug_output )  CALL  debug_message( 'initializing with 1D model profiles', 'end' )
 
-       ELSEIF ( ( INDEX(initializing_actions, 'set_constant_profiles') /= 0 )  .OR.                 &
-                ( INDEX(initializing_actions, 'interpolate_from_parent') /= 0 ) )  THEN
+       ELSEIF ( INDEX(initializing_actions, 'set_constant_profiles') /= 0 )  THEN
 
           IF ( debug_output )  CALL  debug_message( 'initializing with constant profiles', 'start' )
 
@@ -754,21 +870,21 @@
           ENDDO
 !
 !--       Mask topography
-          u = MERGE( u, 0.0_wp, BTEST( topo_flags, 1 ) )
-          v = MERGE( v, 0.0_wp, BTEST( topo_flags, 2 ) )
+          u = MERGE( u, 0.0_wp, BTEST( wall_flags_total_0, 1 ) )
+          v = MERGE( v, 0.0_wp, BTEST( wall_flags_total_0, 2 ) )
 !
 !--       Set initial horizontal velocities at the lowest computational grid levels to zero in order
 !--       to avoid too small time steps caused by the diffusion limit in the initial phase of a run
 !--       (at k=1, dz/2 occurs in the limiting formula!).
 !--       Please note, in case land- or urban-surface model is used and a spinup is applied, masking
 !--       the lowest computational level is not possible as MOST as well as energy-balance
-!--       parametrizations will not work with zero wind velocity. For sake of comparison
-          IF ( ibc_uv_b /= 1  .AND.  .NOT. spinup  .AND.  .NOT. read_spinup_data )  THEN
+!--       parametrizations will not work with zero wind velocity.
+          IF ( ibc_uv_b /= 1  .AND.  .NOT. spinup )  THEN
              DO  i = nxlg, nxrg
                 DO  j = nysg, nyng
                    DO  k = nzb, nzt
-                      u(k,j,i) = MERGE( u(k,j,i), 0.0_wp, BTEST( topo_flags(k,j,i), 20 ) )
-                      v(k,j,i) = MERGE( v(k,j,i), 0.0_wp, BTEST( topo_flags(k,j,i), 21 ) )
+                      u(k,j,i) = MERGE( u(k,j,i), 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 20 ) )
+                      v(k,j,i) = MERGE( v(k,j,i), 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 21 ) )
                    ENDDO
                 ENDDO
              ENDDO
@@ -917,6 +1033,22 @@
        ENDIF
 
 !
+!--    If required, change the surface temperature at the start of the 3D run
+       IF ( pt_surface_initial_change /= 0.0_wp )  THEN
+          pt(nzb,:,:) = pt(nzb,:,:) + pt_surface_initial_change
+       ENDIF
+
+!
+!--    If required, change the surface humidity/scalar at the start of the 3D
+!--    run
+       IF ( humidity  .AND.  q_surface_initial_change /= 0.0_wp )                                  &
+          q(nzb,:,:) = q(nzb,:,:) + q_surface_initial_change
+
+       IF ( passive_scalar  .AND.  s_surface_initial_change /= 0.0_wp )                            &
+          s(nzb,:,:) = s(nzb,:,:) + s_surface_initial_change
+
+
+!
 !--    Initialize old and new time levels.
        tpt_m = 0.0_wp; tu_m = 0.0_wp; tv_m = 0.0_wp; tw_m = 0.0_wp
        pt_p = pt; u_p = u; v_p = v; w_p = w
@@ -935,12 +1067,12 @@
           CALL debug_message( 'initializing statistics, boundary conditions, etc.', 'end' )
        ENDIF
 
-    ELSEIF ( TRIM( initializing_actions ) == 'read_restart_data'  .OR.                             &
-             cyclic_fill_initialization )                                                          &
+    ELSEIF ( TRIM( initializing_actions ) == 'read_restart_data'  .OR.         &
+             TRIM( initializing_actions ) == 'cyclic_fill' )                   &
     THEN
 
        IF ( debug_output )  THEN
-          CALL debug_message( 'initialization in case of restart / cyclic_fill', 'start' )
+          CALL debug_message( 'initializing in case of restart / cyclic_fill', 'start' )
        ENDIF
 !
 !--    Initialize surface elements and its attributes, e.g. heat- and momentumfluxes, roughness,
@@ -952,9 +1084,9 @@
 !--    precursor run, hence, init_surfaces is called a second time after reading the restart data.
        CALL init_surfaces
 !
-!--    When reading prerun data for cyclic fill, read some of the global variables from the restart
-!--    data file which are required for initializing the inflow.
-       IF ( cyclic_fill_initialization )  THEN
+!--    When reading data for cyclic fill of 3D prerun data files, read some of the global variables
+!--    from the restart file which are required for initializing the inflow
+       IF ( TRIM( initializing_actions ) == 'cyclic_fill' )  THEN
 
 !
 !--       Blockwise I/O does not work together with MPI-I/O
@@ -990,7 +1122,7 @@
        ENDIF
 
 
-       IF ( cyclic_fill_initialization )  THEN
+       IF ( TRIM( initializing_actions ) == 'cyclic_fill' )  THEN
 
 !
 !--       In case of cyclic fill, call init_surfaces a second time, so that surface properties such
@@ -1012,7 +1144,7 @@
 !
 !--    In case of complex terrain and cyclic fill method as initialization, shift initial data in
 !--    the vertical direction for each point in the x-y-plane depending on local surface height.
-       IF ( terrain_following_mapping  .AND.  cyclic_fill_initialization )  THEN
+       IF ( complex_terrain  .AND.  TRIM( initializing_actions ) == 'cyclic_fill' )  THEN
           DO  i = nxlg, nxrg
              DO  j = nysg, nyng
                 nz_u_shift = topo_top_ind(j,i,1)
@@ -1032,8 +1164,137 @@
           ENDDO
        ENDIF
 !
+!--    Initialization of the turbulence recycling method
+       IF ( TRIM( initializing_actions ) == 'cyclic_fill'  .AND.  turbulent_inflow )  THEN
+!
+!--       First store the profiles to be used at the inflow.
+!--       These profiles are the (temporally) and horizontally averaged vertical profiles from the
+!--       prerun. Alternatively, prescribed profiles for u,v-components can be used.
+          ALLOCATE( mean_inflow_profiles(nzb:nzt+1,1:num_mean_inflow_profiles) )
+
+          IF ( use_prescribed_profile_data )  THEN
+             mean_inflow_profiles(:,1) = u_init            ! u
+             mean_inflow_profiles(:,2) = v_init            ! v
+          ELSE
+             mean_inflow_profiles(:,1) = hom_sum(:,1,0)    ! u
+             mean_inflow_profiles(:,2) = hom_sum(:,2,0)    ! v
+          ENDIF
+          mean_inflow_profiles(:,4) = hom_sum(:,4,0)       ! pt
+          IF ( humidity )  mean_inflow_profiles(:,6) = hom_sum(:,41,0)          ! q
+          IF ( passive_scalar )  mean_inflow_profiles(:,7) = hom_sum(:,115,0)   ! s
+
+!
+!--       In case of complex terrain, determine vertical displacement at inflow boundary and adjust
+!--       mean inflow profiles
+          IF ( complex_terrain )  THEN
+             IF ( nxlg <= 0  .AND.  nxrg >= 0  .AND.  nysg <= 0  .AND.  nyng >= 0 )  THEN
+                nz_u_shift_l = topo_top_ind(j,i,1)
+                nz_v_shift_l = topo_top_ind(j,i,2)
+                nz_w_shift_l = topo_top_ind(j,i,3)
+                nz_s_shift_l = topo_top_ind(j,i,0)
+             ELSE
+                nz_u_shift_l = 0
+                nz_v_shift_l = 0
+                nz_w_shift_l = 0
+                nz_s_shift_l = 0
+             ENDIF
+
+#if defined( __parallel )
+             CALL MPI_ALLREDUCE( nz_u_shift_l, nz_u_shift, 1, MPI_INTEGER, MPI_MAX, comm2d, ierr )
+             CALL MPI_ALLREDUCE( nz_v_shift_l, nz_v_shift, 1, MPI_INTEGER, MPI_MAX, comm2d, ierr )
+             CALL MPI_ALLREDUCE( nz_w_shift_l, nz_w_shift, 1, MPI_INTEGER, MPI_MAX, comm2d, ierr )
+             CALL MPI_ALLREDUCE( nz_s_shift_l, nz_s_shift, 1, MPI_INTEGER, MPI_MAX, comm2d, ierr )
+#else
+             nz_u_shift = nz_u_shift_l
+             nz_v_shift = nz_v_shift_l
+             nz_w_shift = nz_w_shift_l
+             nz_s_shift = nz_s_shift_l
+#endif
+
+             mean_inflow_profiles(:,1) = 0.0_wp
+             mean_inflow_profiles(nz_u_shift:nzt+1,1) = hom_sum(0:nzt+1-nz_u_shift,1,0)  ! u
+
+             mean_inflow_profiles(:,2) = 0.0_wp
+             mean_inflow_profiles(nz_v_shift:nzt+1,2) = hom_sum(0:nzt+1-nz_v_shift,2,0)  ! v
+
+             mean_inflow_profiles(nz_s_shift:nzt+1,4) = hom_sum(0:nzt+1-nz_s_shift,4,0)  ! pt
+
+          ENDIF
+
+!
+!--       If necessary, adjust the horizontal flow field to the prescribed profiles
+          IF ( use_prescribed_profile_data )  THEN
+             DO  i = nxlg, nxrg
+                DO  j = nysg, nyng
+                   DO  k = nzb, nzt+1
+                      u(k,j,i) = u(k,j,i) - hom_sum(k,1,0) + u_init(k)
+                      v(k,j,i) = v(k,j,i) - hom_sum(k,2,0) + v_init(k)
+                   ENDDO
+                ENDDO
+             ENDDO
+          ENDIF
+
+!
+!--       Use these mean profiles at the inflow (provided that Dirichlet conditions are used)
+          IF ( bc_dirichlet_l )  THEN
+             DO  j = nysg, nyng
+                DO  k = nzb, nzt+1
+                   u(k,j,nxlg:-1)  = mean_inflow_profiles(k,1)
+                   v(k,j,nxlg:-1)  = mean_inflow_profiles(k,2)
+                   w(k,j,nxlg:-1)  = 0.0_wp
+                   pt(k,j,nxlg:-1) = mean_inflow_profiles(k,4)
+                   IF ( humidity )  q(k,j,nxlg:-1)  = mean_inflow_profiles(k,6)
+                   IF ( passive_scalar )  s(k,j,nxlg:-1)  = mean_inflow_profiles(k,7)
+                ENDDO
+             ENDDO
+          ENDIF
+
+!
+!--       Calculate the damping factors to be used at the inflow. For a turbulent inflow the
+!--       turbulent fluctuations have to be limited vertically because otherwise the turbulent
+!--       inflow layer will grow in time.
+          IF ( inflow_damping_height == 9999999.9_wp )  THEN
+!
+!--          Default: use the inversion height calculated by the prerun; if this is zero,
+!--          inflow_damping_height must be explicitly specified.
+             IF ( hom_sum(nzb+6,pr_palm,0) /= 0.0_wp )  THEN
+                inflow_damping_height = hom_sum(nzb+6,pr_palm,0)
+             ELSE
+                WRITE( message_string, * ) 'inflow_damping_height must be ',                       &
+                                           'explicitly specified because&the inversion height ',   &
+                                           'calculated by the prerun is zero.'
+                CALL message( 'init_3d_model', 'PA0318', 1, 2, 0, 6, 0 )
+             ENDIF
+
+          ENDIF
+
+          IF ( inflow_damping_width == 9999999.9_wp )  THEN
+!
+!--          Default for the transition range: one tenth of the undamped layer
+             inflow_damping_width = 0.1_wp * inflow_damping_height
+
+          ENDIF
+
+          ALLOCATE( inflow_damping_factor(nzb:nzt+1) )
+
+          DO  k = nzb, nzt+1
+
+             IF ( zu(k) <= inflow_damping_height )  THEN
+                inflow_damping_factor(k) = 1.0_wp
+             ELSEIF ( zu(k) <= ( inflow_damping_height + inflow_damping_width ) )  THEN
+                inflow_damping_factor(k) = 1.0_wp -                                                &
+                                           ( zu(k) - inflow_damping_height ) / inflow_damping_width
+             ELSE
+                inflow_damping_factor(k) = 0.0_wp
+             ENDIF
+
+          ENDDO
+
+       ENDIF
+
+!
 !--    Inside buildings set velocities back to zero
-       IF ( cyclic_fill_initialization  .AND.  topography /= 'flat' )  THEN
+       IF ( TRIM( initializing_actions ) == 'cyclic_fill'  .AND.  topography /= 'flat' )  THEN
 !
 !--       Inside buildings set velocities back to zero.
 !--       Other scalars (pt, q, s, p, sa, ...) are ignored at present,
@@ -1041,25 +1302,26 @@
           DO  i = nxlg, nxrg
              DO  j = nysg, nyng
                 DO  k = nzb, nzt
-                   u(k,j,i) = MERGE( u(k,j,i), 0.0_wp, BTEST( topo_flags(k,j,i), 1 ) )
-                   v(k,j,i) = MERGE( v(k,j,i), 0.0_wp, BTEST( topo_flags(k,j,i), 2 ) )
-                   w(k,j,i) = MERGE( w(k,j,i), 0.0_wp, BTEST( topo_flags(k,j,i), 3 ) )
+                   u(k,j,i) = MERGE( u(k,j,i), 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 1 ) )
+                   v(k,j,i) = MERGE( v(k,j,i), 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 2 ) )
+                   w(k,j,i) = MERGE( w(k,j,i), 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 3 ) )
                 ENDDO
              ENDDO
           ENDDO
 
        ENDIF
+
 !
-!--    Calculate initial temperature field and other constants used in case of a sloping surface.
+!--    Calculate initial temperature field and other constants used in case of a sloping surface
        IF ( sloping_surface )  CALL init_slope
+
 !
-!--    Initialize new time levels (only done in order to set boundary values including ghost
-!--    points).
+!--    Initialize new time levels (only done in order to set boundary values including ghost points)
        pt_p = pt; u_p = u; v_p = v; w_p = w
        IF ( humidity )  THEN
           q_p = q
        ENDIF
-       IF ( passive_scalar )  s_p = s
+       IF ( passive_scalar )  s_p  = s
 !
 !--    Allthough tendency arrays are set in prognostic_equations, they have have to be predefined
 !--    here because they are used (but multiplied with 0) there before they are set.
@@ -1070,27 +1332,43 @@
        IF ( passive_scalar )  ts_m  = 0.0_wp
 
        IF ( debug_output )  THEN
-          CALL debug_message( 'initialization in case of restart / cyclic_fill', 'end' )
+          CALL debug_message( 'initializing in case of restart / cyclic_fill', 'end' )
        ENDIF
 
     ELSE
 !
 !--    Actually this part of the programm should not be reached
-       message_string = 'unknown initialization problem'
-       CALL message( 'init_3d_model', 'PAC0208', 1, 2, 0, 6, 0 )
+       message_string = 'unknown initializing problem'
+       CALL message( 'init_3d_model', 'PA0193', 1, 2, 0, 6, 0 )
     ENDIF
+
+
+    IF (  TRIM( initializing_actions ) /= 'read_restart_data' )  THEN
 !
-!-- If required, read surface spinup data from a previous run to initialize surfaces.
-!-- Please note that the surface spinup data will overwrite the previously initialized surface
-!-- Moreover, please note that these action needs to be done before the LSM and the USM are
-!-- initialized (i.e. before module_interface_init is invoked), else also the prognostic
-!-- time levels (_p variables) would need to be initialized.
-    IF ( read_spinup_data )  THEN
-       CALL location_message( 'Reading spinup data', 'start' )
-       CALL rrd_global_spinup
-       CALL rrd_local_spinup
-       CALL location_message( 'Reading spinup data', 'finished' )
+!--    Initialize old timelevels needed for radiation boundary conditions
+       IF ( bc_radiation_l )  THEN
+          u_m_l(:,:,:) = u(:,:,1:2)
+          v_m_l(:,:,:) = v(:,:,0:1)
+          w_m_l(:,:,:) = w(:,:,0:1)
+       ENDIF
+       IF ( bc_radiation_r )  THEN
+          u_m_r(:,:,:) = u(:,:,nx-1:nx)
+          v_m_r(:,:,:) = v(:,:,nx-1:nx)
+          w_m_r(:,:,:) = w(:,:,nx-1:nx)
+       ENDIF
+       IF ( bc_radiation_s )  THEN
+          u_m_s(:,:,:) = u(:,0:1,:)
+          v_m_s(:,:,:) = v(:,1:2,:)
+          w_m_s(:,:,:) = w(:,0:1,:)
+       ENDIF
+       IF ( bc_radiation_n )  THEN
+          u_m_n(:,:,:) = u(:,ny-1:ny,:)
+          v_m_n(:,:,:) = v(:,ny-1:ny,:)
+          w_m_n(:,:,:) = w(:,ny-1:ny,:)
+       ENDIF
+
     ENDIF
+
 !
 !-- Calculate the initial volume flow at the right and north boundary
     IF ( conserve_volume_flow )  THEN
@@ -1106,12 +1384,12 @@
                    volume_flow_initial_l(1) = volume_flow_initial_l(1) +                           &
                                               u_init(k) * dzw(k)                                   &
                                               * MERGE( 1.0_wp, 0.0_wp,                             &
-                                                       BTEST( topo_flags(k,j,nxr), 1 )             &
+                                                       BTEST( wall_flags_total_0(k,j,nxr), 1 )     &
                                                      )
 
                    volume_flow_area_l(1)    = volume_flow_area_l(1) + dzw(k)                       &
                                               * MERGE( 1.0_wp, 0.0_wp,                             &
-                                                       BTEST( topo_flags(k,j,nxr), 1 )             &
+                                                       BTEST( wall_flags_total_0(k,j,nxr), 1 )     &
                                                      )
                 ENDDO
              ENDDO
@@ -1123,11 +1401,11 @@
                    volume_flow_initial_l(2) = volume_flow_initial_l(2) +                           &
                                               v_init(k) * dzw(k)                                   &
                                               * MERGE( 1.0_wp, 0.0_wp,                             &
-                                                       BTEST( topo_flags(k,nyn,i), 2 )             &
+                                                       BTEST( wall_flags_total_0(k,nyn,i), 2 )     &
                                                      )
                    volume_flow_area_l(2)    = volume_flow_area_l(2) + dzw(k)                       &
                                               * MERGE( 1.0_wp, 0.0_wp,                             &
-                                                       BTEST( topo_flags(k,nyn,i), 2 )             &
+                                                       BTEST( wall_flags_total_0(k,nyn,i), 2 )     &
                                                      )
                 ENDDO
              ENDDO
@@ -1144,7 +1422,7 @@
           volume_flow_area    = volume_flow_area_l
 #endif
 
-       ELSEIF ( cyclic_fill_initialization )  THEN
+       ELSEIF ( TRIM( initializing_actions ) == 'cyclic_fill' )  THEN
 
           volume_flow_initial_l = 0.0_wp
           volume_flow_area_l    = 0.0_wp
@@ -1155,11 +1433,11 @@
                    volume_flow_initial_l(1) = volume_flow_initial_l(1) +                           &
                                               hom_sum(k,1,0) * dzw(k)                              &
                                               * MERGE( 1.0_wp, 0.0_wp,                             &
-                                                       BTEST( topo_flags(k,j,nx), 1 )              &
+                                                       BTEST( wall_flags_total_0(k,j,nx), 1 )      &
                                                      )
                    volume_flow_area_l(1)    = volume_flow_area_l(1) + dzw(k)                       &
                                               * MERGE( 1.0_wp, 0.0_wp,                             &
-                                                       BTEST( topo_flags(k,j,nx), 1 )              &
+                                                       BTEST( wall_flags_total_0(k,j,nx), 1 )      &
                                                      )
                 ENDDO
              ENDDO
@@ -1171,11 +1449,11 @@
                    volume_flow_initial_l(2) = volume_flow_initial_l(2) +                           &
                                               hom_sum(k,2,0) * dzw(k)                              &
                                               * MERGE( 1.0_wp, 0.0_wp,                             &
-                                                       BTEST( topo_flags(k,ny,i), 2 )              &
+                                                       BTEST( wall_flags_total_0(k,ny,i), 2 )      &
                                                      )
                    volume_flow_area_l(2)    = volume_flow_area_l(2) + dzw(k)                       &
                                               * MERGE( 1.0_wp, 0.0_wp,                             &
-                                                       BTEST( topo_flags(k,ny,i), 2 )              &
+                                                       BTEST( wall_flags_total_0(k,ny,i), 2 )      &
                                                      )
                 ENDDO
              ENDDO
@@ -1203,11 +1481,11 @@
                    volume_flow_initial_l(1) = volume_flow_initial_l(1) +                           &
                                               u(k,j,nx) * dzw(k)                                   &
                                               * MERGE( 1.0_wp, 0.0_wp,                             &
-                                                       BTEST( topo_flags(k,j,nx), 1 )              &
+                                                       BTEST( wall_flags_total_0(k,j,nx), 1 )      &
                                                      )
                    volume_flow_area_l(1)    = volume_flow_area_l(1) + dzw(k)                       &
                                               * MERGE( 1.0_wp, 0.0_wp,                             &
-                                                       BTEST( topo_flags(k,j,nx), 1 )              &
+                                                   BTEST( wall_flags_total_0(k,j,nx), 1 )          &
                                                      )
                 ENDDO
              ENDDO
@@ -1219,11 +1497,11 @@
                    volume_flow_initial_l(2) = volume_flow_initial_l(2) +                           &
                                               v(k,ny,i) * dzw(k)                                   &
                                               * MERGE( 1.0_wp, 0.0_wp,                             &
-                                                       BTEST( topo_flags(k,ny,i), 2 )              &
+                                                       BTEST( wall_flags_total_0(k,ny,i), 2 )      &
                                                      )
                    volume_flow_area_l(2)    = volume_flow_area_l(2) + dzw(k)                       &
                                               * MERGE( 1.0_wp, 0.0_wp,                             &
-                                                       BTEST( topo_flags(k,ny,i), 2 )              &
+                                                       BTEST( wall_flags_total_0(k,ny,i), 2 )      &
                                                      )
                 ENDDO
              ENDDO
@@ -1258,6 +1536,10 @@
 !-- routine from netcdf_data_input_mod is called to read a 2D array.
     IF ( input_pids_static )  THEN
 !
+!--    Allocate memory for possible static input
+       ALLOCATE( tmp_2d%var(nys:nyn,nxl:nxr) )
+       tmp_2d%var = 0.0_wp
+!
 !--    Open the static input file
 #if defined( __netcdf )
        CALL open_read_file( TRIM( input_file_static ) //                                           &
@@ -1269,93 +1551,84 @@
        ALLOCATE( vars_pids(1:num_var_pids) )
        CALL inquire_variable_names( pids_id, vars_pids )
 !
-!--    Allocate memory for possible static input
-       ALLOCATE( tmp_2d%var(nys:nyn,nxl:nxr) )
-!
 !--    Input roughness length.
        IF ( check_existence( vars_pids, 'z0' ) )  THEN
-
-          tmp_2d%var = 0.0_wp
 !
 !--       Read _FillValue attribute
           CALL get_attribute( pids_id, char_fill, tmp_2d%fill, .FALSE., 'z0' )
 !
 !--       Read variable
           CALL get_variable( pids_id, 'z0', tmp_2d%var, nxl, nxr, nys, nyn )
-          CALL add_ghost_layers( tmp_2d%var )
-          CALL exchange_horiz_2d( tmp_2d%var )
-          CALL set_lateral_neumann_bc( tmp_2d%var )
 !
 !--       Initialize roughness length. Note, z0 will be only initialized at default-type surfaces.
 !--       At natural or urban z0 is implicitly initialized by the respective parameter lists.
 !--       Initialize horizontal surface elements.
+          CALL init_single_surface_properties( surf_def_h(0)%z0, tmp_2d%var, surf_def_h(0)%ns,     &
+                                               tmp_2d%fill, surf_def_h(0)%i, surf_def_h(0)%j )
+!
+!--       Initialize roughness also at vertical surface elements.
 !--       Note, the actual 2D input arrays are only defined on the subdomain. Therefore, pass the
 !--       index arrays with their respective offset values.
-          CALL init_single_surface_properties( surf_def%z0, tmp_2d%var, surf_def%ns, tmp_2d%fill,  &
-                                               surf_def%i+surf_def%ioff, surf_def%j+surf_def%joff, &
-                                               surf_def%k+surf_def%koff)
+          DO  l = 0, 3
+             CALL init_single_surface_properties( surf_def_v(l)%z0, tmp_2d%var, surf_def_v(l)%ns,  &
+                                                  tmp_2d%fill, surf_def_v(l)%i+surf_def_v(l)%ioff, &
+                                                  surf_def_v(l)%j+surf_def_v(l)%joff )
+          ENDDO
+
        ENDIF
 !
 !--    Input surface sensible heat flux.
        IF ( check_existence( vars_pids, 'shf' ) )  THEN
-
-          tmp_2d%var = 0.0_wp
 !
 !--       Read _FillValue attribute
           CALL get_attribute( pids_id, char_fill, tmp_2d%fill, .FALSE., 'shf' )
 !
 !--       Read variable
           CALL get_variable( pids_id, 'shf', tmp_2d%var, nxl, nxr, nys, nyn )
-          CALL add_ghost_layers( tmp_2d%var )
-          CALL exchange_horiz_2d( tmp_2d%var )
-          CALL set_lateral_neumann_bc( tmp_2d%var )
+!
+!--       Initialize heat flux. Note, shf will be only initialized at default-type surfaces. At
+!--       natural or urban shf is implicitly initialized by the respective parameter lists.
+!--       Initialize horizontal surface elements.
+          CALL init_single_surface_properties( surf_def_h(0)%shf, tmp_2d%var, surf_def_h(0)%ns,    &
+                                               tmp_2d%fill, surf_def_h(0)%i, surf_def_h(0)%j )
+!
+!--       Initialize heat flux also at vertical surface elements.
+!--       Note, the actual 2D input arrays are only defined on the subdomain. Therefore, pass the
+!--       index arrays with their respective offset values.
+          DO  l = 0, 3
+             CALL init_single_surface_properties( surf_def_v(l)%shf, tmp_2d%var, surf_def_v(l)%ns, &
+                                                  tmp_2d%fill, surf_def_v(l)%i+surf_def_v(l)%ioff, &
+                                                  surf_def_v(l)%j+surf_def_v(l)%joff )
+          ENDDO
 
-          CALL init_single_surface_properties( surf_def%shf, tmp_2d%var, surf_def%ns, tmp_2d%fill, &
-                                               surf_def%i+surf_def%ioff, surf_def%j+surf_def%joff, &
-                                               surf_def%k+surf_def%koff, heatflux_input_conversion )
        ENDIF
 !
-!--    Input surface latent heat flux.
-       IF ( humidity )  THEN
-          IF ( check_existence( vars_pids, 'qsws' ) )  THEN
+!--    Input surface sensible heat flux.
+       IF ( check_existence( vars_pids, 'qsws' ) )  THEN
+!
+!--       Read _FillValue attribute
+          CALL get_attribute( pids_id, char_fill, tmp_2d%fill,                 &
+                              .FALSE., 'qsws' )
+!
+!--       Read variable
+          CALL get_variable( pids_id, 'qsws', tmp_2d%var,                      &
+                             nxl, nxr, nys, nyn )
+!
+!--       Initialize latent heat flux. Note, qsws will be only initialized at default-type surfaces.
+!--       At natural or urban qsws is implicitly initialized by the respective parameter lists.
+!--       Initialize horizontal surface elements.
+          CALL init_single_surface_properties( surf_def_h(0)%qsws, tmp_2d%var, surf_def_h(0)%ns,   &
+                                               tmp_2d%fill, surf_def_h(0)%i, surf_def_h(0)%j )
+!
+!--       Initialize latent heat flux also at vertical surface elements.
+!--       Note, the actual 2D input arrays are only defined on the subdomain. Therefore, pass the
+!--       index arrays with their respective offset values.
+          DO  l = 0, 3
+             CALL init_single_surface_properties( surf_def_v(l)%qsws, tmp_2d%var, surf_def_v(l)%ns,&
+                                                  tmp_2d%fill, surf_def_v(l)%i+surf_def_v(l)%ioff, &
+                                                  surf_def_v(l)%j+surf_def_v(l)%joff )
+          ENDDO
 
-             tmp_2d%var = 0.0_wp
-!
-!--          Read _FillValue attribute
-             CALL get_attribute( pids_id, char_fill, tmp_2d%fill, .FALSE., 'qsws' )
-!
-!--          Read variable
-             CALL get_variable( pids_id, 'qsws', tmp_2d%var, nxl, nxr, nys, nyn )
-             CALL add_ghost_layers( tmp_2d%var )
-             CALL exchange_horiz_2d( tmp_2d%var )
-             CALL set_lateral_neumann_bc( tmp_2d%var )
-
-             CALL init_single_surface_properties( surf_def%qsws, tmp_2d%var, surf_def%ns, tmp_2d%fill, &
-                                                  surf_def%i+surf_def%ioff, surf_def%j+surf_def%joff,  &
-                                                  surf_def%k+surf_def%koff, waterflux_input_conversion )
-          ENDIF
-       ENDIF
-!
-!--    Input passive scalar flux.
-       IF ( passive_scalar )  THEN
-          IF ( check_existence( vars_pids, 'ssws' ) )  THEN
-
-             tmp_2d%var = 0.0_wp
-!
-!--          Read _FillValue attribute
-             CALL get_attribute( pids_id, char_fill, tmp_2d%fill, .FALSE., 'ssws' )
-!
-!--          Read variable
-             CALL get_variable( pids_id, 'ssws', tmp_2d%var, nxl, nxr, nys, nyn )
-             CALL add_ghost_layers( tmp_2d%var )
-             CALL exchange_horiz_2d( tmp_2d%var )
-             CALL set_lateral_neumann_bc( tmp_2d%var )
-
-             CALL init_single_surface_properties( surf_def%ssws, tmp_2d%var, surf_def%ns,          &
-                                                  tmp_2d%fill, surf_def%i+surf_def%ioff,           &
-                                                  surf_def%j+surf_def%joff,                        &
-                                                  surf_def%k+surf_def%koff, rho_air_zw )
-          ENDIF
        ENDIF
 !
 !--    Additional variables, can be initialized the
@@ -1363,11 +1636,11 @@
 
 !
 !--    Finally, close the input file and deallocate temporary arrays
-       DEALLOCATE( tmp_2d%var )
        DEALLOCATE( vars_pids )
 
        CALL close_input_file( pids_id )
 #endif
+       DEALLOCATE( tmp_2d%var )
     ENDIF
 !
 !-- Finally, if random_heatflux is set, disturb shf at horizontal surfaces. Actually, this should be
@@ -1375,30 +1648,15 @@
 !-- this would create a ring dependency, hence, it is done here. Maybe delete disturb_heatflux and
 !-- tranfer the respective code directly into the initialization in surface_mod.
     IF ( TRIM( initializing_actions ) /= 'read_restart_data'  .AND.                                &
-         .NOT. cyclic_fill_initialization )                                                        &
-    THEN
+         TRIM( initializing_actions ) /= 'cyclic_fill' )  THEN
+
        IF ( use_surface_fluxes  .AND.  constant_heatflux  .AND.  random_heatflux )  THEN
-          IF ( surf_def%ns >= 1 )  CALL disturb_heatflux( surf_def )
-          IF ( surf_lsm%ns >= 1 )  CALL disturb_heatflux( surf_lsm )
-          IF ( surf_usm%ns >= 1 )  CALL disturb_heatflux( surf_usm )
+          IF ( surf_def_h(0)%ns >= 1 )  CALL disturb_heatflux( surf_def_h(0) )
+          IF ( surf_lsm_h(0)%ns >= 1 )  CALL disturb_heatflux( surf_lsm_h(0) )
+          IF ( surf_usm_h(0)%ns >= 1 )  CALL disturb_heatflux( surf_usm_h(0) )
        ENDIF
     ENDIF
-!
-!-- Initialize and count number of grid points used to calculate domain-averages
-!-- including/excluding topography.
-    ALLOCATE( mean_surface_level_height(0:statistic_regions),                                      &
-              mean_surface_level_height_l(0:statistic_regions),                                    &
-              ngp_2dh(0:statistic_regions),                                                        &
-              ngp_2dh_l(0:statistic_regions),                                                      &
-              ngp_3d(0:statistic_regions),                                                         &
-              ngp_3d_inner(0:statistic_regions),                                                   &
-              ngp_3d_inner_l(0:statistic_regions),                                                 &
-              ngp_3d_inner_tmp(0:statistic_regions) )
 
-    ALLOCATE( ngp_2dh_outer(nzb:nzt+1,0:statistic_regions),                                        &
-              ngp_2dh_outer_l(nzb:nzt+1,0:statistic_regions),                                      &
-              ngp_2dh_s_inner(nzb:nzt+1,0:statistic_regions),                                      &
-              ngp_2dh_s_inner_l(nzb:nzt+1,0:statistic_regions) )
 !
 !-- Compute total sum of grid points and the mean surface level height for each statistic region.
 !-- These are mainly used for horizontal averaging of turbulence statistics.
@@ -1431,25 +1689,39 @@
 !--             Determine mean surface-level height. In case of downward-facing walls are present,
 !--             more than one surface level exist.
 !--             In this case, use the lowest surface-level height.
-                mean_surface_level_height_l(sr) = mean_surface_level_height_l(sr) +                &
-                                                  zw(topo_top_ind(j,i,3))
+                IF ( surf_def_h(0)%start_index(j,i) <= surf_def_h(0)%end_index(j,i) )  THEN
+                   m = surf_def_h(0)%start_index(j,i)
+                   k = surf_def_h(0)%k(m)
+                   mean_surface_level_height_l(sr) = mean_surface_level_height_l(sr) + zw(k-1)
+                ENDIF
+                IF ( surf_lsm_h(0)%start_index(j,i) <= surf_lsm_h(0)%end_index(j,i) )  THEN
+                   m = surf_lsm_h(0)%start_index(j,i)
+                   k = surf_lsm_h(0)%k(m)
+                   mean_surface_level_height_l(sr) = mean_surface_level_height_l(sr) + zw(k-1)
+                ENDIF
+                IF ( surf_usm_h(0)%start_index(j,i) <= surf_usm_h(0)%end_index(j,i) )  THEN
+                   m = surf_usm_h(0)%start_index(j,i)
+                   k = surf_usm_h(0)%k(m)
+                   mean_surface_level_height_l(sr) = mean_surface_level_height_l(sr) + zw(k-1)
+                ENDIF
+
+                k_surf = k - 1
 
                 DO  k = nzb, nzt+1
 !
-!--                xy-grid points above topography.
-!--                Calculate the number of atmosphere grid points not bounded by any walls
-!--                (ngp_2dh_outer) indicated by bit 24, as well as the number of atmosphere grid
-!--                points (ngp_2dh_s_inner) including boundary values, indicated by bit 22.
+!--                xy-grid points above topography
                    ngp_2dh_outer_l(k,sr) = ngp_2dh_outer_l(k,sr)     +                             &
-                                           MERGE( 1, 0, BTEST( topo_flags(k,j,i), 24 ) )
+                                           MERGE( 1, 0, BTEST( wall_flags_total_0(k,j,i), 24 ) )
 
                    ngp_2dh_s_inner_l(k,sr) = ngp_2dh_s_inner_l(k,sr) +                             &
-                                             MERGE( 1, 0, BTEST( topo_flags(k,j,i), 22 ) )
+                                             MERGE( 1, 0, BTEST( wall_flags_total_0(k,j,i), 22 ) )
 
                 ENDDO
 !
 !--             All grid points of the total domain above topography
-                ngp_3d_inner_l(sr) = ngp_3d_inner_l(sr) + ( nz - topo_top_ind(j,i,0) + 2 )
+                ngp_3d_inner_l(sr) = ngp_3d_inner_l(sr) + ( nz - k_surf + 2 )
+
+
 
              ENDIF
           ENDDO
@@ -1495,37 +1767,11 @@
 
     DEALLOCATE( mean_surface_level_height_l, ngp_2dh_l, ngp_2dh_outer_l, ngp_3d_inner_l,           &
                 ngp_3d_inner_tmp )
-!
-!-- Compute number of prognostic w-grid points. This is only required for mean vertical velocity
-!-- removal in case of bottom and top Neumann boundary conditions before the pressure solver is
-!-- invoked. Note, the removal will not be done for offline nested simulations, and for only nested
-!-- simulations, where childs do not cover the complete root domain.
-    IF ( ibc_p_b == 1  .AND.  ibc_p_t == 1  .AND.  .NOT. nesting_offline  .AND.                    &
-         .NOT. ( child_domain  .AND.  nesting_bounds /= 'vertical_only' ) )  THEN
-       ALLOCATE( ngp_2dh_wgrid(nzb+1:nzt) )
-       ngp_2dh_wgrid = 0
-       DO  i = nxl, nxr
-          DO  j = nys, nyn
-             DO  k = nzb+1, nzt
-                ngp_2dh_wgrid(k) = ngp_2dh_wgrid(k) + MERGE( 1, 0, BTEST( topo_flags(k,j,i), 3 ) )
-             ENDDO
-          ENDDO
-       ENDDO
-#if defined( __parallel )
-       IF ( collective_wait )  CALL MPI_BARRIER( comm2d, ierr )
-       CALL MPI_ALLREDUCE( MPI_IN_PLACE, ngp_2dh_wgrid(1), nzt-nzb, MPI_INTEGER, MPI_SUM, comm2d, ierr )
-#endif
-!
-!--    To avoid divisions by zero (this may happen if an entire prognostic level is occupied by
-!--    topography) but also to avoid recurrent checks on this, set a minimum value of 1
-!--    (at these levels there won't be any correction at all).
-       ngp_2dh_wgrid = MERGE( 1, ngp_2dh_wgrid, ngp_2dh_wgrid == 0 )
-    ENDIF
 
 !
-!-- Initializing actions for all modules which impact the boundary conditions and need to be
-!-- initialized before the pressure solver is called.
-    CALL module_interface_init_before_pressure_solver
+!-- Initializae 3D offline nesting in COSMO model and read data from
+!-- external NetCDF file.
+    IF ( nesting_offline )  CALL nesting_offl_init
 !
 !-- Initialize quantities for special advections schemes
     CALL init_advec
@@ -1535,8 +1781,7 @@
 !-- remove the divergences from the velocity field at the initial stage
     IF ( create_disturbances  .AND.  disturbance_energy_limit /= 0.0_wp  .AND.                     &
          TRIM( initializing_actions ) /= 'read_restart_data'  .AND.                                &
-         .NOT. cyclic_fill_initialization )                                                        &
-    THEN
+         TRIM( initializing_actions ) /= 'cyclic_fill' )  THEN
 
        IF ( debug_output )  THEN
           CALL debug_message( 'creating disturbances + applying pressure solver', 'start' )
@@ -1557,7 +1802,14 @@
 !$ACC COPY(p(nzb:nzt+1,nysg:nyng,nxlg:nxrg)) &
 !$ACC COPYIN(rho_air(nzb:nzt+1), rho_air_zw(nzb:nzt+1)) &
 !$ACC COPYIN(ddzu(1:nzt+1), ddzw(1:nzt+1)) &
-!$ACC COPYIN(topo_flags(nzb:nzt+1,nysg:nyng,nxlg:nxrg))
+!$ACC COPYIN(wall_flags_total_0(nzb:nzt+1,nysg:nyng,nxlg:nxrg)) &
+!$ACC COPYIN(bc_h(0:1)) &
+!$ACC COPYIN(bc_h(0)%i(1:bc_h(0)%ns)) &
+!$ACC COPYIN(bc_h(0)%j(1:bc_h(0)%ns)) &
+!$ACC COPYIN(bc_h(0)%k(1:bc_h(0)%ns)) &
+!$ACC COPYIN(bc_h(1)%i(1:bc_h(1)%ns)) &
+!$ACC COPYIN(bc_h(1)%j(1:bc_h(1)%ns)) &
+!$ACC COPYIN(bc_h(1)%k(1:bc_h(1)%ns))
 
        n_sor = nsor_ini
        CALL pres
@@ -1584,7 +1836,7 @@
           IF ( ( pt_surface * exner_function( surface_pressure * 100.0_wp ) - g/c_p * zu(k) )      &
                  < 0.0_wp )  THEN
              WRITE( message_string, * )  'absolute temperature < 0.0 at zu(', k, ') = ', zu(k)
-             CALL message( 'init_3d_model', 'PAC0209', 1, 2, 0, 6, 0 )
+             CALL message( 'init_3d_model', 'PA0142', 1, 2, 0, 6, 0 )
           ENDIF
        ENDDO
 
@@ -1606,12 +1858,11 @@
 !-- If required, initialize particles
     IF ( agents_active )  CALL mas_init
 !
-!-- Initializing actions for all other modules which can be initialized after the pressure
-!-- solver has been called.
-    CALL module_interface_init_after_pressure_solver
+!-- Initialization of synthetic turbulence generator
+    IF ( use_syn_turb_gen )  CALL stg_init
 !
-!-- Initialize mesoscale offline nesting for other modules that do not modify the flow field.
-    CALL nesting_offl_init_modules
+!-- Initializing actions for all other modules
+    CALL module_interface_init
 !
 !-- Initialize surface layer (done after LSM as roughness length are required for initialization
     IF ( constant_flux_layer )  CALL init_surface_layer_fluxes
@@ -1624,9 +1875,6 @@
 !
 !-- Perform post-initializing checks for all other modules
     CALL module_interface_init_checks
-!
-!-- Add other module specific timeseries
-    CALL module_interface_check_data_output_ts( dots_max, dots_num, dots_label, dots_unit )
 
 !
 !-- Initialize surface forcing corresponding to large-scale forcing. Therein,
@@ -1761,23 +2009,12 @@
 !-- Input binary data file is not needed anymore. This line must be placed after call of user_init!
     CALL close_file( 13 )
 !
-!-- Finally, initialize new time levels again. This is to guarantee that boundary values
-!-- are set adequately.
-    pt_p = pt; u_p = u; v_p = v; w_p = w
-    IF ( humidity )  THEN
-       q_p = q
-    ENDIF
-    IF ( passive_scalar )  s_p = s
-!
-!-- In case of nesting/coupling, put a barrier to assure that all parent and child domains finished
+!-- In case of nesting, put an barrier to assure that all parent and child domains finished
 !-- initialization.
-    IF ( nested_run  .OR.  atmosphere_ocean_coupled_run )  THEN
 #if defined( __parallel )
-       CALL MPI_BARRIER( MPI_COMM_WORLD, ierr )
-#else
-       CONTINUE
+    IF ( nested_run )  CALL MPI_BARRIER( MPI_COMM_WORLD, ierr )
 #endif
-    ENDIF
+
 
     CALL location_message( 'model initialization', 'finished' )
 

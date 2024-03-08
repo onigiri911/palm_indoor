@@ -13,10 +13,30 @@
 ! You should have received a copy of the GNU General Public License along with PALM. If not, see
 ! <http://www.gnu.org/licenses/>.
 !
-! Copyright 1997-2021 Leibniz Universitaet Hannover
+! Copyright 1997-2020 Leibniz Universitaet Hannover
 !--------------------------------------------------------------------------------------------------!
 !
 !
+! Current revisions:
+! -----------------
+!
+!
+! Former revisions:
+! -----------------
+! $Id: random_gauss.f90 4592 2020-07-08 09:56:29Z raasch $
+! File re-formatted to follow the PALM coding standard
+!
+! 4360 2020-01-07 11:25:50Z suehring
+! Corrected "Former revisions" section
+!
+! 3655 2019-01-07 16:51:22Z knoop
+! Corrected "Former revisions" section
+!
+! Revision 1.1  1998/03/25 20:09:47  raasch
+! Initial revision
+!
+!
+!--------------------------------------------------------------------------------------------------!
 ! Description:
 ! ------------
 !> Generates a gaussian distributed random number (mean value 1, sigma = 1)

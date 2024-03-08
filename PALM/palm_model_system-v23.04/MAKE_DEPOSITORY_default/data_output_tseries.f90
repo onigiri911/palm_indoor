@@ -13,8 +13,27 @@
 ! You should have received a copy of the GNU General Public License along with PALM. If not, see
 ! <http://www.gnu.org/licenses/>.
 !
-! Copyright 1997-2021 Leibniz Universitaet Hannover
+! Copyright 1997-2020 Leibniz Universitaet Hannover
 !--------------------------------------------------------------------------------------------------!
+!
+! Current revisions:
+! -----------------
+! 
+! 
+! Former revisions:
+! -----------------
+! $Id: data_output_tseries.f90 4583 2020-06-29 12:36:47Z raasch $
+! file re-formatted to follow the PALM coding standard
+!
+! 4360 2020-01-07 11:25:50Z suehring
+! Corrected "Former revisions" section
+!
+! 3655 2019-01-07 16:51:22Z knoop
+! unused format removed
+!
+! Revision 1.1  1998/03/03 08:00:13  raasch
+! Initial revision
+!
 !
 ! Description:
 ! ------------
@@ -23,13 +42,12 @@
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE data_output_tseries
 
+
     USE control_parameters,                                                                        &
-        ONLY:  dots_time_count,                                                                    &
-               time_since_reference_point
+        ONLY:  dots_time_count, time_since_reference_point
 
     USE cpulog,                                                                                    &
-        ONLY:  cpu_log,                                                                            &
-               log_point
+        ONLY:  cpu_log, log_point
 
     USE kinds
 
@@ -37,23 +55,17 @@
     USE NETCDF
 #endif
     USE netcdf_interface,                                                                          &
-        ONLY:  dots_num,                                                                           &
-               id_set_ts,                                                                          &
-               id_var_dots,                                                                        &
-               id_var_time_ts,                                                                     &
-               nc_stat,                                                                            &
-               netcdf_handle_error
+        ONLY:  dots_num, id_set_ts, id_var_dots, id_var_time_ts, nc_stat, netcdf_handle_error
 
     USE pegrid
 
     USE profil_parameter
 
     USE statistics,                                                                                &
-        ONLY:  flow_statistics_called,                                                             &
-               statistic_regions,                                                                  &
-               ts_value
+        ONLY:  flow_statistics_called, statistic_regions, ts_value
 
     IMPLICIT NONE
+
 
     INTEGER(iwp) ::  i  !<
     INTEGER(iwp) ::  sr !<

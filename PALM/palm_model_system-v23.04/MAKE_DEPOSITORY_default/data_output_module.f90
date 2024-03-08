@@ -13,8 +13,38 @@
 ! You should have received a copy of the GNU General Public License along with PALM. If not, see
 ! <http://www.gnu.org/licenses/>.
 !
-! Copyright 2019-2021 Leibniz Universitaet Hannover
+! Copyright 2019-2020 Leibniz Universitaet Hannover
 !--------------------------------------------------------------------------------------------------!
+!
+! Current revisions:
+! ------------------
+!
+!
+! Former revisions:
+! -----------------
+! $Id: data_output_module.f90 4597 2020-07-09 19:21:53Z gronemeier $
+! bugfix: - write unlimited dimension in netcdf4-parallel mode
+! new   : - added optional argument to dom_def_dim to allow that dimension variables can be written
+!           by every PE
+!
+! 4579 2020-06-25 20:05:07Z gronemeier
+! corrected formatting to follow PALM coding standard
+!
+! 4577 2020-06-25 09:53:58Z raasch
+! file re-formatted to follow the PALM coding standard
+!
+! 4500 2020-04-17 10:12:45Z suehring
+! Avoid uninitialized variables
+!
+! 4481 2020-03-31 18:55:54Z maronga
+! Enable character-array output
+!
+! 4147 2019-08-07 09:42:31Z gronemeier
+! corrected indentation according to coding standard
+!
+! 4141 2019-08-05 12:24:51Z gronemeier
+! Initial revision
+!
 !
 ! Authors:
 ! --------
@@ -46,42 +76,37 @@
 !> 'dom_database_debug_output'.
 !>
 !> @todo Convert variable if type of given values do not fit specified type.
-!> @todo Adapt new write_mode also for binary output.
 !--------------------------------------------------------------------------------------------------!
  MODULE data_output_module
 
     USE kinds
 
     USE data_output_netcdf4_module,                                                                &
-        ONLY:  netcdf4_finalize,                                                                   &
-               netcdf4_get_error_message,                                                          &
-               netcdf4_init_dimension,                                                             &
-               netcdf4_init_module,                                                                &
-               netcdf4_init_variable,                                                              &
-               netcdf4_open_file,                                                                  &
-               netcdf4_stop_file_header_definition,                                                &
-               netcdf4_write_attribute,                                                            &
-               netcdf4_write_variable
+       ONLY: netcdf4_finalize,                                                                     &
+             netcdf4_get_error_message,                                                            &
+             netcdf4_init_dimension,                                                               &
+             netcdf4_init_module,                                                                  &
+             netcdf4_init_variable,                                                                &
+             netcdf4_open_file,                                                                    &
+             netcdf4_stop_file_header_definition,                                                  &
+             netcdf4_write_attribute,                                                              &
+             netcdf4_write_variable
 
     USE data_output_binary_module,                                                                 &
-        ONLY:  binary_finalize,                                                                    &
-               binary_get_error_message,                                                           &
-               binary_init_dimension,                                                              &
-               binary_init_module,                                                                 &
-               binary_init_variable,                                                               &
-               binary_open_file,                                                                   &
-               binary_stop_file_header_definition,                                                 &
-               binary_write_attribute,                                                             &
-               binary_write_variable
+       ONLY: binary_finalize,                                                                      &
+             binary_get_error_message,                                                             &
+             binary_init_dimension,                                                                &
+             binary_init_module,                                                                   &
+             binary_init_variable,                                                                 &
+             binary_open_file,                                                                     &
+             binary_stop_file_header_definition,                                                   &
+             binary_write_attribute,                                                               &
+             binary_write_variable
 
     IMPLICIT NONE
 
     INTEGER, PARAMETER ::  charlen = 100  !< maximum length of character variables
     INTEGER, PARAMETER ::  no_id = -1     !< default ID if no ID was assigned
-
-    CHARACTER(LEN=*), PARAMETER ::  write_mode_collective  = 'collective'   !< write data collective by all ranks
-    CHARACTER(LEN=*), PARAMETER ::  write_mode_independent = 'independent'  !< write data independent by all ranks
-    CHARACTER(LEN=*), PARAMETER ::  write_mode_master_only = 'master-only'  !< write data only by master rank
 
     TYPE attribute_type
        CHARACTER(LEN=charlen) ::  data_type = ''  !< data type
@@ -97,8 +122,8 @@
     TYPE variable_type
        CHARACTER(LEN=charlen) ::  data_type = ''                              !< data type
        CHARACTER(LEN=charlen) ::  name                                        !< variable name
-       CHARACTER(LEN=charlen) ::  write_mode = write_mode_collective          !< defines how ranks should write data to file
        INTEGER                ::  id = no_id                                  !< id within file
+       LOGICAL                ::  write_only_by_master_rank = .FALSE.         !< true if only master rank shall write variable
        CHARACTER(LEN=charlen), DIMENSION(:), ALLOCATABLE ::  dimension_names  !< list of dimension names used by variable
        INTEGER,                DIMENSION(:), ALLOCATABLE ::  dimension_ids    !< list of dimension ids used by variable
        TYPE(attribute_type),   DIMENSION(:), ALLOCATABLE ::  attributes       !< list of attributes
@@ -107,12 +132,12 @@
     TYPE dimension_type
        CHARACTER(LEN=charlen) ::  data_type = ''                            !< data type
        CHARACTER(LEN=charlen) ::  name                                      !< dimension name
-       CHARACTER(LEN=charlen) ::  write_mode = write_mode_master_only       !< defines how ranks should write data to file
        INTEGER                ::  id = no_id                                !< dimension id within file
        INTEGER                ::  length                                    !< length of dimension
        INTEGER                ::  length_mask                               !< length of masked dimension
        INTEGER                ::  variable_id = no_id                       !< associated variable id within file
        LOGICAL                ::  is_masked = .FALSE.                       !< true if masked
+       LOGICAL                ::  write_only_by_master_rank = .FALSE.       !< true if only master rank shall write variable
        INTEGER,         DIMENSION(2)              ::  bounds                !< lower and upper bound of dimension
        INTEGER,         DIMENSION(:), ALLOCATABLE ::  masked_indices        !< list of masked indices of dimension
        INTEGER(KIND=1), DIMENSION(:), ALLOCATABLE ::  masked_values_int8    !< masked dimension values if 16bit integer
@@ -240,23 +265,6 @@
 !> output files. If multiple output groups (groups of MPI ranks, defined by
 !> 'mpi_comm_of_output_group') exist, a unique file suffix must be given for each group. This
 !> prevents that multiple groups try to open and write to the same output file.
-!>
-!> Parameters:
-!>   file_suffix_of_output_group: string, optional
-!>      Default: ''
-!>      File suffix which is added to all output file names. If multiple output groups (groups of
-!>      MPI ranks, defined by 'mpi_comm_of_output_group') exist, a unique file suffix must be given
-!>      for each group. This prevents that multiple groups try to open and write to the same output
-!>      file.
-!>   mpi_comm_of_output_group: integer
-!>      MPI communicator specifying the MPI group executing the output commands.
-!>   master_output_rank: integer, optional
-!>      Default: 0
-!>      MPI rank of the master rank.
-!>   program_debug_output_unit: integer
-!>      File unit number used for writing debug output.
-!>   debug_output: logical
-!>      Turn on/off debug output.
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE dom_init( file_suffix_of_output_group, mpi_comm_of_output_group, master_output_rank,   &
                       program_debug_output_unit, debug_output )
@@ -295,15 +303,6 @@
 !> Define output file.
 !> Example call:
 !>   status = dom_def_file( 'my_output_file_name', 'binary' )
-!>
-!> Parameters:
-!>   file_name: string
-!>      Name of the file to be defined.
-!>   file_format: string
-!>      Format of the output file. Possible values are
-!>        'binary'
-!>        'netcdf4-parallel'
-!>        'netcdf4-serial'
 !--------------------------------------------------------------------------------------------------!
  FUNCTION dom_def_file( file_name, file_format ) RESULT( return_value )
 
@@ -372,7 +371,7 @@
 !> given which is then used to fill the entire dimension.
 !> An optional mask can be given to mask limited dimensions.
 !> Per default, a dimension is written to file only by the output master rank. However, this
-!> behaviour can be changed via the optional parameter 'write_mode'.
+!> behaviour can be changed via the optional parameter 'write_only_by_master_rank'.
 !> Example call:
 !>   - fixed dimension with 100 entries (values known):
 !>       status = dom_def_dim( file_name='my_output_file_name', dimension_name='my_dimension', &
@@ -394,85 +393,26 @@
 !>     (e.g. the master output rank does not know all dimension values):
 !>       status = dom_def_dim( file_name='my_output_file_name', dimension_name='my_dimension', &
 !>                             output_type='real32', bounds=(/1,100/), &
-!>                             values_real32=(/fill_value/), write_mode = 'collective' )
+!>                             values_real32=(/fill_value/), write_only_by_master_rank = .FALSE. )
 !>
-!> Parameters:
-!>   file_name: string
-!>      Name of the file to which the dimension should be added.
-!>   dimension_name: string
-!>      Name of the dimension as it should appear in the output file.
-!>   output_type: string
-!>      Data type of the dimension in the output file. Possible values are
-!>        'int8'
-!>        'int16'
-!>        'int32'
-!>        'real32'
-!>        'real64'
-!>   bounds: integer array of size 1 or 2
-!>      Index bounds of the dimension. If SIZE( bounds ) = 2, the two values denote the upper and
-!>      lower index bound of the dimension, respectively. If SIZE( bounds ) = 1, the dimension is
-!>      flagged as an unlimited dimension.
-!>   values_int8: integer(KIND=1) array, optional
-!>      1-dimensional array holding the coordinate values of the dimension. The array must either be
-!>      of size bounds(2)-bounds(1)+1 or of size 1.
-!>      If the array is of size 1, the value is used as a fill value for each coordinate of the
-!>      dimension.
-!>      Only one of the 'values_xxx' parameter must be given.
-!>   values_int16: integer(KIND=2) array, optional
-!>      See desciption of 'value_int8'.
-!>   values_int32: integer(KIND=4) array, optional
-!>      See desciption of 'value_int8'.
-!>   values_intwp: integer(KIND=iwp) array, optional
-!>      See desciption of 'value_int8'.
-!>   values_real32: real(KIND=4) array, optional
-!>      See desciption of 'value_int8'.
-!>   values_real64: real(KIND=8) array, optional
-!>      See desciption of 'value_int8'.
-!>   values_realwp: real(KIND=wp) array, optional
-!>      See desciption of 'value_int8'.
-!>   mask: logical array, optional
-!>      1-dimensional array defining masked-out coordinates of the dimension. If not defined, no
-!>      coordinate is masked and all entries of the dimension are written to file.
-!>   write_mode: string, optional
-!>      Default: 'master-only'
-!>      Define the variable write mode. Possible options are
-!>        'collective': all ranks of the output group will take part in the write command.
-!>        'independent': ranks of the output group will write independent from each other; some
-!>                       ranks might not execute the write command.
-!>                       NOTE: This option might cause massive performance reductions if a large
-!>                       number of cores accesses the output file. Use with caution!
-!>        'master-only': only the master output rank should write the variable. If a variable is
-!>                       identical on each MPI rank, setting 'master-only' allows the underlying
-!>                       output modules to skip the write command if possible for MPI ranks other
-!>                       than the master output rank to reduce the number of file accesses.
-!>                       As restrictions may apply for different output modules, it might be
-!>                       possible that this option is ignored internally and all MPI ranks must
-!>                       still participate in the write calls.
-!>      NOTE: if the dimension is unlimited, the setting of the parameter is ignored and the write
-!>      mode is set to 'collective'.
-!>   write_only_by_master_rank: logical, optional, deprecated
-!>      Default: .TRUE.
-!>      Deprecated! Use parameter 'write_mode' instead. Will be ignored if specified together with
-!>      'write_mode'.
-!>      Per default, the coordinate values of the dimension are written only by the master rank to
-!>      reduce the number of file accesses. If coordinate values must be written by all MPI ranks
-!>      (e.g. each rank only knows parts of the values), set 'write_only_by_master_rank' to .FALSE.
-!>      and use dom_write_var to write the coordinate values to file after the definition stage.
-!>
+!> @note The optional argument 'write_only_by_master_rank' is set true by default to reduce the
+!>       number of file accesses. If dimension values must, however, be written by all MPI ranks
+!>       (e.g. each rank only knows parts of the values), 'write_only_by_master_rank' must be set
+!>       false to allow each rank to write values to the file for this dimension.
+!>       Values must be written after definition stage via calling dom_write_var.
 !> @todo Convert given values into selected output_type.
 !--------------------------------------------------------------------------------------------------!
  FUNCTION dom_def_dim( file_name, dimension_name, output_type, bounds,                             &
                        values_int8, values_int16, values_int32, values_intwp,                      &
                        values_real32, values_real64, values_realwp,                                &
-                       mask, write_mode, write_only_by_master_rank )                               &
+                       mask, write_only_by_master_rank )                                           &
              RESULT( return_value )
 
     CHARACTER(LEN=*), PARAMETER ::  routine_name = 'dom_def_dim'  !< name of this routine
 
-    CHARACTER(LEN=*), INTENT(IN) ::  file_name             !< name of file
-    CHARACTER(LEN=*), INTENT(IN) ::  dimension_name        !< name of dimension
-    CHARACTER(LEN=*), INTENT(IN) ::  output_type           !< data type of dimension variable in output file
-    CHARACTER(LEN=*), INTENT(IN), OPTIONAL ::  write_mode  !< write mode of variable
+    CHARACTER(LEN=*), INTENT(IN) ::  file_name       !< name of file
+    CHARACTER(LEN=*), INTENT(IN) ::  dimension_name  !< name of dimension
+    CHARACTER(LEN=*), INTENT(IN) ::  output_type     !< data type of dimension variable in output file
 
     INTEGER ::  d             !< loop index
     INTEGER ::  f             !< loop index
@@ -509,6 +449,12 @@
 
     dimension%name      = TRIM( dimension_name )
     dimension%data_type = TRIM( output_type )
+
+    IF ( PRESENT( write_only_by_master_rank ) )  THEN
+       dimension%write_only_by_master_rank = write_only_by_master_rank
+    ELSE
+       dimension%write_only_by_master_rank = .TRUE.
+    ENDIF
 !
 !-- Check dimension bounds and allocate dimension according to bounds
     IF ( SIZE( bounds ) == 1 )  THEN
@@ -742,38 +688,6 @@
 
     ENDIF
 !
-!-- Set write mode
-    IF ( dimension%length == -1 )  THEN
-       dimension%write_mode = write_mode_collective
-    ELSE
-       IF ( PRESENT( write_mode ) )  THEN
-          SELECT CASE ( TRIM( write_mode ) )
-             CASE ( write_mode_collective, write_mode_independent, write_mode_master_only )
-                dimension%write_mode = TRIM( write_mode )
-             CASE DEFAULT
-                return_value = 1
-                CALL internal_message( 'error', routine_name //                                    &
-                        ': write_mode = ' // TRIM( write_mode ) // 'is not supported' //           &
-                        '(dimension "' // TRIM( dimension_name ) //                                &
-                        '", file "' // TRIM( file_name ) // '")!' )
-          END SELECT
-       ENDIF
-
-       IF ( PRESENT( write_only_by_master_rank ) )  THEN
-          IF ( PRESENT( write_mode ) )  THEN
-             return_value = 1
-             CALL internal_message( 'error', routine_name //                                       &
-                     ': "write_mode" and deprecated option "write_only_by_master_rank" ' //        &
-                     'must not be specified together ' //                                          &
-                     '(dimension "' // TRIM( dimension_name ) //                                   &
-                     '", file "' // TRIM( file_name ) // '")!' //                                  &
-                     'Setting of "write_only_by_master_rank" will be ignored.' )
-          ELSEIF ( write_only_by_master_rank )  THEN
-             dimension%write_mode = write_mode_master_only
-          ENDIF
-       ENDIF
-    ENDIF
-!
 !-- Add dimension to database
     IF ( return_value == 0 )  THEN
 
@@ -871,74 +785,35 @@
 !>                variable_name = 'u', &
 !>                dimension_names = (/'x   ', 'y   ', 'z   ', 'time'/), &
 !>                output_type = 'real32' )
-!>
-!> Parameters:
-!>   file_name: string
-!>      Name of the file to which the dimension should be added.
-!>   variable_name: string
-!>      Name of the variable as it should appear in the output file.
-!>   dimension_names: string array
-!>      1-dimensional array containing the dimension names for each used dimension of the output
-!>      variable.
-!>      The order of dimensions must be in reversed order to the dimensions of the corresponding
-!>      FORTRAN array later used in the dom_write_var calls. The last given dimension can also be
-!>      non-existent within the FORTRAN array if at any given call of 'dom_write_var', the last
-!>      dimension has only a single index.
-!>      Example:
-!>        dimension_names = (/'x   ', 'y   ', 'z   ', 'time'/)
-!>        The variable must be allocated with dimension 'x' as its last dimension, preceded
-!>        by 'y', then 'z', and 'time' being the first dimension. If at any given write statement,
-!>        only a single index of dimension 'time' is to be written, the dimension can be non-present
-!>        in the array leaving dimension 'z' as the first dimension.
-!>        So, the variable array needs to be allocated like either:
-!>           ALLOCATE( variable(<time>,<z>,<y>,<x>) )
-!>        or
-!>           ALLOCATE( variable(<z>,<y>,<x>) )
-!>   output_type: string
-!>      Data type of the variable in the output file. Possible values are
-!>        'int8'
-!>        'int16'
-!>        'int32'
-!>        'real32'
-!>        'real64'
-!>   write_mode: string, optional
-!>      Default: 'collective'
-!>      Define the variable write mode. Possible options are
-!>        'collective': all ranks of the output group will take part in the write command.
-!>        'independent': ranks of the output group will write independent from each other; some
-!>                       ranks might not execute the write command.
-!>                       NOTE: This option might cause massive performance reductions if a large
-!>                       number of cores accesses the output file. Use with caution!
-!>        'master-only': only the master output rank should write the variable. If a variable is
-!>                       identical on each MPI rank, setting 'master-only' allows the underlying
-!>                       output modules to skip the write command if possible for MPI ranks other
-!>                       than the master output rank to reduce the number of file accesses.
-!>                       As restrictions may apply for different output modules, it might be
-!>                       possible that this option is ignored internally and all MPI ranks must
-!>                       still participate in the write calls.
-!>      NOTE: if the variable uses any unlimited dimensions, the setting of the parameter is ignored
-!>      and the write mode is set to 'collective'.
-!>   write_only_by_master_rank: logical, optional, deprecated
-!>      Default: .FALSE.
-!>      Deprecated! Use parameter 'write_mode' instead. Will be ignored if specified together with
-!>      'write_mode'.
-!>      Per default, the values of the variable are written by all MPI ranks. If a variable is
-!>      identical on each MPI rank, setting 'write_only_by_master_rank' = .TRUE. allows the
-!>      underlying output modules to skip the write command if possible for MPI ranks other than the
-!>      master output rank to reduce the number of file accesses.
-!>      As restrictions may apply for different output modules, it might be possible that this
-!>      option is ignored internally and all MPI ranks must still participate in the write calls.
+!> @note The order of dimensions must match in reversed order to the dimensions of the
+!>       corresponding variable array. The last given dimension can also be non-existent within the
+!>       variable array if at any given call of 'dom_write_var' for this variable, the last
+!>       dimension has only a single index.
+!>       Hence, the array 'u' must be allocated with dimension 'x' as its last dimension, preceded
+!>       by 'y', then 'z', and 'time' being the first dimension. If at any given write statement,
+!>       only a single index of dimension 'time' is to be written, the dimension can be non-present
+!>       in the variable array leaving dimension 'z' as the first dimension.
+!>       So, the variable array needs to be allocated like either:
+!>          ALLOCATE( u(<time>,<z>,<y>,<x>) )
+!>       or
+!>          ALLOCATE( u(<z>,<y>,<x>) )
+!> @note The optional argument 'write_only_by_master_rank' can be used to reduce the number of file
+!>       accesses. If a variable is identical on each MPI rank, setting 'write_only_by_master_rank'
+!>       allows the underlying output modules to skip the write command if possible for MPI ranks
+!>       other than the master output rank.
+!>       As restrictions may apply for different output modules, it might be possible that this
+!>       option is ignored internally. Hence, all MPI ranks must still participate in the
+!>       dom_write_var calls in any case.
 !--------------------------------------------------------------------------------------------------!
  FUNCTION dom_def_var( file_name, variable_name, dimension_names, output_type,                     &
-                       write_mode, write_only_by_master_rank )                                     &
+                       write_only_by_master_rank )                                                 &
              RESULT( return_value )
 
     CHARACTER(LEN=*), PARAMETER ::  routine_name = 'dom_def_var'  !< name of this routine
 
-    CHARACTER(LEN=*), INTENT(IN)           ::  file_name      !< name of file
-    CHARACTER(LEN=*), INTENT(IN)           ::  output_type    !< data type of variable
-    CHARACTER(LEN=*), INTENT(IN)           ::  variable_name  !< name of variable
-    CHARACTER(LEN=*), INTENT(IN), OPTIONAL ::  write_mode     !< write mode of variable
+    CHARACTER(LEN=*), INTENT(IN) ::  file_name      !< name of file
+    CHARACTER(LEN=*), INTENT(IN) ::  output_type    !< data type of variable
+    CHARACTER(LEN=*), INTENT(IN) ::  variable_name  !< name of variable
 
     CHARACTER(LEN=*), DIMENSION(:), INTENT(IN) ::  dimension_names  !< list of dimension names
 
@@ -971,31 +846,10 @@
     variable%dimension_ids = -1
     variable%data_type = TRIM( output_type )
 
-    IF ( PRESENT( write_mode ) )  THEN
-       SELECT CASE ( TRIM( write_mode ) )
-          CASE ( write_mode_collective, write_mode_independent, write_mode_master_only )
-            variable%write_mode = TRIM( write_mode )
-          CASE DEFAULT
-             return_value = 1
-             CALL internal_message( 'error', routine_name //                                       &
-                     ': write_mode = ' // TRIM( write_mode ) // 'is not supported' //              &
-                     '(variable "' // TRIM( variable_name ) //                                     &
-                     '", file "' // TRIM( file_name ) // '")!' )
-       END SELECT
-    ENDIF
-
     IF ( PRESENT( write_only_by_master_rank ) )  THEN
-       IF ( PRESENT( write_mode ) )  THEN
-          return_value = 1
-          CALL internal_message( 'error', routine_name //                                          &
-                  ': "write_mode" and deprecated option "write_only_by_master_rank" ' //           &
-                  'must not be specified together ' //                                             &
-                  '(variable "' // TRIM( variable_name ) //                                        &
-                  '", file "' // TRIM( file_name ) // '")!' //                                     &
-                  'Setting of "write_only_by_master_rank" will be ignored.' )
-       ELSEIF ( write_only_by_master_rank )  THEN
-          variable%write_mode = write_mode_master_only
-       ENDIF
+       variable%write_only_by_master_rank = write_only_by_master_rank
+    ELSE
+       variable%write_only_by_master_rank = .FALSE.
     ENDIF
 !
 !-- Add variable to database
@@ -1119,7 +973,12 @@
 ! Description:
 ! ------------
 !> Create attribute with value of type character.
-!>
+!> If the optional argument 'variable_name' is given, the attribute is added to the respective
+!> variable or dimension of that name. Otherwise, the attribute is added as a global attribute to
+!> the file itself.
+!> If an attribute of similar name already exists, it is updated (overwritten) with the new value.
+!> If the optional argument 'append' is set TRUE, the value of an already existing attribute of
+!> similar name is appended by the new value instead of overwritten.
 !> Example call:
 !>   - define a global file attribute:
 !>      dom_def_att( file_name='my_output_file_name', &
@@ -1134,22 +993,6 @@
 !>      dom_def_att( file_name='my_output_file_name', &
 !>                   attribute_name='my_attribute', &
 !>                   value=' and this part was appended', append=.TRUE. )
-!>
-!> Parameters:
-!>   file_name: string
-!>      Name of the file to which the attribute should be added.
-!>   variable_name: string, optional
-!>      Name of the variable (or dimension) to which the attribute should be added. If
-!>     'variable_name' is not defined, the attribute is added as a global attribute to the file.
-!>   attribute_name: string
-!>      Name of the attribute as it should appear in the output file.
-!>   value: string
-!>      Attribute value.
-!>   append: logical, optional
-!>      Default: .FALSE.
-!>      If set .True., the value of an already existing attribute of similar name is appended by the
-!>      new value. If set .FALSE., the value of an already existing attribute of similar name is
-!>      overwritten.
 !--------------------------------------------------------------------------------------------------!
  FUNCTION dom_def_att_char( file_name, variable_name, attribute_name, value, append )              &
              RESULT( return_value )
@@ -1198,7 +1041,10 @@
 ! Description:
 ! ------------
 !> Create attribute with value of type int8.
-!>
+!> If the optional argument 'variable_name' is given, the attribute is added to the respective
+!> variable or dimension of that name. Otherwise, the attribute is added as a global attribute to
+!> the file itself.
+!> Numerical attributes cannot be appended, only updated (append=.TRUE. will cause an error).
 !> Example call:
 !>   - define a global file attribute:
 !>      dom_def_att( file_name='my_output_file_name', &
@@ -1209,20 +1055,6 @@
 !>                   variable_name='my_variable', &
 !>                   attribute_name='my_attribute', &
 !>                   value=1_1 )
-!>
-!> Parameters:
-!>   file_name: string
-!>      Name of the file to which the attribute should be added.
-!>   variable_name: string, optional
-!>      Name of the variable (or dimension) to which the attribute should be added. If
-!>     'variable_name' is not defined, the attribute is added as a global attribute to the file.
-!>   attribute_name: string
-!>      Name of the attribute as it should appear in the output file.
-!>   value: integer(KIND=1)
-!>      Attribute value.
-!>   append: logical, optional
-!>      Default: .FALSE.
-!>      Option is only available for compatibility reasons. If set .TRUE., an error is raised.
 !--------------------------------------------------------------------------------------------------!
  FUNCTION dom_def_att_int8( file_name, variable_name, attribute_name, value, append )              &
              RESULT( return_value )
@@ -1281,7 +1113,10 @@
 ! Description:
 ! ------------
 !> Create attribute with value of type int16.
-!>
+!> If the optional argument 'variable_name' is given, the attribute is added to the respective
+!> variable or dimension of that name. Otherwise, the attribute is added as a global attribute to
+!> the file itself.
+!> Numerical attributes cannot be appended, only updated (append=.TRUE. will cause an error).
 !> Example call:
 !>   - define a global file attribute:
 !>      dom_def_att( file_name='my_output_file_name', &
@@ -1292,20 +1127,6 @@
 !>                   variable_name='my_variable', &
 !>                   attribute_name='my_attribute', &
 !>                   value=1_2 )
-!>
-!> Parameters:
-!>   file_name: string
-!>      Name of the file to which the attribute should be added.
-!>   variable_name: string, optional
-!>      Name of the variable (or dimension) to which the attribute should be added. If
-!>     'variable_name' is not defined, the attribute is added as a global attribute to the file.
-!>   attribute_name: string
-!>      Name of the attribute as it should appear in the output file.
-!>   value: integer(KIND=2)
-!>      Attribute value.
-!>   append: logical, optional
-!>      Default: .FALSE.
-!>      Option is only available for compatibility reasons. If set .TRUE., an error is raised.
 !--------------------------------------------------------------------------------------------------!
  FUNCTION dom_def_att_int16( file_name, variable_name, attribute_name, value, append )             &
              RESULT( return_value )
@@ -1364,7 +1185,10 @@
 ! Description:
 ! ------------
 !> Create attribute with value of type int32.
-!>
+!> If the optional argument 'variable_name' is given, the attribute is added to the respective
+!> variable or dimension of that name. Otherwise, the attribute is added as a global attribute to
+!> the file itself.
+!> Numerical attributes cannot be appended, only updated (append=.TRUE. will cause an error).
 !> Example call:
 !>   - define a global file attribute:
 !>      dom_def_att( file_name='my_output_file_name', &
@@ -1375,20 +1199,6 @@
 !>                   variable_name='my_variable', &
 !>                   attribute_name='my_attribute', &
 !>                   value=1_4 )
-!>
-!> Parameters:
-!>   file_name: string
-!>      Name of the file to which the attribute should be added.
-!>   variable_name: string, optional
-!>      Name of the variable (or dimension) to which the attribute should be added. If
-!>     'variable_name' is not defined, the attribute is added as a global attribute to the file.
-!>   attribute_name: string
-!>      Name of the attribute as it should appear in the output file.
-!>   value: integer(KIND=4)
-!>      Attribute value.
-!>   append: logical, optional
-!>      Default: .FALSE.
-!>      Option is only available for compatibility reasons. If set .TRUE., an error is raised.
 !--------------------------------------------------------------------------------------------------!
  FUNCTION dom_def_att_int32( file_name, variable_name, attribute_name, value, append )             &
              RESULT( return_value )
@@ -1447,7 +1257,10 @@
 ! Description:
 ! ------------
 !> Create attribute with value of type real32.
-!>
+!> If the optional argument 'variable_name' is given, the attribute is added to the respective
+!> variable or dimension of that name. Otherwise, the attribute is added as a global attribute to
+!> the file itself.
+!> Numerical attributes cannot be appended, only updated (append=.TRUE. will cause an error).
 !> Example call:
 !>   - define a global file attribute:
 !>      dom_def_att( file_name='my_output_file_name', &
@@ -1458,20 +1271,6 @@
 !>                   variable_name='my_variable', &
 !>                   attribute_name='my_attribute', &
 !>                   value=1.0_4 )
-!>
-!> Parameters:
-!>   file_name: string
-!>      Name of the file to which the attribute should be added.
-!>   variable_name: string, optional
-!>      Name of the variable (or dimension) to which the attribute should be added. If
-!>     'variable_name' is not defined, the attribute is added as a global attribute to the file.
-!>   attribute_name: string
-!>      Name of the attribute as it should appear in the output file.
-!>   value: real(KIND=4)
-!>      Attribute value.
-!>   append: logical, optional
-!>      Default: .FALSE.
-!>      Option is only available for compatibility reasons. If set .TRUE., an error is raised.
 !--------------------------------------------------------------------------------------------------!
  FUNCTION dom_def_att_real32( file_name, variable_name, attribute_name, value, append )            &
              RESULT( return_value )
@@ -1530,7 +1329,10 @@
 ! Description:
 ! ------------
 !> Create attribute with value of type real64.
-!>
+!> If the optional argument 'variable_name' is given, the attribute is added to the respective
+!> variable or dimension of that name. Otherwise, the attribute is added as a global attribute to
+!> the file itself.
+!> Numerical attributes cannot be appended, only updated (append=.TRUE. will cause an error).
 !> Example call:
 !>   - define a global file attribute:
 !>      dom_def_att( file_name='my_output_file_name', &
@@ -1541,20 +1343,6 @@
 !>                   variable_name='my_variable', &
 !>                   attribute_name='my_attribute', &
 !>                   value=1.0_8 )
-!>
-!> Parameters:
-!>   file_name: string
-!>      Name of the file to which the attribute should be added.
-!>   variable_name: string, optional
-!>      Name of the variable (or dimension) to which the attribute should be added. If
-!>     'variable_name' is not defined, the attribute is added as a global attribute to the file.
-!>   attribute_name: string
-!>      Name of the attribute as it should appear in the output file.
-!>   value: real(KIND=8)
-!>      Attribute value.
-!>   append: logical, optional
-!>      Default: .FALSE.
-!>      Option is only available for compatibility reasons. If set .TRUE., an error is raised.
 !--------------------------------------------------------------------------------------------------!
  FUNCTION dom_def_att_real64( file_name, variable_name, attribute_name, value, append )            &
              RESULT( return_value )
@@ -1769,47 +1557,17 @@
 ! ------------
 !> Write variable to file.
 !> Example call:
-!>   ! Corresponding definition call
-!>   dom_def_var( file_name =  'my_output_file_name', &
-!>                name = 'u', &
-!>                dimension_names = (/'x   ', 'y   ', 'z   ', 'time'/), &
-!>                output_type = <desired-output-type> )
-!>   ! Write call
 !>   dom_write_var( file_name = 'my_output_file_name', &
 !>                  name = 'u', &
 !>                  bounds_start = (/nxl, nys, nzb, time_step/), &
 !>                  bounds_end = (/nxr, nyn, nzt, time_step/), &
 !>                  values_real64_3d = u )
-!>
-!> Parameters:
-!>   file_name: string
-!>      Name of the file to which the variable should be written.
-!>   variable_name: string
-!>      Name of the variable (or dimension) which values should be written.
-!>   bounds_start: integer array
-!>     Start index per dimension of the variable where to start writing. The order of the dimension
-!>     bounds must match to the order of dimensions given in the respective 'dom_def_var' call.
-!>   bounds_end: integer array
-!>     End index per dimension of the variable where to stop writing. The order of the dimension
-!>     bounds must match to the order of dimensions given in the respective 'dom_def_var' call.
-!>   values_xx_yy: pointer to type xx array with yy dimensions
-!>     Pointer to array containing the variable values to be written. Only a single pointer must be
-!>     defined.
-!>     Possible types (xx):
-!>       'char': string of length 1
-!>       'int8': integer(KIND=1)
-!>       'int16': integer(KIND=2)
-!>       'int32': integer(KIND=4)
-!>       'intwp': integer(KIND=iwp)
-!>       'real32': real(KIND=4)
-!>       'real64': real(KIND=8)
-!>       'realwp': real(KIND=wp)
-!>     Possible dimensions (yy):
-!>       '0d': single value
-!>       '1d': 1-dimensional array
-!>       '2d': 2-dimensional array
-!>       '3d': 3-dimensional array
-!>
+!> @note The order of dimension bounds must match to the order of dimensions given in call
+!>       'dom_def_var'. I.e., the corresponding variable definition should be like:
+!>          dom_def_var( file_name =  'my_output_file_name', &
+!>                       name = 'u', &
+!>                       dimension_names = (/'x   ', 'y   ', 'z   ', 'time'/), &
+!>                       output_type = <desired-output-type> )
 !> @note The values given do not need to be of the same data type as was defined in the
 !>       corresponding 'dom_def_var' call. If the output format 'netcdf' was chosen, the values are
 !>       automatically converted to the data type given during the definition. If 'binary' was
@@ -1831,7 +1589,6 @@
     CHARACTER(LEN=charlen)            ::  file_format    !< file format chosen for file
     CHARACTER(LEN=*),      INTENT(IN) ::  file_name      !< name of file
     CHARACTER(LEN=*),      INTENT(IN) ::  variable_name  !< name of variable
-    CHARACTER(LEN=charlen)            ::  write_mode     !< write mode of variable
 
     CHARACTER(LEN=1), POINTER, INTENT(IN), OPTIONAL                   ::  values_char_0d           !< output variable
     CHARACTER(LEN=1), POINTER, INTENT(IN), OPTIONAL, DIMENSION(:)     ::  values_char_1d           !< output variable
@@ -1959,7 +1716,7 @@
 !
 !-- Search for variable within file
     CALL find_var_in_file( file_name, variable_name, file_format, file_id, variable_id,            &
-                           write_mode, dimension_list, return_value=return_value  )
+                           write_only_by_master_rank, dimension_list, return_value=return_value  )
 
     IF ( return_value == 0 )  THEN
 !
@@ -2495,9 +2252,6 @@
 
           CASE ( 'binary' )
 !
-!--          NOTE: workaround until binary output module is adapted to work with write_mode
-             write_only_by_master_rank = TRIM( write_mode ) == write_mode_master_only
-!
 !--          Character output
              IF ( PRESENT( values_char_0d ) )  THEN
                 CALL binary_write_variable( file_id, variable_id,                                  &
@@ -2688,176 +2442,176 @@
              IF ( PRESENT( values_char_0d ) )  THEN
                 CALL netcdf4_write_variable( TRIM( file_format(9:) ), file_id, variable_id,        &
                         bounds_start_internal, value_counts, bounds_origin,                        &
-                        write_mode, values_char_0d=values_char_0d_pointer,          &
+                        write_only_by_master_rank, values_char_0d=values_char_0d_pointer,          &
                         return_value=output_return_value )
              ELSEIF ( PRESENT( values_char_1d ) )  THEN
                 CALL netcdf4_write_variable( TRIM( file_format(9:) ), file_id, variable_id,        &
                         bounds_start_internal, value_counts, bounds_origin,                        &
-                        write_mode, values_char_1d=values_char_1d_pointer,          &
+                        write_only_by_master_rank, values_char_1d=values_char_1d_pointer,          &
                         return_value=output_return_value )
              ELSEIF ( PRESENT( values_char_2d ) )  THEN
                 CALL netcdf4_write_variable( TRIM( file_format(9:) ), file_id, variable_id,        &
                         bounds_start_internal, value_counts, bounds_origin,                        &
-                        write_mode, values_char_2d=values_char_2d_pointer,          &
+                        write_only_by_master_rank, values_char_2d=values_char_2d_pointer,          &
                         return_value=output_return_value )
              ELSEIF ( PRESENT( values_char_3d ) )  THEN
                 CALL netcdf4_write_variable( TRIM( file_format(9:) ), file_id, variable_id,        &
                         bounds_start_internal, value_counts, bounds_origin,                        &
-                        write_mode, values_char_3d=values_char_3d_pointer,          &
+                        write_only_by_master_rank, values_char_3d=values_char_3d_pointer,          &
                         return_value=output_return_value )
 !
 !--          8bit integer output
              ELSEIF ( PRESENT( values_int8_0d ) )  THEN
                 CALL netcdf4_write_variable( TRIM( file_format(9:) ), file_id, variable_id,        &
                         bounds_start_internal, value_counts, bounds_origin,                        &
-                        write_mode, values_int8_0d=values_int8_0d_pointer,          &
+                        write_only_by_master_rank, values_int8_0d=values_int8_0d_pointer,          &
                         return_value=output_return_value )
              ELSEIF ( PRESENT( values_int8_1d ) )  THEN
                 CALL netcdf4_write_variable( TRIM( file_format(9:) ), file_id, variable_id,        &
                         bounds_start_internal, value_counts, bounds_origin,                        &
-                        write_mode, values_int8_1d=values_int8_1d_pointer,          &
+                        write_only_by_master_rank, values_int8_1d=values_int8_1d_pointer,          &
                         return_value=output_return_value )
              ELSEIF ( PRESENT( values_int8_2d ) )  THEN
                 CALL netcdf4_write_variable( TRIM( file_format(9:) ), file_id, variable_id,        &
                         bounds_start_internal, value_counts, bounds_origin,                        &
-                        write_mode, values_int8_2d=values_int8_2d_pointer,          &
+                        write_only_by_master_rank, values_int8_2d=values_int8_2d_pointer,          &
                         return_value=output_return_value )
              ELSEIF ( PRESENT( values_int8_3d ) )  THEN
                 CALL netcdf4_write_variable( TRIM( file_format(9:) ), file_id, variable_id,        &
                         bounds_start_internal, value_counts, bounds_origin,                        &
-                        write_mode, values_int8_3d=values_int8_3d_pointer,          &
+                        write_only_by_master_rank, values_int8_3d=values_int8_3d_pointer,          &
                         return_value=output_return_value )
 !
 !--          16bit integer output
              ELSEIF ( PRESENT( values_int16_0d ) )  THEN
                 CALL netcdf4_write_variable( TRIM( file_format(9:) ), file_id, variable_id,        &
                         bounds_start_internal, value_counts, bounds_origin,                        &
-                        write_mode, values_int16_0d=values_int16_0d_pointer,        &
+                        write_only_by_master_rank, values_int16_0d=values_int16_0d_pointer,        &
                         return_value=output_return_value )
              ELSEIF ( PRESENT( values_int16_1d ) )  THEN
                 CALL netcdf4_write_variable( TRIM( file_format(9:) ), file_id, variable_id,        &
                         bounds_start_internal, value_counts, bounds_origin,                        &
-                        write_mode, values_int16_1d=values_int16_1d_pointer,        &
+                        write_only_by_master_rank, values_int16_1d=values_int16_1d_pointer,        &
                         return_value=output_return_value )
              ELSEIF ( PRESENT( values_int16_2d ) )  THEN
                 CALL netcdf4_write_variable( TRIM( file_format(9:) ), file_id, variable_id,        &
                         bounds_start_internal, value_counts, bounds_origin,                        &
-                        write_mode, values_int16_2d=values_int16_2d_pointer,        &
+                        write_only_by_master_rank, values_int16_2d=values_int16_2d_pointer,        &
                         return_value=output_return_value )
              ELSEIF ( PRESENT( values_int16_3d ) )  THEN
                 CALL netcdf4_write_variable( TRIM( file_format(9:) ), file_id, variable_id,        &
                         bounds_start_internal, value_counts, bounds_origin,                        &
-                        write_mode, values_int16_3d=values_int16_3d_pointer,        &
+                        write_only_by_master_rank, values_int16_3d=values_int16_3d_pointer,        &
                         return_value=output_return_value )
 !
 !--          32bit integer output
              ELSEIF ( PRESENT( values_int32_0d ) )  THEN
                 CALL netcdf4_write_variable( TRIM( file_format(9:) ), file_id, variable_id,        &
                         bounds_start_internal, value_counts, bounds_origin,                        &
-                        write_mode, values_int32_0d=values_int32_0d_pointer,        &
+                        write_only_by_master_rank, values_int32_0d=values_int32_0d_pointer,        &
                         return_value=output_return_value )
              ELSEIF ( PRESENT( values_int32_1d ) )  THEN
                 CALL netcdf4_write_variable( TRIM( file_format(9:) ), file_id, variable_id,        &
                         bounds_start_internal, value_counts, bounds_origin,                        &
-                        write_mode, values_int32_1d=values_int32_1d_pointer,        &
+                        write_only_by_master_rank, values_int32_1d=values_int32_1d_pointer,        &
                         return_value=output_return_value )
              ELSEIF ( PRESENT( values_int32_2d ) )  THEN
                 CALL netcdf4_write_variable( TRIM( file_format(9:) ), file_id, variable_id,        &
                         bounds_start_internal, value_counts, bounds_origin,                        &
-                        write_mode, values_int32_2d=values_int32_2d_pointer,        &
+                        write_only_by_master_rank, values_int32_2d=values_int32_2d_pointer,        &
                         return_value=output_return_value )
              ELSEIF ( PRESENT( values_int32_3d ) )  THEN
                 CALL netcdf4_write_variable( TRIM( file_format(9:) ), file_id, variable_id,        &
                         bounds_start_internal, value_counts, bounds_origin,                        &
-                        write_mode, values_int32_3d=values_int32_3d_pointer,        &
+                        write_only_by_master_rank, values_int32_3d=values_int32_3d_pointer,        &
                         return_value=output_return_value )
 !
 !--          Working-precision integer output
              ELSEIF ( PRESENT( values_intwp_0d ) )  THEN
                 CALL netcdf4_write_variable( TRIM( file_format(9:) ), file_id, variable_id,        &
                         bounds_start_internal, value_counts, bounds_origin,                        &
-                        write_mode, values_intwp_0d=values_intwp_0d_pointer,        &
+                        write_only_by_master_rank, values_intwp_0d=values_intwp_0d_pointer,        &
                         return_value=output_return_value )
              ELSEIF ( PRESENT( values_intwp_1d ) )  THEN
                 CALL netcdf4_write_variable( TRIM( file_format(9:) ), file_id, variable_id,        &
                         bounds_start_internal, value_counts, bounds_origin,                        &
-                        write_mode, values_intwp_1d=values_intwp_1d_pointer,        &
+                        write_only_by_master_rank, values_intwp_1d=values_intwp_1d_pointer,        &
                         return_value=output_return_value )
              ELSEIF ( PRESENT( values_intwp_2d ) )  THEN
                 CALL netcdf4_write_variable( TRIM( file_format(9:) ), file_id, variable_id,        &
                         bounds_start_internal, value_counts, bounds_origin,                        &
-                        write_mode, values_intwp_2d=values_intwp_2d_pointer,        &
+                        write_only_by_master_rank, values_intwp_2d=values_intwp_2d_pointer,        &
                         return_value=output_return_value )
              ELSEIF ( PRESENT( values_intwp_3d ) )  THEN
                 CALL netcdf4_write_variable( TRIM( file_format(9:) ), file_id, variable_id,        &
                         bounds_start_internal, value_counts, bounds_origin,                        &
-                        write_mode, values_intwp_3d=values_intwp_3d_pointer,        &
+                        write_only_by_master_rank, values_intwp_3d=values_intwp_3d_pointer,        &
                         return_value=output_return_value )
 !
 !--          32bit real output
              ELSEIF ( PRESENT( values_real32_0d ) )  THEN
                 CALL netcdf4_write_variable( TRIM( file_format(9:) ), file_id, variable_id,        &
                         bounds_start_internal, value_counts, bounds_origin,                        &
-                        write_mode, values_real32_0d=values_real32_0d_pointer,      &
+                        write_only_by_master_rank, values_real32_0d=values_real32_0d_pointer,      &
                         return_value=output_return_value )
              ELSEIF ( PRESENT( values_real32_1d ) )  THEN
                 CALL netcdf4_write_variable( TRIM( file_format(9:) ), file_id, variable_id,        &
                         bounds_start_internal, value_counts, bounds_origin,                        &
-                        write_mode, values_real32_1d=values_real32_1d_pointer,      &
+                        write_only_by_master_rank, values_real32_1d=values_real32_1d_pointer,      &
                         return_value=output_return_value )
              ELSEIF ( PRESENT( values_real32_2d ) )  THEN
                 CALL netcdf4_write_variable( TRIM( file_format(9:) ), file_id, variable_id,        &
                         bounds_start_internal, value_counts, bounds_origin,                        &
-                        write_mode, values_real32_2d=values_real32_2d_pointer,      &
+                        write_only_by_master_rank, values_real32_2d=values_real32_2d_pointer,      &
                         return_value=output_return_value )
              ELSEIF ( PRESENT( values_real32_3d ) )  THEN
                 CALL netcdf4_write_variable( TRIM( file_format(9:) ), file_id, variable_id,        &
                         bounds_start_internal, value_counts, bounds_origin,                        &
-                        write_mode, values_real32_3d=values_real32_3d_pointer,      &
+                        write_only_by_master_rank, values_real32_3d=values_real32_3d_pointer,      &
                         return_value=output_return_value )
 !
 !--          64bit real output
              ELSEIF ( PRESENT( values_real64_0d ) )  THEN
                 CALL netcdf4_write_variable( TRIM( file_format(9:) ), file_id, variable_id,        &
                         bounds_start_internal, value_counts, bounds_origin,                        &
-                        write_mode, values_real64_0d=values_real64_0d_pointer,      &
+                        write_only_by_master_rank, values_real64_0d=values_real64_0d_pointer,      &
                         return_value=output_return_value )
              ELSEIF ( PRESENT( values_real64_1d ) )  THEN
                 CALL netcdf4_write_variable( TRIM( file_format(9:) ), file_id, variable_id,        &
                         bounds_start_internal, value_counts, bounds_origin,                        &
-                        write_mode, values_real64_1d=values_real64_1d_pointer,      &
+                        write_only_by_master_rank, values_real64_1d=values_real64_1d_pointer,      &
                         return_value=output_return_value )
              ELSEIF ( PRESENT( values_real64_2d ) )  THEN
                 CALL netcdf4_write_variable( TRIM( file_format(9:) ), file_id, variable_id,        &
                         bounds_start_internal, value_counts, bounds_origin,                        &
-                        write_mode, values_real64_2d=values_real64_2d_pointer,      &
+                        write_only_by_master_rank, values_real64_2d=values_real64_2d_pointer,      &
                         return_value=output_return_value )
              ELSEIF ( PRESENT( values_real64_3d ) )  THEN
                 CALL netcdf4_write_variable( TRIM( file_format(9:) ), file_id, variable_id,        &
                         bounds_start_internal, value_counts, bounds_origin,                        &
-                        write_mode, values_real64_3d=values_real64_3d_pointer,      &
+                        write_only_by_master_rank, values_real64_3d=values_real64_3d_pointer,      &
                         return_value=output_return_value )
 !
 !--          Working-precision real output
              ELSEIF ( PRESENT( values_realwp_0d ) )  THEN
                 CALL netcdf4_write_variable( TRIM( file_format(9:) ), file_id, variable_id,        &
                         bounds_start_internal, value_counts, bounds_origin,                        &
-                        write_mode, values_realwp_0d=values_realwp_0d_pointer,      &
+                        write_only_by_master_rank, values_realwp_0d=values_realwp_0d_pointer,      &
                         return_value=output_return_value )
              ELSEIF ( PRESENT( values_realwp_1d ) )  THEN
                 CALL netcdf4_write_variable( TRIM( file_format(9:) ), file_id, variable_id,        &
                         bounds_start_internal, value_counts, bounds_origin,                        &
-                        write_mode, values_realwp_1d=values_realwp_1d_pointer,      &
+                        write_only_by_master_rank, values_realwp_1d=values_realwp_1d_pointer,      &
                         return_value=output_return_value )
              ELSEIF ( PRESENT( values_realwp_2d ) )  THEN
                 CALL netcdf4_write_variable( TRIM( file_format(9:) ), file_id, variable_id,        &
                         bounds_start_internal, value_counts, bounds_origin,                        &
-                        write_mode, values_realwp_2d=values_realwp_2d_pointer,      &
+                        write_only_by_master_rank, values_realwp_2d=values_realwp_2d_pointer,      &
                         return_value=output_return_value )
              ELSEIF ( PRESENT( values_realwp_3d ) )  THEN
                 CALL netcdf4_write_variable( TRIM( file_format(9:) ), file_id, variable_id,        &
                         bounds_start_internal, value_counts, bounds_origin,                        &
-                        write_mode, values_realwp_3d=values_realwp_3d_pointer,      &
+                        write_only_by_master_rank, values_realwp_3d=values_realwp_3d_pointer,      &
                         return_value=output_return_value )
              ELSE
                 return_value = 1
@@ -3405,7 +3159,7 @@
                                        file%dimensions(d)%id, file%dimensions(d)%name,             &
                                        file%dimensions(d)%data_type, file%dimensions(d)%length,    &
                                        file%dimensions(d)%variable_id,                             &
-                                       file%dimensions(d)%write_mode, return_value )
+                                       file%dimensions(d)%write_only_by_master_rank, return_value )
 
           ELSE
 !
@@ -3414,7 +3168,7 @@
                      file%dimensions(d)%id, file%dimensions(d)%name,                               &
                      file%dimensions(d)%data_type, file%dimensions(d)%length_mask,                 &
                      file%dimensions(d)%variable_id,                                               &
-                     file%dimensions(d)%write_mode, return_value )
+                     file%dimensions(d)%write_only_by_master_rank, return_value )
 
           ENDIF
 
@@ -3446,7 +3200,7 @@
              CALL init_file_variable( file%format, file%id, file%name,                             &
                      file%variables(d)%id, file%variables(d)%name, file%variables(d)%data_type,    &
                      file%variables(d)%dimension_ids,                                              &
-                     file%variables(d)%write_mode, return_value )
+                     file%variables(d)%write_only_by_master_rank, return_value )
 
              IF ( return_value == 0  .AND.  ALLOCATED( file%variables(d)%attributes ) )  THEN
 !
@@ -3476,7 +3230,7 @@
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE init_file_dimension( file_format, file_id, file_name,                                  &
                                  dimension_id, dimension_name, dimension_type, dimension_length,   &
-                                 variable_id, write_mode, return_value )
+                                 variable_id, write_only_by_master_rank, return_value )
 
     CHARACTER(LEN=*), PARAMETER ::  routine_name = 'init_file_dimension'  !< file format chosen for file
 
@@ -3484,7 +3238,6 @@
     CHARACTER(LEN=*), INTENT(IN) ::  dimension_type  !< data type of dimension
     CHARACTER(LEN=*), INTENT(IN) ::  file_format     !< file format chosen for file
     CHARACTER(LEN=*), INTENT(IN) ::  file_name       !< name of file
-    CHARACTER(LEN=*), INTENT(IN) ::  write_mode      !< write mode of variable
 
     INTEGER, INTENT(OUT) ::  dimension_id         !< dimension ID
     INTEGER, INTENT(IN)  ::  dimension_length     !< length of dimension
@@ -3493,7 +3246,7 @@
     INTEGER, INTENT(OUT) ::  return_value         !< return value
     INTEGER, INTENT(OUT) ::  variable_id          !< associated variable ID
 
-    LOGICAL ::  write_only_by_master_rank  !< true if only master rank shall write variable
+    LOGICAL, INTENT(IN)  ::  write_only_by_master_rank  !< true if only master rank shall write variable
 
 
     return_value = 0
@@ -3505,22 +3258,18 @@
     SELECT CASE ( TRIM( file_format ) )
 
        CASE ( 'binary' )
-!
-!--       NOTE: workaround until binary output module is adapted to work with write_mode
-          write_only_by_master_rank = TRIM( write_mode ) == write_mode_master_only
-
           CALL binary_init_dimension( 'binary', file_id, dimension_id, variable_id,                &
                   dimension_name, dimension_type, dimension_length, write_only_by_master_rank,     &
                   return_value=output_return_value )
 
        CASE ( 'netcdf4-serial' )
           CALL netcdf4_init_dimension( 'serial', file_id, dimension_id, variable_id,               &
-                  dimension_name, dimension_type, dimension_length, write_mode,                    &
+                  dimension_name, dimension_type, dimension_length, write_only_by_master_rank,     &
                   return_value=output_return_value )
 
        CASE ( 'netcdf4-parallel' )
           CALL netcdf4_init_dimension( 'parallel', file_id, dimension_id, variable_id,             &
-                  dimension_name, dimension_type, dimension_length, write_mode,                    &
+                  dimension_name, dimension_type, dimension_length, write_only_by_master_rank,     &
                   return_value=output_return_value )
 
        CASE DEFAULT
@@ -3546,7 +3295,7 @@
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE init_file_variable( file_format, file_id, file_name,                                   &
                                 variable_id, variable_name, variable_type, dimension_ids,          &
-                                write_mode, return_value )
+                                write_only_by_master_rank, return_value )
 
     CHARACTER(LEN=*), PARAMETER ::  routine_name = 'init_file_variable'  !< file format chosen for file
 
@@ -3554,7 +3303,6 @@
     CHARACTER(LEN=*), INTENT(IN) ::  file_name      !< file name
     CHARACTER(LEN=*), INTENT(IN) ::  variable_name  !< name of variable
     CHARACTER(LEN=*), INTENT(IN) ::  variable_type  !< data type of variable
-    CHARACTER(LEN=*), INTENT(IN) ::  write_mode     !< write mode of variable
 
     INTEGER, INTENT(IN)  ::  file_id              !< file ID
     INTEGER              ::  output_return_value  !< return value of a called output routine
@@ -3563,7 +3311,7 @@
 
     INTEGER, DIMENSION(:), INTENT(IN) ::  dimension_ids  !< list of dimension IDs used by variable
 
-    LOGICAL ::  write_only_by_master_rank  !< true if only master rank shall write variable
+    LOGICAL, INTENT(IN)  ::  write_only_by_master_rank  !< true if only master rank shall write variable
 
 
     return_value = 0
@@ -3575,20 +3323,19 @@
     SELECT CASE ( TRIM( file_format ) )
 
        CASE ( 'binary' )
-!
-!--       NOTE: workaround until binary output module is adapted to work with write_mode
-          write_only_by_master_rank = TRIM( write_mode ) == write_mode_master_only
           CALL binary_init_variable( 'binary', file_id, variable_id, variable_name,                &
                   variable_type, dimension_ids, write_only_by_master_rank,                         &
                   return_value=output_return_value )
 
        CASE ( 'netcdf4-serial' )
           CALL netcdf4_init_variable( 'serial', file_id, variable_id, variable_name,               &
-                  variable_type, dimension_ids, write_mode, return_value=output_return_value )
+                  variable_type, dimension_ids, write_only_by_master_rank,                         &
+                  return_value=output_return_value )
 
        CASE ( 'netcdf4-parallel' )
           CALL netcdf4_init_variable( 'parallel', file_id, variable_id, variable_name,             &
-                  variable_type, dimension_ids, write_mode, return_value=output_return_value )
+                  variable_type, dimension_ids, write_only_by_master_rank,                         &
+                  return_value=output_return_value )
 
        CASE DEFAULT
           return_value = 1
@@ -3689,32 +3436,32 @@
           SELECT CASE ( TRIM( attribute%data_type ) )
 
              CASE( 'char' )
-                CALL netcdf4_write_attribute( operation_mode=file_format(9:), file_id=file_id,     &
+                CALL netcdf4_write_attribute( mode=file_format(9:), file_id=file_id,               &
                         variable_id=variable_id, attribute_name=attribute%name,                    &
                         value_char=attribute%value_char, return_value=output_return_value )
 
              CASE( 'int8' )
-                CALL netcdf4_write_attribute( operation_mode=file_format(9:), file_id=file_id,     &
+                CALL netcdf4_write_attribute( mode=file_format(9:), file_id=file_id,               &
                         variable_id=variable_id, attribute_name=attribute%name,                    &
                         value_int8=attribute%value_int8, return_value=output_return_value )
 
              CASE( 'int16' )
-                CALL netcdf4_write_attribute( operation_mode=file_format(9:), file_id=file_id,     &
+                CALL netcdf4_write_attribute( mode=file_format(9:), file_id=file_id,               &
                         variable_id=variable_id, attribute_name=attribute%name,                    &
                         value_int16=attribute%value_int16, return_value=output_return_value )
 
              CASE( 'int32' )
-                CALL netcdf4_write_attribute( operation_mode=file_format(9:), file_id=file_id,     &
+                CALL netcdf4_write_attribute( mode=file_format(9:), file_id=file_id,               &
                         variable_id=variable_id, attribute_name=attribute%name,                    &
                         value_int32=attribute%value_int32, return_value=output_return_value )
 
              CASE( 'real32' )
-                CALL netcdf4_write_attribute( operation_mode=file_format(9:), file_id=file_id,     &
+                CALL netcdf4_write_attribute( mode=file_format(9:), file_id=file_id,               &
                         variable_id=variable_id, attribute_name=attribute%name,                    &
                         value_real32=attribute%value_real32, return_value=output_return_value )
 
              CASE( 'real64' )
-                CALL netcdf4_write_attribute( operation_mode=file_format(9:), file_id=file_id,     &
+                CALL netcdf4_write_attribute( mode=file_format(9:), file_id=file_id,               &
                         variable_id=variable_id, attribute_name=attribute%name,                    &
                         value_real64=attribute%value_real64, return_value=output_return_value )
 
@@ -3855,14 +3602,13 @@
 !> Find a requested variable 'variable_name' and its used dimensions in requested file 'file_name'.
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE find_var_in_file( file_name, variable_name, file_format, file_id, variable_id,         &
-                              write_mode, dimensions, return_value )
+                              write_only_by_master_rank, dimensions, return_value )
 
     CHARACTER(LEN=*), PARAMETER ::  routine_name = 'find_var_in_file'  !< name of routine
 
     CHARACTER(LEN=charlen), INTENT(OUT) ::  file_format    !< file format chosen for file
     CHARACTER(LEN=*),       INTENT(IN)  ::  file_name      !< name of file
     CHARACTER(LEN=*),       INTENT(IN)  ::  variable_name  !< name of variable
-    CHARACTER(LEN=*),       INTENT(OUT) ::  write_mode     !< write mode of variable
 
     INTEGER              ::  d             !< loop index
     INTEGER              ::  dd            !< loop index
@@ -3873,7 +3619,8 @@
 
     INTEGER, DIMENSION(:), ALLOCATABLE ::  dimension_ids  !< list of dimension IDs used by variable
 
-    LOGICAL ::  found  !< true if requested variable found in requested file
+    LOGICAL              ::  found                      !< true if requested variable found in requested file
+    LOGICAL, INTENT(OUT) ::  write_only_by_master_rank  !< true if only master rank shall write variable
 
     TYPE(dimension_type), DIMENSION(:), ALLOCATABLE, INTENT(OUT) ::  dimensions  !< list of dimensions used by variable
 
@@ -3902,7 +3649,7 @@
              IF ( TRIM( variable_name ) == TRIM( files(f)%variables(d)%name ) )  THEN
 
                 variable_id = files(f)%variables(d)%id
-                write_mode = files(f)%variables(d)%write_mode
+                write_only_by_master_rank = files(f)%variables(d)%write_only_by_master_rank
 
                 ALLOCATE( dimension_ids(SIZE( files(f)%variables(d)%dimension_ids )) )
                 ALLOCATE( dimensions(SIZE( files(f)%variables(d)%dimension_ids )) )
@@ -3934,7 +3681,7 @@
                 IF ( TRIM( variable_name ) == TRIM( files(f)%dimensions(d)%name ) )  THEN
 
                    variable_id = files(f)%dimensions(d)%variable_id
-                   write_mode = files(f)%dimensions(d)%write_mode
+                   write_only_by_master_rank = files(f)%dimensions(d)%write_only_by_master_rank
 
                    ALLOCATE( dimensions(1) )
 
@@ -4255,8 +4002,8 @@
              'type', TRIM( dimensions(i)%data_type )
           WRITE( debug_output_unit, TRIM( write_format2 ) // ',I7)' )                              &
              'id', dimensions(i)%id
-          WRITE( debug_output_unit, TRIM( write_format2 ) // ',A)' )                               &
-             'write mode', dimensions(i)%write_mode
+          WRITE( debug_output_unit, TRIM( write_format2 ) // ',L1)' )                              &
+             'write only by master rank', dimensions(i)%write_only_by_master_rank
           WRITE( debug_output_unit, TRIM( write_format2 ) // ',I7)' )                              &
              'length', dimensions(i)%length
           WRITE( debug_output_unit, TRIM( write_format2 ) // ',I7,A,I7)' )                         &
@@ -4467,8 +4214,8 @@
              'type', TRIM( variables(i)%data_type )
           WRITE( debug_output_unit, TRIM( write_format2 ) // ',I7)' )                              &
              'id', variables(i)%id
-          WRITE( debug_output_unit, TRIM( write_format2 ) // ',A)' )                               &
-             'write mode', variables(i)%write_mode
+          WRITE( debug_output_unit, TRIM( write_format2 ) // ',L1)' )                              &
+             'write only by master rank', variables(i)%write_only_by_master_rank
 
           WRITE( debug_output_unit, TRIM( write_format2 ) // ',A)', ADVANCE='no' )                 &
              'dimension names', TRIM( variables(i)%dimension_names(1) )

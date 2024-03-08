@@ -13,8 +13,49 @@
 ! You should have received a copy of the GNU General Public License along with PALM. If not, see
 ! <http://www.gnu.org/licenses/>.
 !
-! Copyright 1997-2021 Leibniz Universitaet Hannover
+! Copyright 1997-2020 Leibniz Universitaet Hannover
 !--------------------------------------------------------------------------------------------------!
+!
+!
+! Current revisions:
+! -----------------
+!
+!
+! Former revisions:
+! -----------------
+! $Id: timestep.f90 4717 2020-09-30 22:27:40Z pavelkrc $
+! Fixes and optimizations of OpenMP parallelization, formatting of OpenMP
+! directives (J. Resler)
+! 
+! 4564 2020-06-12 14:03:36Z raasch
+! Vertical nesting method of Huq et al. (2019) removed
+! 
+! 4540 2020-05-18 15:23:29Z raasch
+! File re-formatted to follow the PALM coding standard
+!
+! 4444 2020-03-05 15:59:50Z raasch
+! Bugfix: cpp-directives for serial mode added
+!
+! 4360 2020-01-07 11:25:50Z suehring
+! Added missing OpenMP directives
+!
+! 4233 2019-09-20 09:55:54Z knoop
+! OpenACC data update host removed
+!
+! 4182 2019-08-22 15:20:23Z scharf
+! Corrected "Former revisions" section
+!
+! 4101 2019-07-17 15:14:26Z gronemeier
+! - Consider 2*Km within diffusion criterion as Km is considered twice within the diffusion of e,
+! - in RANS mode, instead of considering each wind component individually use the wind speed of 3d
+!   wind vector in CFL criterion
+! - Do not limit the increase of dt based on its previous value in RANS mode
+!
+! 3658 2019-01-07 20:28:54Z knoop
+! OpenACC port for SPEC
+!
+! Revision 1.1  1997/08/11 06:26:19  raasch
+! Initial revision
 !
 !
 ! Description:
@@ -23,9 +64,6 @@
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE timestep
 
-#if defined( __parallel )
-    USE MPI
-#endif
 
     USE arrays_3d,                                                                                 &
         ONLY:  dzu,                                                                                &
@@ -37,10 +75,6 @@
                v,                                                                                  &
                v_stokes_zu,                                                                        &
                w
-
-    USE bulk_cloud_model_mod,                                                                      &
-        ONLY:  dt_precipitation,                                                                   &
-               bulk_cloud_model
 
     USE control_parameters,                                                                        &
         ONLY:  cfl_factor,                                                                         &
@@ -56,6 +90,12 @@
                use_ug_for_galilei_tr,                                                              &
                v_gtrans
 
+#if defined( __parallel )
+    USE control_parameters,                                                                        &
+        ONLY:  coupling_mode,                                                                      &
+               terminate_coupled,                                                                  &
+               terminate_coupled_remote
+#endif
 
     USE cpulog,                                                                                    &
         ONLY:  cpu_log,                                                                            &
@@ -83,11 +123,8 @@
 
     USE kinds
 
-    USE land_surface_model_mod,                                                                    &
-        ONLY:  dt_lsm
-
-    USE module_interface,                                                                          &
-        ONLY:  module_interface_timestep
+    USE bulk_cloud_model_mod,                                                                      &
+        ONLY:  dt_precipitation
 
     USE pegrid
 
@@ -103,9 +140,6 @@
                v_max_ijk,                                                                          &
                w_max,                                                                              &
                w_max_ijk
-
-    USE urban_surface_mod,                                                                         &
-        ONLY:  dt_usm
 
     IMPLICIT NONE
 
@@ -284,7 +318,7 @@
           DO  j = nys, nyn
              DO  k = nzb+1, nzt
                 dt_diff_l = MIN( dt_diff_l, dxyz2_min(k) / ( MAX( kh(k,j,i), 2.0_wp *              &
-                                 ABS( km(k,j,i) ) ) + 1E-20_wp ) )
+                            ABS( km(k,j,i) ) ) + 1E-20_wp ) )
              ENDDO
           ENDDO
        ENDDO
@@ -294,46 +328,22 @@
 #else
        dt_diff = dt_diff_l
 #endif
+
 !
-!--    Determine further timestep-limitations. This, e.g., includes limitations by the energy-
-!--    balance models or precipitation.
-       CALL module_interface_timestep
-!
-!--    The time step is the minimum of the 3 velocity components according to the CFL
-!--    criterion, the diffusion time step, the precipitation time step, as well as
-!--    the maximum allowed timestep of the land- and urban-surface model where a
-!--    diffusion criterion is applied.
-!--    The resulting time step is further reducted by scaling with cfl_factor, just to be on
-!--    the safe side. Further on, the time step must not exceed the maximum allowed value.
-!--    Note, only in very rare cases the timestep is limited by the land- or urban-surface
-!--    models, e.g. when metal surfaces appear.
-       dt_3d = cfl_factor * MIN( dt_diff, dt_u, dt_v, dt_w, dt_precipitation, dt_lsm, dt_usm )
+!--    The time step is the minimum of the 3-4 components and the diffusion time step minus a
+!--    reduction (cfl_factor) to be on the safe side.
+!--    The time step must not exceed the maximum allowed value.
+       dt_3d = cfl_factor * MIN( dt_diff, dt_u, dt_v, dt_w, dt_precipitation )
+       dt_3d = MIN( dt_3d, dt_max )
+
 !
 !--    Remember the restricting time step criterion for later output.
-!--    Limitation by user-defined (or default) setting of dt_max.
-       IF ( dt_max <= dt_3d )  THEN
-          timestep_reason = 'X'
-!
-!--    Advection.
-       ELSEIF ( MIN( dt_u, dt_v, dt_w ) < MIN( dt_diff, dt_precipitation, dt_lsm, dt_usm ) )  THEN
+       IF ( MIN( dt_u, dt_v, dt_w ) < dt_diff )  THEN
           timestep_reason = 'A'
-!
-!--    Diffusion.
-       ELSEIF ( dt_diff < MIN( dt_u, dt_v, dt_w, dt_precipitation, dt_lsm, dt_usm ) )  THEN
+       ELSE
           timestep_reason = 'D'
-!
-!--    Surface energy balance models.
-       ELSEIF ( MIN( dt_lsm, dt_usm ) < MIN( dt_u, dt_v, dt_w, dt_precipitation, dt_diff ) )  THEN
-          timestep_reason = 'S'
-!
-!--    Precipitation.
-       ELSEIF ( bulk_cloud_model  .AND.                                                            &
-                dt_precipitation < MIN( dt_u, dt_v, dt_w, dt_diff, dt_lsm, dt_usm ) )  THEN
-          timestep_reason = 'P'
        ENDIF
-!
-!--    Finally, limit the timestep by the user-defined (or default) setting of dt_max.
-       dt_3d = MIN( dt_3d, dt_max )
+
 !
 !--    Set flag if the time step becomes too small.
        IF ( dt_3d < ( 0.00001_wp * dt_max ) )  THEN
@@ -352,8 +362,6 @@
                '&dt_v            = ', dt_v, ' s',                                                  &
                '&dt_w            = ', dt_w, ' s',                                                  &
                '&dt_diff         = ', dt_diff, ' s',                                               &
-               '&dt_lsm          = ', dt_lsm, ' s',                                                &
-               '&dt_usm          = ', dt_usm, ' s',                                                &
                '&u_max           = ', u_max, ' m/s    k=', u_max_ijk(1),                           &
                '  j=', u_max_ijk(2), '  i=', u_max_ijk(3),                                         &
                '&v_max           = ', v_max, ' m/s    k=', v_max_ijk(1),                           &
@@ -364,7 +372,22 @@
                '  j=', km_max_ijk(2), '  i=', km_max_ijk(3),                                       &
                '&kh_max          = ', kh_max, ' m2/s2  k=', kh_max_ijk(1),                         &
                 '  j=', kh_max_ijk(2), '  i=', kh_max_ijk(3)
-          CALL message( 'timestep', 'PAC0318', 0, 1, 0, 6, 0 )
+          CALL message( 'timestep', 'PA0312', 0, 1, 0, 6, 0 )
+!
+!--       In case of coupled runs inform the remote model of the termination and its reason,
+!--       provided the remote model has not already been informed of another termination reason
+!--       (terminate_coupled > 0).
+#if defined( __parallel )
+          IF ( coupling_mode /= 'uncoupled' .AND. terminate_coupled == 0 )  THEN
+             terminate_coupled = 2
+             IF ( myid == 0 )  THEN
+                CALL MPI_SENDRECV( terminate_coupled, 1, MPI_INTEGER, target_id, 0,                &
+                                   terminate_coupled_remote, 1, MPI_INTEGER, target_id,  0,        &
+                                   comm_inter, status, ierr )
+             ENDIF
+             CALL MPI_BCAST( terminate_coupled_remote, 1, MPI_INTEGER, 0, comm2d, ierr)
+          ENDIF
+#endif
        ENDIF
 
 !
@@ -385,10 +408,6 @@
        ENDDO
        dt_3d = NINT( dt_3d * 100.0_wp / div ) * div / 100.0_wp
 
-    ELSE
-!
-!--    This is the branch for a fixed time step given by the user.
-       timestep_reason = 'F'
     ENDIF
 
     CALL cpu_log( log_point(12), 'calculate_timestep', 'stop' )

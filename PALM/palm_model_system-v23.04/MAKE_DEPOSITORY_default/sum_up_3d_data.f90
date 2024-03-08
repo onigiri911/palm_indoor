@@ -13,9 +13,63 @@
 ! You should have received a copy of the GNU General Public License along with PALM. If not, see
 ! <http://www.gnu.org/licenses/>.
 !
-! Copyright 1997-2021 Leibniz Universitaet Hannover
-! Copyright 2022-2022 pecanode GmbH
+! Copyright 1997-2020 Leibniz Universitaet Hannover
 !--------------------------------------------------------------------------------------------------!
+!
+!
+! Current revisions:
+! -----------------
+!
+!
+! Former revisions:
+! -----------------
+! $Id: sum_up_3d_data.f90 4671 2020-09-09 20:27:58Z pavelkrc $
+! Implementation of downward facing USM and LSM surfaces
+!
+! 4591 2020-07-06 15:56:08Z raasch
+! File re-formatted to follow the PALM coding standard
+!
+! 4516 2020-04-30 16:55:10Z suehring
+! Remove double index
+!
+! 4514 2020-04-30 16:29:59Z suehring
+! Enable output of qsurf and ssurf
+!
+! 4442 2020-03-04 19:21:13Z suehring
+! Change order of dimension in surface array %frac to allow for better vectorization.
+!
+! 4441 2020-03-04 19:20:35Z suehring
+! Move 2-m potential temperature output to diagnostic_output_quantities
+!
+! 4182 2019-08-22 15:20:23Z scharf
+! Corrected "Former revisions" section
+!
+! 4048 2019-06-21 21:00:21Z knoop
+! Moved tcm_3d_data_averaging to module_interface
+!
+! 4039 2019-06-18 10:32:41Z suehring
+! Modularize diagnostic output
+!
+! 3994 2019-05-22 18:08:09Z suehring
+! Output of turbulence intensity added
+!
+! 3943 2019-05-02 09:50:41Z maronga
+! Added output of qsws_av for green roofs.
+!
+! 3933 2019-04-25 12:33:20Z kanani
+! Formatting
+!
+! 3773 2019-03-01 08:56:57Z maronga
+! Added output of theta_2m*_xy_av
+!
+! 3761 2019-02-25 15:31:42Z raasch
+! unused variables removed
+!
+! 3655 2019-01-07 16:51:22Z knoop
+! Implementation of the PALM module interface
+!
+! Revision 1.1  2006/02/23 12:55:23  raasch
+! Initial revision
 !
 !
 ! Description:
@@ -23,6 +77,7 @@
 !> Sum-up the values of 3d-arrays. The real averaging is later done in routine average_3d_data.
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE sum_up_3d_data
+
 
     USE arrays_3d,                                                                                 &
         ONLY:  dzw,                                                                                &
@@ -36,17 +91,50 @@
                ql_c,                                                                               &
                ql_v,                                                                               &
                s,                                                                                  &
-               scalarflux_output_conversion,                                                       &
                u,                                                                                  &
                v,                                                                                  &
                vpt,                                                                                &
                w,                                                                                  &
                waterflux_output_conversion
 
-    USE averaging
+    USE averaging,                                                                                 &
+        ONLY:  e_av,                                                                               &
+               ghf_av,                                                                             &
+               lpt_av,                                                                             &
+               lwp_av,                                                                             &
+               ol_av,                                                                              &
+               p_av,                                                                               &
+               pc_av,                                                                              &
+               pr_av,                                                                              &
+               pt_av,                                                                              &
+               q_av,                                                                               &
+               ql_av,                                                                              &
+               ql_c_av,                                                                            &
+               ql_v_av,                                                                            &
+               ql_vp_av,                                                                           &
+               qsurf_av,                                                                           &
+               qsws_av,                                                                            &
+               qv_av,                                                                              &
+               r_a_av,                                                                             &
+               s_av,                                                                               &
+               shf_av,                                                                             &
+               ssurf_av,                                                                           &
+               ssws_av,                                                                            &
+               ts_av,                                                                              &
+               tsurf_av,                                                                           &
+               u_av,                                                                               &
+               us_av,                                                                              &
+               v_av,                                                                               &
+               vpt_av,                                                                             &
+               w_av,                                                                               &
+               z0_av,                                                                              &
+               z0h_av,                                                                             &
+               z0q_av
 
     USE basic_constants_and_equations_mod,                                                         &
-        ONLY:  lv_d_cp
+        ONLY:  c_p,                                                                                &
+               lv_d_cp,                                                                            &
+               l_v
 
     USE bulk_cloud_model_mod,                                                                      &
         ONLY:  bulk_cloud_model
@@ -55,8 +143,6 @@
         ONLY:  average_count_3d,                                                                   &
                doav,                                                                               &
                doav_n,                                                                             &
-               dz,                                                                                 &
-               interpolate_to_grid_center,                                                         &
                rho_surface,                                                                        &
                urban_surface,                                                                      &
                varnamelength
@@ -64,10 +150,6 @@
     USE cpulog,                                                                                    &
         ONLY:  cpu_log,                                                                            &
                log_point
-
-    USE grid_variables,                                                                            &
-        ONLY:  dx,                                                                                 &
-               dy
 
     USE indices,                                                                                   &
         ONLY:  nxl,                                                                                &
@@ -97,9 +179,9 @@
         ONLY:  ind_pav_green,                                                                      &
                ind_veg_wall,                                                                       &
                ind_wat_win,                                                                        &
-               surf_def,                                                                           &
-               surf_lsm,                                                                           &
-               surf_usm
+               surf_def_h,                                                                         &
+               surf_lsm_h,                                                                         &
+               surf_usm_h
 
     USE urban_surface_mod,                                                                         &
         ONLY:  usm_3d_data_averaging
@@ -109,17 +191,20 @@
 
     CHARACTER(LEN=varnamelength) ::  trimvar  !< TRIM of output-variable string
 
-    INTEGER(iwp) ::  i       !< grid index x direction
-    INTEGER(iwp) ::  ii      !< running index
-    INTEGER(iwp) ::  j       !< grid index y direction
-    INTEGER(iwp) ::  k       !< grid index x direction
-    INTEGER(iwp) ::  kl      !< vertical index used to limit lower interpolation index
-    INTEGER(iwp) ::  m       !< running index over surfacle elements
-    INTEGER(iwp) ::  n       !< running index over number of particles per grid box
+    INTEGER(iwp) ::  i   !< grid index x direction
+    INTEGER(iwp) ::  ii  !< running index
+    INTEGER(iwp) ::  j   !< grid index y direction
+    INTEGER(iwp) ::  k   !< grid index x direction
+    INTEGER(iwp) ::  m   !< running index over surfacle elements
+    INTEGER(iwp) ::  n   !< running index over number of particles per grid box
 
-    REAL(wp) ::  mean_r   !< mean-particle radius witin grid box
-    REAL(wp) ::  s_r2     !< mean-particle radius witin grid box to the power of two
-    REAL(wp) ::  s_r3     !< mean-particle radius witin grid box to the power of three
+    LOGICAL ::  match_def  !< flag indicating default-type surface
+    LOGICAL ::  match_lsm  !< flag indicating natural-type surface
+    LOGICAL ::  match_usm  !< flag indicating urban-type surface
+
+    REAL(wp) ::  mean_r  !< mean-particle radius witin grid box
+    REAL(wp) ::  s_r2    !< mean-particle radius witin grid box to the power of two
+    REAL(wp) ::  s_r3    !< mean-particle radius witin grid box to the power of three
 
 
 
@@ -148,6 +233,12 @@
                    ALLOCATE( e_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
                 ENDIF
                 e_av = 0.0_wp
+
+             CASE ( 'thetal' )
+                IF ( .NOT. ALLOCATED( lpt_av ) )  THEN
+                   ALLOCATE( lpt_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
+                ENDIF
+                lpt_av = 0.0_wp
 
              CASE ( 'lwp*' )
                 IF ( .NOT. ALLOCATED( lwp_av ) )  THEN
@@ -179,17 +270,11 @@
                 ENDIF
                 pr_av = 0.0_wp
 
-             CASE ( 'pres_drag_x*' )
-                IF ( .NOT. ALLOCATED( pres_drag_x_av ) )  THEN
-                   ALLOCATE( pres_drag_x_av(nysg:nyng,nxlg:nxrg) )
+             CASE ( 'theta' )
+                IF ( .NOT. ALLOCATED( pt_av ) )  THEN
+                   ALLOCATE( pt_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
                 ENDIF
-                pres_drag_x_av = 0.0_wp
-
-             CASE ( 'pres_drag_y*' )
-                IF ( .NOT. ALLOCATED( pres_drag_y_av ) )  THEN
-                   ALLOCATE( pres_drag_y_av(nysg:nyng,nxlg:nxrg) )
-                ENDIF
-                pres_drag_y_av = 0.0_wp
+                pt_av = 0.0_wp
 
              CASE ( 'q' )
                 IF ( .NOT. ALLOCATED( q_av ) )  THEN
@@ -275,18 +360,6 @@
                 ENDIF
                 ts_av = 0.0_wp
 
-             CASE ( 'theta' )
-                IF ( .NOT. ALLOCATED( pt_av ) )  THEN
-                   ALLOCATE( pt_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-                ENDIF
-                pt_av = 0.0_wp
-
-             CASE ( 'thetal' )
-                IF ( .NOT. ALLOCATED( lpt_av ) )  THEN
-                   ALLOCATE( lpt_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-                ENDIF
-                lpt_av = 0.0_wp
-
              CASE ( 'tsurf*' )
                 IF ( .NOT. ALLOCATED( tsurf_av ) )  THEN
                    ALLOCATE( tsurf_av(nysg:nyng,nxlg:nxrg) )
@@ -369,22 +442,26 @@
                 DO  i = nxl, nxr
                    DO  j = nys, nyn
 !
-!--                   Take ground-heat flux from the uppermost upward-facing surface, which is
-!--                   is either an LSM or an USM surface.
-                      DO  m = surf_lsm%start_index(j,i), surf_lsm%end_index(j,i)
-                         IF ( surf_lsm%upward_top(m) )  ghf_av(j,i) = ghf_av(j,i) + surf_lsm%ghf(m)
-                      ENDDO
+!--                   Check whether grid point is a natural- or urban-type surface.
+                      match_lsm = surf_lsm_h(0)%start_index(j,i) <= surf_lsm_h(0)%end_index(j,i)
+                      match_usm = surf_usm_h(0)%start_index(j,i) <= surf_usm_h(0)%end_index(j,i)
 !
-!--                   For urban-type surfaces, aggregate resistance from tile approach.
-                      DO  m = surf_usm%start_index(j,i), surf_usm%end_index(j,i)
-                         IF ( surf_usm%upward_top(m) )  THEN
-                            ghf_av(j,i) = ghf_av(j,i) +                                            &
-                                     surf_usm%frac(m,ind_veg_wall)  * surf_usm%wghf_eb(m)       +  &
-                                     surf_usm%frac(m,ind_pav_green) * surf_usm%wghf_eb_green(m) +  &
-                                     surf_usm%frac(m,ind_wat_win)   * surf_usm%wghf_eb_window(m)
-                         ENDIF
-                      ENDDO
-
+!--                   In order to avoid double-counting of surface properties, always assume that
+!--                   natural-type surfaces are below urban type surfaces, e.g. in case of bridges.
+!--                   Further, take only the last suface element, i.e. the uppermost surface which
+!--                   would be visible from above
+                      IF ( match_lsm  .AND.  .NOT. match_usm )  THEN
+                         m = surf_lsm_h(0)%end_index(j,i)
+                         ghf_av(j,i) = ghf_av(j,i) + surf_lsm_h(0)%ghf(m)
+                      ELSEIF ( match_usm )  THEN
+                         m = surf_usm_h(0)%end_index(j,i)
+                         ghf_av(j,i) = ghf_av(j,i) + surf_usm_h(0)%frac(m,ind_veg_wall)  *            &
+                                                     surf_usm_h(0)%wghf_eb(m)        +                &
+                                                     surf_usm_h(0)%frac(m,ind_pav_green) *            &
+                                                     surf_usm_h(0)%wghf_eb_green(m)  +                &
+                                                     surf_usm_h(0)%frac(m,ind_wat_win)   *            &
+                                                     surf_usm_h(0)%wghf_eb_window(m)
+                      ENDIF
                    ENDDO
                 ENDDO
              ENDIF
@@ -425,19 +502,20 @@
              IF ( ALLOCATED( ol_av ) ) THEN
                 DO  i = nxl, nxr
                    DO  j = nys, nyn
+                      match_def = surf_def_h(0)%start_index(j,i) <= surf_def_h(0)%end_index(j,i)
+                      match_lsm = surf_lsm_h(0)%start_index(j,i) <= surf_lsm_h(0)%end_index(j,i)
+                      match_usm = surf_usm_h(0)%start_index(j,i) <= surf_usm_h(0)%end_index(j,i)
 
-                      DO  m = surf_def%start_index(j,i), surf_def%end_index(j,i)
-                         IF ( surf_def%upward_top(m) )  ol_av(j,i) = ol_av(j,i) + surf_def%ol(m)
-                      ENDDO
-
-                      DO  m = surf_lsm%start_index(j,i), surf_lsm%end_index(j,i)
-                         IF ( surf_lsm%upward_top(m) )  ol_av(j,i) = ol_av(j,i) + surf_lsm%ol(m)
-                      ENDDO
-
-                      DO  m = surf_usm%start_index(j,i), surf_usm%end_index(j,i)
-                         IF ( surf_usm%upward_top(m) )  ol_av(j,i) = ol_av(j,i) + surf_usm%ol(m)
-                      ENDDO
-
+                      IF ( match_def )  THEN
+                         m = surf_def_h(0)%end_index(j,i)
+                         ol_av(j,i) = ol_av(j,i) + surf_def_h(0)%ol(m)
+                      ELSEIF ( match_lsm  .AND.  .NOT. match_usm )  THEN
+                         m = surf_lsm_h(0)%end_index(j,i)
+                         ol_av(j,i) = ol_av(j,i) + surf_lsm_h(0)%ol(m)
+                      ELSEIF ( match_usm )  THEN
+                         m = surf_usm_h(0)%end_index(j,i)
+                         ol_av(j,i) = ol_av(j,i) + surf_usm_h(0)%ol(m)
+                      ENDIF
                    ENDDO
                 ENDDO
              ENDIF
@@ -493,95 +571,26 @@
                 ENDDO
              ENDIF
 
-          CASE ( 'pres_drag_x*' )
-             IF ( ALLOCATED( pres_drag_x_av ) ) THEN
-
-                DO  m = 1, surf_def%ns
-                   i = surf_def%i(m)
-                   j = surf_def%j(m)
-                   k = surf_def%k(m)
-!
-!--                Pressure drag on right (east) faces
-                   pres_drag_x_av(j,i) = pres_drag_x_av(j,i)                                       &
-                                   + MERGE( -p(k,j,i) * dy * dz(1), 0.0_wp, surf_def%eastward(m) )
-!
-!--                Pressure drag on left (west) faces
-                   pres_drag_x_av(j,i) = pres_drag_x_av(j,i)                                       &
-                                   + MERGE(  p(k,j,i) * dy * dz(1), 0.0_wp, surf_def%westward(m) )
-                ENDDO
-
-                DO  m = 1, surf_lsm%ns
-                   i = surf_lsm%i(m)
-                   j = surf_lsm%j(m)
-                   k = surf_lsm%k(m)
-!
-!--                Pressure drag on right (east) faces
-                   pres_drag_x_av(j,i) = pres_drag_x_av(j,i)                                       &
-                                   + MERGE( -p(k,j,i) * dy * dz(1), 0.0_wp, surf_lsm%eastward(m) )
-!
-!--                Pressure drag on left (west) faces
-                   pres_drag_x_av(j,i) = pres_drag_x_av(j,i)                                       &
-                                   + MERGE(  p(k,j,i) * dy * dz(1), 0.0_wp, surf_lsm%westward(m) )
-                ENDDO
-                DO  m = 1, surf_usm%ns
-                   i = surf_usm%i(m)
-                   j = surf_usm%j(m)
-                   k = surf_usm%k(m)
-!
-!--                Pressure drag on right (east) faces
-                   pres_drag_x_av(j,i) = pres_drag_x_av(j,i)                                       &
-                                   + MERGE( -p(k,j,i) * dy * dz(1), 0.0_wp, surf_usm%eastward(m) )
-!
-!--                Pressure drag on left (west) faces
-                   pres_drag_x_av(j,i) = pres_drag_x_av(j,i)                                       &
-                                   + MERGE(  p(k,j,i) * dy * dz(1), 0.0_wp, surf_usm%westward(m) )
-                ENDDO
-
-             ENDIF
-
-          CASE ( 'pres_drag_y*' )
-             IF ( ALLOCATED( pres_drag_y_av ) ) THEN
-
-               DO  m = 1, surf_def%ns
-                   i = surf_def%i(m)
-                   j = surf_def%j(m)
-                   k = surf_def%k(m)
-!
-!--                Pressure drag on north faces
-                   pres_drag_y_av(j,i) = pres_drag_y_av(j,i)                                       &
-                                   + MERGE( -p(k,j,i) * dx * dz(1), 0.0_wp, surf_def%northward(m) )
-!
-!--                Pressure drag on south faces
-                   pres_drag_y_av(j,i) = pres_drag_y_av(j,i)                                       &
-                                   + MERGE(  p(k,j,i) * dx * dz(1), 0.0_wp, surf_def%southward(m) )
-                ENDDO
-                DO  m = 1, surf_lsm%ns
-                   i = surf_lsm%i(m)
-                   j = surf_lsm%j(m)
-                   k = surf_lsm%k(m)
-!
-!--                Pressure drag on north faces
-                   pres_drag_y_av(j,i) = pres_drag_y_av(j,i)                                       &
-                                    + MERGE( -p(k,j,i) * dx * dz(1), 0.0_wp,surf_lsm%northward(m) )
-!
-!--                Pressure drag on south faces
-                   pres_drag_y_av(j,i) = pres_drag_y_av(j,i)                                       &
-                                    + MERGE(  p(k,j,i) * dx * dz(1), 0.0_wp, surf_lsm%southward(m) )
-                ENDDO
-                DO  m = 1, surf_usm%ns
-                   i = surf_usm%i(m)
-                   j = surf_usm%j(m)
-                   k = surf_usm%k(m)
-!
-!--                Pressure drag on north faces
-                   pres_drag_y_av(j,i) = pres_drag_y_av(j,i)                                       &
-                                    + MERGE( -p(k,j,i) * dx * dz(1), 0.0_wp, surf_usm%northward(m) )
-!
-!--                Pressure drag on south faces
-                   pres_drag_y_av(j,i) = pres_drag_y_av(j,i)                                       &
-                                    + MERGE(  p(k,j,i) * dx * dz(1), 0.0_wp, surf_usm%southward(m) )
-                ENDDO
-
+          CASE ( 'theta' )
+             IF ( ALLOCATED( pt_av ) ) THEN
+                IF ( .NOT. bulk_cloud_model ) THEN
+                DO  i = nxlg, nxrg
+                   DO  j = nysg, nyng
+                      DO  k = nzb, nzt+1
+                            pt_av(k,j,i) = pt_av(k,j,i) + pt(k,j,i)
+                         ENDDO
+                      ENDDO
+                   ENDDO
+                ELSE
+                DO  i = nxlg, nxrg
+                   DO  j = nysg, nyng
+                      DO  k = nzb, nzt+1
+                            pt_av(k,j,i) = pt_av(k,j,i) + pt(k,j,i) + lv_d_cp * d_exner(k)         &
+                                                                              * ql(k,j,i)
+                         ENDDO
+                      ENDDO
+                   ENDDO
+                ENDIF
              ENDIF
 
           CASE ( 'q' )
@@ -651,25 +660,20 @@
              IF ( ALLOCATED( qsurf_av ) ) THEN
                 DO  i = nxl, nxr
                    DO  j = nys, nyn
+                      match_def = surf_def_h(0)%start_index(j,i) <= surf_def_h(0)%end_index(j,i)
+                      match_lsm = surf_lsm_h(0)%start_index(j,i) <= surf_lsm_h(0)%end_index(j,i)
+                      match_usm = surf_usm_h(0)%start_index(j,i) <= surf_usm_h(0)%end_index(j,i)
 
-                      DO  m = surf_def%start_index(j,i), surf_def%end_index(j,i)
-                         IF ( surf_def%upward_top(m) )  THEN
-                            qsurf_av(j,i) = qsurf_av(j,i) + surf_def%q_surface(m)
-                         ENDIF
-                      ENDDO
-
-                      DO  m = surf_lsm%start_index(j,i), surf_lsm%end_index(j,i)
-                         IF ( surf_lsm%upward_top(m) )  THEN
-                            qsurf_av(j,i) = qsurf_av(j,i) + surf_lsm%q_surface(m)
-                         ENDIF
-                      ENDDO
-
-                      DO  m = surf_usm%start_index(j,i), surf_usm%end_index(j,i)
-                         IF ( surf_usm%upward_top(m) )  THEN
-                            qsurf_av(j,i) = qsurf_av(j,i) + surf_usm%q_surface(m)
-                         ENDIF
-                      ENDDO
-
+                      IF ( match_def )  THEN
+                         m = surf_def_h(0)%end_index(j,i)
+                         qsurf_av(j,i) = qsurf_av(j,i) + surf_def_h(0)%q_surface(m)
+                      ELSEIF ( match_lsm  .AND.  .NOT. match_usm )  THEN
+                         m = surf_lsm_h(0)%end_index(j,i)
+                         qsurf_av(j,i) = qsurf_av(j,i) + surf_lsm_h(0)%q_surface(m)
+                      ELSEIF ( match_usm )  THEN
+                         m = surf_usm_h(0)%end_index(j,i)
+                         qsurf_av(j,i) = qsurf_av(j,i) + surf_usm_h(0)%q_surface(m)
+                      ENDIF
                    ENDDO
                 ENDDO
              ENDIF
@@ -682,31 +686,21 @@
              IF ( ALLOCATED( qsws_av ) ) THEN
                 DO  i = nxl, nxr
                    DO  j = nys, nyn
+                      match_def = surf_def_h(0)%start_index(j,i) <= surf_def_h(0)%end_index(j,i)
+                      match_lsm = surf_lsm_h(0)%start_index(j,i) <= surf_lsm_h(0)%end_index(j,i)
+                      match_usm = surf_usm_h(0)%start_index(j,i) <= surf_usm_h(0)%end_index(j,i)
 
-                      DO  m = surf_def%start_index(j,i), surf_def%end_index(j,i)
-                         IF ( surf_def%upward_top(m) )  THEN
-                            k = surf_def%k(m)
-                            qsws_av(j,i) = qsws_av(j,i) + surf_def%qsws(m) *                       &
-                                                          waterflux_output_conversion(k)
-                         ENDIF
-                      ENDDO
-
-                      DO  m = surf_lsm%start_index(j,i), surf_lsm%end_index(j,i)
-                         IF ( surf_lsm%upward_top(m) )  THEN
-                            k = surf_lsm%k(m)
-                            qsws_av(j,i) = qsws_av(j,i) + surf_lsm%qsws(m) *                       &
-                                                          waterflux_output_conversion(k)
-                         ENDIF
-                      ENDDO
-
-                      DO  m = surf_usm%start_index(j,i), surf_usm%end_index(j,i)
-                         IF ( surf_usm%upward_top(m) )  THEN
-                            k = surf_usm%k(m)
-                            qsws_av(j,i) = qsws_av(j,i) + surf_usm%qsws(m) *                       &
-                                                          waterflux_output_conversion(k)
-                         ENDIF
-                      ENDDO
-
+                      IF ( match_def )  THEN
+                         m = surf_def_h(0)%end_index(j,i)
+                         qsws_av(j,i) = qsws_av(j,i) + surf_def_h(0)%qsws(m) *                     &
+                                        waterflux_output_conversion(nzb)
+                      ELSEIF ( match_lsm  .AND.  .NOT. match_usm )  THEN
+                         m = surf_lsm_h(0)%end_index(j,i)
+                         qsws_av(j,i) = qsws_av(j,i) + surf_lsm_h(0)%qsws(m) * l_v
+                      ELSEIF ( match_usm  .AND.  .NOT. match_lsm )  THEN
+                         m = surf_usm_h(0)%end_index(j,i)
+                         qsws_av(j,i) = qsws_av(j,i) + surf_usm_h(0)%qsws(m) * l_v
+                      ENDIF
                    ENDDO
                 ENDDO
              ENDIF
@@ -726,20 +720,21 @@
              IF ( ALLOCATED( r_a_av ) ) THEN
                 DO  i = nxl, nxr
                    DO  j = nys, nyn
+                      match_lsm = surf_lsm_h(0)%start_index(j,i) <= surf_lsm_h(0)%end_index(j,i)
+                      match_usm = surf_usm_h(0)%start_index(j,i) <= surf_usm_h(0)%end_index(j,i)
 
-                      DO  m = surf_lsm%start_index(j,i), surf_lsm%end_index(j,i)
-                         IF ( surf_lsm%upward_top(m) )  r_a_av(j,i) = r_a_av(j,i) + surf_lsm%r_a(m)
-                      ENDDO
-
-                      DO  m = surf_usm%start_index(j,i), surf_usm%end_index(j,i)
-                         IF ( surf_usm%upward_top(m) )  THEN
-                            r_a_av(j,i) = r_a_av(j,i) +                                            &
-                                       surf_usm%frac(m,ind_veg_wall)  * surf_usm%r_a(m)       +    &
-                                       surf_usm%frac(m,ind_pav_green) * surf_usm%r_a_green(m) +    &
-                                       surf_usm%frac(m,ind_wat_win)   * surf_usm%r_a_window(m)
-                         ENDIF
-                      ENDDO
-
+                      IF ( match_lsm  .AND.  .NOT. match_usm )  THEN
+                         m = surf_lsm_h(0)%end_index(j,i)
+                         r_a_av(j,i) = r_a_av(j,i) + surf_lsm_h(0)%r_a(m)
+                      ELSEIF ( match_usm )  THEN
+                         m = surf_usm_h(0)%end_index(j,i)
+                         r_a_av(j,i) = r_a_av(j,i) + surf_usm_h(0)%frac(m,ind_veg_wall)  *            &
+                                                     surf_usm_h(0)%r_a(m)       +                     &
+                                                     surf_usm_h(0)%frac(m,ind_pav_green) *            &
+                                                     surf_usm_h(0)%r_a_green(m) +                     &
+                                                     surf_usm_h(0)%frac(m,ind_wat_win)   *            &
+                                                     surf_usm_h(0)%r_a_window(m)
+                      ENDIF
                    ENDDO
                 ENDDO
              ENDIF
@@ -762,31 +757,21 @@
              IF ( ALLOCATED( shf_av ) ) THEN
                 DO  i = nxl, nxr
                    DO  j = nys, nyn
+                      match_def = surf_def_h(0)%start_index(j,i) <= surf_def_h(0)%end_index(j,i)
+                      match_lsm = surf_lsm_h(0)%start_index(j,i) <= surf_lsm_h(0)%end_index(j,i)
+                      match_usm = surf_usm_h(0)%start_index(j,i) <= surf_usm_h(0)%end_index(j,i)
 
-                      DO  m = surf_def%start_index(j,i), surf_def%end_index(j,i)
-                         IF ( surf_def%upward_top(m) )  THEN
-                            k = surf_def%k(m)
-                            shf_av(j,i) = shf_av(j,i) + surf_def%shf(m) *                          &
-                                                        heatflux_output_conversion(k)
-                         ENDIF
-                      ENDDO
-
-                      DO  m = surf_lsm%start_index(j,i), surf_lsm%end_index(j,i)
-                         IF ( surf_lsm%upward_top(m) )  THEN
-                            k = surf_lsm%k(m)
-                            shf_av(j,i) = shf_av(j,i) + surf_lsm%shf(m) *                          &
-                                                        heatflux_output_conversion(k)
-                         ENDIF
-                      ENDDO
-
-                      DO  m = surf_usm%start_index(j,i), surf_usm%end_index(j,i)
-                         IF ( surf_usm%upward_top(m) )  THEN
-                            k = surf_usm%k(m)
-                            shf_av(j,i) = shf_av(j,i) + surf_usm%shf(m) *                          &
-                                                        heatflux_output_conversion(k)
-                         ENDIF
-                      ENDDO
-
+                      IF ( match_def )  THEN
+                         m = surf_def_h(0)%end_index(j,i)
+                         shf_av(j,i) = shf_av(j,i) + surf_def_h(0)%shf(m)  *                       &
+                                       heatflux_output_conversion(nzb)
+                      ELSEIF ( match_lsm  .AND.  .NOT. match_usm )  THEN
+                         m = surf_lsm_h(0)%end_index(j,i)
+                         shf_av(j,i) = shf_av(j,i) + surf_lsm_h(0)%shf(m) * c_p
+                      ELSEIF ( match_usm )  THEN
+                         m = surf_usm_h(0)%end_index(j,i)
+                         shf_av(j,i) = shf_av(j,i) + surf_usm_h(0)%shf(m) * c_p
+                      ENDIF
                    ENDDO
                 ENDDO
              ENDIF
@@ -805,31 +790,20 @@
              IF ( ALLOCATED( ssws_av ) ) THEN
                 DO  i = nxl, nxr
                    DO  j = nys, nyn
+                      match_def = surf_def_h(0)%start_index(j,i) <= surf_def_h(0)%end_index(j,i)
+                      match_lsm = surf_lsm_h(0)%start_index(j,i) <= surf_lsm_h(0)%end_index(j,i)
+                      match_usm = surf_usm_h(0)%start_index(j,i) <= surf_usm_h(0)%end_index(j,i)
 
-                      DO  m = surf_def%start_index(j,i), surf_def%end_index(j,i)
-                         IF ( surf_def%upward_top(m) )  THEN
-                            k = surf_def%k(m)
-                            ssws_av(j,i) = ssws_av(j,i) + surf_def%ssws(m) *                       &
-                                                          scalarflux_output_conversion(k)
-                         ENDIF
-                      ENDDO
-
-                      DO  m = surf_lsm%start_index(j,i), surf_lsm%end_index(j,i)
-                         IF ( surf_lsm%upward_top(m) )  THEN
-                            k =  surf_lsm%k(m)
-                            ssws_av(j,i) = ssws_av(j,i) + surf_lsm%ssws(m) *                       &
-                                                          scalarflux_output_conversion(k)
-                         ENDIF
-                      ENDDO
-
-                      DO  m = surf_usm%start_index(j,i), surf_usm%end_index(j,i)
-                         IF ( surf_usm%upward_top(m) )  THEN
-                            k = surf_usm%k(m)
-                            ssws_av(j,i) = ssws_av(j,i) + surf_usm%ssws(m) *                       &
-                                                          scalarflux_output_conversion(k)
-                         ENDIF
-                      ENDDO
-
+                      IF ( match_def )  THEN
+                         m = surf_def_h(0)%end_index(j,i)
+                         ssws_av(j,i) = ssws_av(j,i) + surf_def_h(0)%ssws(m)
+                      ELSEIF ( match_lsm  .AND.  .NOT. match_usm )  THEN
+                         m = surf_lsm_h(0)%end_index(j,i)
+                         ssws_av(j,i) = ssws_av(j,i) + surf_lsm_h(0)%ssws(m)
+                      ELSEIF ( match_usm )  THEN
+                         m = surf_usm_h(0)%end_index(j,i)
+                         ssws_av(j,i) = ssws_av(j,i) + surf_usm_h(0)%ssws(m)
+                      ENDIF
                    ENDDO
                 ENDDO
              ENDIF
@@ -838,133 +812,88 @@
              IF ( ALLOCATED( ts_av ) ) THEN
                 DO  i = nxl, nxr
                    DO  j = nys, nyn
+                      match_def = surf_def_h(0)%start_index(j,i) <= surf_def_h(0)%end_index(j,i)
+                      match_lsm = surf_lsm_h(0)%start_index(j,i) <= surf_lsm_h(0)%end_index(j,i)
+                      match_usm = surf_usm_h(0)%start_index(j,i) <= surf_usm_h(0)%end_index(j,i)
 
-                      DO  m = surf_def%start_index(j,i), surf_def%end_index(j,i)
-                         IF ( surf_def%upward_top(m) )  ts_av(j,i) = ts_av(j,i) + surf_def%ts(m)
-                      ENDDO
-
-                      DO  m = surf_lsm%start_index(j,i), surf_lsm%end_index(j,i)
-                         IF ( surf_lsm%upward_top(m) )  ts_av(j,i) = ts_av(j,i) + surf_lsm%ts(m)
-                      ENDDO
-
-                      DO  m = surf_usm%start_index(j,i), surf_usm%end_index(j,i)
-                         IF ( surf_usm%upward_top(m) )  ts_av(j,i) = ts_av(j,i) + surf_usm%ts(m)
-                      ENDDO
-
+                      IF ( match_def )  THEN
+                         m = surf_def_h(0)%end_index(j,i)
+                         ts_av(j,i) = ts_av(j,i) + surf_def_h(0)%ts(m)
+                      ELSEIF ( match_lsm  .AND.  .NOT. match_usm )  THEN
+                         m = surf_lsm_h(0)%end_index(j,i)
+                         ts_av(j,i) = ts_av(j,i) + surf_lsm_h(0)%ts(m)
+                      ELSEIF ( match_usm )  THEN
+                         m = surf_usm_h(0)%end_index(j,i)
+                         ts_av(j,i) = ts_av(j,i) + surf_usm_h(0)%ts(m)
+                      ENDIF
                    ENDDO
                 ENDDO
-             ENDIF
-
-          CASE ( 'theta' )
-             IF ( ALLOCATED( pt_av ) ) THEN
-                IF ( .NOT. bulk_cloud_model ) THEN
-                DO  i = nxlg, nxrg
-                   DO  j = nysg, nyng
-                      DO  k = nzb, nzt+1
-                            pt_av(k,j,i) = pt_av(k,j,i) + pt(k,j,i)
-                         ENDDO
-                      ENDDO
-                   ENDDO
-                ELSE
-                DO  i = nxlg, nxrg
-                   DO  j = nysg, nyng
-                      DO  k = nzb, nzt+1
-                            pt_av(k,j,i) = pt_av(k,j,i) + pt(k,j,i) + lv_d_cp * d_exner(k)         &
-                                                                              * ql(k,j,i)
-                         ENDDO
-                      ENDDO
-                   ENDDO
-                ENDIF
              ENDIF
 
           CASE ( 'tsurf*' )
              IF ( ALLOCATED( tsurf_av ) ) THEN
                 DO  i = nxl, nxr
                    DO  j = nys, nyn
+                      match_def = surf_def_h(0)%start_index(j,i) <= surf_def_h(0)%end_index(j,i)
+                      match_lsm = surf_lsm_h(0)%start_index(j,i) <= surf_lsm_h(0)%end_index(j,i)
+                      match_usm = surf_usm_h(0)%start_index(j,i) <= surf_usm_h(0)%end_index(j,i)
 
-                      DO  m = surf_def%start_index(j,i), surf_def%end_index(j,i)
-                         IF ( surf_def%upward_top(m) )  THEN
-                            tsurf_av(j,i) = tsurf_av(j,i) + surf_def%pt_surface(m)
-                         ENDIF
-                      ENDDO
-
-                      DO  m = surf_lsm%start_index(j,i), surf_lsm%end_index(j,i)
-                         IF ( surf_lsm%upward_top(m) )  THEN
-                            tsurf_av(j,i) = tsurf_av(j,i) + surf_lsm%pt_surface(m)
-                         ENDIF
-                      ENDDO
-
-                      DO  m = surf_usm%start_index(j,i), surf_usm%end_index(j,i)
-                         IF ( surf_usm%upward_top(m) )  THEN
-                            tsurf_av(j,i) = tsurf_av(j,i) + surf_usm%pt_surface(m)
-                         ENDIF
-                      ENDDO
-
+                      IF ( match_def )  THEN
+                         m = surf_def_h(0)%end_index(j,i)
+                         tsurf_av(j,i) = tsurf_av(j,i) + surf_def_h(0)%pt_surface(m)
+                      ELSEIF ( match_lsm  .AND.  .NOT. match_usm )  THEN
+                         m = surf_lsm_h(0)%end_index(j,i)
+                         tsurf_av(j,i) = tsurf_av(j,i) + surf_lsm_h(0)%pt_surface(m)
+                      ELSEIF ( match_usm )  THEN
+                         m = surf_usm_h(0)%end_index(j,i)
+                         tsurf_av(j,i) = tsurf_av(j,i) + surf_usm_h(0)%pt_surface(m)
+                      ENDIF
                    ENDDO
                 ENDDO
              ENDIF
 
           CASE ( 'u' )
              IF ( ALLOCATED( u_av ) ) THEN
-                IF ( interpolate_to_grid_center )  THEN
-                   DO  i = nxl, nxr
-                      DO  j = nys, nyn
-                         DO  k = nzb, nzt+1
-                            u_av(k,j,i) = u_av(k,j,i) + 0.5_wp * ( u(k,j,i) + u(k,j,i+1) )
-                         ENDDO
+                DO  i = nxlg, nxrg
+                   DO  j = nysg, nyng
+                      DO  k = nzb, nzt+1
+                         u_av(k,j,i) = u_av(k,j,i) + u(k,j,i)
                       ENDDO
                    ENDDO
-                ELSE
-                   DO  i = nxlg, nxrg
-                      DO  j = nysg, nyng
-                         DO  k = nzb, nzt+1
-                            u_av(k,j,i) = u_av(k,j,i) + u(k,j,i)
-                         ENDDO
-                      ENDDO
-                   ENDDO
-                ENDIF
+                ENDDO
              ENDIF
 
           CASE ( 'us*' )
              IF ( ALLOCATED( us_av ) ) THEN
                 DO  i = nxl, nxr
                    DO  j = nys, nyn
+                      match_def = surf_def_h(0)%start_index(j,i) <= surf_def_h(0)%end_index(j,i)
+                      match_lsm = surf_lsm_h(0)%start_index(j,i) <= surf_lsm_h(0)%end_index(j,i)
+                      match_usm = surf_usm_h(0)%start_index(j,i) <= surf_usm_h(0)%end_index(j,i)
 
-                      DO  m = surf_def%start_index(j,i), surf_def%end_index(j,i)
-                         IF ( surf_def%upward_top(m) )  us_av(j,i) = us_av(j,i) + surf_def%us(m)
-                      ENDDO
-
-                      DO  m = surf_lsm%start_index(j,i), surf_lsm%end_index(j,i)
-                         IF ( surf_lsm%upward_top(m) )  us_av(j,i) = us_av(j,i) + surf_lsm%us(m)
-                      ENDDO
-
-                      DO  m = surf_usm%start_index(j,i), surf_usm%end_index(j,i)
-                         IF ( surf_usm%upward_top(m) )  us_av(j,i) = us_av(j,i) + surf_usm%us(m)
-                      ENDDO
-
+                      IF ( match_def )  THEN
+                         m = surf_def_h(0)%end_index(j,i)
+                         us_av(j,i) = us_av(j,i) + surf_def_h(0)%us(m)
+                      ELSEIF ( match_lsm  .AND.  .NOT. match_usm )  THEN
+                         m = surf_lsm_h(0)%end_index(j,i)
+                         us_av(j,i) = us_av(j,i) + surf_lsm_h(0)%us(m)
+                      ELSEIF ( match_usm )  THEN
+                         m = surf_usm_h(0)%end_index(j,i)
+                         us_av(j,i) = us_av(j,i) + surf_usm_h(0)%us(m)
+                      ENDIF
                    ENDDO
                 ENDDO
              ENDIF
 
           CASE ( 'v' )
              IF ( ALLOCATED( v_av ) ) THEN
-                IF ( interpolate_to_grid_center )  THEN
-                   DO  i = nxl, nxr
-                      DO  j = nys, nyn
-                         DO  k = nzb, nzt+1
-                            v_av(k,j,i) = v_av(k,j,i) + 0.5_wp * ( v(k,j,i) + v(k,j+1,i) )
-                         ENDDO
+                DO  i = nxlg, nxrg
+                   DO  j = nysg, nyng
+                      DO  k = nzb, nzt+1
+                         v_av(k,j,i) = v_av(k,j,i) + v(k,j,i)
                       ENDDO
                    ENDDO
-                ELSE
-                   DO  i = nxlg, nxrg
-                      DO  j = nysg, nyng
-                         DO  k = nzb, nzt+1
-                            v_av(k,j,i) = v_av(k,j,i) + v(k,j,i)
-                         ENDDO
-                      ENDDO
-                   ENDDO
-                ENDIF
+                ENDDO
              ENDIF
 
           CASE ( 'thetav' )
@@ -980,44 +909,33 @@
 
           CASE ( 'w' )
              IF ( ALLOCATED( w_av ) ) THEN
-                IF ( interpolate_to_grid_center )  THEN
-                   DO  i = nxl, nxr
-                      DO  j = nys, nyn
-                         w_av(nzb,j,i) = w_av(nzb,j,i) + w(nzb,j,i)
-                         DO  k = nzb, nzt+1
-                            kl = MAX( k-1, nzb )
-                            w_av(k,j,i) = w_av(k,j,i) + 0.5_wp * ( w(k,j,i) + w(kl,j,i) )
-                         ENDDO
+                DO  i = nxlg, nxrg
+                   DO  j = nysg, nyng
+                      DO  k = nzb, nzt+1
+                         w_av(k,j,i) = w_av(k,j,i) + w(k,j,i)
                       ENDDO
                    ENDDO
-                ELSE
-                   DO  i = nxlg, nxrg
-                      DO  j = nysg, nyng
-                         DO  k = nzb, nzt+1
-                            w_av(k,j,i) = w_av(k,j,i) + w(k,j,i)
-                         ENDDO
-                      ENDDO
-                   ENDDO
-                ENDIF
+                ENDDO
              ENDIF
 
           CASE ( 'z0*' )
              IF ( ALLOCATED( z0_av ) ) THEN
                 DO  i = nxl, nxr
                    DO  j = nys, nyn
+                      match_def = surf_def_h(0)%start_index(j,i) <= surf_def_h(0)%end_index(j,i)
+                      match_lsm = surf_lsm_h(0)%start_index(j,i) <= surf_lsm_h(0)%end_index(j,i)
+                      match_usm = surf_usm_h(0)%start_index(j,i) <= surf_usm_h(0)%end_index(j,i)
 
-                      DO  m = surf_def%start_index(j,i), surf_def%end_index(j,i)
-                         IF ( surf_def%upward_top(m) )  z0_av(j,i) = z0_av(j,i) + surf_def%z0(m)
-                      ENDDO
-
-                      DO  m = surf_lsm%start_index(j,i), surf_lsm%end_index(j,i)
-                         IF ( surf_lsm%upward_top(m) )  z0_av(j,i) = z0_av(j,i) + surf_lsm%z0(m)
-                      ENDDO
-
-                      DO  m = surf_usm%start_index(j,i), surf_usm%end_index(j,i)
-                         IF ( surf_usm%upward_top(m) )  z0_av(j,i) = z0_av(j,i) + surf_usm%z0(m)
-                      ENDDO
-
+                      IF ( match_def )  THEN
+                         m = surf_def_h(0)%end_index(j,i)
+                         z0_av(j,i) = z0_av(j,i) + surf_def_h(0)%z0(m)
+                      ELSEIF ( match_lsm  .AND.  .NOT. match_usm )  THEN
+                         m = surf_lsm_h(0)%end_index(j,i)
+                         z0_av(j,i) = z0_av(j,i) + surf_lsm_h(0)%z0(m)
+                      ELSEIF ( match_usm )  THEN
+                         m = surf_usm_h(0)%end_index(j,i)
+                         z0_av(j,i) = z0_av(j,i) + surf_usm_h(0)%z0(m)
+                      ENDIF
                    ENDDO
                 ENDDO
              ENDIF
@@ -1026,19 +944,20 @@
              IF ( ALLOCATED( z0h_av ) ) THEN
                 DO  i = nxl, nxr
                    DO  j = nys, nyn
+                      match_def = surf_def_h(0)%start_index(j,i) <= surf_def_h(0)%end_index(j,i)
+                      match_lsm = surf_lsm_h(0)%start_index(j,i) <= surf_lsm_h(0)%end_index(j,i)
+                      match_usm = surf_usm_h(0)%start_index(j,i) <= surf_usm_h(0)%end_index(j,i)
 
-                      DO  m = surf_def%start_index(j,i), surf_def%end_index(j,i)
-                         IF ( surf_def%upward_top(m) )  z0h_av(j,i) = z0h_av(j,i) + surf_def%z0h(m)
-                      ENDDO
-
-                      DO  m = surf_lsm%start_index(j,i), surf_lsm%end_index(j,i)
-                         IF ( surf_lsm%upward_top(m) )  z0h_av(j,i) = z0h_av(j,i) + surf_lsm%z0h(m)
-                      ENDDO
-
-                      DO  m = surf_usm%start_index(j,i), surf_usm%end_index(j,i)
-                         IF ( surf_usm%upward_top(m) )  z0h_av(j,i) = z0h_av(j,i) + surf_usm%z0h(m)
-                      ENDDO
-
+                      IF ( match_def )  THEN
+                         m = surf_def_h(0)%end_index(j,i)
+                         z0h_av(j,i) = z0h_av(j,i) + surf_def_h(0)%z0h(m)
+                      ELSEIF ( match_lsm  .AND.  .NOT. match_usm )  THEN
+                         m = surf_lsm_h(0)%end_index(j,i)
+                         z0h_av(j,i) = z0h_av(j,i) + surf_lsm_h(0)%z0h(m)
+                      ELSEIF ( match_usm )  THEN
+                         m = surf_usm_h(0)%end_index(j,i)
+                         z0h_av(j,i) = z0h_av(j,i) + surf_usm_h(0)%z0h(m)
+                      ENDIF
                    ENDDO
                 ENDDO
              ENDIF
@@ -1047,20 +966,20 @@
              IF ( ALLOCATED( z0q_av ) ) THEN
                 DO  i = nxl, nxr
                    DO  j = nys, nyn
+                      match_def = surf_def_h(0)%start_index(j,i) <= surf_def_h(0)%end_index(j,i)
+                      match_lsm = surf_lsm_h(0)%start_index(j,i) <= surf_lsm_h(0)%end_index(j,i)
+                      match_usm = surf_usm_h(0)%start_index(j,i) <= surf_usm_h(0)%end_index(j,i)
 
-
-                      DO  m = surf_def%start_index(j,i), surf_def%end_index(j,i)
-                         IF ( surf_def%upward_top(m) )  z0q_av(j,i) = z0q_av(j,i) + surf_def%z0q(m)
-                      ENDDO
-
-                      DO  m = surf_lsm%start_index(j,i), surf_lsm%end_index(j,i)
-                         IF ( surf_lsm%upward_top(m) )  z0q_av(j,i) = z0q_av(j,i) + surf_lsm%z0q(m)
-                      ENDDO
-
-                      DO  m = surf_usm%start_index(j,i), surf_usm%end_index(j,i)
-                         IF ( surf_usm%upward_top(m) )  z0q_av(j,i) = z0q_av(j,i) + surf_usm%z0q(m)
-                      ENDDO
-
+                      IF ( match_def )  THEN
+                         m = surf_def_h(0)%end_index(j,i)
+                         z0q_av(j,i) = z0q_av(j,i) + surf_def_h(0)%z0q(m)
+                      ELSEIF ( match_lsm  .AND.  .NOT. match_usm )  THEN
+                         m = surf_lsm_h(0)%end_index(j,i)
+                         z0q_av(j,i) = z0q_av(j,i) + surf_lsm_h(0)%z0q(m)
+                      ELSEIF ( match_usm )  THEN
+                         m = surf_usm_h(0)%end_index(j,i)
+                         z0q_av(j,i) = z0q_av(j,i) + surf_usm_h(0)%z0q(m)
+                      ENDIF
                    ENDDO
                 ENDDO
              ENDIF

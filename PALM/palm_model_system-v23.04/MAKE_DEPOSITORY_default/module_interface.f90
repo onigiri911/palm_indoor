@@ -13,9 +13,192 @@
 ! You should have received a copy of the GNU General Public License along with PALM. If not, see
 ! <http://www.gnu.org/licenses/>.
 !
-! Copyright 1997-2021 Leibniz Universitaet Hannover
-! Copyright 2022-2023 pecanode GmbH
+! Copyright 1997-2020 Leibniz Universitaet Hannover
 !--------------------------------------------------------------------------------------------------!
+!
+! Current revisions:
+! -----------------
+!
+!
+! Former revisions:
+! -----------------
+! $Id: module_interface.f90 4778 2020-11-09 13:40:05Z raasch $
+! routine required for output of particle time series added
+!
+! 4768 2020-11-02 19:11:23Z suehring
+! Enable 3D data output also with 64-bit precision
+!
+! 4757 2020-10-26 10:23:38Z schwenkel
+! Implement doq calls
+!
+! 4753 2020-10-21 14:55:41Z raasch
+! file re-formatted to follow the PALM coding standard
+!
+! 4731 2020-10-07 13:25:11Z schwenkel
+! Move exchange_horiz from time_integration to modules
+!
+! 4708 2020-09-28 17:42:58Z suehring
+! pass fillvalue attribute to radiation output
+!
+! 4590 2020-07-06 14:34:59Z suehring
+! Enable mpi-io for biomet
+!
+! 4525 2020-05-10 17:05:07Z raasch
+! added restart I/O for global salsa data,
+! added restart with MPI-IO for salsa
+!
+! 4518 2020-05-04 15:44:28Z suehring
+! Call of doq_rrd_local enabled
+!
+! 4517 2020-05-03 14:29:30Z raasch
+! added restart with MPI-IO for reading local arrays
+!
+! 4514 2020-04-30 16:29:59Z suehring
+! Added global restart routines for plant-canopy model
+!
+! 4495 2020-04-13 20:11:20Z raasch
+! restart data handling with MPI-IO added
+!
+! 4414 2020-02-19 20:16:04Z suehring
+! Add module interface for basic initialization of numerics.
+!
+! 4411 2020-02-18 14:28:02Z maronga
+! Added output routines for WTM
+!
+! 4407 2020-02-13 20:31:44Z knoop
+! Changed program_debug_output_unit to 9 in dom_init call
+!
+! 4400 2020-02-10 20:32:41Z suehring
+! - Use data-output module for virtual measurement output
+! - Remove deprecated routines for virtual measurement module
+!
+! 4361 2020-01-07 12:22:38Z suehring
+! Remove unused arrays in pmc_rrd_local
+!
+! 4360 2020-01-07 11:25:50Z suehring
+! Add pcm_rrd_local and pcm_wrd_local
+!
+! 4331 2019-12-10 18:25:02Z suehring
+! Change interface for doq_check_data_output, in order to perform further output checks.
+!
+! 4281 2019-10-29 15:15:39Z schwenkel
+! Added dynamics boundary conditions
+!
+! 4272 2019-10-23 15:18:57Z schwenkel
+! Further modularization of boundary conditions: moved boundary conditions to respective modules
+!
+! 4268 2019-10-17 11:29:38Z schwenkel
+! Introduction of module_interface_boundary_conditions
+!
+! 4182 2019-08-22 15:20:23Z scharf
+! Corrected "Former revisions" section
+!
+! 4173 2019-08-20 12:04:06Z gronemeier
+! add vdi_internal_controls
+!
+! 4157 2019-08-14 09:19:12Z suehring
+! Call doq_init from module interface
+!
+! 4132 2019-08-02 12:34:17Z suehring
+! Bugfix in masked data output for diagnostic quantities
+!
+! 4131 2019-08-02 11:06:18Z monakurppa
+! Add output of 3D plant-canopy outputs (merge from branch resler)
+!
+! 4048 2019-06-21 21:00:21Z knoop
+! Moved turbulence_closure_mod calls into this module_interface
+!
+! 4047 2019-06-21 18:58:09Z knoop
+! Introduction of the dynamics module
+!
+! 4039 2019-06-18 10:32:41Z suehring
+! Introduce diagnostic output
+!
+! 4028 2019-06-13 12:21:37Z schwenkel
+! Further modularization of particle code components
+!
+! 4017 2019-06-06 12:16:46Z schwenkel
+! local_pf need INTENT(INOUT) attribute rather than INTENT(OUT). This is because INTENT(OUT) sets
+! the array to not-defined. Especially for outputs that are not defined everywhere, e.g.
+! land-surface outputs, this will be problematic as NaN will be output.
+!
+! 3987 2019-05-22 09:52:13Z kanani
+! Introduce switchable DEBUG file output via debug_message routine
+!
+! 3956 2019-05-07 12:32:52Z monakurppa
+! - Added calls for salsa_non_advective_processes and salsa_exchange_horiz_bounds
+! - Moved the call for salsa_data_output_2d/3d before that of radiation_data_output_2d/3d.
+!   radiation_data_output_2d/3d tries to read a salsa output variable and encounters a segmentation
+!   fault for "Ntot" due to the shortoutput name
+!
+! 3931 2019-04-24 16:34:28Z schwenkel
+! Changed non_transport_physics to non_advective_processes
+!
+! 3930 2019-04-24 14:57:18Z forkel
+! Correct/complete module_interface introduction for chemistry model
+!
+! 3887 2019 -04-12 08:47:41Z schwenkel
+! Changes related to global restructuring of location messages and introduction of additional debug
+! messages
+!
+! 3880 2019 -04-08 21:43:02Z knoop
+! Add a call for salsa_prognostic_equations
+!
+! 3840 2019-03-29 10:35:52Z knoop
+! bugfix: intent of dummy arguments changed to inout
+!
+! 3770 2019-02-28 11:22:32Z moh.hefny
+! removed unused variables in module_interface_check_data_output_ts
+!
+! 3767 08:18:02Z raasch
+! unused variable file_index removed from subroutine parameter list
+!
+! 3766 2019-02-26 16:23:41Z raasch
+! first argument removed from module_interface_rrd_*, statement added to avoid compiler warning
+! about unused variable, file reformatted with respect to coding standards
+!
+! 3762 2019-02-25 16:54:16Z suehring
+! only pass required arguments to surface_data_output_rrd_local
+!
+! 3747 2019-02-16 15:15:23Z gronemeier
+! Call user_init_arrays
+!
+! 3745 2019-02-15 18:57:56Z suehring
+! Add indoor model
+!
+! 3744 2019-02-15 18:38:58Z suehring
+! Removed bio_check_parameters as the method is empty.
+!
+! 3735 2019-02-12 09:52:40Z dom_dwd_user
+! Accepting variable j from check_parameters and passing it to bio_check_data_output
+! Add required restart data for surface output module
+!
+! 3731 2019-02-11 13:06:27Z suehring
+! Add check_parameters routine for virtual measurements
+!
+! 3711 2019-01-31 13:44:26Z knoop
+! Introduced module_interface_init_checks for post-init checks
+!
+! 3705 2019-01-29 19:56:39Z suehring
+! Add last_actions for virtual measurements
+!
+! 3704 2019-01-29 19:51:41Z suehring
+! Some interface calls moved to module_interface + cleanup
+!
+! 3684 2019-01-20 20:20:58Z knoop
+! Bugfix: made unit intend INOUT
+!
+! 3650 2019-01-04 13:01:33Z kanani
+! Add restart routines for biometeorology
+!
+! 3649 2019-01-02 16:52:21Z suehring
+! Initialize strings, in order to avoid compiler warnings for non-initialized characters with
+! intent(out) attribute
+!
+! 3648 2019-01-02 16:35:46Z suehring
+! 3641 2018-12-23 22:10:01Z knoop
+! Initial implementation of the PALM module interface
+!
 !
 ! Description:
 ! ------------
@@ -25,124 +208,21 @@
 !--------------------------------------------------------------------------------------------------!
  MODULE module_interface
 
+    USE indices,                                                                                   &
+        ONLY:  nbgp, nxl, nxlg, nxr, nxrg, nys, nysg, nyn, nyng, nzb, nzt
+
+    USE kinds
+
+    USE pegrid,                                                                                    &
+        ONLY:  comm2d
+
 !
-!-- Load module-specific control parameters.
+!-- load module-specific control parameters.
 !-- ToDo: move all of them to respective module or a dedicated central module
-    USE biometeorology_mod,                                                                        &
-        ONLY:  bio_3d_data_averaging,                                                              &
-               bio_check_data_output,                                                              &
-               bio_data_output_2d,                                                                 &
-               bio_data_output_3d,                                                                 &
-               bio_init,                                                                           &
-               bio_init_checks,                                                                    &
-               bio_header,                                                                         &
-               bio_parin,                                                                          &
-               bio_rrd_global,                                                                     &
-               bio_rrd_local,                                                                      &
-               bio_wrd_global,                                                                     &
-               bio_wrd_local
-
-    USE bulk_cloud_model_mod,                                                                      &
-        ONLY:  bcm_3d_data_averaging,                                                              &
-               bcm_actions,                                                                        &
-               bcm_boundary_conditions,                                                            &
-               bcm_check_data_output,                                                              &
-               bcm_check_data_output_pr,                                                           &
-               bcm_check_data_output_ts,                                                           &
-               bcm_check_parameters,                                                               &
-               bcm_data_output_2d,                                                                 &
-               bcm_data_output_3d,                                                                 &
-               bcm_exchange_horiz,                                                                 &
-               bcm_header,                                                                         &
-               bcm_init_arrays,                                                                    &
-               bcm_init,                                                                           &
-               bcm_non_advective_processes,                                                        &
-               bcm_parin,                                                                          &
-               bcm_prognostic_equations,                                                           &
-               bcm_rrd_global,                                                                     &
-               bcm_rrd_local,                                                                      &
-               bcm_statistics,                                                                     &
-               bcm_swap_timelevel,                                                                 &
-               bcm_wrd_global,                                                                     &
-               bcm_wrd_local,                                                                      &
-               bulk_cloud_model
-
-    USE chemistry_model_mod,                                                                       &
-        ONLY:  chem_3d_data_averaging,                                                             &
-               chem_actions,                                                                       &
-               chem_boundary_conditions,                                                           &
-               chem_check_data_output,                                                             &
-               chem_check_data_output_pr,                                                          &
-               chem_check_parameters,                                                              &
-               chem_data_output_2d,                                                                &
-               chem_data_output_3d,                                                                &
-               chem_exchange_horiz_bounds,                                                         &
-               chem_header,                                                                        &
-               chem_init,                                                                          &
-               chem_init_arrays,                                                                   &
-               chem_non_advective_processes,                                                       &
-               chem_parin,                                                                         &
-               chem_prognostic_equations,                                                          &
-               chem_rrd_local,                                                                     &
-               chem_statistics,                                                                    &
-               chem_swap_timelevel,                                                                &
-               chem_wrd_local
-
-    USE control_parameters,                                                                        &
-        ONLY:  air_chemistry,                                                                      &
-               biometeorology,                                                                     &
-               coupling_char,                                                                      &
-               dcep,                                                                               &
-               debug_output,                                                                       &
-               debug_output_timestep,                                                              &
-               indoor_model,                                                                       &
-               land_surface,                                                                       &
-               large_scale_forcing,                                                                &
-               nesting_offline,                                                                    &
-               nudging,                                                                            &
-               ocean_mode,                                                                         &
-               plant_canopy,                                                                       &
-               salsa,                                                                              &
-               surface_output,                                                                     &
-               syn_turb_gen,                                                                       &
-               turbulent_inflow,                                                                   &
-               urban_surface,                                                                      &
-               vdi_checks,                                                                         &
-               virtual_flight,                                                                     &
-               virtual_measurement,                                                                &
-               wind_turbine
-
     USE data_output_module,                                                                        &
-        ONLY:  dom_database_debug_output,                                                          &
-               dom_def_end,                                                                        &
+        ONLY:  dom_def_end,                                                                        &
                dom_finalize_output,                                                                &
                dom_init
-
-    USE data_output_topo_and_surface_setup_mod,                                                    &
-        ONLY:  do_topo_and_surface_actions,                                                        &
-               do_topo_and_surface_init_output
-
-    USE dcep_mod,                                                                                  &
-        ONLY:  dcep_init,                                                                          &
-               dcep_init_arrays,                                                                   &
-               dcep_parin,                                                                         &
-               dcep_check_data_output,                                                             &
-               dcep_check_parameters,                                                              &
-               dcep_data_output_3d,                                                                &
-               dcep_data_output_2d
-
-    USE diagnostic_output_quantities_mod,                                                          &
-        ONLY:  doq_3d_data_averaging,                                                              &
-               doq_actions,                                                                        &
-               doq_check_data_output,                                                              &
-               doq_check_data_output_pr,                                                           &
-               doq_define_netcdf_grid,                                                             &
-               doq_init,                                                                           &
-               doq_output_2d,                                                                      &
-               doq_output_3d,                                                                      &
-               doq_statistics,                                                                     &
-               doq_rrd_local,                                                                      &
-               doq_wrd_local
 
     USE dynamics_mod,                                                                              &
         ONLY:  dynamics_3d_data_averaging,                                                         &
@@ -172,18 +252,112 @@
                dynamics_wrd_global,                                                                &
                dynamics_wrd_local
 
-    USE fastv8_coupler_mod,                                                                        &
-        ONLY:  fastv8_coupler_enabled,                                                             &
-               f8c_actions,                                                                        &
-               f8c_check_parameters,                                                               &
-               f8c_check_data_output,                                                              &
-               f8c_define_netcdf_grid,                                                             &
-               f8c_data_output_2d,                                                                 &
-               f8c_data_output_3d,                                                                 &
-               f8c_header,                                                                         &
-               f8c_init,                                                                           &
-               f8c_init_arrays,                                                                    &
-               f8c_parin
+    USE turbulence_closure_mod,                                                                    &
+        ONLY:  tcm_3d_data_averaging,                                                              &
+               tcm_actions,                                                                        &
+               tcm_boundary_conds,                                                                 &
+               tcm_check_data_output,                                                              &
+               tcm_check_parameters,                                                               &
+               tcm_data_output_2d,                                                                 &
+               tcm_data_output_3d,                                                                 &
+               tcm_init,                                                                           &
+               tcm_init_arrays,                                                                    &
+               tcm_prognostic_equations,                                                           &
+               tcm_swap_timelevel
+
+    USE control_parameters,                                                                        &
+        ONLY:  air_chemistry,                                                                      &
+               biometeorology,                                                                     &
+               coupling_char,                                                                      &
+               debug_output,                                                                       &
+               debug_output_timestep,                                                              &
+               indoor_model,                                                                       &
+               land_surface,                                                                       &
+               large_scale_forcing,                                                                &
+               nesting_offline,                                                                    &
+               nudging,                                                                            &
+               ocean_mode,                                                                         &
+               plant_canopy,                                                                       &
+               salsa,                                                                              &
+               surface_output,                                                                     &
+               syn_turb_gen,                                                                       &
+               urban_surface,                                                                      &
+               vdi_checks,                                                                         &
+               virtual_flight,                                                                     &
+               virtual_measurement,                                                                &
+               wind_turbine
+
+!
+!-- Load interface routines of all PALM modules
+    USE biometeorology_mod,                                                                        &
+        ONLY:  bio_3d_data_averaging,                                                              &
+               bio_check_data_output,                                                              &
+               bio_data_output_2d,                                                                 &
+               bio_data_output_3d,                                                                 &
+               bio_init,                                                                           &
+               bio_init_checks,                                                                    &
+               bio_header,                                                                         &
+               bio_parin,                                                                          &
+               bio_rrd_global,                                                                     &
+               bio_rrd_local,                                                                      &
+               bio_wrd_global,                                                                     &
+               bio_wrd_local
+
+    USE bulk_cloud_model_mod,                                                                      &
+        ONLY:  bcm_3d_data_averaging,                                                              &
+               bcm_actions,                                                                        &
+               bcm_boundary_conditions,                                                            &
+               bcm_check_data_output_pr,                                                           &
+               bcm_check_data_output,                                                              &
+               bcm_check_parameters,                                                               &
+               bcm_data_output_2d,                                                                 &
+               bcm_data_output_3d,                                                                 &
+               bcm_exchange_horiz,                                                                 &
+               bcm_header,                                                                         &
+               bcm_init_arrays,                                                                    &
+               bcm_init,                                                                           &
+               bcm_non_advective_processes,                                                        &
+               bcm_parin,                                                                          &
+               bcm_prognostic_equations,                                                           &
+               bcm_rrd_global,                                                                     &
+               bcm_rrd_local,                                                                      &
+               bcm_swap_timelevel,                                                                 &
+               bcm_wrd_global,                                                                     &
+               bcm_wrd_local,                                                                      &
+               bulk_cloud_model
+
+   USE chemistry_model_mod,                                                                        &
+       ONLY:  chem_3d_data_averaging,                                                              &
+              chem_actions,                                                                        &
+              chem_boundary_conditions,                                                            &
+              chem_check_data_output,                                                              &
+              chem_check_data_output_pr,                                                           &
+              chem_check_parameters,                                                               &
+              chem_data_output_2d,                                                                 &
+              chem_data_output_3d,                                                                 &
+              chem_exchange_horiz_bounds,                                                          &
+              chem_header,                                                                         &
+              chem_init,                                                                           &
+              chem_init_arrays,                                                                    &
+              chem_non_advective_processes,                                                        &
+              chem_parin,                                                                          &
+              chem_prognostic_equations,                                                           &
+              chem_rrd_local,                                                                      &
+              chem_statistics,                                                                     &
+              chem_swap_timelevel,                                                                 &
+              chem_wrd_local
+
+    USE diagnostic_output_quantities_mod,                                                          &
+        ONLY:  doq_3d_data_averaging,                                                              &
+               doq_check_data_output,                                                              &
+               doq_check_data_output_pr,                                                           &
+               doq_define_netcdf_grid,                                                             &
+               doq_init,                                                                           &
+               doq_output_2d,                                                                      &
+               doq_output_3d,                                                                      &
+               doq_statistics,                                                                     &
+               doq_rrd_local,                                                                      &
+               doq_wrd_local
 
     USE flight_mod,                                                                                &
         ONLY:  flight_header,                                                                      &
@@ -213,20 +387,12 @@
                gust_wrd_global,                                                                    &
                gust_wrd_local
 
-    USE indices,                                                                                   &
-        ONLY:  nbgp, nxl, nxlg, nxr, nxrg, nys, nysg, nyn, nyng, nzb, nzt
-
     USE indoor_model_mod,                                                                          &
         ONLY:  im_check_data_output,                                                               &
                im_check_parameters,                                                                &
                im_data_output_3d,                                                                  &
                im_init,                                                                            &
-               im_init_arrays,                                                                     &
-               im_parin,                                                                           &
-               im_rrd_local,                                                                       &
-               im_wrd_local
-
-    USE kinds
+               im_parin
 
     USE lagrangian_particle_model_mod,                                                             &
         ONLY:  lpm_actions,                                                                        &
@@ -247,16 +413,13 @@
                lsm_check_parameters,                                                               &
                lsm_check_data_output,                                                              &
                lsm_check_data_output_pr,                                                           &
-               lsm_check_data_output_ts,                                                           &
                lsm_data_output_2d,                                                                 &
                lsm_header,                                                                         &
                lsm_init,                                                                           &
                lsm_init_arrays,                                                                    &
                lsm_parin,                                                                          &
                lsm_rrd_local,                                                                      &
-               lsm_statistics,                                                                     &
                lsm_swap_timelevel,                                                                 &
-               lsm_timestep,                                                                       &
                lsm_wrd_local
 
     USE lsf_nudging_mod,                                                                           &
@@ -272,7 +435,6 @@
     USE nesting_offl_mod,                                                                          &
         ONLY:  nesting_offl_check_parameters,                                                      &
                nesting_offl_header,                                                                &
-               nesting_offl_init,                                                                  &
                nesting_offl_parin
 
     USE ocean_mod,                                                                                 &
@@ -299,8 +461,8 @@
     USE particle_attributes,                                                                       &
         ONLY:  particle_advection
 
-    USE pegrid,                                                                                    &
-        ONLY:  comm2d
+    USE poismg_noopt_mod,                                                                          &
+        ONLY:  poismg_noopt_init
 
     USE plant_canopy_model_mod,                                                                    &
          ONLY: pcm_3d_data_averaging,                                                              &
@@ -315,28 +477,19 @@
                pcm_wrd_global,                                                                     &
                pcm_wrd_local
 
-    USE poismg_noopt_mod,                                                                          &
-        ONLY:  poismg_noopt_init
-
     USE radiation_model_mod,                                                                       &
         ONLY:  radiation,                                                                          &
                radiation_3d_data_averaging,                                                        &
                radiation_check_parameters,                                                         &
                radiation_check_data_output,                                                        &
                radiation_check_data_output_pr,                                                     &
-               radiation_check_data_output_surf,                                                   &
                radiation_check_data_output_ts,                                                     &
-               radiation_data_output_surf,                                                         &
                radiation_data_output_2d,                                                           &
                radiation_data_output_3d,                                                           &
                radiation_header,                                                                   &
                radiation_init,                                                                     &
                radiation_parin,                                                                    &
-               radiation_statistics,                                                               &
-               radiation_rrd_global,                                                               &
                radiation_rrd_local,                                                                &
-               radiation_surface_data_averaging,                                                   &
-               radiation_wrd_global,                                                               &
                radiation_wrd_local
 
     USE salsa_mod,                                                                                 &
@@ -368,41 +521,24 @@
                spectra_header,                                                                     &
                spectra_parin
 
+    USE surface_data_output_mod,                                                                   &
+        ONLY:  surface_data_output_check_parameters,                                               &
+               surface_data_output_init_arrays,                                                    &
+               surface_data_output_parin,                                                          &
+               surface_data_output_rrd_global,                                                     &
+               surface_data_output_rrd_local,                                                      &
+               surface_data_output_wrd_global,                                                     &
+               surface_data_output_wrd_local
+
     USE surface_mod,                                                                               &
         ONLY:  init_bc
 
     USE synthetic_turbulence_generator_mod,                                                        &
-        ONLY:  stg_actions,                                                                        &
-               stg_check_parameters,                                                               &
+        ONLY:  stg_check_parameters,                                                               &
                stg_header,                                                                         &
-               stg_init,                                                                           &
                stg_parin,                                                                          &
                stg_rrd_global,                                                                     &
                stg_wrd_global
-
-    USE turbulence_closure_mod,                                                                    &
-        ONLY:  tcm_3d_data_averaging,                                                              &
-               tcm_actions,                                                                        &
-               tcm_boundary_conds,                                                                 &
-               tcm_check_data_output,                                                              &
-               tcm_check_parameters,                                                               &
-               tcm_data_output_2d,                                                                 &
-               tcm_data_output_3d,                                                                 &
-               tcm_init,                                                                           &
-               tcm_init_arrays,                                                                    &
-               tcm_prognostic_equations,                                                           &
-               tcm_swap_timelevel
-
-    USE turbulent_inflow_mod,                                                                      &
-        ONLY:  turbulent_inflow_check_parameters,                                                  &
-               turbulent_inflow_header,                                                            &
-               turbulent_inflow_impose,                                                            &
-               turbulent_inflow_init,                                                              &
-               turbulent_inflow_init_arrays,                                                       &
-               turbulent_inflow_parin,                                                             &
-               turbulent_inflow_rrd_global,                                                        &
-               turbulent_inflow_wrd_global
-
 
     USE urban_surface_mod,                                                                         &
         ONLY:  usm_3d_data_averaging,                                                              &
@@ -413,33 +549,7 @@
                usm_parin,                                                                          &
                usm_swap_timelevel,                                                                 &
                usm_rrd_local,                                                                      &
-               usm_timestep,                                                                       &
                usm_wrd_local
-
-    USE user,                                                                                      &
-        ONLY:  user_3d_data_averaging,                                                             &
-               user_actions,                                                                       &
-               user_boundary_conditions,                                                           &
-               user_check_data_output,                                                             &
-               user_check_data_output_pr,                                                          &
-               user_check_data_output_ts,                                                          &
-               user_check_parameters,                                                              &
-               user_data_output_2d,                                                                &
-               user_data_output_3d,                                                                &
-               user_exchange_horiz,                                                                &
-               user_header,                                                                        &
-               user_init,                                                                          &
-               user_init_arrays,                                                                   &
-               user_last_actions,                                                                  &
-               user_module_enabled,                                                                &
-               user_parin,                                                                         &
-               user_prognostic_equations,                                                          &
-               user_rrd_global,                                                                    &
-               user_rrd_local,                                                                     &
-               user_statistics,                                                                    &
-               user_swap_timelevel,                                                                &
-               user_wrd_global,                                                                    &
-               user_wrd_local
 
     USE vdi_internal_controls,                                                                     &
         ONLY:  vdi_actions
@@ -460,6 +570,27 @@
                wtm_rrd_global,                                                                     &
                wtm_wrd_global
 
+    USE user,                                                                                      &
+        ONLY:  user_3d_data_averaging,                                                             &
+               user_actions,                                                                       &
+               user_check_data_output,                                                             &
+               user_check_data_output_pr,                                                          &
+               user_check_data_output_ts,                                                          &
+               user_check_parameters,                                                              &
+               user_data_output_2d,                                                                &
+               user_data_output_3d,                                                                &
+               user_header,                                                                        &
+               user_init,                                                                          &
+               user_init_arrays,                                                                   &
+               user_last_actions,                                                                  &
+               user_module_enabled,                                                                &
+               user_parin,                                                                         &
+               user_statistics,                                                                    &
+               user_rrd_global,                                                                    &
+               user_rrd_local,                                                                     &
+               user_wrd_global,                                                                    &
+               user_wrd_local
+
     IMPLICIT NONE
 
     PRIVATE
@@ -472,12 +603,10 @@
        module_interface_check_data_output_ts,                                                      &
        module_interface_check_data_output_pr,                                                      &
        module_interface_check_data_output,                                                         &
-       module_interface_check_data_output_surf,                                                    &
        module_interface_init_masks,                                                                &
        module_interface_define_netcdf_grid,                                                        &
        module_interface_init_arrays,                                                               &
-       module_interface_init_before_pressure_solver,                                               &
-       module_interface_init_after_pressure_solver,                                                &
+       module_interface_init,                                                                      &
        module_interface_init_checks,                                                               &
        module_interface_init_numerics,                                                             &
        module_interface_init_output,                                                               &
@@ -489,18 +618,13 @@
        module_interface_boundary_conditions,                                                       &
        module_interface_swap_timelevel,                                                            &
        module_interface_3d_data_averaging,                                                         &
-       module_interface_surface_data_averaging,                                                    &
        module_interface_data_output_2d,                                                            &
        module_interface_data_output_3d,                                                            &
-       module_interface_data_output_surf,                                                          &
        module_interface_statistics,                                                                &
        module_interface_rrd_global,                                                                &
        module_interface_wrd_global,                                                                &
        module_interface_rrd_local,                                                                 &
-       module_interface_rrd_local_spinup,                                                          &
-       module_interface_timestep,                                                                  &
        module_interface_wrd_local,                                                                 &
-       module_interface_wrd_local_spinup,                                                          &
        module_interface_last_actions
 
 
@@ -524,10 +648,6 @@
        MODULE PROCEDURE module_interface_check_data_output
     END INTERFACE module_interface_check_data_output
 
-    INTERFACE module_interface_check_data_output_surf
-       MODULE PROCEDURE module_interface_check_data_output_surf
-    END INTERFACE module_interface_check_data_output_surf
-
     INTERFACE module_interface_init_masks
        MODULE PROCEDURE module_interface_init_masks
     END INTERFACE module_interface_init_masks
@@ -540,13 +660,9 @@
        MODULE PROCEDURE module_interface_init_arrays
     END INTERFACE module_interface_init_arrays
 
-    INTERFACE module_interface_init_before_pressure_solver
-       MODULE PROCEDURE module_interface_init_before_pressure_solver
-    END INTERFACE module_interface_init_before_pressure_solver
-
-    INTERFACE module_interface_init_after_pressure_solver
-       MODULE PROCEDURE module_interface_init_after_pressure_solver
-    END INTERFACE module_interface_init_after_pressure_solver
+    INTERFACE module_interface_init
+       MODULE PROCEDURE module_interface_init
+    END INTERFACE module_interface_init
 
     INTERFACE module_interface_init_checks
        MODULE PROCEDURE module_interface_init_checks
@@ -595,10 +711,6 @@
        MODULE PROCEDURE module_interface_3d_data_averaging
     END INTERFACE module_interface_3d_data_averaging
 
-    INTERFACE module_interface_surface_data_averaging
-       MODULE PROCEDURE module_interface_surface_data_averaging
-    END INTERFACE module_interface_surface_data_averaging
-
     INTERFACE module_interface_data_output_2d
        MODULE PROCEDURE module_interface_data_output_2d
     END INTERFACE module_interface_data_output_2d
@@ -606,10 +718,6 @@
     INTERFACE module_interface_data_output_3d
        MODULE PROCEDURE module_interface_data_output_3d
     END INTERFACE module_interface_data_output_3d
-
-    INTERFACE module_interface_data_output_surf
-       MODULE PROCEDURE module_interface_data_output_surf
-    END INTERFACE module_interface_data_output_surf
 
     INTERFACE module_interface_statistics
        MODULE PROCEDURE module_interface_statistics
@@ -629,17 +737,9 @@
        MODULE PROCEDURE module_interface_rrd_local_mpi
     END INTERFACE module_interface_rrd_local
 
-    INTERFACE module_interface_rrd_local_spinup
-       MODULE PROCEDURE module_interface_rrd_local_spinup_mpi
-    END INTERFACE module_interface_rrd_local_spinup
-
     INTERFACE module_interface_wrd_local
        MODULE PROCEDURE module_interface_wrd_local
     END INTERFACE module_interface_wrd_local
-
-    INTERFACE module_interface_wrd_local_spinup
-       MODULE PROCEDURE module_interface_wrd_local_spinup
-    END INTERFACE module_interface_wrd_local_spinup
 
     INTERFACE module_interface_last_actions
        MODULE PROCEDURE module_interface_last_actions
@@ -664,8 +764,6 @@
     CALL bio_parin
     CALL bcm_parin
     CALL chem_parin
-    CALL dcep_parin
-    CALL f8c_parin
     CALL flight_parin ! ToDo: rename module to match filename
     CALL gust_parin
     CALL im_parin
@@ -679,8 +777,8 @@
     CALL radiation_parin
     CALL salsa_parin
     CALL spectra_parin
+    CALL surface_data_output_parin
     CALL stg_parin
-    CALL turbulent_inflow_parin
     CALL usm_parin
     CALL vm_parin
     CALL wtm_parin
@@ -708,7 +806,6 @@
 
     IF ( bulk_cloud_model )     CALL bcm_check_parameters
     IF ( air_chemistry )        CALL chem_check_parameters
-    IF ( fastv8_coupler_enabled )  CALL f8c_check_parameters
     IF ( gust_module_enabled )  CALL gust_check_parameters
     IF ( indoor_model )         CALL im_check_parameters
     IF ( particle_advection )   CALL lpm_check_parameters
@@ -720,12 +817,11 @@
     IF ( radiation )            CALL radiation_check_parameters
     IF ( salsa )                CALL salsa_check_parameters
     IF ( calculate_spectra )    CALL spectra_check_parameters
+    IF ( surface_output )       CALL surface_data_output_check_parameters
     IF ( syn_turb_gen )         CALL stg_check_parameters
-    IF ( turbulent_inflow )     CALL turbulent_inflow_check_parameters
     IF ( urban_surface )        CALL usm_check_parameters
     IF ( virtual_measurement )  CALL vm_check_parameters
     IF ( wind_turbine )         CALL wtm_check_parameters
-    IF ( dcep )                 CALL dcep_check_parameters
 
     IF ( user_module_enabled )  CALL user_check_parameters
 
@@ -752,13 +848,14 @@
     IF ( debug_output )  CALL debug_message( 'checking module-specific data output ts', 'start' )
 
     CALL dynamics_check_data_output_ts( dots_max, dots_num, dots_label, dots_unit )
-!
-!-- Note that the call order here must fit with the call order in module_interface_statistics
-    IF ( bulk_cloud_model )  CALL bcm_check_data_output_ts( dots_max, dots_num, dots_label, dots_unit )
-    IF ( land_surface )  CALL lsm_check_data_output_ts( dots_max, dots_num, dots_label, dots_unit )
-    IF ( radiation )  CALL radiation_check_data_output_ts( dots_max, dots_num, dots_label, dots_unit )
 
-    IF ( user_module_enabled )  CALL user_check_data_output_ts( dots_max, dots_num, dots_label, dots_unit )
+    IF ( radiation )  THEN
+       CALL radiation_check_data_output_ts( dots_max, dots_num )
+    ENDIF
+
+    IF ( user_module_enabled )  THEN
+       CALL user_check_data_output_ts( dots_max, dots_num, dots_label, dots_unit )
+    ENDIF
 
     IF ( debug_output )  CALL debug_message( 'checking module-specific data output ts', 'end' )
 
@@ -859,21 +956,13 @@
        CALL bcm_check_data_output( variable, unit )
     ENDIF
 
-    IF ( unit == 'illegal'  .AND.  air_chemistry  .AND.  ( variable(1:3) == 'kc_'  .OR.            &
+    IF ( unit == 'illegal'  .AND.  air_chemistry  .AND.  (variable(1:3) == 'kc_'  .OR.             &
          variable(1:3) == 'em_') )  THEN  ! ToDo: remove aditional conditions
        CALL chem_check_data_output( variable, unit, i, ilen, k )
     ENDIF
 
-    IF ( unit == 'illegal'  .AND.  dcep )  THEN
-       CALL dcep_check_data_output( variable, unit )
-    ENDIF
-
     IF ( unit == 'illegal' )  THEN
        CALL doq_check_data_output( variable, unit, i, ilen, k )
-    ENDIF
-
-    IF ( unit == 'illegal'  .AND.  fastv8_coupler_enabled  )  THEN
-       CALL f8c_check_data_output( variable, unit )
     ENDIF
 
     IF ( unit == 'illegal'  .AND.  gust_module_enabled  )  THEN
@@ -888,8 +977,8 @@
        CALL ocean_check_data_output( variable, unit )
     ENDIF
 
-    IF ( unit == 'illegal'  .AND.  plant_canopy )  THEN
-       CALL pcm_check_data_output( variable, unit, j )
+    IF ( unit == 'illegal'  .AND.  plant_canopy  .AND.  variable(1:4) == 'pcm_' )  THEN  ! ToDo: remove aditional conditions
+       CALL pcm_check_data_output( variable, unit )
     ENDIF
 
     IF ( unit == 'illegal'  .AND.  radiation )  THEN
@@ -917,32 +1006,6 @@
 
 
  END SUBROUTINE module_interface_check_data_output
-
-
-!--------------------------------------------------------------------------------------------------!
-! Description:
-! ------------
-!> Check module-specific surface data output
-!--------------------------------------------------------------------------------------------------!
- SUBROUTINE module_interface_check_data_output_surf( trimvar, unit, av )
-
-    IMPLICIT NONE
-
-    CHARACTER(LEN=*), INTENT(IN)    ::  trimvar  !< dummy for single output variable
-    CHARACTER(LEN=*), INTENT(INOUT) ::  unit     !< dummy for unit of output variable
-
-    INTEGER(iwp), INTENT(IN) ::  av  !< id indicating average or non-average data output
-
-
-    IF ( debug_output )  THEN
-       CALL debug_message( 'checking module-specific surface data output', 'start' )
-    ENDIF
-
-    IF ( radiation )  CALL radiation_check_data_output_surf( trimvar, unit, av )
-
-    IF ( debug_output )  CALL debug_message( 'checking module-specific surface data output', 'end' )
-
- END SUBROUTINE module_interface_check_data_output_surf
 
 
 !--------------------------------------------------------------------------------------------------!
@@ -1032,25 +1095,24 @@
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE module_interface_init_arrays
 
+
     IF ( debug_output )  CALL debug_message( 'initializing module-specific arrays', 'start' )
 
     CALL dynamics_init_arrays
     CALL tcm_init_arrays
 
-    IF ( bulk_cloud_model       )  CALL bcm_init_arrays
-    IF ( air_chemistry          )  CALL chem_init_arrays
-    IF ( dcep                   )  CALL dcep_init_arrays
-    IF ( fastv8_coupler_enabled )  CALL f8c_init_arrays
-    IF ( gust_module_enabled    )  CALL gust_init_arrays
-    IF ( indoor_model           )  CALL im_init_arrays
-    IF ( particle_advection     )  CALL lpm_init_arrays
-    IF ( land_surface           )  CALL lsm_init_arrays
-    IF ( ocean_mode             )  CALL ocean_init_arrays
-    IF ( salsa                  )  CALL salsa_init_arrays
-    IF ( turbulent_inflow       )  CALL turbulent_inflow_init_arrays
-    IF ( urban_surface          )  CALL usm_init_arrays
-    IF ( wind_turbine           )  CALL wtm_init_arrays
-    IF ( user_module_enabled    )  CALL user_init_arrays
+    IF ( bulk_cloud_model    )  CALL bcm_init_arrays
+    IF ( air_chemistry       )  CALL chem_init_arrays
+    IF ( gust_module_enabled )  CALL gust_init_arrays
+    IF ( particle_advection  )  CALL lpm_init_arrays
+    IF ( land_surface        )  CALL lsm_init_arrays
+    IF ( ocean_mode          )  CALL ocean_init_arrays
+    IF ( salsa               )  CALL salsa_init_arrays
+    IF ( urban_surface       )  CALL usm_init_arrays
+    IF ( surface_output      )  CALL surface_data_output_init_arrays
+    IF ( wind_turbine        )  CALL wtm_init_arrays
+
+    IF ( user_module_enabled )  CALL user_init_arrays
 
     IF ( debug_output )  CALL debug_message( 'initializing module-specific arrays', 'end' )
 
@@ -1061,36 +1123,12 @@
 !--------------------------------------------------------------------------------------------------!
 ! Description:
 ! ------------
-!> Perform module-specific initialization before the pressure solver has been called for the first
-!> time.
+!> Perform module-specific initialization
 !--------------------------------------------------------------------------------------------------!
- SUBROUTINE module_interface_init_before_pressure_solver
+ SUBROUTINE module_interface_init
 
 
-    IF ( debug_output )  THEN
-       CALL debug_message( 'module-specific initialization before pressure solver', 'start' )
-    ENDIF
-
-    IF ( nesting_offline  )  CALL nesting_offl_init
-    IF ( turbulent_inflow )  CALL turbulent_inflow_init
-
-    IF ( debug_output )  THEN
-       CALL debug_message( 'module-specific initialization before pressure solver', 'end' )
-    ENDIF
-
- END SUBROUTINE module_interface_init_before_pressure_solver
-
-!--------------------------------------------------------------------------------------------------!
-! Description:
-! ------------
-!> Perform module-specific initialization after the pressure solver has been called.
-!--------------------------------------------------------------------------------------------------!
- SUBROUTINE module_interface_init_after_pressure_solver
-
-
-    IF ( debug_output )  THEN
-       CALL debug_message( 'module-specific initialization after pressure solver', 'start' )
-    ENDIF
+    IF ( debug_output )  CALL debug_message( 'module-specific initialization', 'start' )
 
     CALL dynamics_init
     CALL tcm_init
@@ -1098,7 +1136,6 @@
     IF ( biometeorology      )  CALL bio_init
     IF ( bulk_cloud_model    )  CALL bcm_init
     IF ( air_chemistry       )  CALL chem_init
-    IF ( fastv8_coupler_enabled )  CALL f8c_init
     IF ( virtual_flight      )  CALL flight_init
     IF ( gust_module_enabled )  CALL gust_init
     IF ( indoor_model        )  CALL im_init
@@ -1113,18 +1150,14 @@
     IF ( virtual_measurement )  CALL vm_init
     IF ( wind_turbine        )  CALL wtm_init
     IF ( radiation           )  CALL radiation_init
-    IF ( syn_turb_gen        )  CALL stg_init
-    IF ( dcep                )  CALL dcep_init
 
     CALL doq_init
 
     IF ( user_module_enabled )  CALL user_init
 
-    IF ( debug_output )  THEN
-       CALL debug_message( 'module-specific initialization after pressure solver', 'end' )
-    ENDIF
+    IF ( debug_output )  CALL debug_message( 'module-specific initialization', 'end' )
 
- END SUBROUTINE module_interface_init_after_pressure_solver
+ END SUBROUTINE module_interface_init
 
 !--------------------------------------------------------------------------------------------------!
 ! Description:
@@ -1160,16 +1193,12 @@
                    program_debug_output_unit=9,                                                    &
                    debug_output=debug_output )
 !
-!-- Initialze output of topography and surface setup
-    CALL do_topo_and_surface_init_output
-!
 !-- Define module-specific output quantities
     IF ( virtual_measurement )  CALL vm_init_output
     IF ( wind_turbine )         CALL wtm_init_output
 !
 !-- Leave output-definition state
     return_value = dom_def_end()
-    IF ( debug_output )  CALL dom_database_debug_output
 
  END SUBROUTINE module_interface_init_output
 
@@ -1211,7 +1240,6 @@
     IF ( biometeorology      )  CALL bio_header ( io )
     IF ( bulk_cloud_model    )  CALL bcm_header( io )
     IF ( air_chemistry       )  CALL chem_header ( io )
-    IF ( fastv8_coupler_enabled )  CALL f8c_header ( io )
     IF ( virtual_flight      )  CALL flight_header( io )
     IF ( gust_module_enabled )  CALL gust_header( io )
     IF ( particle_advection  )  CALL lpm_header( io )
@@ -1224,7 +1252,7 @@
     IF ( salsa               )  CALL salsa_header( io )
     IF ( calculate_spectra   )  CALL spectra_header( io )
     IF ( syn_turb_gen        )  CALL stg_header( io )
-    IF ( turbulent_inflow    )  CALL turbulent_inflow_header( io )
+
     IF ( user_module_enabled )  CALL user_header( io )
 
     IF ( debug_output )  CALL debug_message( 'module-specific header output', 'end' )
@@ -1243,19 +1271,15 @@
 
     CHARACTER (LEN=*), INTENT(IN) ::  location !< call location string
 
-    CALL do_topo_and_surface_actions( location )
     CALL dynamics_actions( location )
     CALL tcm_actions( location )
-    CALL doq_actions( location )
 
     IF ( bulk_cloud_model    )  CALL bcm_actions( location )
     IF ( air_chemistry       )  CALL chem_actions( location )
-    IF ( fastv8_coupler_enabled )  CALL f8c_actions( location )
     IF ( gust_module_enabled )  CALL gust_actions( location )
     IF ( particle_advection  )  CALL lpm_actions( location )
     IF ( ocean_mode          )  CALL ocean_actions( location )
     IF ( salsa               )  CALL salsa_actions( location )
-    IF ( syn_turb_gen        )  CALL stg_actions( location )
     IF ( wind_turbine        )  CALL wtm_actions( location )
 
     IF ( user_module_enabled )  CALL user_actions( location )
@@ -1279,11 +1303,9 @@
 
     CALL dynamics_actions( i, j, location )
     CALL tcm_actions( i, j, location )
-    CALL doq_actions( i, j, location )
 
     IF ( bulk_cloud_model    )  CALL bcm_actions( i, j, location )
     IF ( air_chemistry       )  CALL chem_actions( i, j, location )
-    IF ( fastv8_coupler_enabled )  CALL f8c_actions( i, j, location )
     IF ( gust_module_enabled )  CALL gust_actions( i, j, location )
     IF ( ocean_mode          )  CALL ocean_actions( i, j, location )
     IF ( salsa               )  CALL salsa_actions( i, j, location )
@@ -1353,8 +1375,6 @@
     IF ( particle_advection  )  CALL lpm_exchange_horiz_bounds( location )
     IF ( salsa               )  CALL salsa_exchange_horiz_bounds( location )
 
-    IF ( user_module_enabled )  CALL user_exchange_horiz( location )
-
     IF ( debug_output_timestep )  CALL debug_message( 'module-specific exchange_horiz', 'end' )
 
 
@@ -1378,7 +1398,6 @@
     IF ( ocean_mode          )  CALL ocean_prognostic_equations
     IF ( salsa               )  CALL salsa_prognostic_equations
 
-    IF ( user_module_enabled )  CALL user_prognostic_equations
 
  END SUBROUTINE module_interface_prognostic_equations
 
@@ -1405,8 +1424,6 @@
     IF ( ocean_mode          )  CALL ocean_prognostic_equations( i, j, i_omp_start, tn )
     IF ( salsa               )  CALL salsa_prognostic_equations( i, j, i_omp_start, tn )
 
-    IF ( user_module_enabled )  CALL user_prognostic_equations( i, j, i_omp_start, tn )
-
 
  END SUBROUTINE module_interface_prognostic_equations_ij
 
@@ -1427,8 +1444,6 @@
     IF ( air_chemistry       )  CALL chem_boundary_conditions
     IF ( ocean_mode          )  CALL ocean_boundary_conditions
     IF ( salsa               )  CALL salsa_boundary_conditions
-
-    IF ( user_module_enabled )  CALL user_boundary_conditions
 
     IF ( debug_output_timestep )  CALL debug_message( 'module-specific boundary_conditions', 'end' )
 
@@ -1459,9 +1474,8 @@
     IF ( salsa               )  CALL salsa_swap_timelevel( swap_mode )
     IF ( urban_surface       )  CALL usm_swap_timelevel( swap_mode )
 
-    IF ( user_module_enabled )  CALL user_swap_timelevel( swap_mode )
-
     IF ( debug_output_timestep )  CALL debug_message( 'module-specific swap timelevel', 'end' )
+
 
  END SUBROUTINE module_interface_swap_timelevel
 
@@ -1503,28 +1517,6 @@
 
  END SUBROUTINE module_interface_3d_data_averaging
 
-
-!--------------------------------------------------------------------------------------------------!
-! Description:
-! ------------
-!> Perform module-specific averaging of surface data
-!--------------------------------------------------------------------------------------------------!
- SUBROUTINE module_interface_surface_data_averaging( trimvar, n_out )
-
-    CHARACTER(LEN=*), INTENT(IN) ::  trimvar  !< dummy variable for current output variable
-
-    INTEGER(iwp), INTENT(IN) ::  n_out  !< counter variables for surface output
-
-
-    IF ( debug_output_timestep )  CALL debug_message( 'module-specific surface data averaging', 'start' )
-
-    IF ( radiation )  CALL radiation_surface_data_averaging( trimvar, n_out )
-
-    IF ( debug_output_timestep )  CALL debug_message( 'module-specific surface data averaging', 'end' )
-
- END SUBROUTINE module_interface_surface_data_averaging
-
-
 !--------------------------------------------------------------------------------------------------!
 !
 ! Description:
@@ -1532,7 +1524,7 @@
 !> Define module-specific 2D output variables
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE module_interface_data_output_2d( av, variable, found, grid, mode, local_pf, two_d,     &
-                                             nzb_do, nzt_do )
+                                             nzb_do, nzt_do, fill_value )
 
     CHARACTER (LEN=*), INTENT(IN)    ::  mode       !< either 'xy', 'xz' or 'yz'
     CHARACTER (LEN=*), INTENT(IN)    ::  variable   !< variable name
@@ -1545,12 +1537,15 @@
     LOGICAL,           INTENT(INOUT) ::  found      !< flag if output variable is found
     LOGICAL,           INTENT(OUT)   ::  two_d      !< flag for 2D variables
 
-    REAL(wp), DIMENSION(nxl:nxr,nys:nyn,nzb_do:nzt_do), INTENT(INOUT) ::  local_pf
+    REAL(wp),          INTENT(IN)    ::  fill_value !< to be removed
+
+    REAL(wp), DIMENSION(nxl:nxr,nys:nyn,nzb_do:nzt_do), INTENT(INOUT) ::  local_pf !< ToDo: can also be kind=sp
 
 
     IF ( debug_output_timestep )  CALL debug_message( 'module-specific 2d data output', 'start' )
 
-    CALL dynamics_data_output_2d( av, variable, found, grid, mode, local_pf, two_d, nzb_do, nzt_do )
+    CALL dynamics_data_output_2d( av, variable, found, grid, mode, local_pf, two_d, nzb_do, nzt_do,&
+                                  fill_value )
 
     IF ( .NOT. found )  THEN
        CALL tcm_data_output_2d( av, variable, found, grid, mode, local_pf, nzb_do, nzt_do )
@@ -1565,23 +1560,18 @@
     ENDIF
 
     IF ( .NOT. found  .AND.  air_chemistry )  THEN
-       CALL chem_data_output_2d( av, variable, found, grid, mode, local_pf, two_d, nzb_do, nzt_do )
-    ENDIF
-
-    IF ( .NOT. found  .AND.  dcep )  THEN
-       CALL dcep_data_output_2d( av, variable, found, grid, mode, local_pf, two_d, nzb_do, nzt_do )
+       CALL chem_data_output_2d( av, variable, found, grid, mode, local_pf, two_d, nzb_do, nzt_do, &
+                                 fill_value )
     ENDIF
 
     IF ( .NOT. found )  THEN
-       CALL doq_output_2d( av, variable, found, grid, mode, local_pf, two_d, nzb_do, nzt_do )
-    ENDIF
-
-    IF ( .NOT. found  .AND.  fastv8_coupler_enabled )  THEN
-       CALL f8c_data_output_2d( av, variable, found, grid, mode, local_pf, two_d, nzb_do, nzt_do )
+       CALL doq_output_2d( av, variable, found, grid, mode, local_pf, two_d, nzb_do, nzt_do,       &
+                           fill_value )
     ENDIF
 
     IF ( .NOT. found  .AND.  gust_module_enabled )  THEN
-       CALL gust_data_output_2d( av, variable, found, grid, mode, local_pf, two_d, nzb_do, nzt_do )
+       CALL gust_data_output_2d( av, variable, found, grid, mode, local_pf, two_d, nzb_do, nzt_do, &
+                                 fill_value )
     ENDIF
 
     IF ( .NOT. found  .AND.  land_surface )  THEN
@@ -1594,7 +1584,7 @@
 
     IF ( .NOT. found  .AND.  radiation )  THEN
        CALL radiation_data_output_2d( av, variable, found, grid, mode, local_pf, two_d, nzb_do,    &
-                                      nzt_do )
+                                      nzt_do, fill_value )
     ENDIF
 
     IF ( .NOT. found  .AND.  salsa )  THEN
@@ -1617,8 +1607,8 @@
 ! ------------
 !> Define module-specific 3D output variables
 !--------------------------------------------------------------------------------------------------!
- SUBROUTINE module_interface_data_output_3d( av, variable, found, local_pf, resorted, nzb_do,      &
-                                             nzt_do )
+ SUBROUTINE module_interface_data_output_3d( av, variable, found, local_pf, fill_value, resorted,  &
+                                             nzb_do, nzt_do )
 
     CHARACTER (LEN=*), INTENT(IN)    ::  variable   !< variable name
 
@@ -1629,12 +1619,14 @@
     LOGICAL,           INTENT(INOUT) ::  found      !< flag if output variable is found
     LOGICAL,           INTENT(OUT)   ::  resorted   !< flag if output has been resorted
 
+    REAL(wp),          INTENT(IN)    ::  fill_value !< ToDo: refactor
+
     REAL(wp), DIMENSION(nxl:nxr,nys:nyn,nzb_do:nzt_do), INTENT(INOUT) ::  local_pf
 
 
     IF ( debug_output_timestep )  CALL debug_message( 'module-specific 3d data output', 'start' )
 
-    CALL dynamics_data_output_3d( av, variable, found, local_pf, nzb_do, nzt_do )
+    CALL dynamics_data_output_3d( av, variable, found, local_pf, fill_value, nzb_do, nzt_do )
     resorted = .FALSE.
 
     IF ( .NOT. found )  THEN
@@ -1653,32 +1645,22 @@
     ENDIF
 
     IF ( .NOT. found  .AND.  air_chemistry )  THEN
-       CALL chem_data_output_3d( av, variable, found, local_pf, nzb_do, nzt_do )
-       resorted = .TRUE.
-    ENDIF
-
-    IF ( .NOT. found  .AND.  dcep )  THEN
-       CALL dcep_data_output_3d( av, variable, found, local_pf, nzb_do, nzt_do )
+       CALL chem_data_output_3d( av, variable, found, local_pf, fill_value, nzb_do, nzt_do )
        resorted = .TRUE.
     ENDIF
 
     IF ( .NOT. found )  THEN
-       CALL doq_output_3d( av, variable, found, local_pf, nzb_do, nzt_do )
-       resorted = .TRUE.
-    ENDIF
-
-    IF ( .NOT. found  .AND.  fastv8_coupler_enabled )  THEN
-       CALL f8c_data_output_3d( av, variable, found, local_pf, nzb_do, nzt_do )
+       CALL doq_output_3d( av, variable, found, local_pf, fill_value, nzb_do, nzt_do )
        resorted = .TRUE.
     ENDIF
 
     IF ( .NOT. found  .AND.  gust_module_enabled )  THEN
-       CALL gust_data_output_3d( av, variable, found, local_pf, nzb_do, nzt_do )
+       CALL gust_data_output_3d( av, variable, found, local_pf, fill_value, nzb_do, nzt_do )
        resorted = .TRUE.
     ENDIF
 
     IF ( .NOT. found  .AND.  indoor_model )  THEN
-       CALL im_data_output_3d( av, variable, found, local_pf, nzb_do, nzt_do )
+       CALL im_data_output_3d( av, variable, found, local_pf, fill_value, nzb_do, nzt_do )
        resorted = .TRUE.
     ENDIF
 
@@ -1688,12 +1670,12 @@
     ENDIF
 
     IF ( .NOT. found  .AND.  plant_canopy )  THEN
-       CALL pcm_data_output_3d( av, variable, found, local_pf, nzb_do, nzt_do )
+       CALL pcm_data_output_3d( av, variable, found, local_pf, fill_value, nzb_do, nzt_do )
        resorted = .TRUE.
     ENDIF
 
     IF ( .NOT. found  .AND.  radiation )  THEN
-       CALL radiation_data_output_3d( av, variable, found, local_pf, nzb_do, nzt_do )
+       CALL radiation_data_output_3d( av, variable, found, local_pf, fill_value, nzb_do, nzt_do )
        resorted = .TRUE.
     ENDIF
 
@@ -1711,30 +1693,6 @@
 
 
  END SUBROUTINE module_interface_data_output_3d
-
-
-!--------------------------------------------------------------------------------------------------!
-!
-! Description:
-! ------------
-!> Define module-specific surface output variables
-!--------------------------------------------------------------------------------------------------!
- SUBROUTINE module_interface_data_output_surf( av, trimvar, found )
-
-    CHARACTER (LEN=*), INTENT(IN)    ::  trimvar   !< variable name
-
-    INTEGER(iwp), INTENT(IN) ::  av  !< flag for (non-)average output
-
-    LOGICAL, INTENT(INOUT) ::  found  !< flag if output variable is found
-
-
-    IF ( debug_output_timestep )  CALL debug_message( 'module-specific surface data output', 'start' )
-
-    IF ( radiation )  CALL radiation_data_output_surf( av, trimvar, found )
-
-    IF ( debug_output_timestep )  CALL debug_message( 'module-specific surface data output', 'end' )
-
- END SUBROUTINE module_interface_data_output_surf
 
 
 !--------------------------------------------------------------------------------------------------!
@@ -1757,16 +1715,14 @@
     CALL dynamics_statistics( mode, sr, tn )
     CALL doq_statistics( mode, sr, tn )
 
-    IF ( bulk_cloud_model    )  CALL bcm_statistics( mode, sr )
     IF ( gust_module_enabled )  CALL gust_statistics( mode, sr, tn, dots_max )
-    IF ( land_surface        )  CALL lsm_statistics( mode, sr )
     IF ( air_chemistry       )  CALL chem_statistics( mode, sr, tn )
-    IF ( radiation           )  CALL radiation_statistics( mode, sr )
     IF ( salsa               )  CALL salsa_statistics( mode, sr, tn )
 
     IF ( user_module_enabled )  CALL user_statistics( mode, sr, tn )
 
     IF ( debug_output_timestep )  CALL debug_message( 'module-specific statistics', 'end' )
+
 
  END SUBROUTINE module_interface_statistics
 
@@ -1793,11 +1749,10 @@
     IF ( .NOT. found )  CALL lpm_rrd_global( found ) ! ToDo: change interface to pass variable
     IF ( .NOT. found )  CALL pcm_rrd_global( found )
     IF ( .NOT. found )  CALL ocean_rrd_global( found ) ! ToDo: change interface to pass variable
-    IF ( .NOT. found )  CALL radiation_rrd_global( found )
     IF ( .NOT. found )  CALL salsa_rrd_global( found )
-    IF ( .NOT. found )  CALL stg_rrd_global( found ) ! ToDo: change interface to pass variable
-    IF ( .NOT. found )  CALL turbulent_inflow_rrd_global( found )
+    IF ( .NOT. found )  CALL stg_rrd_global ( found ) ! ToDo: change interface to pass variable
     IF ( .NOT. found )  CALL wtm_rrd_global( found ) ! ToDo: change interface to pass variable
+    IF ( .NOT. found )  CALL surface_data_output_rrd_global( found )
 
     IF ( .NOT. found )  CALL user_rrd_global( found ) ! ToDo: change interface to pass variable
 
@@ -1826,11 +1781,10 @@
     IF ( particle_advection )   CALL lpm_rrd_global
     IF ( plant_canopy )         CALL pcm_rrd_global
     IF ( ocean_mode )           CALL ocean_rrd_global
-    IF ( radiation )            CALL radiation_rrd_global
     IF ( salsa )                CALL salsa_rrd_global
     IF ( syn_turb_gen )         CALL stg_rrd_global
-    IF ( turbulent_inflow )     CALL turbulent_inflow_rrd_global
     IF ( wind_turbine )         CALL wtm_rrd_global
+    IF ( surface_output )       CALL surface_data_output_rrd_global
 
     IF ( user_module_enabled )  CALL user_rrd_global
 
@@ -1859,11 +1813,10 @@
     IF ( particle_advection )   CALL lpm_wrd_global
     IF ( plant_canopy )         CALL pcm_wrd_global
     IF ( ocean_mode )           CALL ocean_wrd_global
-    IF ( radiation )            CALL radiation_wrd_global
     IF ( salsa )                CALL salsa_wrd_global
     IF ( syn_turb_gen )         CALL stg_wrd_global
-    IF ( turbulent_inflow )     CALL turbulent_inflow_wrd_global
     IF ( wind_turbine )         CALL wtm_wrd_global
+    IF ( surface_output )       CALL surface_data_output_wrd_global
 
     IF ( user_module_enabled )  CALL user_wrd_global
 
@@ -1956,14 +1909,6 @@
                                              tmp_2d, tmp_3d, found                                 &
                                            ) ! ToDo: change interface to pass variable
 
-    IF ( .NOT. found )  CALL im_rrd_local( map_index,                                              &
-                                            nxlf, nxlc, nxl_on_file,                               &
-                                            nxrf, nxr_on_file,                                     &
-                                            nynf, nyn_on_file,                                     &
-                                            nysf, nysc, nys_on_file,                               &
-                                            found                                                  &
-                                          ) ! ToDo: change interface to pass variable
-
     IF ( .NOT. found )  CALL lpm_rrd_local( map_index,                                             &
                                             nxlf, nxlc, nxl_on_file,                               &
                                             nxrf, nxrc, nxr_on_file,                               &
@@ -2019,6 +1964,9 @@
                                             nysf, nysc, nys_on_file,                               &
                                             found                                                  &
                                           ) ! ToDo: change interface to pass variable
+!
+!-- Surface data do not need overlap data, so do not pass these information.
+    IF ( .NOT. found )  CALL surface_data_output_rrd_local( found )
 
     IF ( .NOT. found )  CALL user_rrd_local( map_index,                                            &
                                              nxlf, nxlc, nxl_on_file,                              &
@@ -2053,7 +2001,6 @@
     IF ( air_chemistry )        CALL chem_rrd_local
     CALL doq_rrd_local
     IF ( gust_module_enabled )  CALL gust_rrd_local
-    IF ( indoor_model )         CALL im_rrd_local
     IF ( particle_advection )   CALL lpm_rrd_local
     IF ( land_surface )         CALL lsm_rrd_local
     IF ( plant_canopy )         CALL pcm_rrd_local
@@ -2061,46 +2008,15 @@
     IF ( radiation )            CALL radiation_rrd_local
     IF ( salsa )                CALL salsa_rrd_local
     IF ( urban_surface )        CALL usm_rrd_local
+    IF ( surface_output )       CALL surface_data_output_rrd_local
 
     IF ( user_module_enabled )  CALL user_rrd_local
 
     IF ( debug_output )  THEN
-       CALL debug_message( 'module-specific read local restart data (MPI-IO)', 'end' )
+       CALL debug_message( 'module-specific read local restart data (Fortran binary)', 'end' )
     ENDIF
 
  END SUBROUTINE module_interface_rrd_local_mpi
-
-!--------------------------------------------------------------------------------------------------!
-! Description:
-! ------------
-!> Read module-specific local restart data arrays (MPI-IO) for spinup-surface data.
-!--------------------------------------------------------------------------------------------------!
- SUBROUTINE module_interface_rrd_local_spinup_mpi
-
-    IF ( debug_output )  THEN
-       CALL debug_message( 'module-specific read local restart data for spinup (MPI-IO)', 'start' )
-    ENDIF
-
-    IF ( land_surface  )  CALL lsm_rrd_local
-    IF ( urban_surface )  CALL usm_rrd_local
-
-    IF ( debug_output )  THEN
-       CALL debug_message( 'module-specific read local restart data for spinup (MPI-IO)', 'end' )
-    ENDIF
-
- END SUBROUTINE module_interface_rrd_local_spinup_mpi
-
-!--------------------------------------------------------------------------------------------------!
-! Description:
-! ------------
-!> Calculate maximum allowed timestep.
-!--------------------------------------------------------------------------------------------------!
- SUBROUTINE module_interface_timestep
-
-    IF ( land_surface  )  CALL lsm_timestep
-    IF ( urban_surface )  CALL usm_timestep
-
- END SUBROUTINE module_interface_timestep
 
 
 !--------------------------------------------------------------------------------------------------!
@@ -2120,7 +2036,6 @@
     IF ( air_chemistry )        CALL chem_wrd_local
     CALL doq_wrd_local
     IF ( gust_module_enabled )  CALL gust_wrd_local
-    IF ( indoor_model )         CALL im_wrd_local
     IF ( particle_advection )   CALL lpm_wrd_local
     IF ( land_surface )         CALL lsm_wrd_local
     IF ( plant_canopy )         CALL pcm_wrd_local
@@ -2128,6 +2043,7 @@
     IF ( radiation )            CALL radiation_wrd_local
     IF ( salsa )                CALL salsa_wrd_local
     IF ( urban_surface )        CALL usm_wrd_local
+    IF ( surface_output )       CALL surface_data_output_wrd_local
 
     IF ( user_module_enabled )  CALL user_wrd_local
 
@@ -2135,28 +2051,6 @@
 
 
  END SUBROUTINE module_interface_wrd_local
-
-
-!--------------------------------------------------------------------------------------------------!
-! Description:
-! ------------
-!> Write module-specific restart data for spinup data specific to local MPI ranks
-!--------------------------------------------------------------------------------------------------!
- SUBROUTINE module_interface_wrd_local_spinup
-
-
-    IF ( debug_output )  CALL debug_message( 'module-specific write local restart data for spinup',&
-                                             'start' )
-!
-!-- Only surface data from LSM and USM is required
-    IF ( land_surface  )  CALL lsm_wrd_local
-    IF ( urban_surface )  CALL usm_wrd_local
-
-    IF ( debug_output )  CALL debug_message( 'module-specific write local restart data for spinup',&
-                                             'end' )
-
-
- END SUBROUTINE module_interface_wrd_local_spinup
 
 
 !--------------------------------------------------------------------------------------------------!

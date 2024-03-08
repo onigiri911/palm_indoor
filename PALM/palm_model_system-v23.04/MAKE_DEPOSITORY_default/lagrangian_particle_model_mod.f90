@@ -13,8 +13,165 @@
 ! You should have received a copy of the GNU General Public License along with PALM. If not, see
 ! <http://www.gnu.org/licenses/>.
 !
-! Copyright 1997-2021 Leibniz Universitaet Hannover
+! Copyright 1997-2020 Leibniz Universitaet Hannover
 !--------------------------------------------------------------------------------------------------!
+!
+! Current revisions:
+! ------------------
+!
+!
+! Former revisions:
+! -----------------
+! $Id: lagrangian_particle_model_mod.f90 4778 2020-11-09 13:40:05Z raasch $
+! output of particle time series added
+!
+! 4731 2020-10-07 13:25:11Z schwenkel
+! Move exchange_horiz from time_integration to modules
+!
+! 4673 2020-09-10 07:56:36Z schwenkel
+! bugfix in case of mpi-restarts
+!
+! 4671 2020-09-09 20:27:58Z pavelkrc
+! Implementation of downward facing USM and LSM surfaces
+!
+! 4648 2020-08-25 07:52:08Z raasch
+! file re-formatted to follow the PALM coding standard
+!
+! 4629 2020-07-29 09:37:56Z raasch
+! support for MPI Fortran77 interface (mpif.h) removed
+!
+! 4628 2020-07-29 07:23:03Z raasch
+! extensions required for MPI-I/O of particle data to restart files
+!
+! 4616 2020-07-21 10:09:46Z schwenkel
+! Bugfix in case of strechting: k-calculation limited lower bound of 1
+!
+! 4589 2020-07-06 12:34:09Z suehring
+! remove unused variables
+!
+! 4588 2020-07-06 11:06:02Z suehring
+! Simplify particle-speed interpolation in logarithmic layer
+!
+! 4585 2020-06-30 15:05:20Z suehring
+! Limit logarithmically interpolated particle speed to the velocity component at the first
+! prognostic grid point (since no stability corrected interpolation is employed the particle speed
+! could be overestimated in unstable conditions).
+!
+! 4546 2020-05-24 12:16:41Z raasch
+! Variables iran and iran_part completely removed, added I/O of parallel random numbers to restart
+! file
+!
+! 4545 2020-05-22 13:17:57Z schwenkel
+! Using parallel random generator, thus preventing dependency of PE number
+!
+! 4535 2020-05-15 12:07:23Z raasch
+! bugfix for restart data format query
+!
+! 4520 2020-05-06 08:57:19Z schwenkel
+! Add error number
+!
+! 4517 2020-05-03 14:29:30Z raasch
+! restart data handling with MPI-IO added
+!
+! 4471 2020-03-24 12:08:06Z schwenkel
+! Bugfix in lpm_droplet_interactions_ptq
+!
+! 4457 2020-03-11 14:20:43Z raasch
+! use statement for exchange horiz added
+!
+! 4444 2020-03-05 15:59:50Z raasch
+! bugfix: cpp-directives for serial mode added
+!
+! 4430 2020-02-27 18:02:20Z suehring
+! - Bugfix in logarithmic interpolation of near-ground particle speed (density was not considered).
+! - Revise CFL-check when SGS particle speeds are considered.
+! - In nested case with SGS particle speeds in the child domain, do not give warning that particles
+!   are on domain boundaries. At the end of the particle time integration these will be transferred
+!   to the parent domain anyhow.
+!
+! 4360 2020-01-07 11:25:50Z suehring
+! Introduction of wall_flags_total_0, which currently sets bits based on static topography
+! information used in wall_flags_static_0
+!
+! 4336 2019-12-13 10:12:05Z raasch
+! bugfix: wrong header output of particle group features (density ratio) in case of restarts
+!         corrected
+!
+! 4329 2019-12-10 15:46:36Z motisi
+! Renamed wall_flags_0 to wall_flags_static_0
+!
+! 4282 2019-10-29 16:18:46Z schwenkel
+! Bugfix of particle timeseries in case of more than one particle group
+!
+! 4277 2019-10-28 16:53:23Z schwenkel
+! Bugfix: Added first_call_lpm in use statement
+!
+! 4276 2019-10-28 16:03:29Z schwenkel
+! Modularize lpm: Move conditions in time intergration to module
+!
+! 4275 2019-10-28 15:34:55Z schwenkel
+! Change call of simple predictor corrector method, i.e. two divergence free velocitiy fields are
+! now used.
+!
+! 4232 2019-09-20 09:34:22Z knoop
+! Removed INCLUDE "mpif.h", as it is not needed because of USE pegrid
+!
+! 4195 2019-08-28 13:44:27Z schwenkel
+! Bugfix for simple_corrector interpolation method in case of ocean runs and output particle
+! advection interpolation method into header
+!
+! 4182 2019-08-22 15:20:23Z scharf
+! Corrected "Former revisions" section
+!
+! 4168 2019-08-16 13:50:17Z suehring
+! Replace function get_topography_top_index by topo_top_ind
+!
+! 4145 2019-08-06 09:55:22Z schwenkel
+! Some reformatting
+!
+! 4144 2019-08-06 09:11:47Z raasch
+! relational operators .EQ., .NE., etc. replaced by ==, /=, etc.
+!
+! 4143 2019-08-05 15:14:53Z schwenkel
+! Rename variable and change select case to if statement
+!
+! 4122 2019-07-26 13:11:56Z schwenkel
+! Implement reset method as bottom boundary condition
+!
+! 4121 2019-07-26 10:01:22Z schwenkel
+! Implementation of an simple method for interpolating the velocities to particle position
+!
+! 4114 2019-07-23 14:09:27Z schwenkel
+! Bugfix: Added working precision for if statement
+!
+! 4054 2019-06-27 07:42:18Z raasch
+! bugfix for calculating the minimum particle time step
+!
+! 4044 2019-06-19 12:28:27Z schwenkel
+! Bugfix in case of grid strecting: corrected calculation of k-Index
+!
+! 4043 2019-06-18 16:59:00Z schwenkel
+! Remove min_nr_particle, Add lpm_droplet_interactions_ptq into module
+!
+! 4028 2019-06-13 12:21:37Z schwenkel
+! Further modularization of particle code components
+!
+! 4020 2019-06-06 14:57:48Z schwenkel
+! Removing submodules
+!
+! 4018 2019-06-06 13:41:50Z eckhard
+! Bugfix for former revision
+!
+! 4017 2019-06-06 12:16:46Z schwenkel
+! Modularization of all lagrangian particle model code components
+!
+! 3655 2019-01-07 16:51:22Z knoop
+! bugfix to guarantee correct particle releases in case that the release interval is smaller than
+! the model timestep
+!
+! Revision 1.1  1999/11/25 16:16:06  raasch
+! Initial revision
+!
 !
 ! Description:
 ! ------------
@@ -29,132 +186,43 @@
 !--------------------------------------------------------------------------------------------------!
  MODULE lagrangian_particle_model_mod
 
-#if defined( __parallel )
-    USE MPI
-#endif
-
     USE, INTRINSIC ::  ISO_C_BINDING
 
     USE arrays_3d,                                                                                 &
-        ONLY:  d_exner,                                                                            &
-               de_dx,                                                                              &
-               de_dy,                                                                              &
-               de_dz,                                                                              &
-               diss,                                                                               &
-               dzw,                                                                                &
-               e,                                                                                  &
-               exner,                                                                              &
-               hyp,                                                                                &
-               km,                                                                                 &
-               pt,                                                                                 &
-               q,                                                                                  &
-               ql,                                                                                 &
-               ql_1,                                                                               &
-               ql_2,                                                                               &
-               ql_c,                                                                               &
-               ql_v,                                                                               &
-               ql_vp,                                                                              &
-               u,                                                                                  &
-               v,                                                                                  &
-               w,                                                                                  &
-               zu,                                                                                 &
-               zw
+        ONLY:  d_exner, de_dx, de_dy, de_dz, diss, dzw, e, exner, hyp, km, pt, q, ql, ql_1, ql_2,  &
+               ql_c, ql_v, ql_vp, u, v, w, zu, zw
 
     USE averaging,                                                                                 &
-        ONLY:  pc_av,                                                                              &
-               pr_av,                                                                              &
-               ql_c_av,                                                                            &
-               ql_v_av,                                                                            &
-               ql_vp_av
+        ONLY:  pc_av, pr_av, ql_c_av, ql_v_av, ql_vp_av
 
     USE basic_constants_and_equations_mod,                                                         &
-        ONLY:  g,                                                                                  &
-               kappa,                                                                              &
-               l_v,                                                                                &
-               lv_d_cp,                                                                            &
-               magnus,                                                                             &
-               molecular_weight_of_solute,                                                         &
-               molecular_weight_of_water,                                                          &
-               pi,                                                                                 &
-               r_v,                                                                                &
-               rd_d_rv,                                                                            &
-               rho_l,                                                                             &
-               rho_s,                                                                             &
-               vanthoff
+        ONLY:  g, kappa, l_v, lv_d_cp, magnus, molecular_weight_of_solute,                         &
+               molecular_weight_of_water, pi, r_v, rd_d_rv, rho_l, rho_s, vanthoff
 
     USE control_parameters,                                                                        &
-        ONLY:  bc_dirichlet_l,                                                                     &
-               bc_dirichlet_n,                                                                     &
-               bc_dirichlet_r,                                                                     &
-               bc_dirichlet_s,                                                                     &
-               child_domain,                                                                       &
-               cloud_droplets,                                                                     &
-               coupling_char,                                                                      &
-               constant_flux_layer,                                                                &
-               current_timestep_number,                                                            &
-               cyclic_fill_initialization,                                                         &
-               debug_output,                                                                       &
-               debug_string,                                                                       &
-               dt_3d,                                                                              &
-               dt_3d_reached,                                                                      &
-               dt_3d_reached_l,                                                                    &
-               dt_dopts,                                                                           &
-               dz,                                                                                 &
-               dz_stretch_level,                                                                   &
-               dz_stretch_level_start,                                                             &
-               first_call_lpm,                                                                     &
-               humidity,                                                                           &
-               initializing_actions,                                                               &
-               intermediate_timestep_count,                                                        &
-               intermediate_timestep_count_max,                                                    &
-               message_string,                                                                     &
-               molecular_viscosity,                                                                &
-               ocean_mode,                                                                         &
-               particle_maximum_age,                                                               &
-               restart_data_format_input,                                                          &
-               restart_data_format_output,                                                         &
-               rho_surface,                                                                        &
-               simulated_time,                                                                     &
-               time_dopts,                                                                         &
-               time_since_reference_point,                                                         &
-               topography,                                                                         &
-               u_gtrans,                                                                           &
-               v_gtrans
+        ONLY:  bc_dirichlet_l, bc_dirichlet_n, bc_dirichlet_r, bc_dirichlet_s,                     &
+               child_domain, cloud_droplets, constant_flux_layer, current_timestep_number,         &
+               debug_output, dopts_time_count, dt_3d, dt_3d_reached, dt_3d_reached_l, dt_dopts, dz,&
+               dz_stretch_level, dz_stretch_level_start, first_call_lpm, humidity,                 &
+               initializing_actions, intermediate_timestep_count, intermediate_timestep_count_max, &
+               message_string, molecular_viscosity, ocean_mode, particle_maximum_age,              &
+               restart_data_format_input, restart_data_format_output, rho_surface, simulated_time, &
+               time_since_reference_point, topography, u_gtrans, v_gtrans
 
     USE cpulog,                                                                                    &
-        ONLY:  cpu_log,                                                                            &
-               log_point,                                                                          &
-               log_point_s
+        ONLY:  cpu_log, log_point, log_point_s
 
     USE data_output_particle_mod,                                                                  &
-        ONLY:  dop_individual_ts,                                                                  &
-               dop_collect_statistics,                                                             &
+        ONLY:  dop_active,                                                                         &
                dop_finalize,                                                                       &
                dop_init,                                                                           &
-               dop_write_tseries_data,                                                             &
-               max_nr_out_prts,                                                                    &
-               nr_out_prts,                                                                        &
-               nr_prt_quantities_statistical
+               dop_output_tseries,                                                                 &
+               dop_prt_axis_dimension,                                                             &
+               dop_last_active_particle
 
     USE indices,                                                                                   &
-        ONLY:  nbgp,                                                                               &
-               ngp_2dh_outer,                                                                      &
-               nx,                                                                                 &
-               nxl,                                                                                &
-               nxlg,                                                                               &
-               nxrg,                                                                               &
-               nxr,                                                                                &
-               ny,                                                                                 &
-               nyn,                                                                                &
-               nys,                                                                                &
-               nyng,                                                                               &
-               nysg,                                                                               &
-               nz,                                                                                 &
-               nzb,                                                                                &
-               nzb_max,                                                                            &
-               nzt,                                                                                &
-               topo_top_ind,                                                                       &
-               topo_flags
+        ONLY:  nbgp, ngp_2dh_outer, nx, nxl, nxlg, nxrg, nxr, ny, nyn, nys, nyng, nysg, nz, nzb,   &
+               nzb_max, nzt, topo_top_ind, wall_flags_total_0
 
     USE kinds
 
@@ -164,26 +232,20 @@
 
 #if defined( __parallel )
     USE pmc_particle_interface,                                                                    &
-        ONLY:  pmcp_c_get_particle_from_parent,                                                    &
-               pmcp_c_send_particle_to_parent,                                                     &
-               pmcp_g_free_win,                                                                    &
-               pmcp_g_init,                                                                        &
-               pmcp_g_print_number_of_particles,                                                   &
-               pmcp_p_delete_particles_in_fine_grid_area,                                          &
-               pmcp_p_empty_particle_win,                                                          &
-               pmcp_p_fill_particle_win
+        ONLY: pmcp_c_get_particle_from_parent, pmcp_c_send_particle_to_parent, pmcp_g_init,        &
+              pmcp_g_print_number_of_particles, pmcp_p_delete_particles_in_fine_grid_area,         &
+              pmcp_p_empty_particle_win, pmcp_p_fill_particle_win
 #endif
 
     USE pmc_interface,                                                                             &
-        ONLY:  nested_run,                                                                         &
-               particle_coupling,                                                                  &
-               root_model
+        ONLY: nested_run
 
     USE grid_variables,                                                                            &
-        ONLY:  ddx,                                                                                &
-               dx,                                                                                 &
-               ddy,                                                                                &
-               dy
+        ONLY:  ddx, dx, ddy, dy
+
+    USE netcdf_interface,                                                                          &
+        ONLY:  dopts_num, id_set_pts, id_var_dopts, id_var_time_pts, nc_stat, netcdf_data_format,  &
+               netcdf_deflate, netcdf_handle_error
 
     USE random_generator_parallel,                                                                 &
         ONLY:  init_parallel_random_generator,                                                     &
@@ -210,10 +272,10 @@
         ONLY:  hom
 
     USE surface_mod,                                                                               &
-        ONLY:  bc_hv,                                                                              &
-               surf_def,                                                                           &
-               surf_lsm,                                                                           &
-               surf_usm
+        ONLY:  bc_h,                                                                               &
+               surf_def_h,                                                                         &
+               surf_lsm_h,                                                                         &
+               surf_usm_h
 
 #if defined( __parallel )
     USE MPI
@@ -244,6 +306,7 @@
 
     CHARACTER(LEN=25) ::  particle_advection_interpolation = 'trilinear' !< interpolation method for calculatin the particle
 
+    INTEGER(iwp) ::  deleted_particles = 0                        !< number of deleted particles per time step
     INTEGER(iwp) ::  i_splitting_mode                             !< dummy for splitting mode
     INTEGER(iwp) ::  isf                                          !< dummy for splitting function
     INTEGER(iwp) ::  max_number_particles_per_gridbox = 100       !< namelist parameter (see documentation)
@@ -259,7 +322,7 @@
     INTEGER(iwp) ::  splitting_factor = 2                         !< namelist parameter (see documentation)
     INTEGER(iwp) ::  splitting_factor_max = 5                     !< namelist parameter (see documentation)
     INTEGER(iwp) ::  step_dealloc = 100                           !< namelist parameter (see documentation)
-    INTEGER(idp) ::  total_number_of_particles = 0                !< total number of particles in the whole model domain  (I8)
+    INTEGER(iwp) ::  total_number_of_particles                    !< total number of particles in the whole model domain
     INTEGER(iwp) ::  trlp_count_recv_sum                          !< parameter for particle exchange of PEs
     INTEGER(iwp) ::  trlp_count_sum                               !< parameter for particle exchange of PEs
     INTEGER(iwp) ::  trrp_count_recv_sum                          !< parameter for particle exchange of PEs
@@ -346,9 +409,9 @@
     REAL(wp), DIMENSION(:,:), ALLOCATABLE ::  hwratio   !<
 
     REAL(wp), DIMENSION(:,:,:), ALLOCATABLE ::  ckernel !<
-    REAL(wp), DIMENSION(:,:,:), ALLOCATABLE ::  u_m   !< u value of old timelevel t
-    REAL(wp), DIMENSION(:,:,:), ALLOCATABLE ::  v_m   !< v value of old timelevel t
-    REAL(wp), DIMENSION(:,:,:), ALLOCATABLE ::  w_m   !< w value of old timelevel t
+    REAL(wp), DIMENSION(:,:,:), ALLOCATABLE ::  u_t   !< u value of old timelevel t
+    REAL(wp), DIMENSION(:,:,:), ALLOCATABLE ::  v_t   !< v value of old timelevel t
+    REAL(wp), DIMENSION(:,:,:), ALLOCATABLE ::  w_t   !< w value of old timelevel t
 
     SAVE
 
@@ -362,11 +425,13 @@
            lpm_exchange_horiz_bounds,                                                              &
            lpm_header,                                                                             &
            lpm_init,                                                                               &
+           lpm_interaction_droplets_ptq,                                                           &
            lpm_init_arrays,                                                                        &
            lpm_last_actions,                                                                       &
            lpm_parin,                                                                              &
            lpm_rrd_global,                                                                         &
            lpm_rrd_local,                                                                          &
+           lpm_rrd_local_particles,                                                                &
            lpm_wrd_global,                                                                         &
            lpm_wrd_local
 
@@ -420,14 +485,78 @@
        MODULE PROCEDURE lpm_wrd_global
     END INTERFACE lpm_wrd_global
 
+    INTERFACE lpm_advec
+       MODULE PROCEDURE lpm_advec
+    END INTERFACE lpm_advec
+
+    INTERFACE lpm_calc_liquid_water_content
+       MODULE PROCEDURE lpm_calc_liquid_water_content
+    END INTERFACE
+
+    INTERFACE lpm_interaction_droplets_ptq
+       MODULE PROCEDURE lpm_interaction_droplets_ptq
+       MODULE PROCEDURE lpm_interaction_droplets_ptq_ij
+    END INTERFACE lpm_interaction_droplets_ptq
+
+    INTERFACE lpm_boundary_conds
+       MODULE PROCEDURE lpm_boundary_conds
+    END INTERFACE lpm_boundary_conds
+
+    INTERFACE lpm_droplet_condensation
+       MODULE PROCEDURE lpm_droplet_condensation
+    END INTERFACE
+
+    INTERFACE lpm_droplet_collision
+       MODULE PROCEDURE lpm_droplet_collision
+    END INTERFACE lpm_droplet_collision
+
+    INTERFACE lpm_init_kernels
+       MODULE PROCEDURE lpm_init_kernels
+    END INTERFACE lpm_init_kernels
+
+    INTERFACE lpm_splitting
+       MODULE PROCEDURE lpm_splitting
+    END INTERFACE lpm_splitting
+
+    INTERFACE lpm_merging
+       MODULE PROCEDURE lpm_merging
+    END INTERFACE lpm_merging
+
+    INTERFACE lpm_exchange_horiz
+       MODULE PROCEDURE lpm_exchange_horiz
+    END INTERFACE lpm_exchange_horiz
+
     INTERFACE lpm_exchange_horiz_bounds
        MODULE PROCEDURE lpm_exchange_horiz_bounds
     END INTERFACE lpm_exchange_horiz_bounds
+
+    INTERFACE lpm_move_particle
+       MODULE PROCEDURE lpm_move_particle
+    END INTERFACE lpm_move_particle
+
+    INTERFACE realloc_particles_array
+       MODULE PROCEDURE realloc_particles_array
+    END INTERFACE realloc_particles_array
+
+    INTERFACE dealloc_particles_array
+       MODULE PROCEDURE dealloc_particles_array
+    END INTERFACE dealloc_particles_array
 
     INTERFACE lpm_last_actions
        MODULE PROCEDURE lpm_last_actions
     END INTERFACE lpm_last_actions
 
+    INTERFACE lpm_sort_and_delete
+       MODULE PROCEDURE lpm_sort_and_delete
+    END INTERFACE lpm_sort_and_delete
+
+    INTERFACE lpm_sort_timeloop_done
+       MODULE PROCEDURE lpm_sort_timeloop_done
+    END INTERFACE lpm_sort_timeloop_done
+
+    INTERFACE lpm_pack
+       MODULE PROCEDURE lpm_pack
+    END INTERFACE lpm_pack
 
  CONTAINS
 
@@ -439,16 +568,67 @@
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE lpm_parin
 
-    CHARACTER(LEN=100) ::  line  !< string containing current line of file PARIN
+    CHARACTER (LEN=80) ::  line  !<
 
-#if defined( __parallel )
-    INTEGER(iwp) ::  ierr
-#endif
-    INTEGER(iwp) ::  io_status  !< status after reading the namelist file
-
-    LOGICAL ::  switch_off_module = .FALSE.  !< local namelist parameter to switch off the module
-                                             !< although the respective module namelist appears in
-                                             !< the namelist file
+    NAMELIST /particles_par/                                                                       &
+       aero_species,                                                                               &
+       aero_type,                                                                                  &
+       aero_weight,                                                                                &
+       alloc_factor,                                                                               &
+       bc_par_b,                                                                                   &
+       bc_par_lr,                                                                                  &
+       bc_par_ns,                                                                                  &
+       bc_par_t,                                                                                   &
+       collision_kernel,                                                                           &
+       curvature_solution_effects,                                                                 &
+       deallocate_memory,                                                                          &
+       density_ratio,                                                                              &
+       dissipation_classes,                                                                        &
+       dt_dopts,                                                                                   &
+       dt_min_part,                                                                                &
+       dt_prel,                                                                                    &
+       dt_write_particle_data,                                                                     &
+       end_time_prel,                                                                              &
+       initial_weighting_factor,                                                                   &
+       log_sigma,                                                                                  &
+       max_number_particles_per_gridbox,                                                           &
+       merging,                                                                                    &
+       na,                                                                                         &
+       number_concentration,                                                                       &
+       number_of_particle_groups,                                                                  &
+       number_particles_per_gridbox,                                                               &
+       particles_per_point,                                                                        &
+       particle_advection_start,                                                                   &
+       particle_advection_interpolation,                                                           &
+       particle_maximum_age,                                                                       &
+       pdx,                                                                                        &
+       pdy,                                                                                        &
+       pdz,                                                                                        &
+       psb,                                                                                        &
+       psl,                                                                                        &
+       psn,                                                                                        &
+       psr,                                                                                        &
+       pss,                                                                                        &
+       pst,                                                                                        &
+       radius,                                                                                     &
+       radius_classes,                                                                             &
+       radius_merge,                                                                               &
+       radius_split,                                                                               &
+       random_start_position,                                                                      &
+       read_particles_from_restartfile,                                                            &
+       rm,                                                                                         &
+       seed_follows_topography,                                                                    &
+       splitting,                                                                                  &
+       splitting_factor,                                                                           &
+       splitting_factor_max,                                                                       &
+       splitting_function,                                                                         &
+       splitting_mode,                                                                             &
+       step_dealloc,                                                                               &
+       use_sgs_for_particles,                                                                      &
+       vertical_particle_advection,                                                                &
+       weight_factor_merge,                                                                        &
+       weight_factor_split,                                                                        &
+       write_particle_statistics
 
     NAMELIST /particle_parameters/                                                                 &
        aero_species,                                                                               &
@@ -470,20 +650,21 @@
        dt_prel,                                                                                    &
        dt_write_particle_data,                                                                     &
        end_time_prel,                                                                              &
-       extend_prts_filesize,                                                                       &
        initial_weighting_factor,                                                                   &
        log_sigma,                                                                                  &
-       maximum_number_of_output_particles,                                                         &
        max_number_particles_per_gridbox,                                                           &
        merging,                                                                                    &
        na,                                                                                         &
        number_concentration,                                                                       &
+       number_of_output_particles,                                                                 &
        number_of_particle_groups,                                                                  &
        number_particles_per_gridbox,                                                               &
+       oversize,                                                                                   &
        particles_per_point,                                                                        &
        particle_advection_start,                                                                   &
        particle_advection_interpolation,                                                           &
        particle_maximum_age,                                                                       &
+       pts_id_file,                                                                                &
        pts_increment,                                                                              &
        pts_percentage,                                                                             &
        pdx,                                                                                        &
@@ -509,7 +690,6 @@
        splitting_function,                                                                         &
        splitting_mode,                                                                             &
        step_dealloc,                                                                               &
-       switch_off_module,                                                                          &
        unlimited_dimension,                                                                        &
        use_sgs_for_particles,                                                                      &
        vertical_particle_advection,                                                                &
@@ -518,124 +698,73 @@
        write_particle_statistics
 
 !
-!-- Move to the beginning of the namelist file and try to find and read the namelist.
-    REWIND( 11 )
-    READ( 11, particle_parameters, IOSTAT=io_status )
+!-- Position the namelist-file at the beginning (it was already opened in parin), search for the
+!-- namelist-group of the package and position the file at this line. Do the same for each
+!-- optionally used package.
+    line = ' '
+
 !
-!-- Action depending on the READ status
-    IF ( io_status == 0 )  THEN
+!-- Try to find particles package
+    REWIND ( 11 )
+    line = ' '
+    DO   WHILE ( INDEX( line, '&particle_parameters' ) == 0 )
+       READ ( 11, '(A)', END=12 )  line
+    ENDDO
+    BACKSPACE ( 11 )
 !
-!--    particle_parameters namelist was found and read correctly. Set flag that indicates that
-!--    particles are switched on.
-       IF ( .NOT. switch_off_module )  particle_advection = .TRUE.
-
-    ELSEIF ( io_status > 0 )  THEN
+!-- Read user-defined namelist
+    READ ( 11, particle_parameters, ERR = 10 )
 !
-!--    particle_parameters namelist was found, but contained errors. Print an error message
-!--    including the line that caused the error.
-       BACKSPACE( 11 )
-       READ( 11 , '(A)' ) line
-       CALL parin_fail_message( 'particle_parameters', line )
+!-- Set flag that indicates that particles are switched on
+    particle_advection = .TRUE.
 
-    ENDIF
+    GOTO 14
 
-#if defined( __parallel )
-    IF ( nested_run  .AND.  particle_coupling )  THEN
+10  BACKSPACE( 11 )
+    READ( 11 , '(A)') line
+    CALL parin_fail_message( 'particle_parameters', line )
 !
-!--    Issue a warning, if a particle_parameters namelist has been given for a child.
-       IF ( .NOT. root_model  .AND.  particle_advection )  THEN
-           message_string = 'particle_parameters namelist will be ignored for childs'
-           CALL message( 'lpm_parin', 'LPM0001', 0, 1, 0, 6, 0 )
-       ENDIF
+!-- Try to find particles package (old namelist)
+12  REWIND ( 11 )
+    line = ' '
+    DO WHILE ( INDEX( line, '&particles_par' ) == 0 )
+       READ ( 11, '(A)', END=14 )  line
+    ENDDO
+    BACKSPACE ( 11 )
 !
-!--    Broadcast particle parameters from root model to all childs, except the limits of particle
-!--    source areas (psl, psr, pss, psn, psb, pst), because they are not relevant for the childs
-!--    (particle release is only allow in the root domain).
-       CALL MPI_BCAST( particle_advection, 1, MPI_LOGICAL, 0, MPI_COMM_WORLD, ierr )
+!-- Read user-defined namelist
+    READ ( 11, particles_par, ERR = 13, END = 14 )
 
-       CALL MPI_BCAST( aero_species, LEN( aero_species ), MPI_CHARACTER, 0, MPI_COMM_WORLD, ierr )
-       CALL MPI_BCAST( aero_type, LEN( aero_type ), MPI_CHARACTER, 0, MPI_COMM_WORLD, ierr )
-       CALL MPI_BCAST( aero_weight, 1, MPI_REAL, 0, MPI_COMM_WORLD, ierr )
-       CALL MPI_BCAST( alloc_factor, 1, MPI_REAL, 0, MPI_COMM_WORLD, ierr )
-       CALL MPI_BCAST( bc_par_b, LEN( bc_par_b ), MPI_CHARACTER, 0, MPI_COMM_WORLD, ierr )
-       CALL MPI_BCAST( bc_par_lr, LEN( bc_par_lr ), MPI_CHARACTER, 0, MPI_COMM_WORLD, ierr )
-       CALL MPI_BCAST( bc_par_ns, LEN( bc_par_ns ), MPI_CHARACTER, 0, MPI_COMM_WORLD, ierr )
-       CALL MPI_BCAST( bc_par_t, LEN( bc_par_t ), MPI_CHARACTER, 0, MPI_COMM_WORLD, ierr )
-       CALL MPI_BCAST( collision_kernel, LEN( collision_kernel ), MPI_CHARACTER, 0,                &
-                       MPI_COMM_WORLD, ierr )
-       CALL MPI_BCAST( curvature_solution_effects, 1, MPI_LOGICAL, 0, MPI_COMM_WORLD, ierr )
-       CALL MPI_BCAST( data_output_pts, LEN( data_output_pts ), MPI_CHARACTER, 0, MPI_COMM_WORLD,  &
-                       ierr )
-       CALL MPI_BCAST( deallocate_memory, 1, MPI_LOGICAL, 0, MPI_COMM_WORLD, ierr )
-       CALL MPI_BCAST( density_ratio, SIZE( density_ratio ), MPI_REAL, 0, MPI_COMM_WORLD, ierr )
-       CALL MPI_BCAST( dissipation_classes, 1, MPI_INTEGER, 0, MPI_COMM_WORLD, ierr )
-       CALL MPI_BCAST( dt_dopts, 1, MPI_REAL, 0, MPI_COMM_WORLD, ierr )
-       CALL MPI_BCAST( dt_min_part, 1, MPI_REAL, 0, MPI_COMM_WORLD, ierr )
-       CALL MPI_BCAST( dt_prel, 1, MPI_REAL, 0, MPI_COMM_WORLD, ierr )
-       CALL MPI_BCAST( dt_write_particle_data, 1, MPI_REAL, 0, MPI_COMM_WORLD, ierr )
-       CALL MPI_BCAST( end_time_prel, 1, MPI_REAL, 0, MPI_COMM_WORLD, ierr )
-       CALL MPI_BCAST( extend_prts_filesize, 1, MPI_REAL, 0, MPI_COMM_WORLD, ierr )
-       CALL MPI_BCAST( initial_weighting_factor, 1, MPI_REAL, 0, MPI_COMM_WORLD, ierr )
-       CALL MPI_BCAST( log_sigma, 1, MPI_REAL, 0, MPI_COMM_WORLD, ierr )
-       CALL MPI_BCAST( maximum_number_of_output_particles, 1, MPI_INTEGER, 0, MPI_COMM_WORLD, ierr )
-       CALL MPI_BCAST( max_number_particles_per_gridbox, 1, MPI_INTEGER, 0, MPI_COMM_WORLD, ierr )
-       CALL MPI_BCAST( merging, 1, MPI_LOGICAL, 0, MPI_COMM_WORLD, ierr )
-       CALL MPI_BCAST( na, SIZE( na ), MPI_INTEGER, 0, MPI_COMM_WORLD, ierr )
-       CALL MPI_BCAST( number_concentration, 1, MPI_REAL, 0, MPI_COMM_WORLD, ierr )
-       CALL MPI_BCAST( number_of_particle_groups, 1, MPI_INTEGER, 0, MPI_COMM_WORLD, ierr )
-       CALL MPI_BCAST( number_particles_per_gridbox, 1, MPI_INTEGER, 0, MPI_COMM_WORLD, ierr )
-       CALL MPI_BCAST( particles_per_point, 1, MPI_INTEGER, 0, MPI_COMM_WORLD, ierr )
-       CALL MPI_BCAST( particle_advection_start, 1, MPI_REAL, 0, MPI_COMM_WORLD, ierr )
-       CALL MPI_BCAST( particle_advection_interpolation, LEN( particle_advection_interpolation ),  &
-                       MPI_CHARACTER, 0, MPI_COMM_WORLD, ierr )
-       CALL MPI_BCAST( particle_maximum_age, 1, MPI_REAL, 0, MPI_COMM_WORLD, ierr )
-       CALL MPI_BCAST( pts_increment, 1, MPI_INTEGER, 0, MPI_COMM_WORLD, ierr )
-       CALL MPI_BCAST( pts_percentage, 1, MPI_REAL, 0, MPI_COMM_WORLD, ierr )
-       CALL MPI_BCAST( pdx, SIZE( pdx ), MPI_REAL, 0, MPI_COMM_WORLD, ierr )
-       CALL MPI_BCAST( pdy, SIZE( pdy ), MPI_REAL, 0, MPI_COMM_WORLD, ierr )
-       CALL MPI_BCAST( pdz, SIZE( pdz ), MPI_REAL, 0, MPI_COMM_WORLD, ierr )
-       CALL MPI_BCAST( radius, 1, MPI_REAL, 0, MPI_COMM_WORLD, ierr )
-       CALL MPI_BCAST( radius_classes, 1, MPI_INTEGER, 0, MPI_COMM_WORLD, ierr )
-       CALL MPI_BCAST( radius_merge, 1, MPI_REAL, 0, MPI_COMM_WORLD, ierr )
-       CALL MPI_BCAST( radius_split, 1, MPI_REAL, 0, MPI_COMM_WORLD, ierr )
-       CALL MPI_BCAST( random_start_position, 1, MPI_LOGICAL, 0, MPI_COMM_WORLD, ierr )
-       CALL MPI_BCAST( read_particles_from_restartfile, 1, MPI_LOGICAL, 0, MPI_COMM_WORLD, ierr )
-       CALL MPI_BCAST( rm, SIZE( rm ), MPI_REAL, 0, MPI_COMM_WORLD, ierr )
-       CALL MPI_BCAST( seed_follows_topography, 1, MPI_LOGICAL, 0, MPI_COMM_WORLD, ierr )
-       CALL MPI_BCAST( splitting, 1, MPI_LOGICAL, 0, MPI_COMM_WORLD, ierr )
-       CALL MPI_BCAST( splitting_factor, 1, MPI_INTEGER, 0, MPI_COMM_WORLD, ierr )
-       CALL MPI_BCAST( splitting_factor_max, 1, MPI_INTEGER, 0, MPI_COMM_WORLD, ierr )
-       CALL MPI_BCAST( splitting_function, LEN( splitting_function ), MPI_CHARACTER, 0,            &
-                       MPI_COMM_WORLD, ierr )
-       CALL MPI_BCAST( splitting_mode, LEN( splitting_mode ), MPI_CHARACTER, 0, MPI_COMM_WORLD,    &
-                       ierr )
-       CALL MPI_BCAST( step_dealloc, 1, MPI_INTEGER, 0, MPI_COMM_WORLD, ierr )
-       CALL MPI_BCAST( switch_off_module, 1, MPI_LOGICAL, 0, MPI_COMM_WORLD, ierr )
-       CALL MPI_BCAST( unlimited_dimension, 1, MPI_LOGICAL, 0, MPI_COMM_WORLD, ierr )
-       CALL MPI_BCAST( use_sgs_for_particles, 1, MPI_LOGICAL, 0, MPI_COMM_WORLD, ierr )
-       CALL MPI_BCAST( vertical_particle_advection, SIZE( vertical_particle_advection ),           &
-                       MPI_LOGICAL, 0, MPI_COMM_WORLD, ierr )
-       CALL MPI_BCAST( weight_factor_merge, 1, MPI_REAL, 0, MPI_COMM_WORLD, ierr )
-       CALL MPI_BCAST( weight_factor_split, 1, MPI_REAL, 0, MPI_COMM_WORLD, ierr )
-       CALL MPI_BCAST( write_particle_statistics, 1, MPI_LOGICAL, 0, MPI_COMM_WORLD, ierr )
+    message_string = 'namelist particles_par is deprecated and will be ' //                        &
+                     'removed in near future. Please use namelist ' //                             &
+                     'particle_parameters instead'
+    CALL message( 'package_parin', 'PA0487', 0, 1, 0, 6, 0 )
 
-    ENDIF
+!
+!-- Set flag that indicates that particles are switched on
+    particle_advection = .TRUE.
 
-#endif
+    GOTO 14
+
+13    BACKSPACE( 11 )
+       READ( 11 , '(A)') line
+       CALL parin_fail_message( 'particles_par', line )
+
+14 CONTINUE
+
  END SUBROUTINE lpm_parin
-
 
 !--------------------------------------------------------------------------------------------------!
 ! Description:
 ! ------------
 !> Writes used particle attributes in header file.
 !--------------------------------------------------------------------------------------------------!
- SUBROUTINE lpm_header( io )
+ SUBROUTINE lpm_header ( io )
 
-    CHARACTER (LEN=70) ::  doprt_chr  !< string containing the chosen output quantities
+    CHARACTER (LEN=40) ::  output_format       !< netcdf format
 
-    INTEGER(iwp) ::  i               !< loop index
-    INTEGER(iwp), INTENT(IN) ::  io  !< unit of the output file
+    INTEGER(iwp) ::  i               !<
+    INTEGER(iwp), INTENT(IN) ::  io  !< Unit of the output file
 
 
      IF ( humidity  .AND.  cloud_droplets )  THEN
@@ -653,34 +782,29 @@
 
     IF ( particle_advection )  THEN
 !
-!--    Particle attributes.
-       WRITE ( io, 480 )  particle_advection_start, TRIM( particle_advection_interpolation ),      &
-                          bc_par_lr, bc_par_ns, bc_par_b, bc_par_t, particle_maximum_age
-       IF ( dt_prel /= 9999999.9_wp )  WRITE ( io, 483 )  dt_prel, end_time_prel
+!--    Particle attributes
+       WRITE ( io, 480 )  particle_advection_start, TRIM(particle_advection_interpolation),        &
+                          dt_prel, bc_par_lr, bc_par_ns, bc_par_b, bc_par_t, particle_maximum_age, &
+                          end_time_prel
        IF ( use_sgs_for_particles )  WRITE ( io, 488 )  dt_min_part
        IF ( random_start_position )  WRITE ( io, 481 )
        IF ( seed_follows_topography )  WRITE ( io, 496 )
        IF ( particles_per_point > 1 )  WRITE ( io, 489 )  particles_per_point
        WRITE ( io, 495 )  total_number_of_particles
-       IF ( dt_write_particle_data /= 9999999.9_wp )  WRITE ( io, 485 )  dt_write_particle_data
-       IF ( dt_dopts /= 9999999.9_wp )  WRITE ( io, 494 )  dt_dopts
-       IF ( dop_individual_ts )  THEN
-          i = 1
-          doprt_chr = ''
-          DO  WHILE ( data_output_pts(i) /= '' )
-             doprt_chr = TRIM( doprt_chr ) // ' ' // TRIM( data_output_pts(i) ) // ','
-             i = i + 1
-          ENDDO
-          WRITE ( io, 497 )  TRIM( doprt_chr ), nr_out_prts
-          IF ( pts_increment /= 0 )  WRITE ( io, 498 )  pts_increment
-          IF ( pts_percentage /= 0.0_wp )  WRITE ( io, 499 )  pts_percentage
-          IF ( extend_prts_filesize /= 0.0_wp )  WRITE ( io, 500 )  extend_prts_filesize
-          IF ( maximum_number_of_output_particles /= 0 )  THEN
-             WRITE ( io, 501 )  maximum_number_of_output_particles
+       IF ( dt_write_particle_data /= 9999999.9_wp )  THEN
+          WRITE ( io, 485 )  dt_write_particle_data
+          IF ( netcdf_data_format > 1 )  THEN
+             output_format = 'netcdf (64 bit offset) and binary'
+          ELSE
+             output_format = 'netcdf and binary'
           ENDIF
-          IF ( particle_id_file_found )  WRITE ( io, 502 )
-          WRITE ( io, 503 )
+          IF ( netcdf_deflate == 0 )  THEN
+             WRITE ( io, 344 )  output_format
+          ELSE
+             WRITE ( io, 354 )  TRIM( output_format ), netcdf_deflate
+          ENDIF
        ENDIF
+       IF ( dt_dopts /= 9999999.9_wp )  WRITE ( io, 494 )  dt_dopts
        IF ( write_particle_statistics )  WRITE ( io, 486 )
 
        WRITE ( io, 487 )  number_of_particle_groups
@@ -698,6 +822,9 @@
 
     ENDIF
 
+344 FORMAT ('       Output format: ',A/)
+354 FORMAT ('       Output format: ',A, '   compressed with level: ',I1/)
+
 433 FORMAT ('    Cloud droplets treated explicitly using the Lagrangian part','icle model')
 434 FORMAT ('    Curvature and solution effecs are considered for growth of',                      &
                  ' droplets < 1.0E-6 m')
@@ -711,15 +838,15 @@
             '    ---------'//                                                                      &
             '       Particle advection is active (switched on at t = ', F7.1,' s)'/                &
             '       Interpolation of particle velocities is done by using ', A,' method'/          &
+            '       Start of new particle generations every  ',F6.1,' s'/                          &
             '       Boundary conditions: left/right: ', A, ' north/south: ', A/                    &
             '                            bottom:     ', A, ' top:         ', A/                    &
-            '       Maximum particle age:                   ',F9.1,' s'/)
+            '       Maximum particle age:                 ',F9.1,' s'/                             &
+            '       Advection stopped at t = ',F9.1,' s'/)
 481 FORMAT ('       Particles have random start positions'/)
 482 FORMAT ('          Particles are advected only horizontally'/)
-483 FORMAT ('       Release of new particle generations every  ',F6.1,' s'/                        &
-            '       Release of new particles stopped at t = ',F9.1,' s'/)
-485 FORMAT ('       Particle data are written in Fortran binary format on file every ', F9.1, ' s')
-486 FORMAT ('       Particle statistics for debugging are written on file PARTICLE_INFOS'/)
+485 FORMAT ('       Particle data are written on file every ', F9.1, ' s')
+486 FORMAT ('       Particle statistics are written on file'/)
 487 FORMAT ('       Number of particle groups: ',I2/)
 488 FORMAT ('       SGS velocity components are used for particle advection'/                      &
             '          minimum timestep for advection:', F8.5/)
@@ -733,19 +860,10 @@
             '                                         y:',F8.1,' - ',F8.1,' m'/                    &
             '                                         z:',F8.1,' - ',F8.1,' m'/                    &
             '          Particle distances:  dx = ',F8.1,' m  dy = ',F8.1,' m  dz = ',F8.1,' m'/)
-494 FORMAT ('       Output of statistical time series data in NetCDF format every ',F8.2,' s'/)
-495 FORMAT ('       Number of particles in total domain: ',I12/)
+494 FORMAT ('       Output of particle time series in NetCDF format every ',F8.2,' s'/)
+495 FORMAT ('       Number of particles in total domain: ',I10/)
 496 FORMAT ('       Initial vertical particle positions are interpreted ',                         &
                     'as relative to the given topography')
-497 FORMAT ('          Output of individual time series data is switched on.'/                     &
-            '          Output quantities: ',A/                                                     &
-            '          Initial number of particles scheduled for output: ',I8)
-498 FORMAT ('          Every ',I5,' (rd/nd/th) is scheduled for output')
-499 FORMAT ('          ',F5.1,'% of all particles are scheduled for output')
-500 FORMAT ('          Output file size will be extended by ',F5.1, '%')
-501 FORMAT ('          Maximum number of output particles set to: ',I8)
-502 FORMAT ('          Particle IDs scheduled for output are read from file')
-503 FORMAT (' ')
 
  END SUBROUTINE lpm_header
 
@@ -755,6 +873,8 @@
 !> Writes used particle attributes in header file.
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE lpm_check_parameters
+
+    LOGICAL ::  id_file_exists = .FALSE.
 
 !
 !-- Collision kernels:
@@ -770,35 +890,60 @@
 
 
        CASE DEFAULT
-          message_string = 'unknown collision_kernel = "' // TRIM( collision_kernel ) // '"'
-          CALL message( 'lpm_check_parameters', 'LPM0002', 1, 2, 0, 6, 0 )
+          message_string = 'unknown collision kernel: collision_kernel = "' //                     &
+                           TRIM( collision_kernel ) // '"'
+          CALL message( 'lpm_check_parameters', 'PA0350', 1, 2, 0, 6, 0 )
 
     END SELECT
 
     IF ( collision_kernel(6:9) == 'fast' )  use_kernel_tables = .TRUE.
 
+!
+!-- Subgrid scale velocites with the simple interpolation method for resolved velocites is not
+!-- implemented for passive particles. However, for cloud it can be combined as the sgs-velocites
+!-- for active particles are calculated differently, i.e. no subboxes are needed.
+    IF ( .NOT. TRIM( particle_advection_interpolation ) == 'trilinear'  .AND.                      &
+         use_sgs_for_particles  .AND.  .NOT. cloud_droplets )  THEN
+          message_string = 'subrgrid scale velocities in combination with ' //                     &
+                           'simple interpolation method is not '            //                     &
+                           'implemented'
+          CALL message( 'lpm_check_parameters', 'PA0659', 1, 2, 0, 6, 0 )
+    ENDIF
+
     IF ( nested_run  .AND.  cloud_droplets )  THEN
-       message_string = 'nested runs in combination with cloud droplets are not implemented'
-       CALL message( 'lpm_check_parameters', 'LPM0003', 1, 2, 0, 6, 0 )
+       message_string = 'nested runs in combination with cloud droplets ' //                       &
+                        'is not implemented'
+       CALL message( 'lpm_check_parameters', 'PA0687', 1, 2, 0, 6, 0 )
     ENDIF
 
-    IF ( pts_increment /= 0  .AND.  pts_percentage /= 0.0_wp )  THEN
-       message_string = 'pts_increment and pts_percentage cannot be set both'
-       CALL message( 'lpm_check_parameters', 'LPM0004', 1, 2, 0, 6, 0 )
+    IF ( pts_increment > 1  .AND.  pts_percentage < 100.0_wp )  THEN
+       message_string = 'pts_increment and pts_percentage cannot be set both '
+       CALL message( 'lpm_check_parameters', 'PA0...', 1, 2, 0, 6, 0 )
     ENDIF
 
-    IF ( pts_increment < 0 )  THEN
-       message_string = 'pts_increment must be >= 1'
-       CALL message( 'lpm_check_parameters', 'LPM0005', 1, 2, 0, 6, 0 )
+    IF ( pts_increment < 1 )  THEN
+       message_string = 'pts_increment must be > 1'
+       CALL message( 'lpm_check_parameters', 'PA0...', 1, 2, 0, 6, 0 )
     ENDIF
 
-    IF ( pts_percentage < 0.0_wp  .OR.  pts_percentage > 100.0_wp )  THEN
-       message_string = 'pts_percentage must be  0.0 <= pts_percentage <= 100.0'
-       CALL message( 'lpm_check_parameters', 'LPM0006', 1, 2, 0, 6, 0 )
+    IF ( pts_percentage > 100.0_wp )  THEN
+       message_string = 'pts_percentage must be < 100'
+       CALL message( 'lpm_check_parameters', 'PA0...', 1, 2, 0, 6, 0 )
     ENDIF
+
+    INQUIRE( FILE = pts_id_file, EXIST = id_file_exists )
+#if defined( __netcdf4_parallel )
+!
+!-- Check if individual particles timeseries is set
+    IF ( pts_increment  > 1  .AND.  dt_dopts /= 9999999.9_wp  .OR.                                 &
+         pts_percentage < 100.0_wp  .AND.  dt_dopts /= 9999999.9_wp  .OR.                          &
+         id_file_exists  .AND.  dt_dopts /= 9999999.9_wp  )                                        &
+    THEN
+       dop_active = .TRUE.
+    ENDIF
+#endif
 
  END SUBROUTINE lpm_check_parameters
-
 
 !--------------------------------------------------------------------------------------------------!
 ! Description:
@@ -818,16 +963,16 @@
     ENDIF
 
 
-    ALLOCATE( u_m(nzb:nzt+1,nysg:nyng,nxlg:nxrg),                                                  &
-              v_m(nzb:nzt+1,nysg:nyng,nxlg:nxrg),                                                  &
-              w_m(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
+    ALLOCATE( u_t(nzb:nzt+1,nysg:nyng,nxlg:nxrg),                                                  &
+              v_t(nzb:nzt+1,nysg:nyng,nxlg:nxrg),                                                  &
+              w_t(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
 !
 !-- Initialize values with current time step
-    u_m = u
-    v_m = v
-    w_m = w
+    u_t = u
+    v_t = v
+    w_t = w
 !
-!-- Initial assignment of the pointers
+!--    Initial assignment of the pointers
     IF ( cloud_droplets )  THEN
        ql   => ql_1
        ql_c => ql_2
@@ -845,9 +990,7 @@
     INTEGER(iwp) ::  i                           !<
     INTEGER(iwp) ::  j                           !<
     INTEGER(iwp) ::  k                           !<
-    INTEGER(iwp) ::  m                           !< running index for surfaces
 
-    LOGICAL  ::  downward_surface_exist          !< flag indicating existence of downward-facing surfaces
     LOGICAL  ::  read_restart                    !<
 
     REAL(wp) ::  div                             !<
@@ -855,21 +998,6 @@
     REAL(wp) ::  height_p                        !<
     REAL(wp) ::  z_p                             !<
     REAL(wp) ::  z0_av_local                     !<
-
-
-#if defined( __parallel )
-!
-!-- In case of nested runs and particle_coupling enabled, childs are not allowed to create
-!-- particles. This is accomplished by setting the emission area limits appropriately.
-    IF ( nested_run  .AND.  ( .NOT. root_model  .AND.  particle_coupling ) )  THEN
-       psl =  1.0_wp
-       psr = -1.0_wp
-       pss =  1.0_wp
-       psn = -1.0_wp
-       psb =  1.0_wp
-       pst = -1.0_wp
-    ENDIF
-#endif
 
 !
 !-- In case of oceans runs, the vertical index calculations need an offset, because otherwise the k
@@ -898,27 +1026,17 @@
                                   max_number_of_particle_groups ,                                  &
                                   '&number_of_particle_groups reset to ',                          &
                                   max_number_of_particle_groups
-       CALL message( 'lpm_init', 'LPM0007', 0, 1, 0, 6, 0 )
+       CALL message( 'lpm_init', 'PA0213', 0, 1, 0, 6, 0 )
        number_of_particle_groups = max_number_of_particle_groups
     ENDIF
 !
 !-- Check if downward-facing walls exist. This case, reflection boundary conditions (as well as
-!-- subgrid-scale velocities) may not work properly (not realized so far) and particles may get
-!-- stuck within topography.
-    downward_surface_exist = .FALSE.
-    IF ( surf_def%ns >= 1 )  THEN
-       IF ( ANY( surf_def%downward ) )  downward_surface_exist = .TRUE.
-    ENDIF
-    IF ( surf_lsm%ns >= 1 )  THEN
-       IF ( ANY( surf_lsm%downward ) )  downward_surface_exist = .TRUE.
-    ENDIF
-    IF ( surf_usm%ns >= 1 )  THEN
-       IF ( ANY( surf_usm%downward ) )  downward_surface_exist = .TRUE.
-    ENDIF
+!-- subgrid-scale velocities) may do not work properly (not realized so far).
+    IF ( surf_def_h(1)%ns >= 1 )  THEN
+       WRITE( message_string, * ) 'Overhanging topography do not work '//                          &
+                                  'with particles'
+       CALL message( 'lpm_init', 'PA0212', 0, 1, 0, 6, 0 )
 
-    IF ( downward_surface_exist )  THEN
-       WRITE( message_string, * ) 'overhanging topography does not work with particles'
-       CALL message( 'lpm_init', 'LPM0008', 0, 1, 0, 6, 0 )
     ENDIF
 
 !
@@ -993,19 +1111,9 @@
 
 !
 !--    Calculate horizontal mean value of z0 used for logartihmic interpolation. Note: this is not
-!--    exact for heterogeneous z0, but a sensitivity study showed that the impact is negligible.
-!--    Sum-up the roughness length from all horizontal surfaces.
-       z0_av_local = 0.0_wp
-       DO  m = 1, surf_def%ns
-          z0_av_local  = z0_av_local + MERGE( surf_def%z0(m), 0.0_wp, surf_def%upward(m) )
-       ENDDO
-       DO  m = 1, surf_lsm%ns
-          z0_av_local  = z0_av_local + MERGE( surf_lsm%z0(m), 0.0_wp, surf_lsm%upward(m) )
-       ENDDO
-       DO  m = 1, surf_usm%ns
-          z0_av_local  = z0_av_local + MERGE( surf_usm%z0(m), 0.0_wp, surf_usm%upward(m) )
-       ENDDO
-
+!--    exact for heterogeneous z0.
+!--    However, sensitivity studies showed that the effect is negligible.
+       z0_av_local  = SUM( surf_def_h(0)%z0 ) + SUM( surf_lsm_h(0)%z0 ) + SUM( surf_usm_h(0)%z0 )
        z0_av_global = 0.0_wp
 
 #if defined( __parallel )
@@ -1014,8 +1122,7 @@
        z0_av_global = z0_av_local
 #endif
 
-       z0_av_global = z0_av_global  / ( surf_def%ns_tot_up + surf_lsm%ns_tot_up +                  &
-                                        surf_usm%ns_tot_up )
+       z0_av_global = z0_av_global  / ( ( ny + 1 ) * ( nx + 1 ) )
 !
 !--    Horizontal wind speed is zero below and at z0
        log_z_z0(0) = 0.0_wp
@@ -1026,8 +1133,10 @@
 !--    Precalculate LOG(z/z0)
        height_p    = z0_av_global
        DO  k = 1, number_of_sublayers
+
           height_p    = height_p + height_int
           log_z_z0(k) = LOG( height_p / z0_av_global )
+
        ENDDO
 
     ENDIF
@@ -1058,10 +1167,13 @@
        CASE ( 'reflect' )
           ibc_par_b = 2
 
+       CASE ( 'reset' )
+          ibc_par_b = 3
+
        CASE DEFAULT
           WRITE( message_string, * )  'unknown boundary condition ',                               &
                                        'bc_par_b = "', TRIM( bc_par_b ), '"'
-          CALL message( 'lpm_init', 'LPM0009', 1, 2, 0, 6, 0 )
+          CALL message( 'lpm_init', 'PA0217', 1, 2, 0, 6, 0 )
 
     END SELECT
     SELECT CASE ( bc_par_t )
@@ -1072,10 +1184,13 @@
        CASE ( 'reflect' )
           ibc_par_t = 2
 
+       CASE ( 'nested' )
+          ibc_par_t = 3
+
        CASE DEFAULT
           WRITE( message_string, * ) 'unknown boundary condition ',                                &
                                      'bc_par_t = "', TRIM( bc_par_t ), '"'
-          CALL message( 'lpm_init', 'LPM0010', 1, 2, 0, 6, 0 )
+          CALL message( 'lpm_init', 'PA0218', 1, 2, 0, 6, 0 )
 
     END SELECT
     SELECT CASE ( bc_par_lr )
@@ -1089,10 +1204,13 @@
        CASE ( 'reflect' )
           ibc_par_lr = 2
 
+       CASE ( 'nested' )
+          ibc_par_lr = 3
+
        CASE DEFAULT
           WRITE( message_string, * ) 'unknown boundary condition ',                                &
                                      'bc_par_lr = "', TRIM( bc_par_lr ), '"'
-          CALL message( 'lpm_init', 'LPM0011', 1, 2, 0, 6, 0 )
+          CALL message( 'lpm_init', 'PA0219', 1, 2, 0, 6, 0 )
 
     END SELECT
     SELECT CASE ( bc_par_ns )
@@ -1112,7 +1230,7 @@
        CASE DEFAULT
           WRITE( message_string, * ) 'unknown boundary condition ',                                &
                                      'bc_par_ns = "', TRIM( bc_par_ns ), '"'
-          CALL message( 'lpm_init', 'LPM0012', 1, 2, 0, 6, 0 )
+          CALL message( 'lpm_init', 'PA0220', 1, 2, 0, 6, 0 )
 
     END SELECT
     SELECT CASE ( splitting_mode )
@@ -1128,7 +1246,7 @@
 
        CASE DEFAULT
           WRITE( message_string, * )  'unknown splitting_mode = "', TRIM( splitting_mode ), '"'
-          CALL message( 'lpm_init', 'LPM0013', 1, 2, 0, 6, 0 )
+          CALL message( 'lpm_init', 'PA0146', 1, 2, 0, 6, 0 )
 
     END SELECT
     SELECT CASE ( splitting_function )
@@ -1145,7 +1263,7 @@
        CASE DEFAULT
           WRITE( message_string, * )  'unknown splitting function = "',                            &
                                        TRIM( splitting_function ), '"'
-          CALL message( 'lpm_init', 'LPM0014', 1, 2, 0, 6, 0 )
+          CALL message( 'lpm_init', 'PA0147', 1, 2, 0, 6, 0 )
 
     END SELECT
 !
@@ -1200,7 +1318,7 @@
           IF ( density_ratio(i) /= 0.0_wp  .AND.  radius(i) == 0 )  THEN
              WRITE( message_string, * ) 'particle group #', i, ' has a',                           &
                                         'density ratio /= 0 but radius = 0'
-             CALL message( 'lpm_init', 'LPM0015', 1, 2, 0, 6, 0 )
+             CALL message( 'lpm_init', 'PA0215', 1, 2, 0, 6, 0 )
           ENDIF
           particle_groups(i)%density_ratio = density_ratio(i)
           particle_groups(i)%radius        = radius(i)
@@ -1233,8 +1351,7 @@
 !--    Open file for statistical informations about particle conditions
        IF ( write_particle_statistics )  THEN
           CALL check_open( 80 )
-          WRITE( 80, '(I6,1X,F7.2,4X,I10,71X,I10)' )  current_timestep_number, simulated_time,     &
-                                                      number_of_particles
+          WRITE ( 80, 8000 )  current_timestep_number, simulated_time, number_of_particles
           CALL close_file( 80 )
        ENDIF
 
@@ -1245,42 +1362,28 @@
 #endif
 
 !
-!-- Output of particle time series.
-    INQUIRE( FILE = 'PARTICLE_IDS', EXIST = particle_id_file_found )
-!
-!-- Check if individual particle timeseries shall be output.
-    IF ( dt_dopts /= 9999999.9_wp  .AND.                                                           &
-         ( pts_increment > 0  .OR.  pts_percentage > 0.0_wp  .OR.  particle_id_file_found ) )      &
-    THEN
-#if defined( __netcdf ) && defined( __netcdf4 ) && defined( __netcdf4_parallel )
-       dop_individual_ts = .TRUE.
-#else
-!
-!--    Output of individual particle time series only allowed with parallel NetCDF I/O.
-       message_string = 'output of individual particle time series data requires preprocessor' //  &
-                        ' switches&-D__netcdf, -D__netcdf4, and -D__netcdf4_parallel'
-       CALL message( 'lpm_init', 'LPM0016', 1, 2, 0, 6, 0 )
-#endif
+!-- Output of particle time series
+    IF ( dop_active )  THEN
+       CALL dop_init( read_restart )
     ENDIF
-
-    CALL dop_init( read_restart )
-
 
 !
 !-- To avoid programm abort, assign particles array to the local version of
 !-- first grid cell
     number_of_particles = prt_count(nzb+1,nys,nxl)
     particles => grid_particles(nzb+1,nys,nxl)%particles(1:number_of_particles)
+!
+!-- Formats
+8000 FORMAT (I6,1X,F7.2,4X,I10,71X,I10)
 
  END SUBROUTINE lpm_init
-
 
 !--------------------------------------------------------------------------------------------------!
 ! Description:
 ! ------------
 !> Create Lagrangian particles
 !--------------------------------------------------------------------------------------------------!
- SUBROUTINE lpm_create_particle( phase )
+ SUBROUTINE lpm_create_particle (phase)
 
     INTEGER(iwp)               ::  alloc_size  !< relative increase of allocated memory for particles
     INTEGER(iwp)               ::  i           !< loop variable ( particle groups )
@@ -1310,320 +1413,294 @@
 
 
 !
-!-- Create new particles.
-!-- In nested runs, this is only allowed in the root model.
-    IF ( .NOT. nested_run  .OR. root_model ) THEN
+!-- Calculate particle positions and store particle attributes, if particle is situated on this PE.
+    DO  loop_stride = 1, 2
+       first_stride = (loop_stride == 1)
+       IF ( first_stride )   THEN
+          local_count = 0           ! count number of particles
+       ELSE
+          local_count = prt_count   ! Start address of new particles
+       ENDIF
 
 !
-!--    Calculate particle positions and store particle attributes, if particle is situated on this
-!--    PE.
-       DO  loop_stride = 1, 2
-          first_stride = (loop_stride == 1)
-          IF ( first_stride )   THEN
-             local_count = 0           ! count number of particles
-          ELSE
-             local_count = prt_count   ! Start address of new particles
-          ENDIF
+!--    Calculate initial_weighting_factor diagnostically
+       IF ( number_concentration /= -1.0_wp  .AND.  number_concentration > 0.0_wp )  THEN
+          initial_weighting_factor =  number_concentration * pdx(1) * pdy(1) * pdz(1)
+       END IF
 
+       n = 0
+       DO  i = 1, number_of_particle_groups
+          pos_z = psb(i)
+          DO WHILE ( pos_z <= pst(i) )
+             IF ( pos_z >= zw(0) .AND.  pos_z < zw(nzt) )  THEN
+                pos_y = pss(i)
+                DO WHILE ( pos_y <= psn(i) )
+                   IF ( pos_y >= nys * dy  .AND.  pos_y <  ( nyn + 1 ) * dy  )  THEN
+                      pos_x = psl(i)
+               xloop: DO WHILE ( pos_x <= psr(i) )
+                         IF ( pos_x >= nxl * dx  .AND.  pos_x <  ( nxr + 1) * dx )  THEN
+                            DO  j = 1, particles_per_point
+                               n = n + 1
+                               tmp_particle%x             = pos_x
+                               tmp_particle%y             = pos_y
+                               tmp_particle%z             = pos_z
+                               tmp_particle%age           = 0.0_wp
+                               tmp_particle%age_m         = 0.0_wp
+                               tmp_particle%dt_sum        = 0.0_wp
+                               tmp_particle%e_m           = 0.0_wp
+                               tmp_particle%rvar1         = 0.0_wp
+                               tmp_particle%rvar2         = 0.0_wp
+                               tmp_particle%rvar3         = 0.0_wp
+                               tmp_particle%speed_x       = 0.0_wp
+                               tmp_particle%speed_y       = 0.0_wp
+                               tmp_particle%speed_z       = 0.0_wp
+                               tmp_particle%origin_x      = pos_x
+                               tmp_particle%origin_y      = pos_y
+                               tmp_particle%origin_z      = pos_z
+                               IF ( curvature_solution_effects )  THEN
+                                  tmp_particle%aux1      = 0.0_wp    ! dry aerosol radius
+                                  tmp_particle%aux2      = dt_3d     ! last Rosenbrock timestep
+                               ELSE
+                                  tmp_particle%aux1      = 0.0_wp    ! free to use
+                                  tmp_particle%aux2      = 0.0_wp    ! free to use
+                               ENDIF
+                               tmp_particle%radius        = particle_groups(i)%radius
+                               tmp_particle%weight_factor = initial_weighting_factor
+                               tmp_particle%class         = 1
+                               tmp_particle%group         = i
+                               tmp_particle%id            = 0_idp
+                               tmp_particle%particle_mask = .TRUE.
+                               tmp_particle%block_nr      = -1
 !
-!--       Calculate initial_weighting_factor diagnostically
-          IF ( number_concentration /= -1.0_wp  .AND.  number_concentration > 0.0_wp )  THEN
-             initial_weighting_factor =  number_concentration * pdx(1) * pdy(1) * pdz(1)
-          ENDIF
-
-          n = 0
-          DO  i = 1, number_of_particle_groups
-             pos_z = psb(i)
-             DO WHILE ( pos_z <= pst(i) )
-                IF ( pos_z >= zw(0) .AND.  pos_z < zw(nzt) )  THEN
-                   pos_y = pss(i)
-                   DO WHILE ( pos_y <= psn(i) )
-                      IF ( pos_y >= nys * dy  .AND.  pos_y <  ( nyn + 1 ) * dy  )  THEN
-                         pos_x = psl(i)
-                  xloop: DO WHILE ( pos_x <= psr(i) )
-                            IF ( pos_x >= nxl * dx  .AND.  pos_x <  ( nxr + 1) * dx )  THEN
-                               DO  j = 1, particles_per_point
-                                  n = n + 1
-                                  tmp_particle%x             = pos_x
-                                  tmp_particle%y             = pos_y
-                                  tmp_particle%z             = pos_z
-                                  tmp_particle%age           = 0.0_wp
-                                  tmp_particle%age_m         = 0.0_wp
-                                  tmp_particle%dt_sum        = 0.0_wp
-                                  tmp_particle%e_m           = 0.0_wp
-                                  tmp_particle%rvar1         = 0.0_wp
-                                  tmp_particle%rvar2         = 0.0_wp
-                                  tmp_particle%rvar3         = 0.0_wp
-                                  tmp_particle%speed_x       = 0.0_wp
-                                  tmp_particle%speed_y       = 0.0_wp
-                                  tmp_particle%speed_z       = 0.0_wp
-                                  tmp_particle%origin_x      = pos_x
-                                  tmp_particle%origin_y      = pos_y
-                                  tmp_particle%origin_z      = pos_z
-                                  IF ( curvature_solution_effects )  THEN
-                                     tmp_particle%aux1       = 0.0_wp    ! dry aerosol radius
-                                  ELSE
-                                     tmp_particle%aux1       = 0.0_wp    ! free to use
-                                  ENDIF
-                                  tmp_particle%aux2          = 0.0_wp    ! free to use
-                                  tmp_particle%radius        = particle_groups(i)%radius
-                                  tmp_particle%weight_factor = initial_weighting_factor
-                                  tmp_particle%class         = 1
-                                  tmp_particle%group         = i
-                                  tmp_particle%id            = 0_idp
-                                  tmp_particle%particle_mask = .TRUE.
-                                  tmp_particle%block_nr      = -1
+!--                            Determine the grid indices of the particle position
+                               ip = INT( tmp_particle%x * ddx )
+                               jp = INT( tmp_particle%y * ddy )
 !
-!--                               Determine the grid indices of the particle position
-                                  ip = INT( tmp_particle%x * ddx )
-                                  jp = INT( tmp_particle%y * ddy )
+!--                            In case of stretching the actual k index is found iteratively
+                               IF ( dz_stretch_level /= -9999999.9_wp  .OR.                        &
+                                    dz_stretch_level_start(1) /= -9999999.9_wp )  THEN
+                                  kp = MAX( MINLOC( ABS( tmp_particle%z - zu ), DIM = 1 ) - 1, 1 )
+                               ELSE
+                                  kp = INT( tmp_particle%z / dz(1) + 1 + offset_ocean_nzt )
+                               ENDIF
 !
-!--                               In case of stretching the actual k index is found iteratively
-                                  IF ( dz_stretch_level /= -9999999.9_wp  .OR.                     &
-                                       dz_stretch_level_start(1) /= -9999999.9_wp )  THEN
-                                     kp = MAX( MINLOC( ABS( tmp_particle%z - zu ), DIM=1 ) - 1, 1 )
-                                  ELSE
-                                     kp = INT( tmp_particle%z / dz(1) + 1 + offset_ocean_nzt )
-                                  ENDIF
+!--                            Determine surface level. Therefore, check for upward-facing wall on
+!--                            w-grid.
+                               k_surf = topo_top_ind(jp,ip,3)
+                               IF ( seed_follows_topography )  THEN
 !
-!--                               Determine surface level. Therefore, check for upward-facing wall
-!--                               on w-grid.
-                                  k_surf = topo_top_ind(jp,ip,3)
-                                  IF ( seed_follows_topography )  THEN
+!--                               Particle height is given relative to topography
+                                  kp = kp + k_surf
+                                  tmp_particle%z = tmp_particle%z + zw(k_surf)
 !
-!--                                  Particle height is given relative to topography
-                                     kp = kp + k_surf
-                                     tmp_particle%z = tmp_particle%z + zw(k_surf)
-!
-!--                                  Skip particle release if particle position is above model top,
-!--                                  or within topography in case of overhanging structures.
-                                     IF ( kp > nzt  .OR.                                           &
-                                          .NOT. BTEST( topo_flags(kp,jp,ip), 0 ) )  THEN
-                                        pos_x = pos_x + pdx(i)
-                                        CYCLE xloop
-                                     ENDIF
-!
-!--                               Skip particle release if particle position is below surface, or
+!--                               Skip particle release if particle position is above model top, or
 !--                               within topography in case of overhanging structures.
-                                  ELSEIF ( .NOT. seed_follows_topography  .AND.                    &
-                                            tmp_particle%z <= zw(k_surf)  .OR.                     &
-                                           .NOT. BTEST( topo_flags(kp,jp,ip), 0 ) )                &
-                                  THEN
+                                  IF ( kp > nzt  .OR.                                              &
+                                       .NOT. BTEST( wall_flags_total_0(kp,jp,ip), 0 ) )  THEN
                                      pos_x = pos_x + pdx(i)
                                      CYCLE xloop
                                   ENDIF
+!
+!--                            Skip particle release if particle position is below surface, or
+!--                            within topography in case of overhanging structures.
+                               ELSEIF ( .NOT. seed_follows_topography .AND.                        &
+                                         tmp_particle%z <= zw(k_surf)  .OR.                        &
+                                        .NOT. BTEST( wall_flags_total_0(kp,jp,ip), 0 ) )  THEN
+                                  pos_x = pos_x + pdx(i)
+                                  CYCLE xloop
+                               ENDIF
 
-                                  local_count(kp,jp,ip) = local_count(kp,jp,ip) + 1
+                               local_count(kp,jp,ip) = local_count(kp,jp,ip) + 1
 
-                                  IF ( .NOT. first_stride )  THEN
-                                     IF ( ip < nxl  .OR.  jp < nys  .OR.  kp < nzb+1 )  THEN
-                                        write(6,*) 'xl ',ip,jp,kp,nxl,nys,nzb+1
-                                     ENDIF
-                                     IF ( ip > nxr  .OR.  jp > nyn  .OR.  kp > nzt )  THEN
-                                        write(6,*) 'xu ',ip,jp,kp,nxr,nyn,nzt
-                                     ENDIF
-                                     grid_particles(kp,jp,ip)%particles(local_count(kp,jp,ip)) =   &
-                                                                                        tmp_particle
+                               IF ( .NOT. first_stride )  THEN
+                                  IF ( ip < nxl  .OR.  jp < nys  .OR.  kp < nzb+1 )  THEN
+                                     write(6,*) 'xl ',ip,jp,kp,nxl,nys,nzb+1
                                   ENDIF
-                               ENDDO
-                            ENDIF
-                            pos_x = pos_x + pdx(i)
-                         ENDDO xloop
-                      ENDIF
-                      pos_y = pos_y + pdy(i)
-                   ENDDO
-                ENDIF
-
-                pos_z = pos_z + pdz(i)
-             ENDDO
-          ENDDO
-
-          IF ( first_stride )  THEN
-             DO  ip = nxl, nxr
-                DO  jp = nys, nyn
-                   DO  kp = nzb+1, nzt
-                      IF ( phase == phase_init )  THEN
-                         IF ( local_count(kp,jp,ip) > 0 )  THEN
-                            alloc_size = MAX( INT( local_count(kp,jp,ip) *                         &
-                                                   ( 1.0_wp + alloc_factor / 100.0_wp ) ), 1 )
-                         ELSE
-                            alloc_size = 1
+                                  IF ( ip > nxr  .OR.  jp > nyn  .OR.  kp > nzt )  THEN
+                                     write(6,*) 'xu ',ip,jp,kp,nxr,nyn,nzt
+                                  ENDIF
+                                  grid_particles(kp,jp,ip)%particles(local_count(kp,jp,ip)) =      &
+                                                                                        tmp_particle
+                               ENDIF
+                            ENDDO
                          ENDIF
-                         ALLOCATE( grid_particles(kp,jp,ip)%particles(1:alloc_size) )
-                         DO  n = 1, alloc_size
-                            grid_particles(kp,jp,ip)%particles(n) = zero_particle
-                         ENDDO
-                      ELSEIF ( phase == phase_release )  THEN
-                         IF ( local_count(kp,jp,ip) > 0 )  THEN
-                            new_size   = local_count(kp,jp,ip) + prt_count(kp,jp,ip)
-                            alloc_size = MAX( INT( new_size * ( 1.0_wp +                           &
-                                                   alloc_factor / 100.0_wp ) ), 1 )
-                            IF ( alloc_size > SIZE( grid_particles(kp,jp,ip)%particles) )  THEN
-                               CALL realloc_particles_array( ip, jp, kp, alloc_size )
-                            ENDIF
-                         ENDIF
-                      ENDIF
-                   ENDDO
+                         pos_x = pos_x + pdx(i)
+                      ENDDO xloop
+                   ENDIF
+                   pos_y = pos_y + pdy(i)
                 ENDDO
-             ENDDO
-          ENDIF
+             ENDIF
 
+             pos_z = pos_z + pdz(i)
+          ENDDO
        ENDDO
 
-       local_start = prt_count+1
-       prt_count   = local_count
+       IF ( first_stride )  THEN
+          DO  ip = nxl, nxr
+             DO  jp = nys, nyn
+                DO  kp = nzb+1, nzt
+                   IF ( phase == phase_init )  THEN
+                      IF ( local_count(kp,jp,ip) > 0 )  THEN
+                         alloc_size = MAX( INT( local_count(kp,jp,ip) *                            &
+                                                ( 1.0_wp + alloc_factor / 100.0_wp ) ), 1 )
+                      ELSE
+                         alloc_size = 1
+                      ENDIF
+                      ALLOCATE(grid_particles(kp,jp,ip)%particles(1:alloc_size))
+                      DO  n = 1, alloc_size
+                         grid_particles(kp,jp,ip)%particles(n) = zero_particle
+                      ENDDO
+                   ELSEIF ( phase == phase_release )  THEN
+                      IF ( local_count(kp,jp,ip) > 0 )  THEN
+                         new_size   = local_count(kp,jp,ip) + prt_count(kp,jp,ip)
+                         alloc_size = MAX( INT( new_size * ( 1.0_wp +                              &
+                                                alloc_factor / 100.0_wp ) ), 1 )
+                         IF( alloc_size > SIZE( grid_particles(kp,jp,ip)%particles) )  THEN
+                            CALL realloc_particles_array( ip, jp, kp, alloc_size )
+                         ENDIF
+                      ENDIF
+                   ENDIF
+                ENDDO
+             ENDDO
+          ENDDO
+       ENDIF
+
+    ENDDO
+
+    local_start = prt_count+1
+    prt_count   = local_count
 !
-!--    Calculate particle IDs (for new particles only)
+!-- Calculate particle IDs (for new particles only)
+    DO  ip = nxl, nxr
+       DO  jp = nys, nyn
+          DO  kp = nzb+1, nzt
+             number_of_particles = prt_count(kp,jp,ip)
+             IF ( number_of_particles <= 0 )  CYCLE
+             particles => grid_particles(kp,jp,ip)%particles(1:number_of_particles)
+             DO  n = local_start(kp,jp,ip), number_of_particles
+
+                particles(n)%id = 10000_idp**3 * id_counter(kp,jp,ip) + 10000_idp**2 * kp +        &
+                                  10000_idp * jp + ip
+!
+!--             Count the number of particles that have been released before
+                id_counter(kp,jp,ip) = id_counter(kp,jp,ip) + 1
+
+             ENDDO
+          ENDDO
+       ENDDO
+    ENDDO
+!
+!-- Initialize aerosol background spectrum
+    IF ( curvature_solution_effects )  THEN
+       CALL lpm_init_aerosols( local_start )
+    ENDIF
+!
+!-- Add random fluctuation to particle positions.
+    IF ( random_start_position )  THEN
        DO  ip = nxl, nxr
           DO  jp = nys, nyn
+!
+!--          Put the random seeds at grid point jp, ip
+             CALL random_seed_parallel( put=seq_random_array_particles(:,jp,ip) )
              DO  kp = nzb+1, nzt
                 number_of_particles = prt_count(kp,jp,ip)
                 IF ( number_of_particles <= 0 )  CYCLE
                 particles => grid_particles(kp,jp,ip)%particles(1:number_of_particles)
-
-                DO  n = local_start(kp,jp,ip), number_of_particles
-                   particles(n)%id = 10000_idp**3 * id_counter(kp,jp,ip) + 10000_idp**2 * kp +     &
-                                     10000_idp * jp + ip
 !
-!--                Count the number of particles that have been released before
-                   id_counter(kp,jp,ip) = id_counter(kp,jp,ip) + 1
+!--             Move only new particles. Moreover, limit random fluctuation in order to prevent that
+!--             particles move more than one grid box, which would lead to problems concerning
+!--             particle exchange between processors in case pdx/pdy are larger than dx/dy,
+!--             respectively.
+                DO  n = local_start(kp,jp,ip), number_of_particles
+                   IF ( psl(particles(n)%group) /= psr(particles(n)%group) )  THEN
+                      CALL random_number_parallel( random_dummy )
+                      rand_contr = ( random_dummy - 0.5_wp ) * pdx(particles(n)%group)
+                      particles(n)%x = particles(n)%x +                                            &
+                                       MERGE( rand_contr, SIGN( dx, rand_contr ),                  &
+                                              ABS( rand_contr ) < dx                               &
+                                            )
+                   ENDIF
+                   IF ( pss(particles(n)%group) /= psn(particles(n)%group) )  THEN
+                      CALL random_number_parallel( random_dummy )
+                      rand_contr = ( random_dummy - 0.5_wp ) * pdy(particles(n)%group)
+                      particles(n)%y = particles(n)%y +                                            &
+                                       MERGE( rand_contr, SIGN( dy, rand_contr ),                  &
+                                              ABS( rand_contr ) < dy                               &
+                                            )
+                   ENDIF
+                   IF ( psb(particles(n)%group) /= pst(particles(n)%group) )  THEN
+                      CALL random_number_parallel( random_dummy )
+                      rand_contr = ( random_dummy - 0.5_wp ) * pdz(particles(n)%group)
+                      particles(n)%z = particles(n)%z +                                            &
+                                       MERGE( rand_contr, SIGN( dzw(kp), rand_contr ),             &
+                                              ABS( rand_contr ) < dzw(kp)                          &
+                                            )
+                   ENDIF
                 ENDDO
+!
+!--             Identify particles located outside the model domain and reflect or absorb them if
+!--             necessary.
+                CALL lpm_boundary_conds( 'bottom/top', i, j, k )
+!
+!--             Furthermore, remove particles located in topography. Note, as
+!--             the particle speed is still zero at this point, wall
+!--             reflection boundary conditions will not work in this case.
+                particles =>  grid_particles(kp,jp,ip)%particles(1:number_of_particles)
+                DO  n = local_start(kp,jp,ip), number_of_particles
+                   i = particles(n)%x * ddx
+                   j = particles(n)%y * ddy
+                   k = particles(n)%z / dz(1) + 1 + offset_ocean_nzt
+                   DO WHILE( zw(k) < particles(n)%z )
+                      k = k + 1
+                   ENDDO
+                   DO WHILE( zw(k-1) > particles(n)%z )
+                      k = k - 1
+                   ENDDO
+!
+!--                Check if particle is within topography
+                   IF ( .NOT. BTEST( wall_flags_total_0(k,j,i), 0 ) )  THEN
+                      particles(n)%particle_mask = .FALSE.
+                      deleted_particles = deleted_particles + 1
+                   ENDIF
 
+                ENDDO
              ENDDO
+!
+!--          Get the new random seeds from last call at grid point jp, ip
+             CALL random_seed_parallel( get=seq_random_array_particles(:,jp,ip) )
           ENDDO
        ENDDO
 !
-!--    Initialize aerosol background spectrum
-       IF ( curvature_solution_effects )  CALL lpm_init_aerosols( local_start )
-!
-!--    Add random fluctuation to particle positions.
-       IF ( random_start_position )  THEN
-          DO  ip = nxl, nxr
-             DO  jp = nys, nyn
-!
-!--             Put the random seeds at grid point jp, ip
-                CALL random_seed_parallel( put=seq_random_array_particles(:,jp,ip) )
-                DO  kp = nzb+1, nzt
-                   number_of_particles = prt_count(kp,jp,ip)
-                   IF ( number_of_particles <= 0 )  CYCLE
-                   particles => grid_particles(kp,jp,ip)%particles(1:number_of_particles)
-!
-!--                Move only new particles. Moreover, limit random fluctuation in order to prevent
-!--                that particles move more than one grid box, which would lead to problems
-!--                concerning particle exchange between processors in case pdx/pdy are larger than
-!--                dx/dy, respectively.
-                   DO  n = local_start(kp,jp,ip), number_of_particles
-                      IF ( psl(particles(n)%group) /= psr(particles(n)%group) )  THEN
-                         CALL random_number_parallel( random_dummy )
-                         rand_contr = ( random_dummy - 0.5_wp ) * pdx(particles(n)%group)
-                         particles(n)%x = particles(n)%x +                                         &
-                                          MERGE( rand_contr, SIGN( dx, rand_contr ),               &
-                                                 ABS( rand_contr ) < dx                            &
-                                               )
-                      ENDIF
-                      IF ( pss(particles(n)%group) /= psn(particles(n)%group) )  THEN
-                         CALL random_number_parallel( random_dummy )
-                         rand_contr = ( random_dummy - 0.5_wp ) * pdy(particles(n)%group)
-                         particles(n)%y = particles(n)%y +                                         &
-                                          MERGE( rand_contr, SIGN( dy, rand_contr ),               &
-                                                 ABS( rand_contr ) < dy                            &
-                                               )
-                      ENDIF
-                      IF ( psb(particles(n)%group) /= pst(particles(n)%group) )  THEN
-                         CALL random_number_parallel( random_dummy )
-                         rand_contr = ( random_dummy - 0.5_wp ) * pdz(particles(n)%group)
-                         particles(n)%z = particles(n)%z +                                         &
-                                          MERGE( rand_contr, SIGN( dzw(kp), rand_contr ),          &
-                                                 ABS( rand_contr ) < dzw(kp)                       &
-                                               )
-                      ENDIF
-                   ENDDO
-!
-!--                Identify particles located outside the model domain and reflect or absorb them if
-!--                necessary.
-                   CALL lpm_boundary_conds( 'bottom/top', i, j, k )
-!
-!--                Furthermore, remove particles located in topography. Note, as the particle speed
-!--                is still zero at this point, wall reflection boundary conditions will not work
-!--                in this case.
-                   particles =>  grid_particles(kp,jp,ip)%particles(1:number_of_particles)
-                   DO  n = local_start(kp,jp,ip), number_of_particles
-                      i = particles(n)%x * ddx
-                      j = particles(n)%y * ddy
-                      k = particles(n)%z / dz(1) + 1 + offset_ocean_nzt
-                      DO WHILE( zw(k) < particles(n)%z )
-                         k = k + 1
-                      ENDDO
-                      DO WHILE( zw(k-1) > particles(n)%z )
-                         k = k - 1
-                      ENDDO
-!
-!--                   Check if particle is within topography
-                      IF ( .NOT. BTEST( topo_flags(k,j,i), 0 ) )  THEN
-                         particles(n)%particle_mask = .FALSE.
-                      ENDIF
-                   ENDDO
-                ENDDO
-!
-!--             Get the new random seeds from last call at grid point jp, ip
-                CALL random_seed_parallel( get=seq_random_array_particles(:,jp,ip) )
-
-             ENDDO
-          ENDDO
-!
-!--       Exchange particles between grid cells and processors
-          CALL lpm_move_particle
-          CALL lpm_exchange_horiz
-
-       ENDIF
-
-    ELSE
-!
-!--    No particles are created in child models. To be able to receive particles from parent,
-!--    the particle array is preallocate with 1 element. Later it can/will be enlarged by
-!--    realloc_particles_array.
-       IF ( phase == phase_init )  THEN
-          DO  ip = nxl, nxr
-             DO  jp = nys, nyn
-                DO  kp = nzb+1, nzt
-                   alloc_size = 1
-                   ALLOCATE( grid_particles(kp,jp,ip)%particles(1:alloc_size) )
-                   DO  n = 1, alloc_size
-                      grid_particles(kp,jp,ip)%particles(n) = zero_particle
-                   ENDDO
-                ENDDO
-             ENDDO
-          ENDDO
-       ENDIF
+!--    Exchange particles between grid cells and processors
+       CALL lpm_move_particle
+       CALL lpm_exchange_horiz
 
     ENDIF
-
 !
 !-- In case of random_start_position, delete particles identified by lpm_exchange_horiz and
 !-- lpm_boundary_conds. Then sort particles into blocks, which is needed for a fast interpolation of
 !-- the LES fields on the particle position.
     CALL lpm_sort_and_delete
-
 !
-!-- Determine the current total number of particles in the subdomain.
-    total_number_of_particles = 0
+!-- Determine the current number of particles
     DO  ip = nxl, nxr
        DO  jp = nys, nyn
           DO  kp = nzb+1, nzt
-             total_number_of_particles = total_number_of_particles + prt_count(kp,jp,ip)
+             number_of_particles         = number_of_particles + prt_count(kp,jp,ip)
           ENDDO
        ENDDO
     ENDDO
-
-#if defined( __parallel )
 !
-!-- Determine the current number of particles in the total domain.
-!-- Attention: total_number_of_particles can be more than 2 gigawords and therefore must be
-!--            INTEGER*8.
+!-- Calculate the number of particles of the total domain
+#if defined( __parallel )
     IF ( collective_wait )  CALL MPI_BARRIER( comm2d, ierr )
-    CALL MPI_ALLREDUCE( MPI_IN_PLACE, total_number_of_particles, 1, MPI_INTEGER8, MPI_SUM, comm2d, &
-                        ierr )
+    CALL MPI_ALLREDUCE( number_of_particles, total_number_of_particles, 1, MPI_INTEGER, MPI_SUM,   &
+                        comm2d, ierr )
+#else
+    total_number_of_particles = number_of_particles
 #endif
+
+    RETURN
 
  END SUBROUTINE lpm_create_particle
 
@@ -1673,7 +1750,7 @@
     ELSE
        WRITE( message_string, * ) 'unknown aerosol species ',                                      &
                                   'aero_species = "', TRIM( aero_species ), '"'
-       CALL message( 'lpm_init', 'LPM0017', 1, 2, 0, 6, 0 )
+       CALL message( 'lpm_init', 'PA0470', 1, 2, 0, 6, 0 )
     ENDIF
 !
 !-- The following typical aerosol spectra are taken from Jaenicke (1993):
@@ -1711,7 +1788,7 @@
     ELSE
        WRITE( message_string, * ) 'unknown aerosol type ',                                         &
                                   'aero_type = "', TRIM( aero_type ), '"'
-       CALL message( 'lpm_init', 'LPM0018', 1, 2, 0, 6, 0 )
+       CALL message( 'lpm_init', 'PA0459', 1, 2, 0, 6, 0 )
     ENDIF
 
     DO  ip = nxl, nxr
@@ -1820,10 +1897,7 @@
         ONLY:  exchange_horiz
 
     USE statistics,                                                                                &
-        ONLY:  flow_statistics_called,                                                             &
-               hom,                                                                                &
-               sums,                                                                               &
-               sums_l
+        ONLY:  flow_statistics_called, hom, sums, sums_l
 
     INTEGER(iwp) ::  i      !< index variable along x
     INTEGER(iwp) ::  j      !< index variable along y
@@ -1838,44 +1912,44 @@
        DO  j = nys, nyn
           DO  k = nzb, nzt+1
 
-             IF ( .NOT. BTEST( topo_flags(k,j,i-1), 0 )  .AND.                                     &
-                        BTEST( topo_flags(k,j,i), 0   )  .AND.                                     &
-                        BTEST( topo_flags(k,j,i+1), 0 ) )                                          &
+             IF ( .NOT. BTEST( wall_flags_total_0(k,j,i-1), 0 )  .AND.                             &
+                        BTEST( wall_flags_total_0(k,j,i), 0   )  .AND.                             &
+                        BTEST( wall_flags_total_0(k,j,i+1), 0 ) )                                  &
              THEN
                 de_dx(k,j,i) = 2.0_wp * sgs_wf_part * ( e(k,j,i+1) - e(k,j,i) ) * ddx
-             ELSEIF ( BTEST( topo_flags(k,j,i-1), 0 )  .AND.                                       &
-                      BTEST( topo_flags(k,j,i), 0   )  .AND.                                       &
-                .NOT. BTEST( topo_flags(k,j,i+1), 0 ) )                                            &
+             ELSEIF ( BTEST( wall_flags_total_0(k,j,i-1), 0 )  .AND.                               &
+                      BTEST( wall_flags_total_0(k,j,i), 0   )  .AND.                               &
+                .NOT. BTEST( wall_flags_total_0(k,j,i+1), 0 ) )                                    &
              THEN
                 de_dx(k,j,i) = 2.0_wp * sgs_wf_part * ( e(k,j,i) - e(k,j,i-1) ) * ddx
-             ELSEIF ( .NOT. BTEST( topo_flags(k,j,i), 22   )  .AND.                                &
-                      .NOT. BTEST( topo_flags(k,j,i+1), 22 ) )                                     &
+             ELSEIF ( .NOT. BTEST( wall_flags_total_0(k,j,i), 22   )  .AND.                        &
+                      .NOT. BTEST( wall_flags_total_0(k,j,i+1), 22 ) )                             &
              THEN
                 de_dx(k,j,i) = 0.0_wp
-             ELSEIF ( .NOT. BTEST( topo_flags(k,j,i-1), 22 )  .AND.                                &
-                      .NOT. BTEST( topo_flags(k,j,i), 22   ) )                                     &
+             ELSEIF ( .NOT. BTEST( wall_flags_total_0(k,j,i-1), 22 )  .AND.                        &
+                      .NOT. BTEST( wall_flags_total_0(k,j,i), 22   ) )                             &
              THEN
                 de_dx(k,j,i) = 0.0_wp
              ELSE
                 de_dx(k,j,i) = sgs_wf_part * ( e(k,j,i+1) - e(k,j,i-1) ) * ddx
              ENDIF
 
-             IF ( .NOT. BTEST( topo_flags(k,j-1,i), 0 )  .AND.                                     &
-                        BTEST( topo_flags(k,j,i), 0   )  .AND.                                     &
-                        BTEST( topo_flags(k,j+1,i), 0 ) )                                          &
+             IF ( .NOT. BTEST( wall_flags_total_0(k,j-1,i), 0 )  .AND.                             &
+                        BTEST( wall_flags_total_0(k,j,i), 0   )  .AND.                             &
+                        BTEST( wall_flags_total_0(k,j+1,i), 0 ) )                                  &
              THEN
                 de_dy(k,j,i) = 2.0_wp * sgs_wf_part * ( e(k,j+1,i) - e(k,j,i) ) * ddy
-             ELSEIF ( BTEST( topo_flags(k,j-1,i), 0 )  .AND.                                       &
-                      BTEST( topo_flags(k,j,i), 0   )  .AND.                                       &
-                .NOT. BTEST( topo_flags(k,j+1,i), 0 ) )                                            &
+             ELSEIF ( BTEST( wall_flags_total_0(k,j-1,i), 0 )  .AND.                               &
+                      BTEST( wall_flags_total_0(k,j,i), 0   )  .AND.                               &
+                .NOT. BTEST( wall_flags_total_0(k,j+1,i), 0 ) )                                    &
              THEN
                 de_dy(k,j,i) = 2.0_wp * sgs_wf_part * ( e(k,j,i) - e(k,j-1,i) ) * ddy
-             ELSEIF ( .NOT. BTEST( topo_flags(k,j,i), 22   )  .AND.                                &
-                      .NOT. BTEST( topo_flags(k,j+1,i), 22 ) )                                     &
+             ELSEIF ( .NOT. BTEST( wall_flags_total_0(k,j,i), 22   )  .AND.                        &
+                      .NOT. BTEST( wall_flags_total_0(k,j+1,i), 22 ) )                             &
              THEN
                 de_dy(k,j,i) = 0.0_wp
-             ELSEIF ( .NOT. BTEST( topo_flags(k,j-1,i), 22 )  .AND.                                &
-                      .NOT. BTEST( topo_flags(k,j,i), 22   ) )                                     &
+             ELSEIF ( .NOT. BTEST( wall_flags_total_0(k,j-1,i), 22 )  .AND.                        &
+                      .NOT. BTEST( wall_flags_total_0(k,j,i), 22   ) )                             &
              THEN
                 de_dy(k,j,i) = 0.0_wp
              ELSE
@@ -1893,23 +1967,22 @@
           DO  k = nzb+1, nzt-1
 !
 !--          Flag to mask topography
-             flag1 = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0  ) )
+             flag1 = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0  ) )
 
              de_dz(k,j,i) = 2.0_wp * sgs_wf_part *                                                 &
                            ( e(k+1,j,i) - e(k-1,j,i) ) / ( zu(k+1) - zu(k-1) ) * flag1
           ENDDO
 !
-!--       Set TKE gradient at up- and downward-facing surfaces. For sake of readability, do this
-!--       in two separate loops.
-          DO  m = bc_hv%start_index(j,i), bc_hv%end_index(j,i)
-             k            = bc_hv%k(m)
-             de_dz(k,j,i) = MERGE( 2.0_wp * sgs_wf_part * ( e(k+1,j,i) - e(k,j,i) ) /              &
-                                   ( zu(k+1) - zu(k) ), de_dz(k,j,i), bc_hv%koff(m) == -1 )
+!--       upward-facing surfaces
+          DO  m = bc_h(0)%start_index(j,i), bc_h(0)%end_index(j,i)
+             k            = bc_h(0)%k(m)
+             de_dz(k,j,i) = 2.0_wp * sgs_wf_part * ( e(k+1,j,i) - e(k,j,i) ) / ( zu(k+1) - zu(k) )
           ENDDO
-          DO  m = bc_hv%start_index(j,i), bc_hv%end_index(j,i)
-             k            = bc_hv%k(m)
-             de_dz(k,j,i) = MERGE( 2.0_wp * sgs_wf_part * ( e(k,j,i) - e(k-1,j,i) ) /              &
-                                   ( zu(k) - zu(k-1) ), de_dz(k,j,i), bc_hv%koff(m) == 1  )
+!
+!--       downward-facing surfaces
+          DO  m = bc_h(1)%start_index(j,i), bc_h(1)%end_index(j,i)
+             k            = bc_h(1)%k(m)
+             de_dz(k,j,i) = 2.0_wp * sgs_wf_part * ( e(k,j,i) - e(k-1,j,i) ) / ( zu(k) - zu(k-1) )
           ENDDO
 
           de_dz(nzb,j,i)   = 0.0_wp
@@ -1963,7 +2036,7 @@
              DO  k = nzb, nzt+1
 !
 !--             Flag indicating vicinity of wall
-                flag1 = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 24 ) )
+                flag1 = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 24 ) )
 
                 sums_l(k,1,0)  = sums_l(k,1,0)  + u(k,j,i) * flag1
                 sums_l(k,2,0)  = sums_l(k,2,0)  + v(k,j,i) * flag1
@@ -2002,7 +2075,7 @@
              DO  k = nzb, nzt+1
 !
 !--             Flag indicating vicinity of wall
-                flag1 = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 24 ) )
+                flag1 = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 24 ) )
 
                 sums_l(k,8,0)  = sums_l(k,8,0)  + e(k,j,i)                       * flag1
                 sums_l(k,30,0) = sums_l(k,30,0) + ( u(k,j,i) - hom(k,1,1,0) )**2 * flag1
@@ -2078,17 +2151,6 @@
 
     SELECT CASE ( location )
 
-#if defined( __parallel )
-       CASE ( 'before_integration' )
-!
-!--       After particle release, send the initially generated particles that are located
-!--       within child domains to the respective childs.
-          IF ( nested_run  .AND.  particle_coupling )  THEN
-             CALL particles_from_parent_to_child
-             CALL pmcp_p_delete_particles_in_fine_grid_area
-             CALL lpm_sort_and_delete
-          ENDIF
-#endif
        CASE ( 'after_pressure_solver' )
 !
 !--       The particle model is executed if particle advection start is reached and only at the end
@@ -2107,10 +2169,14 @@
 
                 CALL lpm_data_output_particles
 !
-!--             The MOD function allows for changes in the output interval with restart runs.
+!--          The MOD function allows for changes in the output interval with restart runs.
                 time_write_particle_data = MOD( time_write_particle_data,                          &
                                            MAX( dt_write_particle_data, dt_3d ) )
              ENDIF
+
+!
+!--          Initialize arrays for marking those particles to be deleted after the (sub-) timestep.
+             deleted_particles = 0
 
 !
 !--          Initialize variables used for accumulating the number of particles exchanged between
@@ -2144,16 +2210,6 @@
                    CALL lpm_create_particle( phase_release )
                    last_particle_release_time = last_particle_release_time + dt_prel
                 ENDDO
-#if defined( __parallel )
-!
-!--             After particle release, send the newly generated particles that are located
-!--             within child domains to the respective childs.
-                IF ( nested_run  .AND.  particle_coupling )  THEN
-                   CALL particles_from_parent_to_child
-                   CALL pmcp_p_delete_particles_in_fine_grid_area
-                   CALL lpm_sort_and_delete
-                ENDIF
-#endif
              ENDIF
 !
 !--          Reset summation arrays
@@ -2248,7 +2304,7 @@
 !--                      vertical range of the topography. (Here, some optimization is still
 !--                      possible.)
                          IF ( topography /= 'flat'  .AND.  k < nzb_max + 2 )  THEN
-                            CALL lpm_boundary_conds( 'walls', i, j, k )
+                            CALL  lpm_boundary_conds( 'walls', i, j, k )
                          ENDIF
 !
 !--                      User-defined actions after the calculation of the new particle position
@@ -2308,7 +2364,7 @@
                    ENDIF
                 ENDIF
 !
-!--             Move particles local to PE to a different grid cell
+!--             Move Particles local to PE to a different grid cell
                 CALL lpm_move_particle
 !
 !--             Horizontal boundary conditions including exchange between subdmains
@@ -2316,12 +2372,15 @@
 
 !
 !--             IF .FALSE., lpm_sort_and_delete is done inside pcmp
-                IF ( .NOT. dt_3d_reached  .OR.  .NOT. ( nested_run  .AND.  particle_coupling ) )   &
-                THEN
+                IF ( .NOT. dt_3d_reached  .OR.  .NOT. nested_run )   THEN
 !
 !--                Pack particles (eliminate those marked for deletion), determine new number of
 !--                particles
                    CALL lpm_sort_and_delete
+
+!--                Initialize variables for the next (sub-) timestep, i.e., for marking those
+!--                particles to be deleted after the timestep
+                   deleted_particles = 0
                 ENDIF
 
                 IF ( dt_3d_reached )  EXIT
@@ -2331,13 +2390,15 @@
 
 #if defined( __parallel )
 !
-!--          In case of nested runs do the transfer of particles between parent and child after
-!--          every full time step of the Eulerian model.
-             IF ( nested_run  .AND.  particle_coupling )  THEN
+!--          In case of nested runs do the transfer of particles after every full model time step
+             IF ( nested_run )   THEN
                 CALL particles_from_parent_to_child
                 CALL particles_from_child_to_parent
                 CALL pmcp_p_delete_particles_in_fine_grid_area
+
                 CALL lpm_sort_and_delete
+
+                deleted_particles = 0
              ENDIF
 #endif
 
@@ -2377,26 +2438,21 @@
 
              CALL cpu_log( log_point(25), 'lpm', 'stop' )
 
-!
-!--          Output of particle time series
-             IF ( particle_advection )  THEN
-                IF ( .NOT. first_call_lpm )  THEN
-                   time_dopts = time_dopts + dt_3d
-                ENDIF
-                IF ( time_dopts >= dt_dopts  .OR.                                                  &
-                     ( time_since_reference_point >= particle_advection_start  .AND.               &
-                       first_call_lpm ) )                                                          &
-                THEN
-                   CALL lpm_data_output_ptseries
-                   time_dopts = MOD( time_dopts, MAX( dt_dopts, dt_3d ) )
-                ENDIF
-             ENDIF
+! !
+! !--       Output of particle time series
+!           IF ( particle_advection )  THEN
+!              IF ( time_dopts >= dt_dopts  .OR.                                                        &
+!                   ( time_since_reference_point >= particle_advection_start  .AND.                     &
+!                    first_call_lpm ) )  THEN
+!                 CALL lpm_data_output_ptseries
+!                 time_dopts = MOD( time_dopts, MAX( dt_dopts, dt_3d ) )
+!              ENDIF
+!           ENDIF
 
 !
 !--           Set this switch to .false. @todo: maybe find better solution.
               first_call_lpm = .FALSE.
-
-           ENDIF  ! 'after_pressure_solver'
+           ENDIF! ENDIF statement of lpm_actions('after_pressure_solver')
 
        CASE ( 'after_integration' )
 !
@@ -2477,11 +2533,9 @@
 #endif
     CALL close_file( 80 )
 
-    IF ( number_of_particles > 0  .AND.  debug_output )  THEN
-        WRITE( debug_string, * )  'lpm_write_exchange_statistics: ', 'number_of_particles ',       &
-                                  number_of_particles, current_timestep_number + 1,                &
-                                  simulated_time + dt_3d
-        CALL debug_message( debug_string, 'info' )
+    IF ( number_of_particles > 0 )  THEN
+        WRITE(9,*) 'number_of_particles ', number_of_particles, current_timestep_number + 1,       &
+                   simulated_time + dt_3d
     ENDIF
 
 #if defined( __parallel )
@@ -2508,14 +2562,13 @@
 !--------------------------------------------------------------------------------------------------!
 ! Description:
 ! ------------
-!> Write particle data in FORTRAN binary format
+!> Write particle data in FORTRAN binary and/or netCDF format
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE lpm_data_output_particles
 
     INTEGER(iwp) ::  ip !<
     INTEGER(iwp) ::  jp !<
     INTEGER(iwp) ::  kp !<
-
 
     CALL cpu_log( log_point_s(40), 'lpm_data_output', 'start' )
 
@@ -2540,16 +2593,127 @@
 
     CALL close_file( 85 )
 
+
+#if defined( __netcdf )
+! !
+! !-- Output in netCDF format
+!     CALL check_open( 108 )
+!
+! !
+! !-- Update the NetCDF time axis
+!     prt_time_count = prt_time_count + 1
+!
+!     nc_stat = NF90_PUT_VAR( id_set_prt, id_var_time_prt, &
+!                             (/ simulated_time /),        &
+!                             start = (/ prt_time_count /), count = (/ 1 /) )
+!     CALL netcdf_handle_error( 'lpm_data_output_particles', 1 )
+!
+! !
+! !-- Output the real number of particles used
+!     nc_stat = NF90_PUT_VAR( id_set_prt, id_var_rnop_prt, &
+!                             (/ number_of_particles /),   &
+!                             start = (/ prt_time_count /), count = (/ 1 /) )
+!     CALL netcdf_handle_error( 'lpm_data_output_particles', 2 )
+!
+! !
+! !-- Output all particle attributes
+!     nc_stat = NF90_PUT_VAR( id_set_prt, id_var_prt(1), particles%age,      &
+!                             start = (/ 1, prt_time_count /),               &
+!                             count = (/ maximum_number_of_particles /) )
+!     CALL netcdf_handle_error( 'lpm_data_output_particles', 3 )
+!
+!     nc_stat = NF90_PUT_VAR( id_set_prt, id_var_prt(2), particles%user,     &
+!                             start = (/ 1, prt_time_count /),               &
+!                             count = (/ maximum_number_of_particles /) )
+!     CALL netcdf_handle_error( 'lpm_data_output_particles', 4 )
+!
+!     nc_stat = NF90_PUT_VAR( id_set_prt, id_var_prt(3), particles%origin_x, &
+!                             start = (/ 1, prt_time_count /),               &
+!                             count = (/ maximum_number_of_particles /) )
+!     CALL netcdf_handle_error( 'lpm_data_output_particles', 5 )
+!
+!     nc_stat = NF90_PUT_VAR( id_set_prt, id_var_prt(4), particles%origin_y, &
+!                             start = (/ 1, prt_time_count /),               &
+!                             count = (/ maximum_number_of_particles /) )
+!     CALL netcdf_handle_error( 'lpm_data_output_particles', 6 )
+!
+!     nc_stat = NF90_PUT_VAR( id_set_prt, id_var_prt(5), particles%origin_z, &
+!                             start = (/ 1, prt_time_count /),               &
+!                             count = (/ maximum_number_of_particles /) )
+!     CALL netcdf_handle_error( 'lpm_data_output_particles', 7 )
+!
+!     nc_stat = NF90_PUT_VAR( id_set_prt, id_var_prt(6), particles%radius,   &
+!                             start = (/ 1, prt_time_count /),               &
+!                             count = (/ maximum_number_of_particles /) )
+!     CALL netcdf_handle_error( 'lpm_data_output_particles', 8 )
+!
+!     nc_stat = NF90_PUT_VAR( id_set_prt, id_var_prt(7), particles%speed_x,  &
+!                             start = (/ 1, prt_time_count /),               &
+!                             count = (/ maximum_number_of_particles /) )
+!     CALL netcdf_handle_error( 'lpm_data_output_particles', 9 )
+!
+!     nc_stat = NF90_PUT_VAR( id_set_prt, id_var_prt(8), particles%speed_y,  &
+!                             start = (/ 1, prt_time_count /),               &
+!                             count = (/ maximum_number_of_particles /) )
+!     CALL netcdf_handle_error( 'lpm_data_output_particles', 10 )
+!
+!     nc_stat = NF90_PUT_VAR( id_set_prt, id_var_prt(9), particles%speed_z,  &
+!                             start = (/ 1, prt_time_count /),               &
+!                             count = (/ maximum_number_of_particles /) )
+!     CALL netcdf_handle_error( 'lpm_data_output_particles', 11 )
+!
+!     nc_stat = NF90_PUT_VAR( id_set_prt,id_var_prt(10),                     &
+!                             particles%weight_factor,                       &
+!                             start = (/ 1, prt_time_count /),               &
+!                             count = (/ maximum_number_of_particles /) )
+!     CALL netcdf_handle_error( 'lpm_data_output_particles', 12 )
+!
+!     nc_stat = NF90_PUT_VAR( id_set_prt, id_var_prt(11), particles%x,       &
+!                             start = (/ 1, prt_time_count /),               &
+!                             count = (/ maximum_number_of_particles /) )
+!     CALL netcdf_handle_error( 'lpm_data_output_particles', 13 )
+!
+!     nc_stat = NF90_PUT_VAR( id_set_prt, id_var_prt(12), particles%y,       &
+!                             start = (/ 1, prt_time_count /),               &
+!                             count = (/ maximum_number_of_particles /) )
+!     CALL netcdf_handle_error( 'lpm_data_output_particles', 14 )
+!
+!     nc_stat = NF90_PUT_VAR( id_set_prt, id_var_prt(13), particles%z,       &
+!                             start = (/ 1, prt_time_count /),               &
+!                             count = (/ maximum_number_of_particles /) )
+!     CALL netcdf_handle_error( 'lpm_data_output_particles', 15 )
+!
+!     nc_stat = NF90_PUT_VAR( id_set_prt, id_var_prt(14), particles%class,   &
+!                             start = (/ 1, prt_time_count /),               &
+!                             count = (/ maximum_number_of_particles /) )
+!     CALL netcdf_handle_error( 'lpm_data_output_particles', 16 )
+!
+!     nc_stat = NF90_PUT_VAR( id_set_prt, id_var_prt(15), particles%group,   &
+!                             start = (/ 1, prt_time_count /),               &
+!                             count = (/ maximum_number_of_particles /) )
+!     CALL netcdf_handle_error( 'lpm_data_output_particles', 17 )
+!
+!     nc_stat = NF90_PUT_VAR( id_set_prt, id_var_prt(16),                    &
+!                             particles%id2,                                 &
+!                             start = (/ 1, prt_time_count /),               &
+!                             count = (/ maximum_number_of_particles /) )
+!     CALL netcdf_handle_error( 'lpm_data_output_particles', 18 )
+!
+!     nc_stat = NF90_PUT_VAR( id_set_prt, id_var_prt(17), particles%id1,     &
+!                             start = (/ 1, prt_time_count /),               &
+!                             count = (/ maximum_number_of_particles /) )
+!     CALL netcdf_handle_error( 'lpm_data_output_particles', 19 )
+!
+#endif
+
     CALL cpu_log( log_point_s(40), 'lpm_data_output', 'stop' )
 
  END SUBROUTINE lpm_data_output_particles
 
-
 !--------------------------------------------------------------------------------------------------!
 ! Description:
 ! ------------
-!> This routine collects and calculates particle data for timeseries output and initiates the
-!> output via the data_output_particles (DOM) module.
+!> This routine calculates and provide particle timeseries output.
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE lpm_data_output_ptseries
 
@@ -2566,12 +2730,27 @@
 
     CALL cpu_log( log_point(36), 'data_output_ptseries', 'start' )
 
-    IF ( dop_individual_ts )  THEN
-       CALL dop_write_tseries_data
+    IF ( dop_active )  THEN
+       CALL dop_output_tseries
     ENDIF
 
-    ALLOCATE( pts_value(0:number_of_particle_groups,nr_prt_quantities_statistical),                &
-              pts_value_l(0:number_of_particle_groups,nr_prt_quantities_statistical) )
+    IF ( myid == 0 )  THEN
+!
+!--    Open file for time series output in NetCDF format
+       dopts_time_count = dopts_time_count + 1
+       CALL check_open( 109 )
+#if defined( __netcdf )
+!
+!--    Update the particle time series time axis
+       nc_stat = NF90_PUT_VAR( id_set_pts, id_var_time_pts, (/ time_since_reference_point /),      &
+                               start = (/ dopts_time_count /), count = (/ 1 /) )
+       CALL netcdf_handle_error( 'data_output_ptseries', 391 )
+#endif
+
+    ENDIF
+
+    ALLOCATE( pts_value(0:number_of_particle_groups,dopts_num),                                    &
+              pts_value_l(0:number_of_particle_groups,dopts_num) )
 
     pts_value_l = 0.0_wp
     pts_value_l(:,16) = 9999999.9_wp    ! for calculation of minimum radius
@@ -2612,6 +2791,8 @@
                    pts_value_l(0,15) = pts_value_l(0,15) + particles(n)%radius       ! mean rad
                    pts_value_l(0,16) = MIN( pts_value_l(0,16), particles(n)%radius ) ! minrad
                    pts_value_l(0,17) = MAX( pts_value_l(0,17), particles(n)%radius ) ! maxrad
+                   pts_value_l(0,18) = pts_value_l(0,18) + 1.0_wp
+                   pts_value_l(0,19) = pts_value_l(0,18) + 1.0_wp
 !
 !--                Repeat the same for the respective particle group
                    IF ( number_of_particle_groups > 1 )  THEN
@@ -2640,6 +2821,8 @@
                       pts_value_l(jg,15) = pts_value_l(jg,15) + particles(n)%radius
                       pts_value_l(jg,16) = MIN( pts_value_l(jg,16), particles(n)%radius )
                       pts_value_l(jg,17) = MAX( pts_value_l(jg,17), particles(n)%radius )
+                      pts_value_l(jg,18) = pts_value_l(jg,18) + 1.0_wp
+                      pts_value_l(jg,19) = pts_value_l(jg,19) + 1.0_wp
                    ENDIF
 
                 ENDIF
@@ -2654,21 +2837,20 @@
 #if defined( __parallel )
 !
 !-- Sum values of the subdomains
-!-- Particle output with dop is done only on the root model. Therefore MPI_COMM_WORLD is used to
-!-  compute the sum across all nested models.
     inum = number_of_particle_groups + 1
 
-    IF ( collective_wait )  CALL MPI_BARRIER( MPI_COMM_WORLD, ierr )
-    CALL MPI_ALLREDUCE( pts_value_l(0,1), pts_value(0,1), 15*inum, MPI_REAL, MPI_SUM,              &
-                        MPI_COMM_WORLD, ierr )
-    IF ( collective_wait )  CALL MPI_BARRIER( MPI_COMM_WORLD, ierr )
-    CALL MPI_ALLREDUCE( pts_value_l(0,16), pts_value(0,16), inum, MPI_REAL, MPI_MIN,               &
-                        MPI_COMM_WORLD, ierr )
-    IF ( collective_wait )  CALL MPI_BARRIER( MPI_COMM_WORLD, ierr )
-    CALL MPI_ALLREDUCE( pts_value_l(0,17), pts_value(0,17), inum, MPI_REAL, MPI_MAX,               &
-                        MPI_COMM_WORLD, ierr )
+    IF ( collective_wait )  CALL MPI_BARRIER( comm2d, ierr )
+    CALL MPI_ALLREDUCE( pts_value_l(0,1), pts_value(0,1), 15*inum, MPI_REAL, MPI_SUM, comm2d, ierr )
+    IF ( collective_wait )  CALL MPI_BARRIER( comm2d, ierr )
+    CALL MPI_ALLREDUCE( pts_value_l(0,16), pts_value(0,16), inum, MPI_REAL, MPI_MIN, comm2d, ierr )
+    IF ( collective_wait )  CALL MPI_BARRIER( comm2d, ierr )
+    CALL MPI_ALLREDUCE( pts_value_l(0,17), pts_value(0,17), inum, MPI_REAL, MPI_MAX, comm2d, ierr )
+    IF ( collective_wait )  CALL MPI_BARRIER( comm2d, ierr )
+    CALL MPI_ALLREDUCE( pts_value_l(0,18), pts_value(0,18), inum, MPI_REAL, MPI_MAX, comm2d, ierr )
+    IF ( collective_wait )  CALL MPI_BARRIER( comm2d, ierr )
+    CALL MPI_ALLREDUCE( pts_value_l(0,19), pts_value(0,19), inum, MPI_REAL, MPI_MIN, comm2d, ierr )
 #else
-    pts_value(:,1:17) = pts_value_l(:,1:17)
+    pts_value(:,1:19) = pts_value_l(:,1:19)
 #endif
 
 !
@@ -2709,46 +2891,46 @@
              particles => grid_particles(k,j,i)%particles(1:number_of_particles)
              DO  n = 1, number_of_particles
 
-                pts_value_l(0,18) = pts_value_l(0,18) + ( particles(n)%x -                         &
+                pts_value_l(0,20) = pts_value_l(0,20) + ( particles(n)%x -                         &
                                        particles(n)%origin_x - pts_value(0,2) )**2 ! x*2
-                pts_value_l(0,19) = pts_value_l(0,19) + ( particles(n)%y -                         &
+                pts_value_l(0,21) = pts_value_l(0,21) + ( particles(n)%y -                         &
                                        particles(n)%origin_y - pts_value(0,3) )**2 ! y*2
-                pts_value_l(0,20) = pts_value_l(0,20) + ( particles(n)%z -                         &
+                pts_value_l(0,22) = pts_value_l(0,22) + ( particles(n)%z -                         &
                                        particles(n)%origin_z - pts_value(0,4) )**2 ! z*2
-                pts_value_l(0,21) = pts_value_l(0,21) + ( particles(n)%speed_x -                   &
+                pts_value_l(0,23) = pts_value_l(0,23) + ( particles(n)%speed_x -                   &
                                                           pts_value(0,6) )**2      ! u*2
-                pts_value_l(0,22) = pts_value_l(0,22) + ( particles(n)%speed_y -                   &
+                pts_value_l(0,24) = pts_value_l(0,24) + ( particles(n)%speed_y -                   &
                                                           pts_value(0,7) )**2      ! v*2
-                pts_value_l(0,23) = pts_value_l(0,23) + ( particles(n)%speed_z -                   &
+                pts_value_l(0,25) = pts_value_l(0,25) + ( particles(n)%speed_z -                   &
                                                           pts_value(0,8) )**2      ! w*2
-                pts_value_l(0,24) = pts_value_l(0,24) + ( particles(n)%rvar1 -                     &
+                pts_value_l(0,26) = pts_value_l(0,26) + ( particles(n)%rvar1 -                     &
                                                           pts_value(0,9) )**2      ! u"2
-                pts_value_l(0,25) = pts_value_l(0,25) + ( particles(n)%rvar2 -                     &
+                pts_value_l(0,27) = pts_value_l(0,27) + ( particles(n)%rvar2 -                     &
                                                           pts_value(0,10) )**2     ! v"2
-                pts_value_l(0,26) = pts_value_l(0,26) + ( particles(n)%rvar3 -                     &
+                pts_value_l(0,28) = pts_value_l(0,28) + ( particles(n)%rvar3 -                     &
                                                           pts_value(0,11) )**2  ! w"2
 !
 !--             Repeat the same for the respective particle group
                 IF ( number_of_particle_groups > 1 )  THEN
                    jg = particles(n)%group
 
-                   pts_value_l(jg,18) = pts_value_l(jg,18) + ( particles(n)%x -                    &
+                   pts_value_l(jg,20) = pts_value_l(jg,20) + ( particles(n)%x -                    &
                                            particles(n)%origin_x - pts_value(jg,2) )**2
-                   pts_value_l(jg,19) = pts_value_l(jg,19) + ( particles(n)%y -                    &
+                   pts_value_l(jg,21) = pts_value_l(jg,21) + ( particles(n)%y -                    &
                                            particles(n)%origin_y - pts_value(jg,3) )**2
-                   pts_value_l(jg,20) = pts_value_l(jg,20) + ( particles(n)%z -                    &
+                   pts_value_l(jg,22) = pts_value_l(jg,22) + ( particles(n)%z -                    &
                                            particles(n)%origin_z - pts_value(jg,4) )**2
-                   pts_value_l(jg,21) = pts_value_l(jg,21) + ( particles(n)%speed_x -              &
+                   pts_value_l(jg,23) = pts_value_l(jg,23) + ( particles(n)%speed_x -              &
                                                                pts_value(jg,6) )**2
-                   pts_value_l(jg,22) = pts_value_l(jg,22) + ( particles(n)%speed_y -              &
+                   pts_value_l(jg,24) = pts_value_l(jg,24) + ( particles(n)%speed_y -              &
                                                                pts_value(jg,7) )**2
-                   pts_value_l(jg,23) = pts_value_l(jg,23) + ( particles(n)%speed_z -              &
+                   pts_value_l(jg,25) = pts_value_l(jg,25) + ( particles(n)%speed_z -              &
                                                                pts_value(jg,8) )**2
-                   pts_value_l(jg,24) = pts_value_l(jg,24) + ( particles(n)%rvar1 -                &
+                   pts_value_l(jg,26) = pts_value_l(jg,26) + ( particles(n)%rvar1 -                &
                                                                pts_value(jg,9) )**2
-                   pts_value_l(jg,25) = pts_value_l(jg,25) + ( particles(n)%rvar2 -                &
+                   pts_value_l(jg,27) = pts_value_l(jg,27) + ( particles(n)%rvar2 -                &
                                                                pts_value(jg,10) )**2
-                   pts_value_l(jg,26) = pts_value_l(jg,26) + ( particles(n)%rvar3 -                &
+                   pts_value_l(jg,28) = pts_value_l(jg,28) + ( particles(n)%rvar3 -                &
                                                                pts_value(jg,11) )**2
                 ENDIF
 
@@ -2757,16 +2939,24 @@
        ENDDO
     ENDDO
 
+    pts_value_l(0,29) = ( number_of_particles - pts_value(0,1) / numprocs )**2
+                                                 ! variance of particle numbers
+    IF ( number_of_particle_groups > 1 )  THEN
+       DO  j = 1, number_of_particle_groups
+          pts_value_l(j,29) = ( pts_value_l(j,1) - pts_value(j,1) / numprocs )**2
+       ENDDO
+    ENDIF
+
 #if defined( __parallel )
 !
 !-- Sum values of the subdomains
     inum = number_of_particle_groups + 1
 
-    IF ( collective_wait )  CALL MPI_BARRIER( MPI_COMM_WORLD, ierr )
-    CALL MPI_ALLREDUCE( pts_value_l(0,18), pts_value(0,18), inum*9, MPI_REAL, MPI_SUM, MPI_COMM_WORLD,     &
+    IF ( collective_wait )  CALL MPI_BARRIER( comm2d, ierr )
+    CALL MPI_ALLREDUCE( pts_value_l(0,20), pts_value(0,20), inum*10, MPI_REAL, MPI_SUM, comm2d,    &
                         ierr )
 #else
-    pts_value(:,18:26) = pts_value_l(:,18:26)
+    pts_value(:,20:29) = pts_value_l(:,20:29)
 #endif
 
 !
@@ -2780,23 +2970,33 @@
     DO  j = 0, inum
 
        IF ( pts_value(j,1) > 0.0_wp )  THEN
-          pts_value(j,18:26) = pts_value(j,18:26) / pts_value(j,1)
+          pts_value(j,20:28) = pts_value(j,20:28) / pts_value(j,1)
        ENDIF
+       pts_value(j,29) = pts_value(j,29) / numprocs
 
     ENDDO
 
 #if defined( __netcdf )
 !
-!-- Just collect statistical time series quantities to be output in NetCDF format at the end of the
-!-- run.
-    CALL dop_collect_statistics( pts_value )
+!-- Output particle time series quantities in NetCDF format
+    IF ( myid == 0 )  THEN
+       DO  j = 0, inum
+          DO  i = 1, dopts_num
+             nc_stat = NF90_PUT_VAR( id_set_pts, id_var_dopts(i,j),                                &
+                                     (/ pts_value(j,i) /),                                         &
+                                     start = (/ dopts_time_count /),                               &
+                                     count = (/ 1 /) )
+             CALL netcdf_handle_error( 'data_output_ptseries', 392 )
+          ENDDO
+       ENDDO
+    ENDIF
 #endif
 
     DEALLOCATE( pts_value, pts_value_l )
 
     CALL cpu_log( log_point(36), 'data_output_ptseries', 'stop' )
 
- END SUBROUTINE lpm_data_output_ptseries
+END SUBROUTINE lpm_data_output_ptseries
 
 
 !--------------------------------------------------------------------------------------------------!
@@ -2810,8 +3010,6 @@
     CHARACTER(LEN=10) ::  version_on_file            !<
 
     CHARACTER(LEN=20) ::  save_restart_data_format_input  !<
-
-    CHARACTER(LEN=99) ::  file_name  !< file name of the restart data
 
     INTEGER(iwp) ::  alloc_size !<
     INTEGER(iwp) ::  ip         !<
@@ -2829,11 +3027,11 @@
 !
 !--    Read particle data from previous model run.
 !--    First open the input unit.
-       file_name = 'PARTICLE_RESTART_DATA_IN' // TRIM( coupling_char )
-       IF ( myid_char /= '' )  THEN
-          file_name = TRIM( file_name ) // '/' // TRIM( myid_char )
+       IF ( myid_char == '' )  THEN
+          OPEN ( 90, FILE='PARTICLE_RESTART_DATA_IN'//myid_char, FORM='UNFORMATTED' )
+       ELSE
+          OPEN ( 90, FILE='PARTICLE_RESTART_DATA_IN/'//myid_char, FORM='UNFORMATTED' )
        ENDIF
-       OPEN( 90, FILE=TRIM( file_name ), FORM='UNFORMATTED' )
 
 !
 !--    First compare the version numbers
@@ -2845,7 +3043,7 @@
                                          TRIM( version_on_file ) //                                &
                            '&version in program = "' //                                            &
                                          TRIM( particle_binary_version ) // '"'
-          CALL message( 'lpm_read_restart_file', 'LPM0019', 1, 2, 0, 6, 0 )
+          CALL message( 'lpm_read_restart_file', 'PA0214', 1, 2, 0, 6, 0 )
        ENDIF
 
 !
@@ -2903,6 +3101,9 @@
 
     ELSEIF ( restart_data_format_input(1:3) == 'mpi' )  THEN
 
+       WRITE ( 9, * )  'Here is MPI-IO praticle input ', rd_mpi_io_check_open()
+       FLUSH(9)
+
        ALLOCATE( grid_particles(nzb:nzt+1,nysg:nyng,nxlg:nxrg),                                    &
                  id_counter(nzb:nzt+1,nysg:nyng,nxlg:nxrg),                                        &
                  prt_count(nzb:nzt+1,nysg:nyng,nxlg:nxrg),                                         &
@@ -2913,7 +3114,7 @@
        IF ( .NOT. rd_mpi_io_check_open() )  THEN
           save_restart_data_format_input = restart_data_format_input
           restart_data_format_input = 'mpi'
-          CALL rd_mpi_io_open( 'READ', 'BININ' // TRIM( coupling_char ) )
+          CALL rd_mpi_io_open( 'READ', 'BININ' )
           restart_data_format_input = save_restart_data_format_input
        ENDIF
 
@@ -2979,8 +3180,7 @@
 
 
    USE control_parameters,                                                                         &
-       ONLY:  length,                                                                              &
-              restart_string
+       ONLY: length, restart_string
 
     INTEGER(iwp) ::  k               !<
     INTEGER(iwp) ::  nxlc            !<
@@ -3090,40 +3290,34 @@
 
     LOGICAL ::  array_found  !<
 
-!
-!-- Restart input of time-averaged quantities is skipped in case of cyclic-fill initialization.
-!-- This case, input of time-averaged data is useless and can lead to faulty averaging.
-    IF ( .NOT. cyclic_fill_initialization )  THEN
+    CALL rd_mpi_io_check_array( 'pc_av' , found = array_found )
+    IF ( array_found )  THEN
+       IF ( .NOT. ALLOCATED( pc_av ) )  ALLOCATE( pc_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
+       CALL rrd_mpi_io( 'pc_av', pc_av )
+    ENDIF
 
-       CALL rd_mpi_io_check_array( 'pc_av' , found = array_found )
-       IF ( array_found )  THEN
-          IF ( .NOT. ALLOCATED( pc_av ) )  ALLOCATE( pc_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-          CALL rrd_mpi_io( 'pc_av', pc_av )
-       ENDIF
+    CALL rd_mpi_io_check_array( 'pr_av' , found = array_found )
+    IF ( array_found )  THEN
+       IF ( .NOT. ALLOCATED( pr_av ) )  ALLOCATE( pr_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
+       CALL rrd_mpi_io( 'pr_av', pr_av )
+    ENDIF
 
-       CALL rd_mpi_io_check_array( 'pr_av' , found = array_found )
-       IF ( array_found )  THEN
-          IF ( .NOT. ALLOCATED( pr_av ) )  ALLOCATE( pr_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-          CALL rrd_mpi_io( 'pr_av', pr_av )
-       ENDIF
+    CALL rd_mpi_io_check_array( 'ql_c_av' , found = array_found )
+    IF ( array_found )  THEN
+       IF ( .NOT. ALLOCATED( ql_c_av ) )  ALLOCATE( ql_c_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
+       CALL rrd_mpi_io( 'ql_c_av', ql_c_av )
+    ENDIF
 
-       CALL rd_mpi_io_check_array( 'ql_c_av' , found = array_found )
-       IF ( array_found )  THEN
-          IF ( .NOT. ALLOCATED( ql_c_av ) )  ALLOCATE( ql_c_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-          CALL rrd_mpi_io( 'ql_c_av', ql_c_av )
-       ENDIF
+    CALL rd_mpi_io_check_array( 'ql_v_av' , found = array_found )
+    IF ( array_found )  THEN
+       IF ( .NOT. ALLOCATED( ql_v_av ) )  ALLOCATE( ql_v_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
+       CALL rrd_mpi_io( 'ql_v_av', ql_v_av )
+    ENDIF
 
-       CALL rd_mpi_io_check_array( 'ql_v_av' , found = array_found )
-       IF ( array_found )  THEN
-          IF ( .NOT. ALLOCATED( ql_v_av ) )  ALLOCATE( ql_v_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-          CALL rrd_mpi_io( 'ql_v_av', ql_v_av )
-       ENDIF
-
-       CALL rd_mpi_io_check_array( 'ql_vp_av' , found = array_found )
-       IF ( array_found )  THEN
-          IF ( .NOT. ALLOCATED( ql_vp_av ) )  ALLOCATE( ql_vp_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-          CALL rrd_mpi_io( 'ql_vp_av', ql_vp_av )
-       ENDIF
+    CALL rd_mpi_io_check_array( 'ql_vp_av' , found = array_found )
+    IF ( array_found )  THEN
+       IF ( .NOT. ALLOCATED( ql_vp_av ) )  ALLOCATE( ql_vp_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
+       CALL rrd_mpi_io( 'ql_vp_av', ql_vp_av )
     ENDIF
 
     CALL rd_mpi_io_check_array( 'seq_random_array_particles01' , found = array_found )
@@ -3147,9 +3341,8 @@
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE lpm_wrd_local
 
-    CHARACTER(LEN=10) ::  particle_binary_version    !<
-    CHARACTER(LEN=32) ::  tmp_name                   !< temporary variable
-    CHARACTER(LEN=99) ::  file_name                  !< restart data file name
+    CHARACTER (LEN=10) ::  particle_binary_version   !<
+    CHARACTER (LEN=32) ::  tmp_name                  !< temporary variable
 
     INTEGER(iwp) ::  i                               !< loop index
     INTEGER(iwp) ::  ip                              !<
@@ -3171,23 +3364,20 @@
 
 
     IF ( TRIM( restart_data_format_output ) == 'fortran_binary' )  THEN
-
 !
-!--    First, open the output unit.
-       file_name = 'PARTICLE_RESTART_DATA_OUT' // TRIM( coupling_char )
-
-       IF ( myid_char /= '' )  THEN
-          IF ( myid == 0 )  CALL local_system( 'mkdir ' // TRIM( file_name ) )
+!--    First open the output unit.
+       IF ( myid_char == '' )  THEN
+          OPEN ( 90, FILE='PARTICLE_RESTART_DATA_OUT'//myid_char, FORM='UNFORMATTED')
+       ELSE
+          IF ( myid == 0 )  CALL local_system( 'mkdir PARTICLE_RESTART_DATA_OUT' )
 #if defined( __parallel )
 !
 !--       Set a barrier in order to allow that thereafter all other processors in the directory
 !--       created by PE0 can open their file
           CALL MPI_BARRIER( comm2d, ierr )
 #endif
-          file_name = TRIM( file_name ) // '/' // TRIM( myid_char )
+          OPEN ( 90, FILE='PARTICLE_RESTART_DATA_OUT/'//myid_char, FORM='UNFORMATTED' )
        ENDIF
-
-       OPEN( 90, FILE=TRIM( file_name ), FORM='UNFORMATTED' )
 
 !
 !--    Write the version number of the binary format.
@@ -3242,6 +3432,15 @@
 
        ALLOCATE( prt_global_index(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
 
+#if defined( __parallel )
+!--    TODO: needs to be replaced by standard PALM message
+       IF ( TRIM( restart_data_format_output ) == 'mpi_shared_memory' )   THEN
+          WRITE( 9, * )  'mpi_shared_memory is NOT implemented yet for particle IO'
+          FLUSH( 9 )
+          CALL MPI_ABORT( MPI_COMM_WORLD, 1, ierr )
+       ENDIF
+#endif
+
        CALL rd_mpi_io_particle_filetypes
 
        nr_particles_local = 0
@@ -3291,6 +3490,10 @@
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE lpm_wrd_global
 
+#if defined( __parallel )
+    INTEGER :: ierr  !<
+#endif
+
     REAL(wp), DIMENSION(4,max_number_of_particle_groups) ::  particle_groups_array  !<
 
 
@@ -3298,6 +3501,12 @@
 
        CALL wrd_write_string( 'curvature_solution_effects' )
        WRITE ( 14 )  curvature_solution_effects
+
+       CALL wrd_write_string( 'dop_last_active_particle' )
+       WRITE ( 14 )  dop_last_active_particle
+
+       CALL wrd_write_string( 'dop_prt_axis_dimension' )
+       WRITE ( 14 )  dop_prt_axis_dimension
 
        CALL wrd_write_string( 'interpolation_simple_corrector' )
        WRITE ( 14 )  interpolation_simple_corrector
@@ -3307,12 +3516,6 @@
 
        CALL wrd_write_string( 'interpolation_trilinear' )
        WRITE ( 14 )  interpolation_trilinear
-
-       CALL wrd_write_string( 'max_nr_out_prts' )
-       WRITE ( 14 )  max_nr_out_prts
-
-       CALL wrd_write_string( 'nr_out_prts' )
-       WRITE ( 14 )  nr_out_prts
 
     ELSEIF ( restart_data_format_output(1:3) == 'mpi' )  THEN
 
@@ -3327,19 +3530,24 @@
        CALL wrd_mpi_io( 'bc_par_lr', bc_par_lr )
        CALL wrd_mpi_io( 'bc_par_ns', bc_par_ns )
        CALL wrd_mpi_io( 'bc_par_t', bc_par_t )
+       CALL wrd_mpi_io( 'dop_last_active_particle', dop_last_active_particle )
+       CALL wrd_mpi_io( 'dop_prt_axis_dimension', dop_prt_axis_dimension )
        CALL wrd_mpi_io( 'last_particle_release_time', last_particle_release_time )
-       CALL wrd_mpi_io( 'max_nr_out_prts', max_nr_out_prts )
-       CALL wrd_mpi_io( 'nr_out_prts', nr_out_prts )
        CALL wrd_mpi_io( 'number_of_particle_groups', number_of_particle_groups )
        CALL wrd_mpi_io( 'time_write_particle_data', time_write_particle_data )
 
 !
 !--    Write particle_group informations via 2D array to avoid another overlay in
 !--    restart_data_mpi_io_mod.
-!--    Start with a security check, if the number of particle group attributes has changed.
-       IF ( STORAGE_SIZE( particle_groups(1) ) / (wp*8) /= 4 )  THEN
-          message_string = 'size of structure particle_groups_type has changed'
-          CALL message( 'lpm_wrd_global', 'LPM0033', 1, 2, 0, 6, 0 )
+!--    TODO: convert the following to a standard PALM message
+       IF( STORAGE_SIZE( particle_groups(1) ) / (wp*8) /= 4 )  THEN
+          WRITE( 9, * )  'size of structure particle_groups_type has changed '
+          FLUSH( 9 )
+#if defined( __parallel )
+          CALL MPI_ABORT( MPI_COMM_WORLD, 1, ierr )
+#else
+          STOP 'error'
+#endif
        ENDIF
 
        particle_groups_array(1,:) = particle_groups(:)%density_ratio
@@ -3362,8 +3570,7 @@
  SUBROUTINE lpm_rrd_global_ftn( found )
 
     USE control_parameters,                                                                        &
-        ONLY:  length,                                                                             &
-               restart_string
+        ONLY: length, restart_string
 
     LOGICAL, INTENT(OUT)  ::  found
 
@@ -3374,6 +3581,12 @@
        CASE ( 'curvature_solution_effects' )
           READ ( 13 )  curvature_solution_effects
 
+       CASE ( 'dop_last_active_particle' )
+          READ ( 13 )  dop_last_active_particle
+
+       CASE ( 'dop_prt_axis_dimension' )
+          READ ( 13 )  dop_prt_axis_dimension
+
        CASE ( 'interpolation_simple_corrector' )
           READ ( 13 )  interpolation_simple_corrector
 
@@ -3382,12 +3595,6 @@
 
        CASE ( 'interpolation_trilinear' )
           READ ( 13 )  interpolation_trilinear
-
-       CASE ( 'max_nr_out_prts' )
-          READ ( 13 )  max_nr_out_prts
-
-       CASE ( 'nr_out_prts' )
-          READ ( 13 )  nr_out_prts
 
        CASE DEFAULT
 
@@ -3405,6 +3612,10 @@
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE lpm_rrd_global_mpi
 
+#if defined( __parallel )
+    INTEGER    :: ierr    !<
+#endif
+
     REAL(wp), DIMENSION(4,max_number_of_particle_groups) ::  particle_groups_array  !<
 
 
@@ -3419,18 +3630,24 @@
     CALL rrd_mpi_io( 'bc_par_lr', bc_par_lr )
     CALL rrd_mpi_io( 'bc_par_ns', bc_par_ns )
     CALL rrd_mpi_io( 'bc_par_t', bc_par_t )
+    CALL rrd_mpi_io( 'dop_prt_axis_dimension', dop_prt_axis_dimension )
+    CALL rrd_mpi_io( 'dop_last_active_particle', dop_last_active_particle )
     CALL rrd_mpi_io( 'last_particle_release_time', last_particle_release_time )
-    CALL rrd_mpi_io( 'max_nr_out_prts', max_nr_out_prts )
-    CALL rrd_mpi_io( 'nr_out_prts', nr_out_prts )
     CALL rrd_mpi_io( 'number_of_particle_groups', number_of_particle_groups )
     CALL rrd_mpi_io( 'time_write_particle_data', time_write_particle_data )
 
 !
 !-- Read particle group information via 2d-array to avoid another overlay in
 !-- restart_data_mpi_io_mod.
-    IF ( STORAGE_SIZE( particle_groups(1) ) / ( wp * 8 ) /= 4 )  THEN
-       message_string = 'size of structure particle_groups_type has changed'
-       CALL message( 'lpm_rrd_global_mpi', 'LPM0020', 1, 2, 0, 6, 0 )
+!-- TODO: convert the following to a standard PALM message
+    IF ( STORAGE_SIZE( particle_groups(1) ) / (wp*8) /= 4 )  THEN
+       WRITE( 9, * )  'size of structure particle_groups_type has changed '
+       FLUSH( 9 )
+#if defined( __parallel )
+       CALL MPI_ABORT( MPI_COMM_WORLD, 1, ierr )
+#else
+       STOP 'error'
+#endif
     ENDIF
 
     CALL rrd_mpi_io_global_array( 'particle_groups', particle_groups_array )
@@ -3451,17 +3668,10 @@
  SUBROUTINE lpm_last_actions
 
 !
-!-- Close NETCDF file for individual particle timeseries.
-    CALL dop_finalize
-
-
-#if defined( __parallel )
-!
-!-- Free particle window on parent and child.
-    IF ( nested_run )  THEN
-       CALL pmcp_g_free_win
+!-- Close NETCDF file for individual particle timeseries
+    IF ( dop_active )  THEN
+       CALL dop_finalize
     ENDIF
-#endif
 
  END SUBROUTINE lpm_last_actions
 
@@ -3472,11 +3682,8 @@
 !> This is a submodule of the lagrangian particle model. It contains all dynamic processes of the
 !> lpm. This includes the advection (resolved and sub-grid scale) as well as the boundary conditions
 !> of particles. As a next step this submodule should be excluded as an own file.
-!> @note: as the lpm is called after swap_timelevel the velocites u,v,w contains the values of t+1.
-!> Thus, for the trilinear interpolation the values of timelevel t are used, which has been stored
-!> on u_m, v_m, w_m.
 !--------------------------------------------------------------------------------------------------!
- SUBROUTINE lpm_advec( ip, jp, kp )
+ SUBROUTINE lpm_advec (ip,jp,kp)
 
     REAL(wp), PARAMETER ::  a_rog = 9.65_wp      !< parameter for fall velocity
     REAL(wp), PARAMETER ::  b_rog = 10.43_wp     !< parameter for fall velocity
@@ -3487,16 +3694,17 @@
 
     INTEGER(iwp) ::  i                           !< index variable along x
     INTEGER(iwp) ::  i_next                      !< index variable along x
-    INTEGER(iwp), INTENT(IN) ::  ip              !< index variable along x
+    INTEGER(iwp) ::  ip                          !< index variable along x
     INTEGER(iwp) ::  iteration_steps = 1         !< amount of iterations steps for corrector step
     INTEGER(iwp) ::  j                           !< index variable along y
     INTEGER(iwp) ::  j_next                      !< index variable along y
-    INTEGER(iwp), INTENT(IN) ::  jp              !< index variable along y
+    INTEGER(iwp) ::  jp                          !< index variable along y
     INTEGER(iwp) ::  k                           !< index variable along z
     INTEGER(iwp) ::  k_wall                      !< vertical index of topography top
-    INTEGER(iwp), INTENT(IN) ::  kp              !< index variable along z
+    INTEGER(iwp) ::  kp                          !< index variable along z
     INTEGER(iwp) ::  k_next                      !< index variable along z
     INTEGER(iwp) ::  kw                          !< index variable along z
+    INTEGER(iwp) ::  kkw                         !< index variable along z
     INTEGER(iwp) ::  n                           !< loop variable over all particles in a grid box
     INTEGER(iwp) ::  nn                          !< loop variable over iterations steps
     INTEGER(iwp) ::  nb                          !< block number particles are sorted in
@@ -3511,9 +3719,9 @@
     LOGICAL ::  subbox_at_wall !< flag to see if the current subgridbox is adjacent to a wall
 
     REAL(wp) ::  aa                 !< dummy argument for horizontal particle interpolation
-    REAL(wp) ::  alpha_int          !< interpolation factor for x-direction
+    REAL(wp) ::  alpha              !< interpolation facor for x-direction
     REAL(wp) ::  bb                 !< dummy argument for horizontal particle interpolation
-    REAL(wp) ::  beta_int           !< interpolation factor for y-direction
+    REAL(wp) ::  beta               !< interpolation facor for y-direction
     REAL(wp) ::  cc                 !< dummy argument for horizontal particle interpolation
     REAL(wp) ::  d_z_p_z0           !< inverse of interpolation length for logarithmic interpolation
     REAL(wp) ::  dd                 !< dummy argument for horizontal particle interpolation
@@ -3529,12 +3737,13 @@
     REAL(wp) ::  diss_int_l         !< x/y-interpolated dissipation at particle position at lower vertical level
     REAL(wp) ::  diss_int_u         !< x/y-interpolated dissipation at particle position at upper vertical level
     REAL(wp) ::  dt_particle_m      !< previous particle time step
+    REAL(wp) ::  dz_temp            !< dummy for the vertical grid spacing
     REAL(wp) ::  e_int_l            !< x/y-interpolated TKE at particle position at lower vertical level
     REAL(wp) ::  e_int_u            !< x/y-interpolated TKE at particle position at upper vertical level
     REAL(wp) ::  e_mean_int         !< horizontal mean TKE at particle height
     REAL(wp) ::  exp_arg            !< argument in the exponent - particle radius
     REAL(wp) ::  exp_term           !< exponent term
-    REAL(wp) ::  gamma_int          !< interpolation factor for z-direction
+    REAL(wp) ::  gamma              !< interpolation facor for z-direction
     REAL(wp) ::  gg                 !< dummy argument for horizontal particle interpolation
     REAL(wp) ::  height_p           !< dummy argument for logarithmic interpolation
     REAL(wp) ::  log_z_z0_int       !< logarithmus used for surface_layer interpolation
@@ -3586,11 +3795,7 @@
 
     REAL(wp), DIMENSION(number_of_particles, 3) ::  rg          !< vector of Gaussian distributed random numbers
 
-
-!
-!-- Not all grid cells may have particles, therefore barrierwait not allowed for logging.
-    CALL cpu_log( log_point_s(44), 'lpm_advec', 'continue', .FALSE. )
-
+    CALL cpu_log( log_point_s(44), 'lpm_advec', 'continue' )
 !
 !-- Determine height of Prandtl layer and distance between Prandtl-layer height and horizontal mean
 !-- roughness height, which are required for vertical logarithmic interpolation of horizontal
@@ -3604,27 +3809,28 @@
     dt_particle = dt_3d
 
 !
-!-- This case uses a simple interpolation method for the particle velocites, which is is described
-!-- in more detail in Grabowski et al., 2018 (GMD), applying a predictor-corrector method.
-!-- @attention: for the corrector step the velocities of t+dt are required.
-!-- Therefore the particle code is executed at the end of the intermediate timestep routine.
-!-- @note the current divergence free time level is named u_m etc.,
-!-- the velocities of time level t+dt are named u etc. as the model is called after swap timelevel
+!-- This case uses a simple interpolation method for the particle velocites, and applying a
+!-- predictor-corrector method. @note the current time divergence free time step is denoted with
+!-- u_t etc.; the velocities of the time level of t+1 wit u,v, and w, as the model is called after
+!-- swap timelevel
+!-- @attention: for the corrector step the velocities of t(n+1) are required.
+!-- Therefore the particle code is executed at the end of the time intermediate timestep routine.
+!-- This interpolation method is described in more detail in Grabowski et al., 2018 (GMD).
     IF ( interpolation_simple_corrector )  THEN
 !
 !--    Predictor step
-       kw = kp - 1
+       kkw = kp - 1
        DO  n = 1, number_of_particles
 
-          alpha_int = MAX( MIN( ( particles(n)%x - ip * dx ) * ddx, 1.0_wp ), 0.0_wp )
-          u_int(n) = u_m(kp,jp,ip) * ( 1.0_wp - alpha_int ) + u_m(kp,jp,ip+1) * alpha_int
+          alpha = MAX( MIN( ( particles(n)%x - ip * dx ) * ddx, 1.0_wp ), 0.0_wp )
+          u_int(n) = u_t(kp,jp,ip) * ( 1.0_wp - alpha ) + u_t(kp,jp,ip+1) * alpha
 
-          beta_int  = MAX( MIN( ( particles(n)%y - jp * dy ) * ddy, 1.0_wp ), 0.0_wp )
-          v_int(n) = v_m(kp,jp,ip) * ( 1.0_wp - beta_int ) + v_m(kp,jp+1,ip) * beta_int
+          beta  = MAX( MIN( ( particles(n)%y - jp * dy ) * ddy, 1.0_wp ), 0.0_wp )
+          v_int(n) = v_t(kp,jp,ip) * ( 1.0_wp - beta ) + v_t(kp,jp+1,ip) * beta
 
-          gamma_int = MAX( MIN( ( particles(n)%z - zw(kw) ) / ( zw(kw+1) - zw(kw) ), 1.0_wp ),     &
+          gamma = MAX( MIN( ( particles(n)%z - zw(kkw) ) / ( zw(kkw+1) - zw(kkw) ), 1.0_wp ),      &
                        0.0_wp )
-          w_int(n) = w_m(kw,jp,ip) * ( 1.0_wp - gamma_int ) + w_m(kw+1,jp,ip) * gamma_int
+          w_int(n) = w_t(kkw,jp,ip) * ( 1.0_wp - gamma ) + w_t(kkw+1,jp,ip) * gamma
 
        ENDDO
 !
@@ -3642,27 +3848,27 @@
              zp = particles(n)%z + w_int(n) * dt_particle(n)
 !
 !--          x direction
-             i_next = FLOOR( xp * ddx )
-             alpha_int  = MAX( MIN( ( xp - i_next * dx ) * ddx, 1.0_wp ), 0.0_wp )
+             i_next = FLOOR( xp * ddx , KIND=iwp)
+             alpha  = MAX( MIN( ( xp - i_next * dx ) * ddx, 1.0_wp ), 0.0_wp )
 !
 !--          y direction
              j_next = FLOOR( yp * ddy )
-             beta_int   = MAX( MIN( ( yp - j_next * dy ) * ddy, 1.0_wp ), 0.0_wp )
+             beta   = MAX( MIN( ( yp - j_next * dy ) * ddy, 1.0_wp ), 0.0_wp )
 !
 !--          z_direction
-             k_next = MAX( MIN( FLOOR( zp / (zw(kw+1)-zw(kw)) + offset_ocean_nzt ), nzt ), 0)
-             gamma_int = MAX( MIN( ( zp - zw(k_next) ) /                                           &
+             k_next = MAX( MIN( FLOOR( zp / (zw(kkw+1)-zw(kkw)) + offset_ocean_nzt ), nzt ), 0)
+             gamma = MAX( MIN( ( zp - zw(k_next) ) /                                               &
                                ( zw(k_next+1) - zw(k_next) ), 1.0_wp ), 0.0_wp )
 !
 !--          Calculate part of the corrector step
-             unext = u(k_next+1, j_next, i_next) * ( 1.0_wp - alpha_int ) +                        &
-                     u(k_next+1, j_next,   i_next+1) * alpha_int
+             unext = u(k_next+1, j_next, i_next) * ( 1.0_wp - alpha ) +                            &
+                     u(k_next+1, j_next,   i_next+1) * alpha
 
-             vnext = v(k_next+1, j_next, i_next) * ( 1.0_wp - beta_int  ) +                        &
-                     v(k_next+1, j_next+1, i_next  ) * beta_int
+             vnext = v(k_next+1, j_next, i_next) * ( 1.0_wp - beta  ) +                            &
+                     v(k_next+1, j_next+1, i_next  ) * beta
 
-             wnext = w(k_next,   j_next, i_next) * ( 1.0_wp - gamma_int ) +                        &
-                     w(k_next+1, j_next, i_next  ) * gamma_int
+             wnext = w(k_next,   j_next, i_next) * ( 1.0_wp - gamma ) +                            &
+                     w(k_next+1, j_next, i_next  ) * gamma
 
 !
 !--          Calculate interpolated particle velocity with predictor corrector step. u_int, v_int
@@ -3681,19 +3887,19 @@
     ELSEIF ( interpolation_simple_predictor )  THEN
 !
 !--    The particle position for the w velociy is based on the value of kp and kp-1
-       kw = kp - 1
+       kkw = kp - 1
        DO  n = 1, number_of_particles
           IF ( .NOT. particles(n)%particle_mask )  CYCLE
 
-          alpha_int    = MAX( MIN( ( particles(n)%x - ip * dx ) * ddx, 1.0_wp ), 0.0_wp )
-          u_int(n) = u(kp,jp,ip) * ( 1.0_wp - alpha_int ) + u(kp,jp,ip+1) * alpha_int
+          alpha    = MAX( MIN( ( particles(n)%x - ip * dx ) * ddx, 1.0_wp ), 0.0_wp )
+          u_int(n) = u(kp,jp,ip) * ( 1.0_wp - alpha ) + u(kp,jp,ip+1) * alpha
 
-          beta_int     = MAX( MIN( ( particles(n)%y - jp * dy ) * ddy, 1.0_wp ), 0.0_wp )
-          v_int(n) = v(kp,jp,ip) * ( 1.0_wp - beta_int ) + v(kp,jp+1,ip) * beta_int
+          beta     = MAX( MIN( ( particles(n)%y - jp * dy ) * ddy, 1.0_wp ), 0.0_wp )
+          v_int(n) = v(kp,jp,ip) * ( 1.0_wp - beta ) + v(kp,jp+1,ip) * beta
 
-          gamma_int    = MAX( MIN( ( particles(n)%z - zw(kw) ) / ( zw(kw+1) - zw(kw) ), 1.0_wp ),  &
+          gamma    = MAX( MIN( ( particles(n)%z - zw(kkw) ) / ( zw(kkw+1) - zw(kkw) ), 1.0_wp ),   &
                           0.0_wp )
-          w_int(n) = w(kw,jp,ip) * ( 1.0_wp - gamma_int ) + w(kw+1,jp,ip) * gamma_int
+          w_int(n) = w(kkw,jp,ip) * ( 1.0_wp - gamma ) + w(kkw+1,jp,ip) * gamma
        ENDDO
 !
 !-- The trilinear interpolation.
@@ -3744,11 +3950,11 @@
 !--                since several calls of intrinsic FORTRAN procedures (LOG, ATAN) are avoided. This
 !--                is justified as sensitivity studies revealed no significant effect of using the
 !--                neutral solution also for un/stable situations. Based on the u* recalculate the
-!--                velocity at height z_particle. Since the analytical solution only yields
-!--                absolute values, include the sign using the intrinsic SIGN function.
-                   us_int   = kappa * 0.5_wp * ABS( u_m(k_wall+1,jp,ip) + u_m(k_wall+1,jp,ip+1) ) /&
+!--                velocity at height z_particle. Since the analytical solution only yields absolute
+!--                values, include the sign using the intrinsic SIGN function.
+                   us_int   = kappa * 0.5_wp * ABS( u(k_wall+1,jp,ip) + u(k_wall+1,jp,ip+1) ) /    &
                               log_z_z0(number_of_sublayers)
-                   u_int(n) = SIGN( 1.0_wp, u_m(k_wall+1,jp,ip) + u_m(k_wall+1,jp,ip+1) ) *        &
+                   u_int(n) = SIGN( 1.0_wp, u(k_wall+1,jp,ip) + u(k_wall+1,jp,ip+1) ) *            &
                               log_z_z0_int * us_int / kappa - u_gtrans
 
                 ENDIF
@@ -3764,15 +3970,15 @@
                 dd = ( dx - x )**2 + ( dy - y )**2
                 gg = aa + bb + cc + dd
 
-                u_int_l = ( ( gg - aa ) * u_m(k,j,i)   + ( gg - bb ) * u_m(k,j,i+1)                &
-                            + ( gg - cc ) * u_m(k,j+1,i) + ( gg - dd ) * u_m(k,j+1,i+1) )          &
+                u_int_l = ( ( gg - aa ) * u(k,j,i)   + ( gg - bb ) * u(k,j,i+1)                    &
+                            + ( gg - cc ) * u(k,j+1,i) + ( gg - dd ) * u(k,j+1,i+1) )              &
                           / ( 3.0_wp * gg ) - u_gtrans
 
                 IF ( k == nzt )  THEN
                    u_int(n) = u_int_l
                 ELSE
-                   u_int_u = ( ( gg-aa ) * u_m(k+1,j,i) + ( gg-bb ) * u_m(k+1,j,i+1)               &
-                               + ( gg-cc ) * u_m(k+1,j+1,i) + ( gg-dd ) * u_m(k+1,j+1,i+1) )       &
+                   u_int_u = ( ( gg-aa ) * u(k+1,j,i) + ( gg-bb ) * u(k+1,j,i+1)                   &
+                               + ( gg-cc ) * u(k+1,j+1,i) + ( gg-dd ) * u(k+1,j+1,i+1) )           &
                              / ( 3.0_wp * gg ) - u_gtrans
                    u_int(n) = u_int_l + ( zv(n) - zu(k) ) / dzw(k+1) * ( u_int_u - u_int_l )
                 ENDIF
@@ -3816,9 +4022,9 @@
 !--                neutral solution also for un/stable situations. Based on the u* recalculate the
 !--                velocity at height z_particle. Since the analytical solution only yields absolute
 !--                values, include the sign using the intrinsic SIGN function.
-                   us_int   = kappa * 0.5_wp * ABS( v_m(k_wall+1,jp,ip) + v_m(k_wall+1,jp+1,ip) ) /&
+                   us_int   = kappa * 0.5_wp * ABS( v(k_wall+1,jp,ip) + v(k_wall+1,jp+1,ip) ) /    &
                               log_z_z0(number_of_sublayers)
-                   v_int(n) = SIGN( 1.0_wp, v_m(k_wall+1,jp,ip) + v_m(k_wall+1,jp+1,ip) ) *        &
+                   v_int(n) = SIGN( 1.0_wp, v(k_wall+1,jp,ip) + v(k_wall+1,jp+1,ip) ) *            &
                               log_z_z0_int * us_int / kappa - v_gtrans
 
                 ENDIF
@@ -3831,15 +4037,15 @@
                 dd = ( dx - x )**2 + ( dy - y )**2
                 gg = aa + bb + cc + dd
 
-                v_int_l = ( ( gg - aa ) * v_m(k,j,i)   + ( gg - bb ) * v_m(k,j,i+1)                &
-                          + ( gg - cc ) * v_m(k,j+1,i) + ( gg - dd ) * v_m(k,j+1,i+1)              &
+                v_int_l = ( ( gg - aa ) * v(k,j,i)   + ( gg - bb ) * v(k,j,i+1)                    &
+                          + ( gg - cc ) * v(k,j+1,i) + ( gg - dd ) * v(k,j+1,i+1)                  &
                           ) / ( 3.0_wp * gg ) - v_gtrans
 
                 IF ( k == nzt )  THEN
                    v_int(n) = v_int_l
                 ELSE
-                   v_int_u = ( ( gg-aa ) * v_m(k+1,j,i)   + ( gg-bb ) * v_m(k+1,j,i+1)             &
-                             + ( gg-cc ) * v_m(k+1,j+1,i) + ( gg-dd ) * v_m(k+1,j+1,i+1)           &
+                   v_int_u = ( ( gg-aa ) * v(k+1,j,i)   + ( gg-bb ) * v(k+1,j,i+1)                 &
+                             + ( gg-cc ) * v(k+1,j+1,i) + ( gg-dd ) * v(k+1,j+1,i+1)               &
                              ) / ( 3.0_wp * gg ) - v_gtrans
                    v_int(n) = v_int_l + ( zv(n) - zu(k) ) / dzw(k+1) * ( v_int_u - v_int_l )
                 ENDIF
@@ -3861,17 +4067,17 @@
                 dd = ( dx - x )**2 + ( dy - y )**2
                 gg = aa + bb + cc + dd
 
-                w_int_l = ( ( gg - aa ) * w_m(k,j,i)   + ( gg - bb ) * w_m(k,j,i+1)                &
-                          + ( gg - cc ) * w_m(k,j+1,i) + ( gg - dd ) * w_m(k,j+1,i+1)              &
+                w_int_l = ( ( gg - aa ) * w(k,j,i)   + ( gg - bb ) * w(k,j,i+1)                    &
+                          + ( gg - cc ) * w(k,j+1,i) + ( gg - dd ) * w(k,j+1,i+1)                  &
                           ) / ( 3.0_wp * gg )
 
                 IF ( k == nzt )  THEN
                    w_int(n) = w_int_l
                 ELSE
-                   w_int_u = ( ( gg-aa ) * w_m(k+1,j,i)   +                                        &
-                               ( gg-bb ) * w_m(k+1,j,i+1) +                                        &
-                               ( gg-cc ) * w_m(k+1,j+1,i) +                                        &
-                               ( gg-dd ) * w_m(k+1,j+1,i+1)                                        &
+                   w_int_u = ( ( gg-aa ) * w(k+1,j,i)   +                                          &
+                               ( gg-bb ) * w(k+1,j,i+1) +                                          &
+                               ( gg-cc ) * w(k+1,j+1,i) +                                          &
+                               ( gg-dd ) * w(k+1,j+1,i+1)                                          &
                              ) / ( 3.0_wp * gg )
                    w_int(n) = w_int_l + ( zv(n) - zw(k) ) / dzw(k+1) * ( w_int_u - w_int_l )
                 ENDIF
@@ -3885,375 +4091,166 @@
 !-- Interpolate and calculate quantities needed for calculating the SGS velocities
     IF ( use_sgs_for_particles  .AND.  .NOT. cloud_droplets )  THEN
 
-       IF ( interpolation_trilinear ) THEN
+       DO  nb = 0,7
 
-          DO  nb = 0,7
-
-             subbox_at_wall = .FALSE.
+          subbox_at_wall = .FALSE.
 !
-!--          In case of topography check if subbox is adjacent to a wall
-             IF ( .NOT. topography == 'flat' )  THEN
-                i = ip + MERGE( -1_iwp , 1_iwp, BTEST( nb, 2 ) )
-                j = jp + MERGE( -1_iwp , 1_iwp, BTEST( nb, 1 ) )
-                k = kp + MERGE( -1_iwp , 1_iwp, BTEST( nb, 0 ) )
-                IF ( .NOT. BTEST( topo_flags(k,jp,ip), 0)  .OR.                                    &
-                     .NOT. BTEST( topo_flags(kp,j,ip), 0)  .OR.                                    &
-                     .NOT. BTEST( topo_flags(kp,jp,i), 0) )                                        &
-                THEN
-                   subbox_at_wall = .TRUE.
-                ENDIF
-
+!--       In case of topography check if subbox is adjacent to a wall
+          IF ( .NOT. topography == 'flat' )  THEN
+             i = ip + MERGE( -1_iwp , 1_iwp, BTEST( nb, 2 ) )
+             j = jp + MERGE( -1_iwp , 1_iwp, BTEST( nb, 1 ) )
+             k = kp + MERGE( -1_iwp , 1_iwp, BTEST( nb, 0 ) )
+             IF ( .NOT. BTEST(wall_flags_total_0(k,  jp, ip), 0) .OR.                              &
+                  .NOT. BTEST(wall_flags_total_0(kp, j,  ip), 0) .OR.                              &
+                  .NOT. BTEST(wall_flags_total_0(kp, jp, i ), 0) )                                 &
+             THEN
+                subbox_at_wall = .TRUE.
              ENDIF
-             IF ( subbox_at_wall )  THEN
-                e_int(start_index(nb):end_index(nb))     = e(kp,jp,ip)
-                diss_int(start_index(nb):end_index(nb))  = diss(kp,jp,ip)
-                de_dx_int(start_index(nb):end_index(nb)) = de_dx(kp,jp,ip)
-                de_dy_int(start_index(nb):end_index(nb)) = de_dy(kp,jp,ip)
-                de_dz_int(start_index(nb):end_index(nb)) = de_dz(kp,jp,ip)
+          ENDIF
+          IF ( subbox_at_wall )  THEN
+             e_int(start_index(nb):end_index(nb))     = e(kp,jp,ip)
+             diss_int(start_index(nb):end_index(nb))  = diss(kp,jp,ip)
+             de_dx_int(start_index(nb):end_index(nb)) = de_dx(kp,jp,ip)
+             de_dy_int(start_index(nb):end_index(nb)) = de_dy(kp,jp,ip)
+             de_dz_int(start_index(nb):end_index(nb)) = de_dz(kp,jp,ip)
 !
-!--             Set flag for stochastic equation.
-                term_1_2(start_index(nb):end_index(nb)) = 0.0_wp
-             ELSE
-                i = ip + block_offset(nb)%i_off
-                j = jp + block_offset(nb)%j_off
-                k = kp + block_offset(nb)%k_off
-
-                DO  n = start_index(nb), end_index(nb)
-!
-!--                Interpolate TKE
-                   x  = xv(n) + ( 0.5_wp - i ) * dx
-                   y  = yv(n) + ( 0.5_wp - j ) * dy
-                   aa = x**2          + y**2
-                   bb = ( dx - x )**2 + y**2
-                   cc = x**2          + ( dy - y )**2
-                   dd = ( dx - x )**2 + ( dy - y )**2
-                   gg = aa + bb + cc + dd
-
-                   e_int_l = ( ( gg-aa ) * e(k,j,i)   + ( gg-bb ) * e(k,j,i+1)                     &
-                             + ( gg-cc ) * e(k,j+1,i) + ( gg-dd ) * e(k,j+1,i+1)                   &
-                             ) / ( 3.0_wp * gg )
-
-                   IF ( k+1 == nzt+1 )  THEN
-                      e_int(n) = e_int_l
-                   ELSE
-                      e_int_u = ( ( gg - aa ) * e(k+1,j,i)   + &
-                                  ( gg - bb ) * e(k+1,j,i+1) + &
-                                  ( gg - cc ) * e(k+1,j+1,i) + &
-                                  ( gg - dd ) * e(k+1,j+1,i+1) &
-                               ) / ( 3.0_wp * gg )
-                      e_int(n) = e_int_l + ( zv(n) - zu(k) ) / dzw(k+1) * ( e_int_u - e_int_l )
-                   ENDIF
-!
-!--                Needed to avoid NaN particle velocities (this might not be required any more)
-                   IF ( e_int(n) <= 0.0_wp )  THEN
-                      e_int(n) = 1.0E-20_wp
-                   ENDIF
-!
-!--                Interpolate the TKE gradient along x (adopt incides i,j,k and all position
-!--                variables from above (TKE))
-                   de_dx_int_l = ( ( gg - aa ) * de_dx(k,j,i)   +                                  &
-                                   ( gg - bb ) * de_dx(k,j,i+1) +                                  &
-                                   ( gg - cc ) * de_dx(k,j+1,i) +                                  &
-                                   ( gg - dd ) * de_dx(k,j+1,i+1)                                  &
-                                  ) / ( 3.0_wp * gg )
-
-                   IF ( ( k+1 == nzt+1 )  .OR.  ( k == nzb ) )  THEN
-                      de_dx_int(n) = de_dx_int_l
-                   ELSE
-                      de_dx_int_u = ( ( gg - aa ) * de_dx(k+1,j,i)   +                             &
-                                      ( gg - bb ) * de_dx(k+1,j,i+1) +                             &
-                                      ( gg - cc ) * de_dx(k+1,j+1,i) +                             &
-                                      ( gg - dd ) * de_dx(k+1,j+1,i+1)                             &
-                                     ) / ( 3.0_wp * gg )
-                      de_dx_int(n) = de_dx_int_l + ( zv(n) - zu(k) ) / dzw(k+1) *                  &
-                                                 ( de_dx_int_u - de_dx_int_l )
-                   ENDIF
-!
-!--                Interpolate the TKE gradient along y
-                   de_dy_int_l = ( ( gg - aa ) * de_dy(k,j,i)   +                                  &
-                                   ( gg - bb ) * de_dy(k,j,i+1) +                                  &
-                                   ( gg - cc ) * de_dy(k,j+1,i) +                                  &
-                                   ( gg - dd ) * de_dy(k,j+1,i+1)                                  &
-                                  ) / ( 3.0_wp * gg )
-                   IF ( ( k+1 == nzt+1 )  .OR.  ( k == nzb ) )  THEN
-                      de_dy_int(n) = de_dy_int_l
-                   ELSE
-                      de_dy_int_u = ( ( gg - aa ) * de_dy(k+1,j,i)   +                             &
-                                      ( gg - bb ) * de_dy(k+1,j,i+1) +                             &
-                                      ( gg - cc ) * de_dy(k+1,j+1,i) +                             &
-                                      ( gg - dd ) * de_dy(k+1,j+1,i+1)                             &
-                                     ) / ( 3.0_wp * gg )
-                         de_dy_int(n) = de_dy_int_l + ( zv(n) - zu(k) ) / dzw(k+1) *               &
-                                                    ( de_dy_int_u - de_dy_int_l )
-                   ENDIF
-
-!
-!--                Interpolate the TKE gradient along z
-                   IF ( zv(n) < 0.5_wp * dz(1) )  THEN
-                      de_dz_int(n) = 0.0_wp
-                   ELSE
-                      de_dz_int_l = ( ( gg - aa ) * de_dz(k,j,i)   +                               &
-                                      ( gg - bb ) * de_dz(k,j,i+1) +                               &
-                                      ( gg - cc ) * de_dz(k,j+1,i) +                               &
-                                      ( gg - dd ) * de_dz(k,j+1,i+1)                               &
-                                     ) / ( 3.0_wp * gg )
-
-                      IF ( ( k+1 == nzt+1 )  .OR.  ( k == nzb ) )  THEN
-                         de_dz_int(n) = de_dz_int_l
-                      ELSE
-                         de_dz_int_u = ( ( gg - aa ) * de_dz(k+1,j,i)   +                          &
-                                         ( gg - bb ) * de_dz(k+1,j,i+1) +                          &
-                                         ( gg - cc ) * de_dz(k+1,j+1,i) +                          &
-                                         ( gg - dd ) * de_dz(k+1,j+1,i+1)                          &
-                                        ) / ( 3.0_wp * gg )
-                         de_dz_int(n) = de_dz_int_l + ( zv(n) - zu(k) ) / dzw(k+1) *               &
-                                                    ( de_dz_int_u - de_dz_int_l )
-                      ENDIF
-                   ENDIF
-
-!
-!--                Interpolate the dissipation of TKE
-                   diss_int_l = ( ( gg - aa ) * diss(k,j,i)   +                                    &
-                                  ( gg - bb ) * diss(k,j,i+1) +                                    &
-                                  ( gg - cc ) * diss(k,j+1,i) +                                    &
-                                  ( gg - dd ) * diss(k,j+1,i+1)                                    &
-                                  ) / ( 3.0_wp * gg )
-
-                   IF ( k == nzt )  THEN
-                      diss_int(n) = diss_int_l
-                   ELSE
-                      diss_int_u = ( ( gg - aa ) * diss(k+1,j,i)   +                               &
-                                     ( gg - bb ) * diss(k+1,j,i+1) +                               &
-                                     ( gg - cc ) * diss(k+1,j+1,i) +                               &
-                                     ( gg - dd ) * diss(k+1,j+1,i+1)                               &
-                                    ) / ( 3.0_wp * gg )
-                      diss_int(n) = diss_int_l + ( zv(n) - zu(k) ) / dzw(k+1) *                    &
-                                               ( diss_int_u - diss_int_l )
-                   ENDIF
-
-!
-!--                Set flag for stochastic equation.
-                   term_1_2(n) = 1.0_wp
-                ENDDO
-             ENDIF
-          ENDDO
-
-          DO  nb = 0,7
+!--          Set flag for stochastic equation.
+             term_1_2(start_index(nb):end_index(nb)) = 0.0_wp
+          ELSE
              i = ip + block_offset(nb)%i_off
              j = jp + block_offset(nb)%j_off
              k = kp + block_offset(nb)%k_off
 
              DO  n = start_index(nb), end_index(nb)
 !
-!--             Vertical interpolation of the horizontally averaged SGS TKE and resolved-scale
-!--             velocity variances and use the interpolated values to calculate the coefficient fs,
-!--             which is a measure of the ratio of the subgrid-scale turbulent kinetic energy to the
-!--             total amount of turbulent kinetic energy.
-                IF ( k == 0 )  THEN
-                   e_mean_int = hom(0,1,8,0)
+!--             Interpolate TKE
+                x  = xv(n) + ( 0.5_wp - i ) * dx
+                y  = yv(n) + ( 0.5_wp - j ) * dy
+                aa = x**2          + y**2
+                bb = ( dx - x )**2 + y**2
+                cc = x**2          + ( dy - y )**2
+                dd = ( dx - x )**2 + ( dy - y )**2
+                gg = aa + bb + cc + dd
+
+                e_int_l = ( ( gg-aa ) * e(k,j,i)   + ( gg-bb ) * e(k,j,i+1)                        &
+                          + ( gg-cc ) * e(k,j+1,i) + ( gg-dd ) * e(k,j+1,i+1)                      &
+                          ) / ( 3.0_wp * gg )
+
+                IF ( k+1 == nzt+1 )  THEN
+                   e_int(n) = e_int_l
                 ELSE
-                   e_mean_int = hom(k,1,8,0) + ( hom(k+1,1,8,0) - hom(k,1,8,0) ) /                 &
-                                               ( zu(k+1) - zu(k) ) *                               &
-                                               ( zv(n) - zu(k) )
+                   e_int_u = ( ( gg - aa ) * e(k+1,j,i)   + &
+                               ( gg - bb ) * e(k+1,j,i+1) + &
+                               ( gg - cc ) * e(k+1,j+1,i) + &
+                               ( gg - dd ) * e(k+1,j+1,i+1) &
+                            ) / ( 3.0_wp * gg )
+                   e_int(n) = e_int_l + ( zv(n) - zu(k) ) / dzw(k+1) * ( e_int_u - e_int_l )
+                ENDIF
+!
+!--             Needed to avoid NaN particle velocities (this might not be required any more)
+                IF ( e_int(n) <= 0.0_wp )  THEN
+                   e_int(n) = 1.0E-20_wp
+                ENDIF
+!
+!--             Interpolate the TKE gradient along x (adopt incides i,j,k and all position variables
+!--             from above (TKE))
+                de_dx_int_l = ( ( gg - aa ) * de_dx(k,j,i)   +                                     &
+                                ( gg - bb ) * de_dx(k,j,i+1) +                                     &
+                                ( gg - cc ) * de_dx(k,j+1,i) +                                     &
+                                ( gg - dd ) * de_dx(k,j+1,i+1)                                     &
+                               ) / ( 3.0_wp * gg )
+
+                IF ( ( k+1 == nzt+1 )  .OR.  ( k == nzb ) )  THEN
+                   de_dx_int(n) = de_dx_int_l
+                ELSE
+                   de_dx_int_u = ( ( gg - aa ) * de_dx(k+1,j,i)   +                                &
+                                   ( gg - bb ) * de_dx(k+1,j,i+1) +                                &
+                                   ( gg - cc ) * de_dx(k+1,j+1,i) +                                &
+                                   ( gg - dd ) * de_dx(k+1,j+1,i+1)                                &
+                                  ) / ( 3.0_wp * gg )
+                   de_dx_int(n) = de_dx_int_l + ( zv(n) - zu(k) ) / dzw(k+1) *                     &
+                                              ( de_dx_int_u - de_dx_int_l )
+                ENDIF
+!
+!--             Interpolate the TKE gradient along y
+                de_dy_int_l = ( ( gg - aa ) * de_dy(k,j,i)   +                                     &
+                                ( gg - bb ) * de_dy(k,j,i+1) +                                     &
+                                ( gg - cc ) * de_dy(k,j+1,i) +                                     &
+                                ( gg - dd ) * de_dy(k,j+1,i+1)                                     &
+                               ) / ( 3.0_wp * gg )
+                IF ( ( k+1 == nzt+1 )  .OR.  ( k == nzb ) )  THEN
+                   de_dy_int(n) = de_dy_int_l
+                ELSE
+                   de_dy_int_u = ( ( gg - aa ) * de_dy(k+1,j,i)   +                                &
+                                   ( gg - bb ) * de_dy(k+1,j,i+1) +                                &
+                                   ( gg - cc ) * de_dy(k+1,j+1,i) +                                &
+                                   ( gg - dd ) * de_dy(k+1,j+1,i+1)                                &
+                                  ) / ( 3.0_wp * gg )
+                      de_dy_int(n) = de_dy_int_l + ( zv(n) - zu(k) ) / dzw(k+1) *                  &
+                                                 ( de_dy_int_u - de_dy_int_l )
                 ENDIF
 
-                kw = kp - 1
-
-                IF ( k == 0 )  THEN
-                   aa  = hom(k+1,1,30,0)  * ( zv(n) / &
-                                            ( 0.5_wp * ( zu(k+1) - zu(k) ) ) )
-                   bb  = hom(k+1,1,31,0)  * ( zv(n) / &
-                                            ( 0.5_wp * ( zu(k+1) - zu(k) ) ) )
-                   cc  = hom(kw+1,1,32,0) * ( zv(n) / &
-                                            ( 1.0_wp * ( zw(kw+1) - zw(kw) ) ) )
+!
+!--             Interpolate the TKE gradient along z
+                IF ( zv(n) < 0.5_wp * dz(1) )  THEN
+                   de_dz_int(n) = 0.0_wp
                 ELSE
-                   aa  = hom(k,1,30,0) + ( hom(k+1,1,30,0) - hom(k,1,30,0) ) *                     &
-                              ( ( zv(n) - zu(k) ) / ( zu(k+1) - zu(k) ) )
-                   bb  = hom(k,1,31,0) + ( hom(k+1,1,31,0) - hom(k,1,31,0) ) *                     &
-                              ( ( zv(n) - zu(k) ) / ( zu(k+1) - zu(k) ) )
-                   cc  = hom(kw,1,32,0) + ( hom(kw+1,1,32,0)-hom(kw,1,32,0) ) *                    &
-                              ( ( zv(n) - zw(kw) ) / ( zw(kw+1)-zw(kw) ) )
-                ENDIF
+                   de_dz_int_l = ( ( gg - aa ) * de_dz(k,j,i)   +                                  &
+                                   ( gg - bb ) * de_dz(k,j,i+1) +                                  &
+                                   ( gg - cc ) * de_dz(k,j+1,i) +                                  &
+                                   ( gg - dd ) * de_dz(k,j+1,i+1)                                  &
+                                  ) / ( 3.0_wp * gg )
 
-                vv_int = ( 1.0_wp / 3.0_wp ) * ( aa + bb + cc )
-!
-!--             Needed to avoid NaN particle velocities. The value of 1.0 is just an educated guess
-!--             for the given case.
-                IF ( vv_int + ( 2.0_wp / 3.0_wp ) * e_mean_int == 0.0_wp )  THEN
-                   fs_int(n) = 1.0_wp
-                ELSE
-                   fs_int(n) = ( 2.0_wp / 3.0_wp ) * e_mean_int /                                  &
-                               ( vv_int + ( 2.0_wp / 3.0_wp ) * e_mean_int )
-                ENDIF
-
-             ENDDO
-          ENDDO
-
-          DO  nb = 0, 7
-             DO  n = start_index(nb), end_index(nb)
-                CALL random_number_parallel_gauss( random_dummy )
-                rg(n,1) = random_dummy
-                CALL random_number_parallel_gauss( random_dummy )
-                rg(n,2) = random_dummy
-                CALL random_number_parallel_gauss( random_dummy )
-                rg(n,3) = random_dummy
-             ENDDO
-          ENDDO
-
-          DO  nb = 0, 7
-             DO  n = start_index(nb), end_index(nb)
-
-!
-!--             Calculate the Lagrangian timescale according to Weil et al. (2004).
-                lagr_timescale(n) = ( 4.0_wp * e_int(n) + 1E-20_wp ) /                             &
-                                    ( 3.0_wp * fs_int(n) * c_0 * diss_int(n) + 1E-20_wp )
-
-!
-!--             Calculate the next particle timestep. dt_gap is the time needed to complete the
-!--             current LES timestep.
-                dt_gap(n) = dt_3d - particles(n)%dt_sum
-                dt_particle(n) = MIN( dt_3d, 0.025_wp * lagr_timescale(n), dt_gap(n) )
-                particles(n)%aux1 = lagr_timescale(n)
-!
-!--             The particle timestep should not be too small in order to prevent the number of
-!--             particle timesteps of getting too large
-                IF ( dt_particle(n) < dt_min_part )  THEN
-                   IF ( dt_min_part < dt_gap(n) )  THEN
-                      dt_particle(n) = dt_min_part
+                   IF ( ( k+1 == nzt+1 )  .OR.  ( k == nzb ) )  THEN
+                      de_dz_int(n) = de_dz_int_l
                    ELSE
-                      dt_particle(n) = dt_gap(n)
+                      de_dz_int_u = ( ( gg - aa ) * de_dz(k+1,j,i)   +                             &
+                                      ( gg - bb ) * de_dz(k+1,j,i+1) +                             &
+                                      ( gg - cc ) * de_dz(k+1,j+1,i) +                             &
+                                      ( gg - dd ) * de_dz(k+1,j+1,i+1)                             &
+                                     ) / ( 3.0_wp * gg )
+                      de_dz_int(n) = de_dz_int_l + ( zv(n) - zu(k) ) / dzw(k+1) *                  &
+                                                 ( de_dz_int_u - de_dz_int_l )
                    ENDIF
                 ENDIF
 
-                rvar1_temp(n) = particles(n)%rvar1
-                rvar2_temp(n) = particles(n)%rvar2
-                rvar3_temp(n) = particles(n)%rvar3
 !
-!--             Calculate the SGS velocity components
-                IF ( particles(n)%age == 0.0_wp )  THEN
-!
-!--                For new particles the SGS components are derived from the SGS TKE. Limit the
-!--                Gaussian random number to the interval [-5.0*sigma, 5.0*sigma] in order to
-!--                prevent the SGS velocities from becoming unrealistically large.
-                   rvar1_temp(n) = SQRT( 2.0_wp * sgs_wf_part * e_int(n) + 1E-20_wp ) * rg(n,1)
-                   rvar2_temp(n) = SQRT( 2.0_wp * sgs_wf_part * e_int(n) + 1E-20_wp ) * rg(n,2)
-                   rvar3_temp(n) = SQRT( 2.0_wp * sgs_wf_part * e_int(n) + 1E-20_wp ) * rg(n,3)
+!--             Interpolate the dissipation of TKE
+                diss_int_l = ( ( gg - aa ) * diss(k,j,i)   +                                       &
+                               ( gg - bb ) * diss(k,j,i+1) +                                       &
+                               ( gg - cc ) * diss(k,j+1,i) +                                       &
+                               ( gg - dd ) * diss(k,j+1,i+1)                                       &
+                               ) / ( 3.0_wp * gg )
+
+                IF ( k == nzt )  THEN
+                   diss_int(n) = diss_int_l
                 ELSE
-!
-!--                Restriction of the size of the new timestep: compared to the
-!--                previous timestep the increase must not exceed 200%. First,
-!--                check if age > age_m, in order to prevent that particles get zero
-!--                timestep.
-                   dt_particle_m = MERGE( dt_particle(n),                                          &
-                                          particles(n)%age - particles(n)%age_m,                   &
-                                          particles(n)%age - particles(n)%age_m < 1E-8_wp )
-                   IF ( dt_particle(n) > 2.0_wp * dt_particle_m )  THEN
-                      dt_particle(n) = 2.0_wp * dt_particle_m
-                   ENDIF
-
-!--                For old particles the SGS components are correlated with the values from the
-!--                previous timestep. Random numbers have also to be limited (see above).
-!--                As negative values for the subgrid TKE are not allowed, the change of the subgrid
-!--                TKE with time cannot be smaller than -e_int(n)/dt_particle. This value is used as
-!--                a lower boundary value for the change of TKE
-                   de_dt_min = - e_int(n) / dt_particle(n)
-
-                   de_dt = ( e_int(n) - particles(n)%e_m ) / dt_particle_m
-
-                   IF ( de_dt < de_dt_min )  THEN
-                      de_dt = de_dt_min
-                   ENDIF
-
-                   CALL weil_stochastic_eq( rvar1_temp(n), fs_int(n), e_int(n), de_dx_int(n),      &
-                                            de_dt, diss_int(n), dt_particle(n), rg(n,1),           &
-                                            term_1_2(n) )
-
-                   CALL weil_stochastic_eq( rvar2_temp(n), fs_int(n), e_int(n), de_dy_int(n),      &
-                                            de_dt,  diss_int(n), dt_particle(n), rg(n,2),          &
-                                            term_1_2(n) )
-
-                   CALL weil_stochastic_eq( rvar3_temp(n), fs_int(n), e_int(n), de_dz_int(n),      &
-                                            de_dt,  diss_int(n), dt_particle(n), rg(n,3),          &
-                                            term_1_2(n) )
-
+                   diss_int_u = ( ( gg - aa ) * diss(k+1,j,i)   +                                  &
+                                  ( gg - bb ) * diss(k+1,j,i+1) +                                  &
+                                  ( gg - cc ) * diss(k+1,j+1,i) +                                  &
+                                  ( gg - dd ) * diss(k+1,j+1,i+1)                                  &
+                                 ) / ( 3.0_wp * gg )
+                   diss_int(n) = diss_int_l + ( zv(n) - zu(k) ) / dzw(k+1) *                       &
+                                            ( diss_int_u - diss_int_l )
                 ENDIF
 
+!
+!--             Set flag for stochastic equation.
+                term_1_2(n) = 1.0_wp
              ENDDO
-          ENDDO
-!
-!--       Check if the added SGS velocities result in a violation of the CFL-criterion. If yes,
-!--       limit the SGS particle speed to match the CFL criterion. Note, a re-calculation of the SGS
-!--       particle speed with smaller timestep does not necessarily fulfill the CFL criterion as the
-!--       new SGS speed can be even larger (due to the random term with scales with the square-root
-!--       of dt_particle, for small dt the random contribution increases).
-!--       Thus, we would need to re-calculate the SGS speeds until they fulfill the requirements,
-!--       which could become computationally expensive. Hence, we just limit them.
-          DO  nb = 0, 7
-             DO  n = start_index(nb), end_index(nb)
-                IF ( ABS( u_int(n) + rvar1_temp(n) ) > ( dx      / dt_particle(n) )  .OR.          &
-                     ABS( v_int(n) + rvar2_temp(n) ) > ( dy      / dt_particle(n) )  .OR.          &
-                     ABS( w_int(n) + rvar3_temp(n) ) > ( dzw(kp) / dt_particle(n) ) )  THEN
-!
-!--                If total speed exceeds the allowed speed according to CFL
-!--                criterion, limit the SGS speed to
-!--                dx_i / dt_particle - u_resolved_i, considering a safty factor.
-                   rvar1_temp(n) = MERGE( rvar1_temp(n),                                           &
-                                          0.9_wp *                                                 &
-                                          SIGN( dx / dt_particle(n)                                &
-                                                - ABS( u_int(n) ), rvar1_temp(n) ),                &
-                                          ABS( u_int(n) + rvar1_temp(n) ) <                        &
-                                          ( dx / dt_particle(n) ) )
-                   rvar2_temp(n) = MERGE( rvar2_temp(n),                                           &
-                                          0.9_wp *                                                 &
-                                          SIGN( dy / dt_particle(n)                                &
-                                                - ABS( v_int(n) ), rvar2_temp(n) ),                &
-                                          ABS( v_int(n) + rvar2_temp(n) ) <                        &
-                                          ( dy / dt_particle(n) ) )
-                   rvar3_temp(n) = MERGE( rvar3_temp(n),                                           &
-                                          0.9_wp *                                                 &
-                                          SIGN( dzw(kp) / dt_particle(n)                           &
-                                                - ABS( w_int(n) ), rvar3_temp(n) ),                &
-                                          ABS( w_int(n) + rvar3_temp(n) ) <                        &
-                                          ( dzw(kp) / dt_particle(n) ) )
-                ENDIF
-!
-!--             Update particle velocites
-                particles(n)%rvar1 = rvar1_temp(n)
-                particles(n)%rvar2 = rvar2_temp(n)
-                particles(n)%rvar3 = rvar3_temp(n)
-                u_int(n) = u_int(n) + particles(n)%rvar1
-                v_int(n) = v_int(n) + particles(n)%rvar2
-                w_int(n) = w_int(n) + particles(n)%rvar3
-!
-!--             Store the SGS TKE of the current timelevel which is needed for for calculating the
-!--             SGS particle velocities at the next timestep.
-                particles(n)%e_m = e_int(n)
-             ENDDO
-          ENDDO
+          ENDIF
+       ENDDO
 
-       ELSEIF ( interpolation_simple_corrector  .OR.  interpolation_simple_predictor )  THEN
+       DO  nb = 0,7
+          i = ip + block_offset(nb)%i_off
+          j = jp + block_offset(nb)%j_off
+          k = kp + block_offset(nb)%k_off
 
-          e_int(1:number_of_particles)     = e(kp,jp,ip)
-          diss_int(1:number_of_particles)  = diss(kp,jp,ip)
-          de_dx_int(1:number_of_particles) = de_dx(kp,jp,ip)
-          de_dy_int(1:number_of_particles) = de_dy(kp,jp,ip)
-          de_dz_int(1:number_of_particles) = de_dz(kp,jp,ip)
+          DO  n = start_index(nb), end_index(nb)
 !
-!--       Set flag for stochastic equation.
-          term_1_2(1:number_of_particles) = 0.0_wp
-!
-!--       k = kp - 1
-          DO  n = 1, number_of_particles
-             IF ( zu(kp) > zv(n) ) THEN
-                k = kp -1
-             ELSE
-                k = kp
-             ENDIF
-!
-!--          Vertical interpolation of the horizontally averaged SGS TKE and
-!--          resolved-scale velocity variances and use the interpolated values
-!--          to calculate the coefficient fs, which is a measure of the ratio
-!--          of the subgrid-scale turbulent kinetic energy to the total amount
+!--          Vertical interpolation of the horizontally averaged SGS TKE and resolved-scale velocity
+!--          variances and use the interpolated values to calculate the coefficient fs, which is a
+!--          measure of the ratio of the subgrid-scale turbulent kinetic energy to the total amount
 !--          of turbulent kinetic energy.
              IF ( k == 0 )  THEN
                 e_mean_int = hom(0,1,8,0)
@@ -4281,11 +4278,10 @@
                            ( ( zv(n) - zw(kw) ) / ( zw(kw+1)-zw(kw) ) )
              ENDIF
 
-
              vv_int = ( 1.0_wp / 3.0_wp ) * ( aa + bb + cc )
 !
-!--          Needed to avoid NaN particle velocities. The value of 1.0 is just
-!--          an educated guess for the given case.
+!--          Needed to avoid NaN particle velocities. The value of 1.0 is just an educated guess for
+!--          the given case.
              IF ( vv_int + ( 2.0_wp / 3.0_wp ) * e_mean_int == 0.0_wp )  THEN
                 fs_int(n) = 1.0_wp
              ELSE
@@ -4293,27 +4289,35 @@
                             ( vv_int + ( 2.0_wp / 3.0_wp ) * e_mean_int )
              ENDIF
 
+          ENDDO
+       ENDDO
+
+       DO  nb = 0, 7
+          DO  n = start_index(nb), end_index(nb)
              CALL random_number_parallel_gauss( random_dummy )
              rg(n,1) = random_dummy
              CALL random_number_parallel_gauss( random_dummy )
              rg(n,2) = random_dummy
              CALL random_number_parallel_gauss( random_dummy )
              rg(n,3) = random_dummy
-
           ENDDO
+       ENDDO
 
-          DO  n = 1, number_of_particles
+       DO  nb = 0, 7
+          DO  n = start_index(nb), end_index(nb)
+
 !
 !--          Calculate the Lagrangian timescale according to Weil et al. (2004).
              lagr_timescale(n) = ( 4.0_wp * e_int(n) + 1E-20_wp ) /                                &
                                  ( 3.0_wp * fs_int(n) * c_0 * diss_int(n) + 1E-20_wp )
 
 !
-!--          Calculate the next particle timestep. dt_gap is the time needed to complete the
-!--          current LES timestep.
+!--          Calculate the next particle timestep. dt_gap is the time needed to complete the current
+!--          LES timestep.
              dt_gap(n) = dt_3d - particles(n)%dt_sum
              dt_particle(n) = MIN( dt_3d, 0.025_wp * lagr_timescale(n), dt_gap(n) )
              particles(n)%aux1 = lagr_timescale(n)
+             particles(n)%aux2 = dt_gap(n)
 !
 !--          The particle timestep should not be too small in order to prevent the number of
 !--          particle timesteps of getting too large
@@ -4350,7 +4354,7 @@
                 IF ( dt_particle(n) > 2.0_wp * dt_particle_m )  THEN
                    dt_particle(n) = 2.0_wp * dt_particle_m
                 ENDIF
-!
+
 !--             For old particles the SGS components are correlated with the values from the
 !--             previous timestep. Random numbers have also to be limited (see above).
 !--             As negative values for the subgrid TKE are not allowed, the change of the subgrid
@@ -4376,19 +4380,23 @@
              ENDIF
 
           ENDDO
-
+       ENDDO
 !
-!--       Check if the added SGS velocities result in a violation of the CFL-criterion. If yes, limt
-!--       the SGS particle speed to match the CFL criterion. Note, a re-calculation of the SGS
-!--       particle speed with smaller timestep does not necessarily fulfill the CFL criterion as the
-!--       new SGS speed can be even larger (due to the random term with scales with the square-root
-!--       of dt_particle, for small dt the random contribution increases).
-!--       Thus, we would need to re-calculate the SGS speeds until they fulfill the requirements,
-!--       which could become computationally expensive. Hence, we just limit them.
-          DO  n = 1, number_of_particles
+!--    Check if the added SGS velocities result in a violation of the CFL-criterion. If yes, limt
+!--    the SGS particle speed to match the CFL criterion. Note, a re-calculation of the SGS particle
+!--    speed with smaller timestep does not necessarily fulfill the CFL criterion as the new SGS
+!--    speed can be even larger (due to the random term with scales with the square-root of
+!--    dt_particle, for small dt the random contribution increases).
+!--    Thus, we would need to re-calculate the SGS speeds as long as they would fulfill the
+!--    requirements, which could become computationally expensive,
+!--    Hence, we just limit them.
+       dz_temp = zw(kp)-zw(kp-1)
+
+       DO  nb = 0, 7
+          DO  n = start_index(nb), end_index(nb)
              IF ( ABS( u_int(n) + rvar1_temp(n) ) > ( dx      / dt_particle(n) )  .OR.             &
                   ABS( v_int(n) + rvar2_temp(n) ) > ( dy      / dt_particle(n) )  .OR.             &
-                  ABS( w_int(n) + rvar3_temp(n) ) > ( dzw(kp) / dt_particle(n) ) )  THEN
+                  ABS( w_int(n) + rvar3_temp(n) ) > ( dz_temp / dt_particle(n) ) )  THEN
 !
 !--             If total speed exceeds the allowed speed according to CFL
 !--             criterion, limit the SGS speed to
@@ -4407,10 +4415,10 @@
                                        ( dy / dt_particle(n) ) )
                 rvar3_temp(n) = MERGE( rvar3_temp(n),                                              &
                                        0.9_wp *                                                    &
-                                       SIGN( dzw(kp) / dt_particle(n)                              &
+                                       SIGN( zw(kp)-zw(kp-1) / dt_particle(n)                      &
                                              - ABS( w_int(n) ), rvar3_temp(n) ),                   &
                                        ABS( w_int(n) + rvar3_temp(n) ) <                           &
-                                       ( dzw(kp) / dt_particle(n) ) )
+                                       ( zw(kp)-zw(kp-1) / dt_particle(n) ) )
              ENDIF
 !
 !--          Update particle velocites
@@ -4425,8 +4433,7 @@
 !--          particle velocities at the next timestep
              particles(n)%e_m = e_int(n)
           ENDDO
-
-       ENDIF ! particle interpolation method
+       ENDDO
 
     ELSE
 !
@@ -4553,8 +4560,7 @@
              ENDIF
           ENDDO
        ENDDO
-!
-!-- either no sgs velocities or cloud droplets (in that case sgs velocites wil be calculated later)
+
     ELSE
 !
 !--    Decide whether the particle loop runs over the subboxes or only over 1, number_of_particles.
@@ -4757,7 +4763,7 @@
     term2 = ( ( dedt_n * v_sgs / e_n ) + dedxi_n ) * 0.5_wp * dt_n * fac
 !
 !-- Random term
-    term3 = SQRT( MAX( a1, 1E-20_wp ) ) * rg_n * SQRT( dt_n )
+    term3 = SQRT( MAX( a1, 1E-20_wp ) ) * ( rg_n - 1.0_wp ) * SQRT( dt_n )
 !
 !-- In case one of the adjacent grid-boxes belongs to topograhy, the previous subgrid-scale velocity
 !-- component is set to zero, in order to prevent a velocity build-up.
@@ -4776,14 +4782,11 @@
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE lpm_swap_timelevel_for_particle_advection
 
-    CALL cpu_log( log_point_s(95), 'lpm_swap', 'start' )
 !
-!-- Save the divergence free velocites of level t+dt to use them at the end of the next time step
-    u_m = u
-    v_m = v
-    w_m = w
-
-    CALL cpu_log( log_point_s(95), 'lpm_swap', 'stop' )
+!-- Save the divergence free velocites of t+1 to use them at the end of the next time step
+    u_t = u
+    v_t = v
+    w_t = w
 
  END SUBROUTINE lpm_swap_timelevel_for_particle_advection
 
@@ -4893,12 +4896,13 @@
                   ((nyn-nys+2)*dy)/(particles(n)%age-particles(n)%age_m) )  THEN
 
                   WRITE( message_string, * )  'particle too fast.  n = ',  n
-                  CALL message( 'lpm_boundary_conds', 'LPM0021', 2, 2, -1, 6, 1 )
+                  CALL message( 'lpm_boundary_conds', 'PA0148', 2, 2, -1, 6, 1 )
              ENDIF
           ENDIF
 
           IF ( particles(n)%age > particle_maximum_age  .AND.  particles(n)%particle_mask )  THEN
              particles(n)%particle_mask  = .FALSE.
+             deleted_particles = deleted_particles + 1
           ENDIF
 
           IF ( particles(n)%z >= zw(nz)  .AND.  particles(n)%particle_mask )  THEN
@@ -4906,6 +4910,7 @@
 !
 !--             Particle absorption
                 particles(n)%particle_mask  = .FALSE.
+                deleted_particles = deleted_particles + 1
              ELSEIF ( ibc_par_t == 2 )  THEN
 !
 !--             Particle reflection
@@ -4923,6 +4928,7 @@
 !
 !--             Particle absorption
                 particles(n)%particle_mask  = .FALSE.
+                deleted_particles = deleted_particles + 1
              ELSEIF ( ibc_par_b == 2 )  THEN
 !
 !--             Particle reflection
@@ -4952,9 +4958,7 @@
 
       CASE ( 'walls' )
 
-!
-!--    Not all grid cells may have particles, therefore barrierwait not allowed for logging.
-       CALL cpu_log( log_point_s(48), 'lpm_wall_reflect', 'start', .FALSE. )
+       CALL cpu_log( log_point_s(48), 'lpm_wall_reflect', 'start' )
 
        DO  n = 1, number_of_particles
 !
@@ -5163,9 +5167,9 @@
 !--             Check if a particle needs to be reflected at any yz-wall. If necessary, carry out
 !--             reflection. Please note, a security constant is required, as the particle position
 !--             does not necessarily exactly match the wall location due to rounding  errors.
-                IF ( reach_x(t_index)                        .AND.                                 &
-                     ABS( pos_x - xwall ) < eps              .AND.                                 &
-                     .NOT. BTEST( topo_flags(k3,j3,i3), 0 )  .AND.                                 &
+                IF ( reach_x(t_index)                            .AND.                             &
+                     ABS( pos_x - xwall ) < eps                  .AND.                             &
+                     .NOT. BTEST(wall_flags_total_0(k3,j3,i3),0) .AND.                             &
                      .NOT. reflect_x )  THEN
 !
 !
@@ -5201,9 +5205,9 @@
 !--             Check if a particle needs to be reflected at any xz-wall. If necessary, carry out
 !--             reflection. Please note, a security constant is required, as the particle position
 !--             does not necessarily exactly match the wall location due to rounding errors.
-                IF ( reach_y(t_index)                        .AND.                                 &
-                     ABS( pos_y - ywall ) < eps              .AND.                                 &
-                     .NOT. BTEST( topo_flags(k3,j3,i3), 0 )  .AND.                                 &
+                IF ( reach_y(t_index)                            .AND.                             &
+                     ABS( pos_y - ywall ) < eps                  .AND.                             &
+                     .NOT. BTEST(wall_flags_total_0(k3,j3,i3),0) .AND.                             &
                      .NOT. reflect_y )  THEN
 !
 !
@@ -5239,9 +5243,9 @@
 !--             Check if a particle needs to be reflected at any xy-wall. If necessary, carry out
 !--             reflection. Please note, a security constant is required, as the particle position
 !--             does not necessarily exactly match the wall location due to rounding errors.
-                IF ( reach_z(t_index)                        .AND.                                 &
-                     ABS( pos_z - zwall ) < eps              .AND.                                 &
-                     .NOT. BTEST( topo_flags(k3,j3,i3), 0 )  .AND.                                 &
+                IF ( reach_z(t_index)                            .AND.                             &
+                     ABS( pos_z - zwall ) < eps                  .AND.                             &
+                     .NOT. BTEST(wall_flags_total_0(k3,j3,i3),0) .AND.                             &
                      .NOT. reflect_z )  THEN
 !
 !
@@ -5311,8 +5315,14 @@
 !> The analytical formula and growth equation follow those given in
 !> Rogers and Yau (A short course in cloud physics, 3rd edition, p. 102/103).
 !--------------------------------------------------------------------------------------------------!
- SUBROUTINE lpm_droplet_condensation( i, j, k )
+ SUBROUTINE lpm_droplet_condensation (i,j,k)
 
+!
+!-- Parameters for Rosenbrock method (see Verwer et al., 1999)
+    REAL(wp), PARAMETER ::  prec = 1.0E-3_wp     !< precision of Rosenbrock solution
+    REAL(wp), PARAMETER ::  q_increase = 1.5_wp  !< increase factor in timestep
+    REAL(wp), PARAMETER ::  q_decrease = 0.9_wp  !< decrease factor in timestep
+    REAL(wp), PARAMETER ::  gamma = 0.292893218814_wp !< = 1.0 - 1.0 / SQRT(2.0)
 !
 !-- Parameters for terminal velocity
     REAL(wp), PARAMETER ::  a_rog = 9.65_wp      !< parameter for fall velocity
@@ -5325,10 +5335,7 @@
     INTEGER(iwp), INTENT(IN) ::  i              !<
     INTEGER(iwp), INTENT(IN) ::  j              !<
     INTEGER(iwp), INTENT(IN) ::  k              !<
-    INTEGER(iwp)             ::  m              !<
     INTEGER(iwp)             ::  n              !<
-
-    LOGICAL, SAVE ::  warning_issued = .FALSE.  !< flag to release convergence warning only once
 
     REAL(wp) ::  afactor                       !< curvature effects
     REAL(wp) ::  arg                           !<
@@ -5337,8 +5344,18 @@
     REAL(wp) ::  delta_r                       !<
     REAL(wp) ::  diameter                      !< diameter of cloud droplets
     REAL(wp) ::  diff_coeff                    !< diffusivity for water vapor
+    REAL(wp) ::  drdt                          !<
+    REAL(wp) ::  dt_ros                        !<
+    REAL(wp) ::  dt_ros_sum                    !<
+    REAL(wp) ::  d2rdtdr                       !<
     REAL(wp) ::  e_a                           !< current vapor pressure
     REAL(wp) ::  e_s                           !< current saturation vapor pressure
+    REAL(wp) ::  error                         !< local truncation error in Rosenbrock
+    REAL(wp) ::  k1                            !<
+    REAL(wp) ::  k2                            !<
+    REAL(wp) ::  r_err                         !< First order estimate of Rosenbrock radius
+    REAL(wp) ::  r_ros                         !< Rosenbrock radius
+    REAL(wp) ::  r_ros_ini                     !< initial Rosenbrock radius
     REAL(wp) ::  r0                            !< gas-kinetic lengthscale
     REAL(wp) ::  re_p                          !< particle Reynolds number
     REAL(wp) ::  sigma                         !< surface tension of water
@@ -5346,23 +5363,10 @@
     REAL(wp) ::  t_int                         !< temperature
     REAL(wp) ::  w_s                           !< terminal velocity of droplets
 
-    REAL(wp) :: r_ini                          !<
-    REAL(wp) :: r_eul                          !<
-    REAL(wp) :: r_eul_old                      !<
-    REAL(wp) :: rel_change                     !<
-    REAL(wp) :: dr2dt                          !<
-    REAL(wp) :: d2r2dtdr2                      !<
-    REAL(wp) :: f                              !<
-    REAL(wp) :: dfdr2                          !<
-    REAL(wp) :: dt_eul                         !<
-    REAL(wp) :: t_eul                          !<
-
     REAL(wp), DIMENSION(number_of_particles) ::  new_r                  !<
     REAL(wp), DIMENSION(number_of_particles) ::  ventilation_effect     !<
 
-!
-!-- Not all grid cells may have particles, therefore barrierwait not allowed for logging.
-    CALL cpu_log( log_point_s(42), 'lpm_droplet_condens', 'start', .FALSE. )
+    CALL cpu_log( log_point_s(42), 'lpm_droplet_condens', 'start' )
 
 !
 !-- Absolute temperature
@@ -5422,7 +5426,7 @@
        ENDIF
     ENDDO
 
-    IF ( .NOT. curvature_solution_effects )  THEN
+    IF( .NOT. curvature_solution_effects )  THEN
 !
 !--    Use analytic model for diffusional growth including gas-kinetic effects (Mordy, 1959) but
 !--    without the impact of aerosols.
@@ -5451,66 +5455,73 @@
           bfactor = vanthoff * rho_s * particles(n)%aux1**3 *                                      &
                     molecular_weight_of_water / ( rho_l * molecular_weight_of_solute )
 
+          dt_ros     = particles(n)%aux2  ! use previously stored Rosenbrock timestep
+          dt_ros_sum = 0.0_wp
+
+          r_ros     = particles(n)%radius  ! initialize Rosenbrock particle radius
+          r_ros_ini = r_ros
 !
-!--       Newton-Raphson scheme to solve droplet growth equation.
-!--       Note that not dr/dt = ... is used, but dr^2/dt = ... based on Chen, J.P., 1992: Numerical
-!--       simulations on the redistribution of atmospheric trace chemicals through cloud processes.
-!--       The Pennsylvania State University. See also Shima et al. (2009) (doi:10.1002/qj.441).
-          r_ini     = particles(n)%radius
-          r_eul     = r_ini
-          r_eul_old = r_ini
+!--       Integrate growth equation using a 2nd-order Rosenbrock method
+!--       (see Verwer et al., 1999, Eq. (3.2)). The Rosenbrock method adjusts its with internal
+!--       timestep to minimize the local truncation error.
+          DO WHILE ( dt_ros_sum < dt_3d )
 
-          dt_eul = dt_3d
-          t_eul  = 0.0_wp
+             dt_ros = MIN( dt_ros, dt_3d - dt_ros_sum )
 
-          DO WHILE ( t_eul < dt_3d - 1.0E-20_wp )
+             DO
 
-             DO  m = 1, 500
+                drdt = ddenom * ventilation_effect(n) * ( e_a / e_s - 1.0_wp -                     &
+                                                          afactor / r_ros +                        &
+                                                          bfactor / r_ros**3                       &
+                                                        ) / ( r_ros + r0 )
 
-                dr2dt = 2.0_wp * ddenom * ventilation_effect(n) *                                  &
-                        ( ( e_a / e_s - 1.0_wp ) - afactor / r_eul + bfactor / r_eul**3 ) * r_eul /&
-                        ( r_eul + r0 )
-                d2r2dtdr2 = ddenom * ventilation_effect(n) *                                       &
-                            ( afactor * r_eul**3 - bfactor * ( 3.0_wp * r_eul + 2.0_wp * r0 ) -    &
-                            r_eul**3 * ( - r0 * ( e_a / e_s - 1.0_wp ) ) ) /                       &
-                            ( r_eul**4 * ( r_eul + r0 )**2 )
-                dt_eul = MIN( dt_3d - t_eul, dt_3d )
+                d2rdtdr = -ddenom * ventilation_effect(n) *  (                                     &
+                                            ( e_a / e_s - 1.0_wp ) * r_ros**4 -                    &
+                                            afactor * r0 * r_ros**2 -                              &
+                                            2.0_wp * afactor * r_ros**3 +                          &
+                                            3.0_wp * bfactor * r0 +                                &
+                                            4.0_wp * bfactor * r_ros                               &
+                                                             )                                     &
+                          / ( r_ros**4 * ( r_ros + r0 )**2 )
 
+                k1    = drdt / ( 1.0_wp - gamma * dt_ros * d2rdtdr )
+
+                r_ros = MAX(r_ros_ini + k1 * dt_ros, particles(n)%aux1)
+                r_err = r_ros
+
+                drdt  = ddenom * ventilation_effect(n) * ( e_a / e_s - 1.0_wp -                    &
+                                                           afactor / r_ros +                       &
+                                                           bfactor / r_ros**3                      &
+                                                         ) / ( r_ros + r0 )
+
+                k2 = ( drdt - dt_ros * 2.0 * gamma * d2rdtdr * k1 ) /                              &
+                     ( 1.0_wp - dt_ros * gamma * d2rdtdr )
+
+                r_ros = MAX(r_ros_ini + dt_ros * ( 1.5_wp * k1 + 0.5_wp * k2), particles(n)%aux1)
 !
-!--             To speed up the Newton-Raphson scheme, the square root is calculated at every
-!--             iteration.
-                f      = r_eul**2 - r_ini**2 - dt_eul * dr2dt
-                dfdr2  = 1.0_wp - dt_eul * d2r2dtdr2
+!--             Check error of the solution, and reduce dt_ros if necessary.
+                error = ABS(r_err - r_ros) / r_ros
+                IF ( error > prec )  THEN
+                   dt_ros = SQRT( q_decrease * prec / error ) * dt_ros
+                   r_ros  = r_ros_ini
+                ELSE
+                   dt_ros_sum = dt_ros_sum + dt_ros
+                   dt_ros     = q_increase * dt_ros
+                   r_ros_ini  = r_ros
+                   EXIT
+                ENDIF
 
+             END DO
+
+          END DO  !Rosenbrock loop
 !
-!--             Newton-Raphson scheme (2nd order).
-                r_eul  = SQRT( MAX( r_eul**2 - f / dfdr2, particles(n)%aux1**2 ) )
+!--       Store new particle radius
+          new_r(n) = r_ros
+!
+!--       Store internal time step value for next PALM step
+          particles(n)%aux2 = dt_ros
 
-                rel_change = ABS( r_eul - r_eul_old ) / r_eul_old
-                r_eul_old  = r_eul
-
-                IF ( rel_change < 1.0E-12_wp )  EXIT
-
-             ENDDO
-
-             IF ( m > 500  .AND.  .NOT. warning_issued )  THEN
-                message_string = 'no convergence of Newton-Raphson scheme within 500 iterations'
-                CALL message( 'lpm_droplet_condensation', 'LPM0022', 0, 1, -1, 6, 0 )
-                warning_issued = .TRUE.
-             ENDIF
-
-             t_eul = t_eul + dt_eul
-             r_ini = r_eul
-             IF ( r_eul <= particles(n)%aux1 )  THEN
-                r_ini = particles(n)%aux1
-                EXIT
-             ENDIF
-
-          ENDDO
-
-          new_r(n) = r_ini
-
-       ENDDO ! Particle loop
+       ENDDO !Particle loop
 
     ENDIF
 
@@ -5529,7 +5540,7 @@
           WRITE( message_string, * ) 'k=',k,' j=',j,' i=',i,                                       &
                                      ' ql_c=',ql_c(k,j,i), '&part(',n,')%wf=',                     &
                                      particles(n)%weight_factor,' delta_r=',delta_r
-          CALL message( 'lpm_droplet_condensation', 'LPM0023', 2, 2, -1, 6, 1 )
+          CALL message( 'lpm_droplet_condensation', 'PA0143', 2, 2, -1, 6, 1 )
        ENDIF
 !
 !--    Check if the change in the droplet radius is not too big. If this is the case, the model
@@ -5540,7 +5551,7 @@
                                      ' e_s=',e_s, ' e_a=',e_a,' t_int=',t_int,                     &
                                      '&delta_r=',delta_r,                                          &
                                      ' particle_radius=',particles(n)%radius
-          CALL message( 'lpm_droplet_condensation', 'LPM0024', 2, 2, -1, 6, 1 )
+          CALL message( 'lpm_droplet_condensation', 'PA0144', 2, 2, -1, 6, 1 )
        ENDIF
 !
 !--    Sum up the total volume of liquid water (needed below for re-calculating the weighting
@@ -5584,7 +5595,7 @@
           DO  k = nzb+1, nzt
 !
 !--          Predetermine flag to mask topography
-             flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+             flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
 
              q(k,j,i)  = q(k,j,i)  - ql_c(k,j,i) * flag
              pt(k,j,i) = pt(k,j,i) + lv_d_cp * ql_c(k,j,i) * d_exner(k) * flag
@@ -5601,25 +5612,25 @@
 !> Release of latent heat and change of mixing ratio due to condensation / evaporation of droplets.
 !> Call for grid point i,j
 !--------------------------------------------------------------------------------------------------!
-!  SUBROUTINE lpm_interaction_droplets_ptq_ij( i, j )
+ SUBROUTINE lpm_interaction_droplets_ptq_ij( i, j )
+
+    INTEGER(iwp) ::  i    !< running index x direction
+    INTEGER(iwp) ::  j    !< running index y direction
+    INTEGER(iwp) ::  k    !< running index z direction
+
+    REAL(wp) ::  flag     !< flag to mask topography grid points
+
+
+    DO  k = nzb+1, nzt
 !
-!     INTEGER(iwp) ::  i    !< running index x direction
-!     INTEGER(iwp) ::  j    !< running index y direction
-!     INTEGER(iwp) ::  k    !< running index z direction
-!
-!     REAL(wp) ::  flag     !< flag to mask topography grid points
-!
-!
-!     DO  k = nzb+1, nzt
-! !
-! !--    Predetermine flag to mask topography
-!        flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
-!
-!        q(k,j,i)  = q(k,j,i)  - ql_c(k,j,i) * flag
-!        pt(k,j,i) = pt(k,j,i) + lv_d_cp * ql_c(k,j,i) * d_exner(k) * flag
-!     ENDDO
-!
-!  END SUBROUTINE lpm_interaction_droplets_ptq_ij
+!--    Predetermine flag to mask topography
+       flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
+
+       q(k,j,i)  = q(k,j,i)  - ql_c(k,j,i) * flag
+       pt(k,j,i) = pt(k,j,i) + lv_d_cp * ql_c(k,j,i) * d_exner(k) * flag
+    ENDDO
+
+ END SUBROUTINE lpm_interaction_droplets_ptq_ij
 
 
 !--------------------------------------------------------------------------------------------------!
@@ -5660,9 +5671,8 @@
                 ql(k,j,i) = ql(k,j,i) + rho_l * 1.33333333_wp * pi *                               &
                                         ql_v(k,j,i) / ( rho_surface * dx * dy * dzw(k) )
                 IF ( ql(k,j,i) < 0.0_wp )  THEN
-                   WRITE( message_string, * )  'LWC out of range: ql(', k, ',',j, ',', i, ') = ',  &
-                                               ql(k,j,i)
-                   CALL message( 'lpm_calc_liquid_water_content', 'LPM0025', 2, 2, -1, 6, 1 )
+                   WRITE( message_string, * )  'LWC out of range: ' , ql(k,j,i),i,j,k
+                   CALL message( 'lpm_calc_liquid_water_content', 'PA0719', 2, 2, -1, 6, 1 )
                 ENDIF
              ELSE
                 ql(k,j,i) = 0.0_wp
@@ -5692,7 +5702,7 @@
 !>              the effect of preferential concentration,
 !>              and the enhancement of collision efficiencies.
 !--------------------------------------------------------------------------------------------------!
- SUBROUTINE lpm_droplet_collision( i, j, k )
+ SUBROUTINE lpm_droplet_collision (i,j,k)
 
     INTEGER(iwp), INTENT(IN) ::  i        !<
     INTEGER(iwp), INTENT(IN) ::  j        !<
@@ -5717,10 +5727,7 @@
     REAL(wp), DIMENSION(:), ALLOCATABLE ::  mass      !< total mass of super droplet
     REAL(wp), DIMENSION(:), ALLOCATABLE ::  weight    !< weighting factor
 
-
-!
-!-- Not all grid cells may have particles, therefore barrierwait not allowed for logging.
-    CALL cpu_log( log_point_s(43), 'lpm_droplet_coll', 'start', .FALSE. )
+    CALL cpu_log( log_point_s(43), 'lpm_droplet_coll', 'start' )
 
     number_of_particles   = prt_count(k,j,i)
     factor_volume_to_mass = 4.0_wp / 3.0_wp * pi * rho_l
@@ -5869,7 +5876,7 @@
 
        IF ( ANY(weight < 0.0_wp) )  THEN
              WRITE( message_string, * ) 'negative weighting factor'
-             CALL message( 'lpm_droplet_collision', 'LPM0026', 2, 2, -1, 6, 1 )
+             CALL message( 'lpm_droplet_collision', 'PA0028', 2, 2, -1, 6, 1 )
        ENDIF
 
        particles(1:number_of_particles)%radius = ( mass(1:number_of_particles) /                   &
@@ -5897,11 +5904,10 @@
        IF ( ql_v(k,j,i) /= 0.0_wp )  THEN
           IF ( ql_vp(k,j,i) / ql_v(k,j,i) >= 1.0001_wp  .OR.                                       &
                ql_vp(k,j,i) / ql_v(k,j,i) <= 0.9999_wp )  THEN
-             WRITE( message_string, * ) 'LWC is not conserved during collision. &',                &
-                                        'LWC after condensation: ', ql_v(k,j,i),                   &
-                                        'LWC after collision: ', ql_vp(k,j,i),                     &
-                                        'at grid point (', k, ',', j, ',', i, ') (k,j,i)'
-             CALL message( 'lpm_droplet_collision', 'LPM0027', 2, 2, -1, 6, 1 )
+             WRITE( message_string, * ) ' LWC is not conserved during',' collision! ',             &
+                                        ' LWC after condensation: ', ql_v(k,j,i),                  &
+                                        ' LWC after collision: ', ql_vp(k,j,i)
+             CALL message( 'lpm_droplet_collision', 'PA0040', 2, 2, -1, 6, 1 )
           ENDIF
        ENDIF
 
@@ -5910,7 +5916,6 @@
     CALL cpu_log( log_point_s(43), 'lpm_droplet_coll', 'stop' )
 
  END SUBROUTINE lpm_droplet_collision
-
 
 !--------------------------------------------------------------------------------------------------!
 ! Description:
@@ -6056,7 +6061,7 @@
     ELSE
        epsilon_collision = 0.0_wp
     ENDIF
-    urms = 2.02_wp * ( epsilon_collision / 0.04_wp )**( 0.33333333333_wp )
+    urms    = 2.02_wp * ( epsilon_collision / 0.04_wp )**( 0.33333333333_wp )
 
     IF ( wang_kernel  .AND.  epsilon_collision > 1.0E-7_wp )  THEN
 !
@@ -6281,14 +6286,10 @@
 
  END FUNCTION phi_w
 
-
-!--------------------------------------------------------------------------------------------------!
-! Description:
-! ------------
-!> Function used in the Ayala et al. (2008) analytical model for turbulent effects on the collision
-!> kernel
-!--------------------------------------------------------------------------------------------------!
  REAL(wp) FUNCTION zhi( a, b, vsett1, tau1, vsett2, tau2 )
+!
+!-- Function used in the Ayala et al. (2008) analytical model for turbulent effects on the collision
+!-- kernel
 
     REAL(wp) ::  a      !<
     REAL(wp) ::  aa1    !<
@@ -6690,7 +6691,7 @@
  END SUBROUTINE turb_enhance_eff
 
 
-!--------------------------------------------------------------------------------------------------!
+ !-------------------------------------------------------------------------------------------------!
 ! Description:
 ! ------------
 ! This routine is a part of the Lagrangian particle model. Super droplets which fulfill certain
@@ -6908,7 +6909,7 @@
           lambda = ( pirho_l * nr_total / lwc_total *                                              &
                      ( mu + 3.0_wp ) * ( mu + 2.0_wp ) * ( mu + 1.0_wp )                           &
                    )**0.3333333_wp
-          nr0 = nr_total / GAMMA( mu + 1.0_wp ) * lambda**( mu + 1.0_wp )
+          nr0 = nr_total / gamma( mu + 1.0_wp ) * lambda**( mu + 1.0_wp )
 
           DO  n = 0, n_max-1
              diameter  = r_bin_mid(n) * 2.0_wp
@@ -7057,7 +7058,7 @@
                    lambda = ( pirho_l * nr / lwc *                                                 &
                               ( mu + 3.0_wp ) * ( mu + 2.0_wp ) * ( mu + 1.0_wp )                  &
                             )**0.3333333_wp
-                   nr0 =  ( nr / (GAMMA( mu + 1.0_wp ) ) ) *                                       &
+                   nr0 =  ( nr / (gamma( mu + 1.0_wp ) ) ) *                                       &
                           lambda**( mu + 1.0_wp )
 
                    DO  n = 0, n_max-1
@@ -7215,7 +7216,9 @@
                                                      particles(n)%weight_factor                    &
                                                    )
                    particles(n)%particle_mask = .FALSE.
+                   deleted_particles          = deleted_particles + 1
                    merge_drp                  = merge_drp + 1
+
                 ENDIF
              ENDDO
           ENDDO
@@ -7289,7 +7292,7 @@
     trlp_count_recv   = 0
     trrp_count_recv   = 0
 
-    IF ( npex /= 1 )  THEN
+    IF ( pdims(1) /= 1 )  THEN
 !
 !--    First calculate the storage necessary for sending and receiving the data. Compute only first
 !--    (nxl) and last (nxr) loop iterration.
@@ -7356,7 +7359,7 @@
                          IF ( ibc_par_lr == 0 )  THEN
 !
 !--                         Cyclic condition
-                            IF ( npex == 1 )  THEN
+                            IF ( pdims(1) == 1 )  THEN
                                particles(n)%x        = ( nx + 1 ) * dx + particles(n)%x
                                particles(n)%origin_x = ( nx + 1 ) * dx + &
                                particles(n)%origin_x
@@ -7367,6 +7370,7 @@
                                trlp(trlp_count)%origin_x = trlp(trlp_count)%origin_x + &
                                ( nx + 1 ) * dx
                                particles(n)%particle_mask  = .FALSE.
+                               deleted_particles = deleted_particles + 1
 
                                IF ( trlp(trlp_count)%x >= (nx + 1)* dx - 1.0E-12_wp )  THEN
                                   trlp(trlp_count)%x = trlp(trlp_count)%x - 1.0E-10_wp
@@ -7380,6 +7384,7 @@
 !
 !--                         Particle absorption
                             particles(n)%particle_mask = .FALSE.
+                            deleted_particles = deleted_particles + 1
 
                          ELSEIF ( ibc_par_lr == 2 )  THEN
 !
@@ -7395,6 +7400,7 @@
                          trlp_count = trlp_count + 1
                          trlp(trlp_count) = particles(n)
                          particles(n)%particle_mask = .FALSE.
+                         deleted_particles = deleted_particles + 1
 
                       ENDIF
 
@@ -7405,7 +7411,7 @@
                          IF ( ibc_par_lr == 0 )  THEN
 !
 !--                         Cyclic condition
-                            IF ( npex == 1 )  THEN
+                            IF ( pdims(1) == 1 )  THEN
                                particles(n)%x = particles(n)%x - ( nx + 1 ) * dx
                                particles(n)%origin_x = particles(n)%origin_x - ( nx + 1 ) * dx
                             ELSE
@@ -7415,6 +7421,7 @@
                                trrp(trrp_count)%origin_x = trrp(trrp_count)%origin_x -             &
                                                            ( nx + 1 ) * dx
                                particles(n)%particle_mask = .FALSE.
+                               deleted_particles = deleted_particles + 1
 
                             ENDIF
 
@@ -7422,6 +7429,7 @@
 !
 !--                         Particle absorption
                             particles(n)%particle_mask = .FALSE.
+                            deleted_particles = deleted_particles + 1
 
                          ELSEIF ( ibc_par_lr == 2 )  THEN
 !
@@ -7437,6 +7445,7 @@
                          trrp_count = trrp_count + 1
                          trrp(trrp_count) = particles(n)
                          particles(n)%particle_mask = .FALSE.
+                         deleted_particles = deleted_particles + 1
 
                       ENDIF
 
@@ -7466,7 +7475,7 @@
 !
 !-- Send left boundary, receive right boundary (but first exchange how many and check, if particle
 !-- storage must be extended)
-    IF ( npex /= 1 )  THEN
+    IF ( pdims(1) /= 1 )  THEN
 
        CALL MPI_SENDRECV( trlp_count,      1, MPI_INTEGER, pleft,  0,                              &
                           trrp_count_recv, 1, MPI_INTEGER, pright, 0,                              &
@@ -7516,7 +7525,7 @@
     trsp_count_recv   = 0
     trnp_count_recv   = 0
 
-    IF ( npey /= 1 )  THEN
+    IF ( pdims(2) /= 1 )  THEN
 !
 !--    First calculate the storage necessary for sending and receiving the data
        DO  ip = nxl, nxr
@@ -7582,7 +7591,7 @@
                          IF ( ibc_par_ns == 0 )  THEN
 !
 !--                         Cyclic condition
-                            IF ( npey == 1 )  THEN
+                            IF ( pdims(2) == 1 )  THEN
                                particles(n)%y = ( ny + 1 ) * dy + particles(n)%y
                                particles(n)%origin_y = ( ny + 1 ) * dy + particles(n)%origin_y
                             ELSE
@@ -7592,6 +7601,7 @@
                                trsp(trsp_count)%origin_y = trsp(trsp_count)%origin_y               &
                                                            + ( ny + 1 ) * dy
                                particles(n)%particle_mask = .FALSE.
+                               deleted_particles = deleted_particles + 1
 
                                IF ( trsp(trsp_count)%y >= (ny+1)* dy - 1.0E-12_wp )  THEN
                                   trsp(trsp_count)%y = trsp(trsp_count)%y - 1.0E-10_wp
@@ -7605,6 +7615,7 @@
 !
 !--                         Particle absorption
                             particles(n)%particle_mask = .FALSE.
+                            deleted_particles          = deleted_particles + 1
 
                          ELSEIF ( ibc_par_ns == 2 )  THEN
 !
@@ -7620,6 +7631,7 @@
                          trsp_count = trsp_count + 1
                          trsp(trsp_count) = particles(n)
                          particles(n)%particle_mask = .FALSE.
+                         deleted_particles = deleted_particles + 1
 
                       ENDIF
 
@@ -7630,7 +7642,7 @@
                          IF ( ibc_par_ns == 0 )  THEN
 !
 !--                         Cyclic condition
-                            IF ( npey == 1 )  THEN
+                            IF ( pdims(2) == 1 )  THEN
                                particles(n)%y        = particles(n)%y - ( ny + 1 ) * dy
                                particles(n)%origin_y = particles(n)%origin_y - ( ny + 1 ) * dy
                             ELSE
@@ -7640,12 +7652,14 @@
                                trnp(trnp_count)%origin_y =                                         &
                                                          trnp(trnp_count)%origin_y - ( ny + 1 ) * dy
                                particles(n)%particle_mask = .FALSE.
+                               deleted_particles          = deleted_particles + 1
                             ENDIF
 
                          ELSEIF ( ibc_par_ns == 1 )  THEN
 !
 !--                         Particle absorption
                             particles(n)%particle_mask = .FALSE.
+                            deleted_particles = deleted_particles + 1
 
                          ELSEIF ( ibc_par_ns == 2 )  THEN
 !
@@ -7661,6 +7675,7 @@
                          trnp_count = trnp_count + 1
                          trnp(trnp_count) = particles(n)
                          particles(n)%particle_mask = .FALSE.
+                         deleted_particles = deleted_particles + 1
 
                       ENDIF
 
@@ -7674,7 +7689,7 @@
 !
 !-- Send front boundary, receive back boundary (but first exchange how many and check, if particle
 !-- storage must be extended)
-    IF ( npey /= 1 )  THEN
+    IF ( pdims(2) /= 1 )  THEN
 
        CALL MPI_SENDRECV( trsp_count,      1, MPI_INTEGER, psouth, 0, &
                           trnp_count_recv, 1, MPI_INTEGER, pnorth, 0, &
@@ -7743,6 +7758,7 @@
 !
 !--                   Particle absorption
                       particles(n)%particle_mask = .FALSE.
+                      deleted_particles = deleted_particles + 1
 
                    ELSEIF ( ibc_par_lr == 2 )  THEN
 !
@@ -7763,13 +7779,13 @@
 !
 !--                   Particle absorption
                       particles(n)%particle_mask = .FALSE.
+                      deleted_particles = deleted_particles + 1
 
                    ELSEIF ( ibc_par_lr == 2 )  THEN
 !
 !--                   Particle reflection
                       particles(n)%x       = ( nx + 1 ) * dx - particles(n)%x
                       particles(n)%speed_x = -particles(n)%speed_x
-
                    ENDIF
 
                 ENDIF
@@ -7798,6 +7814,7 @@
 !
 !--                   Particle absorption
                       particles(n)%particle_mask = .FALSE.
+                      deleted_particles = deleted_particles + 1
 
                    ELSEIF ( ibc_par_ns == 2 )  THEN
 !
@@ -7818,6 +7835,7 @@
 !
 !--                   Particle absorption
                       particles(n)%particle_mask = .FALSE.
+                      deleted_particles = deleted_particles + 1
 
                    ELSEIF ( ibc_par_ns == 2 )  THEN
 !
@@ -7977,6 +7995,7 @@
 !
 !--                Particle absorption
                    move_also_south(nr_move_south)%particle_mask = .FALSE.
+                   deleted_particles = deleted_particles + 1
 
                 ELSEIF ( ibc_par_ns == 2 )  THEN
 !
@@ -8020,6 +8039,7 @@
 !
 !--                Particle absorption
                    move_also_north(nr_move_north)%particle_mask = .FALSE.
+                   deleted_particles = deleted_particles + 1
 
                 ELSEIF ( ibc_par_ns == 2 )  THEN
 !
@@ -8166,9 +8186,9 @@
                        ( ( zw(k)-zw(k-1) ) / ( particles(n)%age - particles(n)%age_m) ) )          &
                    THEN
                       WRITE( message_string, * )                                                   &
-                         'particle violated CFL-criterion: &particle with id ', particles(n)%id,   &
-                         ' will be deleted'
-                      CALL message( 'lpm_check_cfl', 'LPM0028', 0, 1, -1, 6, 0 )
+                         'Particle violated CFL-criterion: &particle with id ', particles(n)%id,   &
+                         ' will be deleted!'
+                      CALL message( 'lpm_check_cfl', 'PA0475', 0, 1, -1, 6, 0 )
 
                       particles(n)%particle_mask= .FALSE.
                    ENDIF
@@ -8286,30 +8306,26 @@
 
                 IF ( number_of_particles <= 500 )  THEN
 
-                   tmp_particles_s(1:number_of_particles) =                                        &
-                                              grid_particles(k,j,i)%particles(1:number_of_particles)
+                   tmp_particles_s(1:number_of_particles) = grid_particles(k,j,i)%particles(1:number_of_particles)
 
-                   DEALLOCATE( grid_particles(k,j,i)%particles )
-                   ALLOCATE( grid_particles(k,j,i)%particles(new_size) )
+                   DEALLOCATE(grid_particles(k,j,i)%particles)
+                   ALLOCATE(grid_particles(k,j,i)%particles(new_size))
 
-                   grid_particles(k,j,i)%particles(1:number_of_particles) =                        &
-                                                              tmp_particles_s(1:number_of_particles)
+                   grid_particles(k,j,i)%particles(1:number_of_particles)          = tmp_particles_s(1:number_of_particles)
                    grid_particles(k,j,i)%particles(number_of_particles+1:new_size) = zero_particle
 
                 ELSE
 
-                   ALLOCATE( tmp_particles_d(number_of_particles) )
-                   tmp_particles_d(1:number_of_particles) =                                        &
-                                              grid_particles(k,j,i)%particles(1:number_of_particles)
+                   ALLOCATE(tmp_particles_d(number_of_particles))
+                   tmp_particles_d(1:number_of_particles) = grid_particles(k,j,i)%particles(1:number_of_particles)
 
-                   DEALLOCATE( grid_particles(k,j,i)%particles )
-                   ALLOCATE( grid_particles(k,j,i)%particles(new_size) )
+                   DEALLOCATE(grid_particles(k,j,i)%particles)
+                   ALLOCATE(grid_particles(k,j,i)%particles(new_size))
 
-                   grid_particles(k,j,i)%particles(1:number_of_particles) =                        &
-                                                              tmp_particles_d(1:number_of_particles)
+                   grid_particles(k,j,i)%particles(1:number_of_particles)          = tmp_particles_d(1:number_of_particles)
                    grid_particles(k,j,i)%particles(number_of_particles+1:new_size) = zero_particle
 
-                   DEALLOCATE( tmp_particles_d )
+                   DEALLOCATE(tmp_particles_d)
 
                 ENDIF
 
@@ -8328,102 +8344,101 @@
 !> Sort all particles into the 8 respective subgrid boxes (in case of trilinear interpolation
 !> method) and free space of particles which has been marked for deletion.
 !--------------------------------------------------------------------------------------------------!
- SUBROUTINE lpm_sort_and_delete
+   SUBROUTINE lpm_sort_and_delete
 
-    INTEGER(iwp) ::  i  !<
-    INTEGER(iwp) ::  ip !<
-    INTEGER(iwp) ::  is !<
-    INTEGER(iwp) ::  j  !<
-    INTEGER(iwp) ::  jp !<
-    INTEGER(iwp) ::  kp !<
-    INTEGER(iwp) ::  m  !<
-    INTEGER(iwp) ::  n  !<
-    INTEGER(iwp) ::  nn !<
-    INTEGER(iwp) ::  sort_index  !<
+       INTEGER(iwp) ::  i  !<
+       INTEGER(iwp) ::  ip !<
+       INTEGER(iwp) ::  is !<
+       INTEGER(iwp) ::  j  !<
+       INTEGER(iwp) ::  jp !<
+       INTEGER(iwp) ::  kp !<
+       INTEGER(iwp) ::  m  !<
+       INTEGER(iwp) ::  n  !<
+       INTEGER(iwp) ::  nn !<
+       INTEGER(iwp) ::  sort_index  !<
 
-    INTEGER(iwp), DIMENSION(0:7) ::  sort_count  !<
+       INTEGER(iwp), DIMENSION(0:7) ::  sort_count  !<
 
-    TYPE(particle_type), DIMENSION(:,:), ALLOCATABLE ::  sort_particles    !<
+       TYPE(particle_type), DIMENSION(:,:), ALLOCATABLE ::  sort_particles    !<
 
-    CALL cpu_log( log_point_s(51), 'lpm_sort_and_delete', 'start' )
+       CALL cpu_log( log_point_s(51), 'lpm_sort_and_delete', 'start' )
+       IF ( interpolation_trilinear )  THEN
+          DO  ip = nxl, nxr
+             DO  jp = nys, nyn
+                DO  kp = nzb+1, nzt
+                   number_of_particles = prt_count(kp,jp,ip)
+                   IF ( number_of_particles <= 0 )  CYCLE
+                   particles => grid_particles(kp,jp,ip)%particles(1:number_of_particles)
+                   nn = 0
+                   sort_count = 0
+                   ALLOCATE( sort_particles(number_of_particles, 0:7) )
 
-    IF ( interpolation_trilinear )  THEN
-       DO  ip = nxl, nxr
-          DO  jp = nys, nyn
-             DO  kp = nzb+1, nzt
-                number_of_particles = prt_count(kp,jp,ip)
-                IF ( number_of_particles <= 0 )  CYCLE
-                particles => grid_particles(kp,jp,ip)%particles(1:number_of_particles)
-                nn = 0
-                sort_count = 0
-                ALLOCATE( sort_particles(number_of_particles, 0:7) )
+                   DO  n = 1, number_of_particles
+                      sort_index = 0
 
-                DO  n = 1, number_of_particles
-                   sort_index = 0
-
-                   IF ( particles(n)%particle_mask )  THEN
-                      nn = nn + 1
+                      IF ( particles(n)%particle_mask )  THEN
+                         nn = nn + 1
 !
-!--                   Sorting particles with a binary scheme.
-!--                   sort_index=111_2=7_10 -> particle at the left,south,bottom subgridbox
-!--                   sort_index=000_2=0_10 -> particle at the right,north,top subgridbox
-!--                   For this the center of the gridbox is calculated.
-                      i = ( particles(n)%x + 0.5_wp * dx ) * ddx
-                      j = ( particles(n)%y + 0.5_wp * dy ) * ddy
+!--                      Sorting particles with a binary scheme.
+!--                      sort_index=111_2=7_10 -> particle at the left,south,bottom subgridbox
+!--                      sort_index=000_2=0_10 -> particle at the right,north,top subgridbox
+!--                      For this the center of the gridbox is calculated.
+                         i = (particles(n)%x + 0.5_wp * dx) * ddx
+                         j = (particles(n)%y + 0.5_wp * dy) * ddy
 
-                      IF ( i == ip )  sort_index = sort_index + 4
-                      IF ( j == jp )  sort_index = sort_index + 2
-                      IF ( zu(kp) > particles(n)%z ) sort_index = sort_index + 1
+                         IF ( i == ip )  sort_index = sort_index + 4
+                         IF ( j == jp )  sort_index = sort_index + 2
+                         IF ( zu(kp) > particles(n)%z ) sort_index = sort_index + 1
 
-                      sort_count(sort_index) = sort_count(sort_index) + 1
-                      m = sort_count(sort_index)
-                      sort_particles(m,sort_index) = particles(n)
-                      sort_particles(m,sort_index)%block_nr = sort_index
-                   ENDIF
-                ENDDO
-!
-!--             Delete and resort particles by overwritting and set the number_of_particles to
-!--             the actual value.
-                nn = 0
-                DO  is = 0,7
-                   grid_particles(kp,jp,ip)%start_index(is) = nn + 1
-                   DO  n = 1, sort_count(is)
-                      nn = nn + 1
-                      particles(nn) = sort_particles(n,is)
+                         sort_count(sort_index) = sort_count(sort_index) + 1
+                         m = sort_count(sort_index)
+                         sort_particles(m,sort_index) = particles(n)
+                         sort_particles(m,sort_index)%block_nr = sort_index
+                      ENDIF
                    ENDDO
-                   grid_particles(kp,jp,ip)%end_index(is) = nn
+!
+!--                Delete and resort particles by overwritting and set the number_of_particles to
+!--                the actual value.
+                   nn = 0
+                   DO  is = 0,7
+                      grid_particles(kp,jp,ip)%start_index(is) = nn + 1
+                      DO  n = 1,sort_count(is)
+                         nn = nn + 1
+                         particles(nn) = sort_particles(n,is)
+                      ENDDO
+                      grid_particles(kp,jp,ip)%end_index(is) = nn
+                   ENDDO
+
+                   number_of_particles = nn
+                   prt_count(kp,jp,ip) = number_of_particles
+                   DEALLOCATE(sort_particles)
                 ENDDO
-
-                number_of_particles = nn
-                prt_count(kp,jp,ip) = number_of_particles
-                DEALLOCATE( sort_particles )
              ENDDO
           ENDDO
-       ENDDO
-!
-!-- In case of the simple interpolation method the particles must not be sorted in subboxes.
-!-- Particles marked for deletion however, must be deleted and number of particles must be
-!-- recalculated as it is also done for the trilinear particle advection interpolation method.
-    ELSE
 
-       DO  ip = nxl, nxr
-          DO  jp = nys, nyn
-             DO  kp = nzb+1, nzt
+!--    In case of the simple interpolation method the particles must not be sorted in subboxes.
+!--    Particles marked for deletion however, must be deleted and number of particles must be
+!--    recalculated as it is also done for the trilinear particle advection interpolation method.
+       ELSE
 
-                number_of_particles = prt_count(kp,jp,ip)
-                IF ( number_of_particles <= 0 )  CYCLE
-                particles => grid_particles(kp,jp,ip)%particles(1:number_of_particles)
+          DO  ip = nxl, nxr
+             DO  jp = nys, nyn
+                DO  kp = nzb+1, nzt
+
+                   number_of_particles = prt_count(kp,jp,ip)
+                   IF ( number_of_particles <= 0 )  CYCLE
+                   particles => grid_particles(kp,jp,ip)%particles(1:number_of_particles)
 !
-!--             Repack particles array, i.e. delete particles and recalculate number of particles
-                CALL lpm_pack
-                prt_count(kp,jp,ip) = number_of_particles
+!--                Repack particles array, i.e. delete particles and recalculate number of particles
+                   CALL lpm_pack
+                   prt_count(kp,jp,ip) = number_of_particles
+                ENDDO
              ENDDO
           ENDDO
-       ENDDO
-    ENDIF
-    CALL cpu_log( log_point_s(51), 'lpm_sort_and_delete', 'stop' )
+       ENDIF
+       CALL cpu_log( log_point_s(51), 'lpm_sort_and_delete', 'stop' )
 
- END SUBROUTINE lpm_sort_and_delete
+    END SUBROUTINE lpm_sort_and_delete
 
 
 !--------------------------------------------------------------------------------------------------!
@@ -8431,42 +8446,40 @@
 ! ------------
 !> Move all particles not marked for deletion to lowest indices (packing)
 !--------------------------------------------------------------------------------------------------!
- SUBROUTINE lpm_pack
+    SUBROUTINE lpm_pack
 
-    INTEGER(iwp) ::  n       !<
-    INTEGER(iwp) ::  nn      !<
-
-
+       INTEGER(iwp) ::  n       !<
+       INTEGER(iwp) ::  nn      !<
 !
-!-- Find out elements marked for deletion and move data from highest index values to these free
-!-- indices.
-    nn = number_of_particles
+!--    Find out elements marked for deletion and move data from highest index values to these free
+!--    indices
+       nn = number_of_particles
 
-    DO WHILE ( .NOT. particles(nn)%particle_mask )
-       nn = nn-1
-       IF ( nn == 0 )  EXIT
-    ENDDO
-
-    IF ( nn > 0 )  THEN
-       DO  n = 1, number_of_particles
-          IF ( .NOT. particles(n)%particle_mask )  THEN
-             particles(n) = particles(nn)
-             nn = nn - 1
-             DO WHILE ( .NOT. particles(nn)%particle_mask )
-                nn = nn-1
-                IF ( n == nn )  EXIT
-             ENDDO
-          ENDIF
-          IF ( n == nn )  EXIT
+       DO WHILE ( .NOT. particles(nn)%particle_mask )
+          nn = nn-1
+          IF ( nn == 0 )  EXIT
        ENDDO
-    ENDIF
+
+       IF ( nn > 0 )  THEN
+          DO  n = 1, number_of_particles
+             IF ( .NOT. particles(n)%particle_mask )  THEN
+                particles(n) = particles(nn)
+                nn = nn - 1
+                DO WHILE ( .NOT. particles(nn)%particle_mask )
+                   nn = nn-1
+                   IF ( n == nn )  EXIT
+                ENDDO
+             ENDIF
+             IF ( n == nn )  EXIT
+          ENDDO
+       ENDIF
 
 !
-!-- The number of deleted particles has been determined in routines lpm_boundary_conds,
-!-- lpm_droplet_collision, and lpm_exchange_horiz.
-    number_of_particles = nn
+!--    The number of deleted particles has been determined in routines lpm_boundary_conds,
+!--    lpm_droplet_collision, and lpm_exchange_horiz
+       number_of_particles = nn
 
- END SUBROUTINE lpm_pack
+    END SUBROUTINE lpm_pack
 
 
 !--------------------------------------------------------------------------------------------------!
@@ -8475,82 +8488,80 @@
 !> Sort particles in each sub-grid box into two groups: particles that already completed the LES
 !> timestep, and particles that need further timestepping to complete the LES timestep.
 !--------------------------------------------------------------------------------------------------!
- SUBROUTINE lpm_sort_timeloop_done
+    SUBROUTINE lpm_sort_timeloop_done
 
-    INTEGER(iwp) ::  end_index     !< particle end index for each sub-box
-    INTEGER(iwp) ::  i             !< index of particle grid box in x-direction
-    INTEGER(iwp) ::  j             !< index of particle grid box in y-direction
-    INTEGER(iwp) ::  k             !< index of particle grid box in z-direction
-    INTEGER(iwp) ::  n             !< running index for number of particles
-    INTEGER(iwp) ::  nb            !< index of subgrid boux
-    INTEGER(iwp) ::  nf            !< indices for particles in each sub-box that already finalized their substeps
-    INTEGER(iwp) ::  nnf           !< indices for particles in each sub-box that need further treatment
-    INTEGER(iwp) ::  num_finalized !< number of particles in each sub-box that already finalized their substeps
-    INTEGER(iwp) ::  start_index   !< particle start index for each sub-box
+       INTEGER(iwp) ::  end_index     !< particle end index for each sub-box
+       INTEGER(iwp) ::  i             !< index of particle grid box in x-direction
+       INTEGER(iwp) ::  j             !< index of particle grid box in y-direction
+       INTEGER(iwp) ::  k             !< index of particle grid box in z-direction
+       INTEGER(iwp) ::  n             !< running index for number of particles
+       INTEGER(iwp) ::  nb            !< index of subgrid boux
+       INTEGER(iwp) ::  nf            !< indices for particles in each sub-box that already finalized their substeps
+       INTEGER(iwp) ::  nnf           !< indices for particles in each sub-box that need further treatment
+       INTEGER(iwp) ::  num_finalized !< number of particles in each sub-box that already finalized their substeps
+       INTEGER(iwp) ::  start_index   !< particle start index for each sub-box
 
-    TYPE(particle_type), DIMENSION(:), ALLOCATABLE ::  sort_particles  !< temporary particle array
+       TYPE(particle_type), DIMENSION(:), ALLOCATABLE ::  sort_particles  !< temporary particle array
 
+       DO  i = nxl, nxr
+          DO  j = nys, nyn
+             DO  k = nzb+1, nzt
 
-    DO  i = nxl, nxr
-       DO  j = nys, nyn
-          DO  k = nzb+1, nzt
+                number_of_particles = prt_count(k,j,i)
+                IF ( number_of_particles <= 0 )  CYCLE
+                particles => grid_particles(k,j,i)%particles(1:number_of_particles)
 
-             number_of_particles = prt_count(k,j,i)
-             IF ( number_of_particles <= 0 )  CYCLE
-             particles => grid_particles(k,j,i)%particles(1:number_of_particles)
-
-             DO  nb = 0, 7
+                DO  nb = 0, 7
 !
-!--             Obtain start and end index for each subgrid box
-                start_index = grid_particles(k,j,i)%start_index(nb)
-                end_index   = grid_particles(k,j,i)%end_index(nb)
+!--                Obtain start and end index for each subgrid box
+                   start_index = grid_particles(k,j,i)%start_index(nb)
+                   end_index   = grid_particles(k,j,i)%end_index(nb)
 !
-!--             Allocate temporary array used for sorting.
-                ALLOCATE( sort_particles(start_index:end_index) )
+!--                Allocate temporary array used for sorting.
+                   ALLOCATE( sort_particles(start_index:end_index) )
 !
-!--             Determine number of particles already completed the LES timestep, and write them
-!--             into a temporary array.
-                nf = start_index
-                num_finalized = 0
-                DO  n = start_index, end_index
-                   IF ( dt_3d - particles(n)%dt_sum < 1E-8_wp )  THEN
-                      sort_particles(nf) = particles(n)
-                      nf                 = nf + 1
-                      num_finalized      = num_finalized + 1
-                   ENDIF
+!--                Determine number of particles already completed the LES timestep, and write them
+!--                into a temporary array.
+                   nf = start_index
+                   num_finalized = 0
+                   DO  n = start_index, end_index
+                      IF ( dt_3d - particles(n)%dt_sum < 1E-8_wp )  THEN
+                         sort_particles(nf) = particles(n)
+                         nf                 = nf + 1
+                         num_finalized      = num_finalized + 1
+                      ENDIF
+                   ENDDO
+!
+!--                Determine number of particles that not completed the LES timestep, and write them
+!--                into a temporary array.
+                   nnf = nf
+                   DO  n = start_index, end_index
+                      IF ( dt_3d - particles(n)%dt_sum > 1E-8_wp )  THEN
+                         sort_particles(nnf) = particles(n)
+                         nnf                 = nnf + 1
+                      ENDIF
+                   ENDDO
+!
+!--                Write back sorted particles
+                   particles(start_index:end_index) = sort_particles(start_index:end_index)
+!
+!--                Determine updated start_index, used to masked already
+!--                completed particles.
+                   grid_particles(k,j,i)%start_index(nb) = grid_particles(k,j,i)%start_index(nb)   &
+                                                           + num_finalized
+!
+!--                Deallocate dummy array
+                   DEALLOCATE ( sort_particles )
+!
+!--                Finally, if number of non-completed particles is non zero
+!--                in any of the sub-boxes, set control flag appropriately.
+                   IF ( nnf > nf )  grid_particles(k,j,i)%time_loop_done = .FALSE.
+
                 ENDDO
-!
-!--             Determine number of particles that not completed the LES timestep, and write them
-!--             into a temporary array.
-                nnf = nf
-                DO  n = start_index, end_index
-                   IF ( dt_3d - particles(n)%dt_sum > 1E-8_wp )  THEN
-                      sort_particles(nnf) = particles(n)
-                      nnf                 = nnf + 1
-                   ENDIF
-                ENDDO
-!
-!--             Write back sorted particles
-                particles(start_index:end_index) = sort_particles(start_index:end_index)
-!
-!--             Determine updated start_index, used to masked already
-!--             completed particles.
-                grid_particles(k,j,i)%start_index(nb) = grid_particles(k,j,i)%start_index(nb)      &
-                                                        + num_finalized
-!
-!--             Deallocate dummy array
-                DEALLOCATE ( sort_particles )
-!
-!--             Finally, if number of non-completed particles is non zero
-!--             in any of the sub-boxes, set control flag appropriately.
-                IF ( nnf > nf )  grid_particles(k,j,i)%time_loop_done = .FALSE.
-
              ENDDO
           ENDDO
        ENDDO
-    ENDDO
 
-
- END SUBROUTINE lpm_sort_timeloop_done
+    END SUBROUTINE lpm_sort_timeloop_done
 
 END MODULE lagrangian_particle_model_mod

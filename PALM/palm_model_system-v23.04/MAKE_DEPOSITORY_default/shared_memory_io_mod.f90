@@ -13,8 +13,40 @@
 ! You should have received a copy of the GNU General Public License along with PALM. If not, see
 ! <http://www.gnu.org/licenses/>.
 !
-! Copyright 1997-2021 Leibniz Universitaet Hannover
+! Copyright 1997-2020 Leibniz Universitaet Hannover
 !--------------------------------------------------------------------------------------------------!
+!
+!
+! Current revisions:
+! -----------------
+!
+!
+! Former revisions:
+! -----------------
+! $Id: shared_memory_io_mod.f90 4778 2020-11-09 13:40:05Z raasch $
+! additions for output of particle time series
+!
+! 4629 2020-07-29 09:37:56Z raasch
+! support for MPI Fortran77 interface (mpif.h) removed
+!
+! 4628 2020-07-29 07:23:03Z raasch
+! extensions required for MPI-I/O of particle data to restart files
+!
+! 4620 2020-07-22 14:11:16Z raasch
+! bugfix: variable definition changed
+!
+! 4618 2020-07-22 11:21:08Z raasch
+! unused variable removed
+!
+! 
+! Additions for cyclic fill mode
+!
+! 
+! File re-formatted to follow the PALM coding standard
+!
+!
+! Initial version (Klaus Ketelsen)
+!
 !
 !
 ! Description:
@@ -22,8 +54,6 @@
 !> Handle MPI-IO or NetCDF-IO shared memory arrays.
 !> This module performs the organization of new communicators, adapted PE-grids and allocation of
 !> shared memory arrays. The IO itself is not done here.
-!> TODO: !kk this module will also be used by poisfft_sm. Maybe it should be renamed in
-!>       shared_memory_util_mod
 !--------------------------------------------------------------------------------------------------!
  MODULE shared_memory_io_mod
 
@@ -34,52 +64,60 @@
     USE, INTRINSIC ::  ISO_C_BINDING
 
     USE control_parameters,                                                                        &
-        ONLY:  maximum_grid_level,                                                                 &
-               message_string,                                                                     &
-               mg_switch_to_pe0_level
+        ONLY: maximum_grid_level,                                                                  &
+              message_string,                                                                      &
+              mg_switch_to_pe0_level
+
 
     USE indices,                                                                                   &
-        ONLY:  nbgp,                                                                               &
-               nnx,                                                                                &
-               nny,                                                                                &
-               nnz,                                                                                &
-               nx,                                                                                 &
-               nxl,                                                                                &
-               nxlg,                                                                               &
-               nxr,                                                                                &
-               nxrg,                                                                               &
-               ny,                                                                                 &
-               nyn,                                                                                &
-               nyng,                                                                               &
-               nys,                                                                                &
-               nysg,                                                                               &
-               nzb,                                                                                &
-               nzt
+        ONLY: nbgp,                                                                                &
+              nnx,                                                                                 &
+              nny,                                                                                 &
+              nnz,                                                                                 &
+              nx,                                                                                  &
+              nxl,                                                                                 &
+              nxlg,                                                                                &
+              nxr,                                                                                 &
+              nxrg,                                                                                &
+              ny,                                                                                  &
+              nyn,                                                                                 &
+              nyng,                                                                                &
+              nys,                                                                                 &
+              nysg,                                                                                &
+              nzb,                                                                                 &
+              nzt
 
     USE kinds,                                                                                     &
-        ONLY:  dp,                                                                                 &
-               idp,                                                                                &
-               isp,                                                                                &
-               iwp,                                                                                &
-               sp,                                                                                 &
-               wp
+        ONLY: dp,                                                                                  &
+              idp,                                                                                 &
+              isp,                                                                                 &
+              iwp,                                                                                 &
+              sp,                                                                                  &
+              wp
 
     USE pegrid,                                                                                    &
-        ONLY:  comm1dx,                                                                            &
-               comm1dy,                                                                            &
-               comm2d,                                                                             &
-               ierr,                                                                               &
-               myid,                                                                               &
-               myidx,                                                                              &
-               myidy,                                                                              &
-               npex,                                                                               &
-               npey,                                                                               &
-               numprocs,                                                                           &
-               pleft,                                                                              &
-               pnorth,                                                                             &
-               pright,                                                                             &
-               psouth,                                                                             &
-               sendrecvcount_xy
+        ONLY: comm1dx,                                                                             &
+              comm1dy,                                                                             &
+              comm2d,                                                                              &
+              ierr,                                                                                &
+              myid,                                                                                &
+              myidx,                                                                               &
+              myidy,                                                                               &
+              npex,                                                                                &
+              npey,                                                                                &
+              numprocs,                                                                            &
+              pdims,                                                                               &
+              pleft,                                                                               &
+              pnorth,                                                                              &
+              pright,                                                                              &
+              psouth,                                                                              &
+              sendrecvcount_xy
+
+#if defined( __parallel )
+    USE pegrid,                                                                                    &
+        ONLY: pcoord,                                                                              &
+              reorder
+#endif
 
     IMPLICIT NONE
 
@@ -110,26 +148,12 @@
 
     END TYPE domain_decomposition_grid_features
 
-    TYPE, PUBLIC ::  sm_remote_array
-
-       TYPE(C_PTR)  ::  rem_ptr  !<
-       INTEGER(iwp) ::  d1e      !<
-       INTEGER(iwp) ::  d1s      !<
-       INTEGER(iwp) ::  d2e      !<
-       INTEGER(iwp) ::  d2s      !<
-       INTEGER(iwp) ::  d3e      !<
-       INTEGER(iwp) ::  d3s      !<
-       INTEGER(iwp) ::  d4e      !<
-       INTEGER(iwp) ::  d4s      !<
-
-    END TYPE sm_remote_array
-
 !
 !-- Class definition for shared memory instances.
 !-- For every use of shared memory IO, one instance of this class is created.
     TYPE, PUBLIC ::  sm_class  !<
 
-       INTEGER(iwp) ::  sm_blocks_per_node            !< typical configuration, 2 sockets per node
+       INTEGER(iwp) ::  nr_io_pe_per_node             !< typical configuration, 2 sockets per node
        LOGICAL      ::  no_shared_Memory_in_this_run  !<
 
        INTEGER(iwp) ::  comm_model            !< communicator of this model run
@@ -139,22 +163,21 @@
        INTEGER(iwp), PUBLIC ::  sh_npes       !<
        INTEGER(iwp), PUBLIC ::  sh_rank       !<
 
+       LOGICAL, PUBLIC ::  iam_io_pe = .TRUE.  !< This PE is an IO-PE
 !
 !--    Variables for the I/O virtual grid
-       INTEGER(iwp), PUBLIC ::  comm_io  !< communicator for all IO processes
+       INTEGER(iwp), PUBLIC ::  comm_io  !< Communicator for all IO processes
        INTEGER(iwp), PUBLIC ::  io_npes  !<
        INTEGER(iwp), PUBLIC ::  io_rank  !<
 !
 !--    Variables for the node local communicator
-       INTEGER(iwp) ::  comm_node          !< communicator for all processes of current node
+       INTEGER(iwp) ::  comm_node          !< Communicator for all processes of current node
        INTEGER(iwp) ::  io_pe_global_rank  !<
        INTEGER(iwp) ::  n_npes             !<
        INTEGER(iwp) ::  n_rank             !<
 
-       LOGICAL, PUBLIC ::  is_root_pe          !<
-       LOGICAL, PUBLIC ::  iam_io_pe = .TRUE.  !< this PE is an IO-PE
+       TYPE(domain_decomposition_grid_features), PUBLIC ::  io_grid  !< io grid features, depending on reading from prerun or restart run
 
-       TYPE(domain_decomposition_grid_features), PUBLIC ::  io_grid  !< io grid features, depending on reading from prerun or main run
 
        CONTAINS
 
@@ -167,31 +190,23 @@
           PROCEDURE, PASS(this), PUBLIC ::  sm_init_data_output_particles
           PROCEDURE, PASS(this), PUBLIC ::  sm_node_barrier
 #if defined( __parallel )
-          PROCEDURE, PASS(this), PUBLIC ::  sm_allocate_shared_1d_32
           PROCEDURE, PASS(this), PUBLIC ::  sm_allocate_shared_1d_64
+          PROCEDURE, PASS(this), PUBLIC ::  sm_allocate_shared_1d_32
           PROCEDURE, PASS(this), PUBLIC ::  sm_allocate_shared_1di
-          PROCEDURE, PASS(this), PUBLIC ::  sm_allocate_shared_2d_32
           PROCEDURE, PASS(this), PUBLIC ::  sm_allocate_shared_2d_64
+          PROCEDURE, PASS(this), PUBLIC ::  sm_allocate_shared_2d_32
           PROCEDURE, PASS(this), PUBLIC ::  sm_allocate_shared_2di
-          PROCEDURE, PASS(this), PUBLIC ::  sm_allocate_shared_2di_64
-          PROCEDURE, PASS(this), PUBLIC ::  sm_allocate_shared_3d_32
           PROCEDURE, PASS(this), PUBLIC ::  sm_allocate_shared_3d_64
-          PROCEDURE, PASS(this), PUBLIC ::  sm_allocate_shared_4d_32
-          PROCEDURE, PASS(this), PUBLIC ::  sm_allocate_shared_4d_64
+          PROCEDURE, PASS(this), PUBLIC ::  sm_allocate_shared_3d_32
           PROCEDURE, PASS(this), PUBLIC ::  sm_allocate_shared_3di_32
           PROCEDURE, PASS(this), PUBLIC ::  sm_allocate_shared_3di_64
-          PROCEDURE, PASS(this), PUBLIC ::  sm_all_allocate_shared_3d_64
 
           GENERIC, PUBLIC ::  sm_allocate_shared =>                                                &
-                                              sm_allocate_shared_1d_64, sm_allocate_shared_1d_32,  &
-                                              sm_allocate_shared_2d_64, sm_allocate_shared_2d_32,  &
-                                              sm_allocate_shared_2di,   sm_allocate_shared_2di_64, &
-                                              sm_allocate_shared_3d_64, sm_allocate_shared_4d_64,  &
-                                              sm_allocate_shared_4d_32, sm_allocate_shared_3d_32,  &
-                                              sm_allocate_shared_1di,   sm_allocate_shared_3di_32, &
-                                              sm_allocate_shared_3di_64
-
-          GENERIC, PUBLIC ::  sm_all_allocate_shared => sm_all_allocate_shared_3d_64
+                                              sm_allocate_shared_1d_64,  sm_allocate_shared_1d_32, &
+                                              sm_allocate_shared_2d_64,  sm_allocate_shared_2d_32, &
+                                              sm_allocate_shared_2di,    sm_allocate_shared_3d_64, &
+                                              sm_allocate_shared_3d_32,  sm_allocate_shared_1di,   &
+                                              sm_allocate_shared_3di_32, sm_allocate_shared_3di_64
 #endif
     END TYPE sm_class
 
@@ -209,24 +224,18 @@
 
     IMPLICIT NONE
 
-    CLASS(sm_class), INTENT(INOUT) ::  this  !< pointer to access internal variables of this call
-    INTEGER(iwp), INTENT(IN), OPTIONAL ::  comm_input  !< main model communicator (comm2d)
+    CLASS(sm_class), INTENT(INOUT) ::  this        !< pointer to access internal variables of this call
+    INTEGER, INTENT(IN), OPTIONAL  ::  comm_input  !< main model communicator (comm2d) can optional be set
 
 #if defined( __parallel )
-    INTEGER ::  color              !<
-    INTEGER ::  max_npes_per_node  !< maximum number of PEs/node
+    INTEGER ::  color
+    INTEGER ::  max_n_npes  !< maximum number of PEs/node
 #endif
 
     LOGICAL, INTENT(IN) ::  sm_active  !< flag to activate shared-memory IO
 
+    this%nr_io_pe_per_node = 2
 
-    this%sm_blocks_per_node = 2
-
-!
-!-- Next line is just to avoid compile errors in serial mode because of unused arguments
-    IF ( PRESENT( comm_input )  .AND.  sm_active )  CONTINUE
-
-#if defined( __parallel )
     IF ( PRESENT( comm_input ) )  THEN
        this%comm_model = comm_input
     ELSE
@@ -238,24 +247,41 @@
 
     IF ( this%no_shared_memory_in_this_run )  THEN
        this%iam_io_pe = .TRUE.
-       this%sh_rank   = 0
-       this%sh_npes   = 1
        RETURN
     ENDIF
 
+#if defined( __parallel )
 !
-!-- Determine, how many PEs are running on a node.
+!-- Determine, how many MPI threads are running on a node
     this%iam_io_pe = .FALSE.
     CALL MPI_COMM_SPLIT_TYPE( this%comm_model, MPI_COMM_TYPE_SHARED, 0, MPI_INFO_NULL,             &
                               this%comm_node, ierr )
     CALL MPI_COMM_SIZE( this%comm_node, this%n_npes, ierr )
     CALL MPI_COMM_RANK( this%comm_node, this%n_rank, ierr )
 
-    CALL MPI_ALLREDUCE( this%n_npes, max_npes_per_node, 1, MPI_INTEGER, MPI_MAX, this%comm_model,  &
-                        ierr )
+    CALL MPI_ALLREDUCE( this%n_npes, max_n_npes, 1, MPI_INTEGER, MPI_MAX, this%comm_model, ierr )
 !
-!-- Special configuration on the HLRN-IV system with 4 shared memory blocks/node.
-    IF ( max_npes_per_node > 64 )  this%sm_blocks_per_node = 4
+!-- Decide, if the configuration can run with shared-memory IO
+    IF ( max_n_npes > 64 )  THEN
+!
+!--    Special configuration on the HLRN-IV system with 4 shared memory blocks/node
+       this%nr_io_pe_per_node = 4
+
+    ELSEIF ( max_n_npes <= 32 )  THEN
+!
+!--    No shared memory IO with less than 32 threads/node
+       this%no_shared_memory_in_this_run = .TRUE.
+       this%iam_io_pe = .TRUE.
+       RETURN
+    ENDIF
+
+!
+!-- No shared memory IO with small setups
+    IF ( nx < 24  .OR.  ny < 24 )  THEN
+       this%no_shared_memory_in_this_run = .TRUE.
+       this%iam_io_pe = .TRUE.
+       RETURN
+    ENDIF
 
 !
 !-- Divide a node into shared memory groups, depending on the virtual x-y grid
@@ -272,7 +298,7 @@
 
 !
 !-- Setup the communicator across the nodes depending on the shared memory rank.
-!-- All PEs with shared memory rank 0 will be I/O PEs.
+!-- All threads with shared memory rank 0 will be I/O threads.
     color = this%sh_rank
     CALL MPI_COMM_SPLIT( this%comm_model, color, 0, this%comm_io, ierr )
 
@@ -289,13 +315,13 @@
        this%io_pe_global_rank = myid
     ENDIF
     CALL MPI_BCAST( this%io_pe_global_rank, 1, MPI_INTEGER, 0, this%comm_shared, ierr )
+
 #else
-    this%iam_io_pe  = .TRUE.
-    this%comm_model = comm2d
-    this%sh_rank    = 0
-    this%sh_npes    = 1
-    this%no_shared_memory_in_this_run = .TRUE.
+    this%iam_io_pe = .TRUE.
 #endif
+
+!      write(9,'(a,8i7)') ' end of sm_init_comm ',this%sh_rank,this%sh_npes,this%io_rank,this%io_npes,this%io_pe_global_rank
+!      write(9,*) 'This process is IO Process ',this%iam_io_pe
 
 #if defined( __parallel )
  CONTAINS
@@ -335,7 +361,7 @@
 !-- Distribute the x-y layout of all cores of a node to all node processes
     CALL MPI_ALLREDUCE( local_dim_s, local_dim_r, SIZE( local_dim_s ), MPI_INTEGER, MPI_SUM,       &
                         this%comm_node, ierr )
-    sh_group_size = ( max_npes_per_node + this%sm_blocks_per_node - 1 ) / this%sm_blocks_per_node
+    sh_group_size = ( max_n_npes + this%nr_io_pe_per_node - 1 ) / this%nr_io_pe_per_node
 
     pe       = 0
     my_color = 1  ! color is used to split the shared memory communicator into a communicator for
@@ -391,12 +417,9 @@
  END SUBROUTINE sm_init_comm
 
 
-!--------------------------------------------------------------------------------------------------!
-! Description:
-! ------------
-!> Initializing setup for output of particle time series.
-!> This output always uses a shared memory to reduce the number of particle transfers.
-!--------------------------------------------------------------------------------------------------!
+!
+!-- Initializing setup for output of particle time series.
+!-- This output always uses a shared memory to reduce the number of particle transfers.
  SUBROUTINE sm_init_data_output_particles( this )
 
     IMPLICIT NONE
@@ -404,15 +427,15 @@
     CLASS(sm_class), INTENT(INOUT) ::  this  !< pointer to access internal variables of this call
 
 #if defined( __parallel )
-    INTEGER(iwp) ::  color              !<
-    INTEGER(iwp) ::  ierr               !<
-    INTEGER(iwp) ::  max_npes_per_node  !< maximum number of PEs/node
+    INTEGER(iwp) ::  color             !<
+    INTEGER(iwp) ::  ierr              !<
+    INTEGER(iwp) ::  max_n_npes        !< maximum number of PEs/node
 #endif
 
     LOGICAL :: sm_active  !<
 
 
-    this%sm_blocks_per_node = 2
+    this%nr_io_pe_per_node = 2
 
     sm_active       = .TRUE.   ! particle IO always uses shared memory
     this%comm_model = comm2d
@@ -427,39 +450,28 @@
 
 #if defined( __parallel )
 !
-!-- Determine, how many PEs are running on a node.
+!-- Determine, how many MPI threads are running on a node
     this%iam_io_pe = .FALSE.
-    IF ( numprocs > 4 )  THEN
-       CALL MPI_COMM_SPLIT_TYPE( this%comm_model, MPI_COMM_TYPE_SHARED, 0, MPI_INFO_NULL,          &
-                                 this%comm_node, ierr )
-    ELSE
-!
-!--    This ELSE branch is a workaraound for non reproducible MPI aborts in MPI_COMM_SPLIT_TYPE
-!--    running on 2 PEs. The problem was seen in the combination OpenMPI/gfortran.
-!--    For small configurations <= 4 PEs, every MPI process is treated as its own node.
-       color = myid
-       CALL MPI_COMM_SPLIT( this%comm_model, color, 0, this%comm_node, ierr )
-       this%sm_blocks_per_node = 1
-    ENDIF
-
+    CALL MPI_COMM_SPLIT_TYPE( this%comm_model, MPI_COMM_TYPE_SHARED, 0, MPI_INFO_NULL,             &
+                              this%comm_node, ierr )
     CALL MPI_COMM_SIZE( this%comm_node, this%n_npes, ierr )
     CALL MPI_COMM_RANK( this%comm_node, this%n_rank, ierr )
 
-    CALL MPI_ALLREDUCE( this%n_npes, max_npes_per_node, 1, MPI_INTEGER, MPI_MAX, this%comm_model,  &
-                        ierr )
+    CALL MPI_ALLREDUCE( this%n_npes, max_n_npes, 1, MPI_INTEGER, MPI_MAX, this%comm_model, ierr )
+
 !
 !-- TODO: better explanation
 !-- It has to be testet, if using memory blocks for an IO process (MPI shared Memory), or if it is
-!-- even better to use the complete node for MPI shared memory (this%sm_blocks_per_node = 1).
+!-- even better to use the complete node for MPI shared memory (this%nr_io_pe_per_node = 1).
 !-  In the latter case, the access to the MPI shared memory buffer is slower, the number of
-!-- particles to move between PEs will be much smaller.
-    IF ( max_npes_per_node > 64 )  THEN
+!-- particles to move between threads will be much smaller.
+    IF ( max_n_npes > 64 )  THEN
 !
 !--    Special configuration on the HLRN-IV system with 4 shared memory blocks/node
-       this%sm_blocks_per_node = 4
+       this%nr_io_pe_per_node = 4
     ENDIF
 
-    IF ( this%sm_blocks_per_node == 1 )  THEN
+    IF ( this%nr_io_pe_per_node == 1 )  THEN
 !
 !--    This branch is not realized so far
        this%iam_io_pe   = ( this%n_rank == 0 )
@@ -467,7 +479,7 @@
        CALL MPI_COMM_SIZE( this%comm_shared, this%sh_npes, ierr )
        CALL MPI_COMM_RANK( this%comm_shared, this%sh_rank, ierr )
 
-    ELSEIF( this%sm_blocks_per_node == 2 )  THEN
+    ELSEIF( this%nr_io_pe_per_node == 2 )  THEN
 
        this%iam_io_pe = ( this%n_rank == 0  .OR.  this%n_rank == this%n_npes/2 )
        IF ( this%n_rank < this%n_npes/2 )  THEN
@@ -479,7 +491,7 @@
        CALL MPI_COMM_SIZE( this%comm_shared, this%sh_npes, ierr )
        CALL MPI_COMM_RANK( this%comm_shared, this%sh_rank, ierr )
 
-    ELSEIF( this%sm_blocks_per_node == 4 )  THEN
+    ELSEIF( this%nr_io_pe_per_node == 4 )  THEN
 
        this%iam_io_pe = ( this%n_rank == 0  .OR.  this%n_rank == this%n_npes/4  .OR.               &
                           this%n_rank == this%n_npes/2  .OR.  this%n_rank == (3*this%n_npes)/4 )
@@ -500,7 +512,7 @@
 
        WRITE( *, * ) 'shared_memory_io_mod: internal error'
        WRITE( *, * ) 'only 1, 2 or 4 shared memory groups per node are allowed '
-       WRITE( *, * ) 'here, ', this%sm_blocks_per_node, ' groups have been set'
+       WRITE( *, * ) 'here, ', this%nr_io_pe_per_node, ' groups have been set'
        STOP
 
     ENDIF
@@ -513,7 +525,7 @@
 
 !
 !-- Setup the communicator across the nodes depending on the shared memory rank.
-!-- All PEs with shared memory rank 0 will be I/O PEs.
+!-- All threads with shared memory rank 0 will be I/O threads.
     color = this%sh_rank
     CALL MPI_COMM_SPLIT( this%comm_model, color, 0, this%comm_io, ierr )
 
@@ -560,26 +572,24 @@
 !--------------------------------------------------------------------------------------------------!
 ! Description:
 ! ------------
-!> Allocate shared 1d-REAL (64 bit) array on PE 0 and pass address to all PEs.
+!> Allocate shared 1d-REAL (64 Bit) array on ALL threads
 !--------------------------------------------------------------------------------------------------!
-
  SUBROUTINE sm_allocate_shared_1d_64( this, p1, d1, d2, win )
 
     IMPLICIT NONE
 
     CLASS(sm_class), INTENT(inout)  ::  this
 
+    INTEGER(iwp)                    ::  disp_unit
     INTEGER(iwp), INTENT(IN)        ::  d1
     INTEGER(iwp), INTENT(IN)        ::  d2
-    INTEGER(iwp), INTENT(OUT)       ::  win
-
-    INTEGER(iwp)                    ::  disp_unit
     INTEGER(iwp), SAVE              ::  pe_from = 0
+    INTEGER(iwp), INTENT(OUT)       ::  win
 
     INTEGER(KIND=MPI_ADDRESS_KIND)  ::  rem_size
     INTEGER(KIND=MPI_ADDRESS_KIND)  ::  wsize
 
-    INTEGER(idp), DIMENSION(1)      ::  buf_shape
+    INTEGER, DIMENSION(1)           ::  buf_shape
 
     REAL(dp), DIMENSION(:), POINTER ::  buf
     REAL(dp), DIMENSION(:), POINTER ::  p1
@@ -590,7 +600,7 @@
 
     IF ( this%no_shared_memory_in_this_run )  RETURN
 !
-!-- Allocate shared memory on node rank 0 PEs.
+!-- Allocate shared memory on node rank 0 threads.
     IF ( this%sh_rank == pe_from )  THEN
        wsize = d2 - d1 + 1
     ELSE
@@ -608,7 +618,6 @@
     buf_shape(1) = d2 - d1 + 1
     CALL C_F_POINTER( rem_ptr, buf, buf_shape )
     p1(d1:) => buf
-
 !
 !-- Allocate shared memory in round robin on all PEs of a node.
     pe_from = MOD( pe_from, this%sh_npes )
@@ -619,7 +628,7 @@
 !--------------------------------------------------------------------------------------------------!
 ! Description:
 ! ------------
-!> Allocate shared 1d-REAL (32 bit) array on PE 0 and pass address to all PEs
+!> Allocate shared 1d-REAL (32 Bit) array on ALL threads
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE sm_allocate_shared_1d_32( this, p1, d1, d2, win )
 
@@ -636,7 +645,7 @@
     INTEGER(KIND=MPI_ADDRESS_KIND)  ::  rem_size
     INTEGER(KIND=MPI_ADDRESS_KIND)  ::  wsize
 
-    INTEGER(iwp), DIMENSION(1)      ::  buf_shape
+    INTEGER, DIMENSION(1)           ::  buf_shape
 
     REAL(sp), DIMENSION(:), POINTER ::  buf
     REAL(sp), DIMENSION(:), POINTER ::  p1
@@ -647,7 +656,7 @@
 
     IF ( this%no_shared_memory_in_this_run )  RETURN
 !
-!-- Allocate shared memory on node rank 0 PEs.
+!-- Allocate shared memory on node rank 0 threads.
     IF ( this%sh_rank == pe_from )  THEN
        wsize = d2 - d1 + 1
     ELSE
@@ -675,7 +684,7 @@
 !--------------------------------------------------------------------------------------------------!
 ! Description:
 ! ------------
-!> Allocate shared 1d-INTEGER array on PE 0 and pass address to all PEs.
+!> Allocate shared 1d-INTEGER array on ALL threads
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE sm_allocate_shared_1di( this, p1, d1, d2, win )
 
@@ -692,7 +701,7 @@
     INTEGER(KIND=MPI_ADDRESS_KIND)  ::  rem_size
     INTEGER(KIND=MPI_ADDRESS_KIND)  ::  wsize
 
-    INTEGER(iwp), DIMENSION(1)          ::  buf_shape
+    INTEGER, DIMENSION(1)           ::  buf_shape
 
     INTEGER(iwp), DIMENSION(:), POINTER ::  buf
     INTEGER(iwp), DIMENSION(:), POINTER ::  p1
@@ -703,7 +712,7 @@
 
     IF ( this%no_shared_memory_in_this_run )  RETURN
 !
-!-- Allocate shared memory on node rank 0 PEs.
+!-- Allocate shared memory on node rank 0 threads.
     IF ( this%sh_rank == pe_from )  THEN
        wsize = d2 - d1 + 1
     ELSE
@@ -731,7 +740,7 @@
 !--------------------------------------------------------------------------------------------------!
 ! Description:
 ! ------------
-!> Allocate shared 2d-REAL array (64 bit) on PE 0 and pass address to all PEs.
+!> Allocate shared 2d-REAL array on ALL threads (64 Bit)
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE sm_allocate_shared_2d_64( this, p2, n_nxlg, n_nxrg, n_nysg, n_nyng, win )
 
@@ -761,7 +770,7 @@
 
     IF ( this%no_shared_memory_in_this_run )  RETURN
 !
-!-- Allocate shared memory on node rank 0 PEs.
+!-- Allocate shared memory on node rank 0 threads.
     IF ( this%sh_rank == pe_from )  THEN
        wsize = ( n_nyng - n_nysg + 1 ) * ( n_nxrg - n_nxlg + 1 )
     ELSE
@@ -791,7 +800,7 @@
 !--------------------------------------------------------------------------------------------------!
 ! Description:
 ! ------------
-!> Allocate shared 2d-REAL (32 Bit) array on PE 0 and pass address to all PEs.
+!> Allocate shared 2d-REAL (32 Bit) array on ALL threads
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE sm_allocate_shared_2d_32( this, p2, n_nxlg, n_nxrg, n_nysg, n_nyng, win )
 
@@ -821,7 +830,7 @@
 
     IF ( this%no_shared_memory_in_this_run )  RETURN
 !
-!-- Allocate shared memory on node rank 0 PEs.
+!-- Allocate shared memory on node rank 0 threads.
     IF ( this%sh_rank == pe_from )  THEN
        wsize = ( n_nyng - n_nysg + 1 ) * ( n_nxrg - n_nxlg + 1 )
     ELSE
@@ -851,7 +860,7 @@
 !--------------------------------------------------------------------------------------------------!
 ! Description:
 ! ------------
-!> Allocate shared 2d-INTEGER array on PE 0 and pass address to all PEs.
+!> Allocate shared 2d-INTEGER array on ALL threads
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE sm_allocate_shared_2di( this, p2i, n_nxlg, n_nxrg, n_nysg, n_nyng, win )
 
@@ -867,8 +876,8 @@
     INTEGER(iwp), SAVE                    ::  pe_from = 0  !<
     INTEGER(iwp), INTENT(OUT)             ::  win          !<
 
-    INTEGER(KIND=MPI_ADDRESS_KIND)        ::  rem_size     !<
-    INTEGER(KIND=MPI_ADDRESS_KIND)        ::  wsize        !<
+    INTEGER(kind=MPI_ADDRESS_KIND)        ::  rem_size     !<
+    INTEGER(kind=MPI_ADDRESS_KIND)        ::  wsize        !<
 
     INTEGER(iwp), DIMENSION(2)            ::  buf_shape    !<
 
@@ -881,7 +890,7 @@
 
     IF ( this%no_shared_memory_in_this_run )  RETURN
 !
-!-- Allocate shared memory on node rank 0 PEs.
+!-- Allocate shared memory on node rank 0 threads.
     IF ( this%sh_rank == pe_from )  THEN
        wsize = ( n_nyng - n_nysg + 1 ) * ( n_nxrg - n_nxlg + 1 )
     ELSE
@@ -908,72 +917,10 @@
  END SUBROUTINE sm_allocate_shared_2di
 
 
-
 !--------------------------------------------------------------------------------------------------!
 ! Description:
 ! ------------
-!> Allocate shared 2d-INTEGER*8 array on PE 0 and pass address to all PEs.
-!--------------------------------------------------------------------------------------------------!
- SUBROUTINE sm_allocate_shared_2di_64( this, p2i, n_nxlg, n_nxrg, n_nysg, n_nyng, win )
-
-    IMPLICIT NONE
-
-    CLASS(sm_class), INTENT(inout)        ::  this         !<
-
-    INTEGER(iwp)                          ::  disp_unit    !<
-    INTEGER(iwp), INTENT(IN)              ::  n_nxlg       !<
-    INTEGER(iwp), INTENT(IN)              ::  n_nxrg       !<
-    INTEGER(iwp), INTENT(IN)              ::  n_nyng       !<
-    INTEGER(iwp), INTENT(IN)              ::  n_nysg       !<
-    INTEGER(iwp), SAVE                    ::  pe_from = 0  !<
-    INTEGER(iwp), INTENT(OUT)             ::  win          !<
-
-    INTEGER(KIND=MPI_ADDRESS_KIND)        ::  rem_size     !<
-    INTEGER(KIND=MPI_ADDRESS_KIND)        ::  wsize        !<
-
-    INTEGER(iwp), DIMENSION(2)            ::  buf_shape    !<
-
-    INTEGER(idp), DIMENSION(:,:), POINTER ::  buf          !<
-    INTEGER(idp), DIMENSION(:,:), POINTER ::  p2i          !<
-
-    TYPE(C_PTR), SAVE                     ::  base_ptr     !<
-    TYPE(C_PTR), SAVE                     ::  rem_ptr      !<
-
-
-    IF ( this%no_shared_memory_in_this_run )  RETURN
-!
-!-- Allocate shared memory on node rank 0 PEs.
-    IF ( this%sh_rank == pe_from )  THEN
-       wsize = ( n_nyng - n_nysg + 1 ) * ( n_nxrg - n_nxlg + 1 )
-    ELSE
-       wsize = 1
-    ENDIF
-
-    wsize = wsize * idp  ! Please note, size is always in bytes, independently of the displacement
-                         ! unit
-
-    CALL MPI_WIN_ALLOCATE_SHARED( wsize, idp, MPI_INFO_NULL, this%comm_shared, base_ptr, win, ierr )
-!
-!-- Get C-pointer of the memory located on node-rank pe_from (sh_rank == pe_from)
-    CALL MPI_WIN_SHARED_QUERY( win, pe_from, rem_size, disp_unit, rem_ptr, ierr )
-!
-!-- Convert C- to Fortran-pointer
-    buf_shape(2) = n_nyng - n_nysg + 1
-    buf_shape(1) = n_nxrg - n_nxlg + 1
-    CALL C_F_POINTER( rem_ptr, buf, buf_shape )
-    p2i(n_nxlg:, n_nysg:) => buf
-!
-!-- Allocate shared memory in round robin on all PEs of a node.
-    pe_from = MOD( pe_from, this%sh_npes )
-
- END SUBROUTINE sm_allocate_shared_2di_64
-
-
-
-!--------------------------------------------------------------------------------------------------!
-! Description:
-! ------------
-!> Allocate shared 3d-REAL (64 bit) array on PE 0 and pass address to all PEs.
+!> Allocate shared 3d-REAL (64 Bit) array on ALL threads
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE sm_allocate_shared_3d_64( this, p3, d1s, d1e, d2s, d2e, d3s, d3e, win )
 
@@ -981,20 +928,20 @@
 
     CLASS(sm_class), INTENT(inout)      ::  this         !<
 
-    INTEGER(iwp)                        ::  disp_unit    !<
-    INTEGER(iwp), INTENT(IN)            ::  d1e          !<
-    INTEGER(iwp), INTENT(IN)            ::  d1s          !<
-    INTEGER(iwp), INTENT(IN)            ::  d2e          !<
-    INTEGER(iwp), INTENT(IN)            ::  d2s          !<
-    INTEGER(iwp), INTENT(IN)            ::  d3e          !<
-    INTEGER(iwp), INTENT(IN)            ::  d3s          !<
-    INTEGER(iwp), SAVE                  ::  pe_from = 0  !<
-    INTEGER(iwp), INTENT(OUT)           ::  win          !<
+    INTEGER                             ::  disp_unit    !<
+    INTEGER, INTENT(IN)                 ::  d1e          !<
+    INTEGER, INTENT(IN)                 ::  d1s          !<
+    INTEGER, INTENT(IN)                 ::  d2e          !<
+    INTEGER, INTENT(IN)                 ::  d2s          !<
+    INTEGER, INTENT(IN)                 ::  d3e          !<
+    INTEGER, INTENT(IN)                 ::  d3s          !<
+    INTEGER, SAVE                       ::  pe_from = 0  !<
+    INTEGER, INTENT(OUT)                ::  win          !<
 
     INTEGER(KIND=MPI_ADDRESS_KIND)      ::  rem_size     !<
     INTEGER(KIND=MPI_ADDRESS_KIND)      ::  wsize        !<
 
-    INTEGER(iwp), DIMENSION(3)          ::  buf_shape    !<
+    INTEGER, DIMENSION(3)               ::  buf_shape    !<
 
     REAL(dp), DIMENSION(:,:,:), POINTER ::  buf          !<
     REAL(dp), DIMENSION(:,:,:), POINTER ::  p3           !<
@@ -1005,7 +952,7 @@
 
     IF ( this%no_shared_memory_in_this_run )  RETURN
 !
-!-- Allocate shared memory on node rank 0 PEs.
+!-- Allocate shared memory on node rank 0 threads.
     IF ( this%sh_rank == pe_from )  THEN
        wsize = ( d3e - d3s + 1 ) * ( d2e - d2s + 1 ) * ( d1e - d1s + 1 )
     ELSE
@@ -1036,7 +983,7 @@
 !--------------------------------------------------------------------------------------------------!
 ! Description:
 ! ------------
-!> Allocate shared 3d-REAL (32 bit) array on PE 0 and pass address to all PEs.
+!> Allocate shared 3d-REAL (32 Bit) array on ALL threads
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE sm_allocate_shared_3d_32( this, p3, d1s, d1e, d2s, d2e, d3s, d3e, win )
 
@@ -1044,20 +991,20 @@
 
     CLASS(sm_class), INTENT(inout)      ::  this
 
-    INTEGER(iwp)                        ::  disp_unit
-    INTEGER(iwp), INTENT(IN)            ::  d1e
-    INTEGER(iwp), INTENT(IN)            ::  d1s
-    INTEGER(iwp), INTENT(IN)            ::  d2e
-    INTEGER(iwp), INTENT(IN)            ::  d2s
-    INTEGER(iwp), INTENT(IN)            ::  d3e
-    INTEGER(iwp), INTENT(IN)            ::  d3s
-    INTEGER(iwp), SAVE                  ::  pe_from = 0
-    INTEGER(iwp), INTENT(OUT)           ::  win
+    INTEGER                             ::  disp_unit
+    INTEGER, INTENT(IN)                 ::  d1e
+    INTEGER, INTENT(IN)                 ::  d1s
+    INTEGER, INTENT(IN)                 ::  d2e
+    INTEGER, INTENT(IN)                 ::  d2s
+    INTEGER, INTENT(IN)                 ::  d3e
+    INTEGER, INTENT(IN)                 ::  d3s
+    INTEGER, SAVE                       ::  pe_from = 0
+    INTEGER, INTENT(OUT)                ::  win
 
     INTEGER(KIND=MPI_ADDRESS_KIND)      ::  rem_size
     INTEGER(KIND=MPI_ADDRESS_KIND)      ::  wsize
 
-    INTEGER(iwp), DIMENSION(3)          ::  buf_shape
+    INTEGER, DIMENSION(3)               ::  buf_shape
 
     REAL(sp), DIMENSION(:,:,:), POINTER ::  buf
     REAL(sp), DIMENSION(:,:,:), POINTER ::  p3
@@ -1068,7 +1015,7 @@
 
     IF ( this%no_shared_memory_in_this_run )  RETURN
 !
-!-- Allocate shared memory on node rank 0 PEs.
+!-- Allocate shared memory on node rank 0 threads.
     IF ( this%sh_rank == pe_from )  THEN
        wsize = ( d3e - d3s + 1 ) * ( d2e - d2s + 1 ) * ( d1e - d1s + 1 )
     ELSE
@@ -1099,171 +1046,39 @@
 !--------------------------------------------------------------------------------------------------!
 ! Description:
 ! ------------
-!> Allocate shared 4d-REAL (64 bit) array on PE 0 and pass address to all PEs.
-!--------------------------------------------------------------------------------------------------!
- SUBROUTINE sm_allocate_shared_4d_64( this, p3, d1s, d1e, d2s, d2e, d3s, d3e, d4s, d4e, win )
-
-    IMPLICIT NONE
-
-    CLASS(sm_class), INTENT(inout)        ::  this         !<
-
-    INTEGER                               ::  disp_unit    !<
-    INTEGER(iwp), INTENT(IN)              ::  d1e          !<
-    INTEGER(iwp), INTENT(IN)              ::  d1s          !<
-    INTEGER(iwp), INTENT(IN)              ::  d2e          !<
-    INTEGER(iwp), INTENT(IN)              ::  d2s          !<
-    INTEGER(iwp), INTENT(IN)              ::  d3e          !<
-    INTEGER(iwp), INTENT(IN)              ::  d3s          !<
-    INTEGER(iwp), INTENT(IN)              ::  d4e          !<
-    INTEGER(iwp), INTENT(IN)              ::  d4s          !<
-    INTEGER(iwp), SAVE                    ::  pe_from = 0  !<
-    INTEGER(iwp), INTENT(OUT)             ::  win          !<
-
-    INTEGER(KIND=MPI_ADDRESS_KIND)        ::  rem_size     !<
-    INTEGER(KIND=MPI_ADDRESS_KIND)        ::  wsize        !<
-
-    INTEGER(iwp), DIMENSION(4)            ::  buf_shape    !<
-
-    REAL(dp), DIMENSION(:,:,:,:), POINTER ::  buf          !<
-    REAL(dp), DIMENSION(:,:,:,:), POINTER ::  p3           !<
-
-    TYPE(C_PTR), SAVE                     ::  base_ptr     !<
-    TYPE(C_PTR), SAVE                     ::  rem_ptr      !<
-
-
-    IF ( this%no_shared_memory_in_this_run )  RETURN
-!
-!-- Allocate shared memory on node rank 0 PEs.
-    IF ( this%sh_rank == pe_from )  THEN
-       wsize = (d4e - d4s +1) * ( d3e - d3s + 1 ) * ( d2e - d2s + 1 ) * ( d1e - d1s + 1 )
-    ELSE
-       wsize = 1
-    ENDIF
-
-    wsize = wsize * dp ! Please note, size is always in bytes, independently of the displacement
-                       ! unit
-
-    CALL MPI_WIN_ALLOCATE_SHARED( wsize, dp, MPI_INFO_NULL, this%comm_shared, base_ptr, win, ierr )
-!
-!-- Get C-pointer of the memory located on node-rank pe_from (sh_rank == pe_from)
-    CALL MPI_WIN_SHARED_QUERY( win, pe_from, rem_size, disp_unit, rem_ptr, ierr )
-!
-!-- Convert C- to Fortran-pointer
-    buf_shape(4) = d4e - d4s + 1
-    buf_shape(3) = d3e - d3s + 1
-    buf_shape(2) = d2e - d2s + 1
-    buf_shape(1) = d1e - d1s + 1
-    CALL C_F_POINTER( rem_ptr, buf, buf_shape )
-    p3(d1s:,d2s:,d3s:,d4s:) => buf
-!
-!-- Allocate shared memory in round robin on all PEs of a node.
-    pe_from = MOD( pe_from, this%sh_npes )
-
- END SUBROUTINE sm_allocate_shared_4d_64
-
-
-!--------------------------------------------------------------------------------------------------!
-! Description:
-! ------------
-!> Allocate shared 4d-REAL (32 bit) array on PE 0 and pass address to all PEs.
-!--------------------------------------------------------------------------------------------------!
- SUBROUTINE sm_allocate_shared_4d_32( this, p3, d1s, d1e, d2s, d2e, d3s, d3e, d4s, d4e, win )
-
-    IMPLICIT NONE
-
-    CLASS(sm_class), INTENT(inout)        ::  this         !<
-
-    INTEGER                               ::  disp_unit    !<
-    INTEGER(iwp), INTENT(IN)              ::  d1e          !<
-    INTEGER(iwp), INTENT(IN)              ::  d1s          !<
-    INTEGER(iwp), INTENT(IN)              ::  d2e          !<
-    INTEGER(iwp), INTENT(IN)              ::  d2s          !<
-    INTEGER(iwp), INTENT(IN)              ::  d3e          !<
-    INTEGER(iwp), INTENT(IN)              ::  d3s          !<
-    INTEGER(iwp), INTENT(IN)              ::  d4e          !<
-    INTEGER(iwp), INTENT(IN)              ::  d4s          !<
-    INTEGER(iwp), SAVE                    ::  pe_from = 0  !<
-    INTEGER(iwp), INTENT(OUT)             ::  win          !<
-
-    INTEGER(KIND=MPI_ADDRESS_KIND)        ::  rem_size     !<
-    INTEGER(KIND=MPI_ADDRESS_KIND)        ::  wsize        !<
-
-    INTEGER(iwp), DIMENSION(4)            ::  buf_shape    !<
-
-    REAL(sp), DIMENSION(:,:,:,:), POINTER ::  buf          !<
-    REAL(sp), DIMENSION(:,:,:,:), POINTER ::  p3           !<
-
-    TYPE(C_PTR), SAVE                     ::  base_ptr     !<
-    TYPE(C_PTR), SAVE                     ::  rem_ptr      !<
-
-
-    IF ( this%no_shared_memory_in_this_run )  RETURN
-!
-!-- Allocate shared memory on node rank 0 PEs.
-    IF ( this%sh_rank == pe_from )  THEN
-       wsize = (d4e - d4s +1) * ( d3e - d3s + 1 ) * ( d2e - d2s + 1 ) * ( d1e - d1s + 1 )
-    ELSE
-       wsize = 1
-    ENDIF
-
-    wsize = wsize * sp ! Please note, size is always in bytes, independently of the displacement
-                       ! unit
-
-    CALL MPI_WIN_ALLOCATE_SHARED( wsize, dp, MPI_INFO_NULL, this%comm_shared, base_ptr, win, ierr )
-!
-!-- Get C-pointer of the memory located on node-rank pe_from (sh_rank == pe_from)
-    CALL MPI_WIN_SHARED_QUERY( win, pe_from, rem_size, disp_unit, rem_ptr, ierr )
-!
-!-- Convert C- to Fortran-pointer
-    buf_shape(4) = d4e - d4s + 1
-    buf_shape(3) = d3e - d3s + 1
-    buf_shape(2) = d2e - d2s + 1
-    buf_shape(1) = d1e - d1s + 1
-    CALL C_F_POINTER( rem_ptr, buf, buf_shape )
-    p3(d1s:,d2s:,d3s:,d4s:) => buf
-!
-!-- Allocate shared memory in round robin on all PEs of a node.
-    pe_from = MOD( pe_from, this%sh_npes )
-
- END SUBROUTINE sm_allocate_shared_4d_32
-
-
-!--------------------------------------------------------------------------------------------------!
-! Description:
-! ------------
-!> Allocate shared 3d-INTEGER (32 bit) array on PE 0 and pass address to all PEs.
+!> Allocate shared 3d-REAL (32 bit) array on ALL threads
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE sm_allocate_shared_3di_32( this, p3, d1s, d1e, d2s, d2e, d3s, d3e, win )
 
     IMPLICIT NONE
 
-    CLASS(sm_class), INTENT(inout)          ::  this
+    CLASS(sm_class), INTENT(inout)      ::  this
 
-    INTEGER                                 ::  disp_unit
-    INTEGER(iwp), INTENT(IN)                ::  d1e
-    INTEGER(iwp), INTENT(IN)                ::  d1s
-    INTEGER(iwp), INTENT(IN)                ::  d2e
-    INTEGER(iwp), INTENT(IN)                ::  d2s
-    INTEGER(iwp), INTENT(IN)                ::  d3e
-    INTEGER(iwp), INTENT(IN)                ::  d3s
-    INTEGER(iwp), SAVE                      ::  pe_from = 0
-    INTEGER(iwp), INTENT(OUT)               ::  win
+    INTEGER                             ::  disp_unit
+    INTEGER, INTENT(IN)                 ::  d1e
+    INTEGER, INTENT(IN)                 ::  d1s
+    INTEGER, INTENT(IN)                 ::  d2e
+    INTEGER, INTENT(IN)                 ::  d2s
+    INTEGER, INTENT(IN)                 ::  d3e
+    INTEGER, INTENT(IN)                 ::  d3s
+    INTEGER, SAVE                       ::  pe_from = 0
+    INTEGER, INTENT(OUT)                ::  win
 
-    INTEGER(KIND=MPI_ADDRESS_KIND)          ::  rem_size
-    INTEGER(KIND=MPI_ADDRESS_KIND)          ::  wsize
+    INTEGER(KIND=MPI_ADDRESS_KIND)      ::  rem_size
+    INTEGER(KIND=MPI_ADDRESS_KIND)      ::  wsize
 
-    INTEGER(iwp), DIMENSION(3)              ::  buf_shape
+    INTEGER, DIMENSION(3)               ::  buf_shape
 
     INTEGER(isp), DIMENSION(:,:,:), POINTER ::  buf
     INTEGER(isp), DIMENSION(:,:,:), POINTER ::  p3
 
-    TYPE(C_PTR), SAVE                       ::  base_ptr
-    TYPE(C_PTR), SAVE                       ::  rem_ptr
+    TYPE(C_PTR), SAVE                   ::  base_ptr
+    TYPE(C_PTR), SAVE                   ::  rem_ptr
 
 
     IF ( this%no_shared_memory_in_this_run )  RETURN
 !
-!-- Allocate shared memory on node rank 0 PEs.
+!-- Allocate shared memory on node rank 0 threads.
     IF ( this%sh_rank == pe_from )  THEN
        wsize = ( d3e - d3s + 1 ) * ( d2e - d2s + 1 ) * ( d1e - d1s + 1 )
     ELSE
@@ -1294,39 +1109,39 @@
 !--------------------------------------------------------------------------------------------------!
 ! Description:
 ! ------------
-!> Allocate shared 3d-INTEGER (64 bit) array on PE 0 and pass address to all PEs.
+!> Allocate shared 3d-REAL (64 bit) array on ALL threads
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE sm_allocate_shared_3di_64( this, p3, d1s, d1e, d2s, d2e, d3s, d3e, win )
 
     IMPLICIT NONE
 
-    CLASS(sm_class), INTENT(inout)          ::  this         !<
+    CLASS(sm_class), INTENT(inout)      ::  this         !<
 
-    INTEGER                                 ::  disp_unit    !<
-    INTEGER(iwp), INTENT(IN)                ::  d1e          !<
-    INTEGER(iwp), INTENT(IN)                ::  d1s          !<
-    INTEGER(iwp), INTENT(IN)                ::  d2e          !<
-    INTEGER(iwp), INTENT(IN)                ::  d2s          !<
-    INTEGER(iwp), INTENT(IN)                ::  d3e          !<
-    INTEGER(iwp), INTENT(IN)                ::  d3s          !<
-    INTEGER(iwp), SAVE                      ::  pe_from = 0  !<
-    INTEGER(iwp), INTENT(OUT)               ::  win          !<
+    INTEGER                             ::  disp_unit    !<
+    INTEGER, INTENT(IN)                 ::  d1e          !<
+    INTEGER, INTENT(IN)                 ::  d1s          !<
+    INTEGER, INTENT(IN)                 ::  d2e          !<
+    INTEGER, INTENT(IN)                 ::  d2s          !<
+    INTEGER, INTENT(IN)                 ::  d3e          !<
+    INTEGER, INTENT(IN)                 ::  d3s          !<
+    INTEGER, SAVE                       ::  pe_from = 0  !<
+    INTEGER, INTENT(OUT)                ::  win          !<
 
-    INTEGER(KIND=MPI_ADDRESS_KIND)          ::  rem_size     !<
-    INTEGER(KIND=MPI_ADDRESS_KIND)          ::  wsize        !<
+    INTEGER(KIND=MPI_ADDRESS_KIND)      ::  rem_size     !<
+    INTEGER(KIND=MPI_ADDRESS_KIND)      ::  wsize        !<
 
-    INTEGER(iwp), DIMENSION(3)              ::  buf_shape    !<
+    INTEGER, DIMENSION(3)               ::  buf_shape    !<
 
     INTEGER(idp), DIMENSION(:,:,:), POINTER ::  buf          !<
     INTEGER(idp), DIMENSION(:,:,:), POINTER ::  p3           !<
 
-    TYPE(C_PTR), SAVE                       ::  base_ptr     !<
-    TYPE(C_PTR), SAVE                       ::  rem_ptr      !<
+    TYPE(C_PTR), SAVE                   ::  base_ptr     !<
+    TYPE(C_PTR), SAVE                   ::  rem_ptr      !<
 
 
     IF ( this%no_shared_memory_in_this_run )  RETURN
 !
-!-- Allocate shared memory on node rank 0 PEs.
+!-- Allocate shared memory on node rank 0 threads.
     IF ( this%sh_rank == pe_from )  THEN
        wsize = ( d3e - d3s + 1 ) * ( d2e - d2s + 1 ) * ( d1e - d1s + 1 )
     ELSE
@@ -1353,94 +1168,6 @@
 
  END SUBROUTINE sm_allocate_shared_3di_64
 
-
-!--------------------------------------------------------------------------------------------------!
-! Description:
-! ------------
-!> Allocate shared 3d-REAL (64 Bit) array on ALL PEs.
-!>
-!> Every PE allocates the local part of a node-shared array.
-!> The C-Pointer of this array and the local limits are broadcasted to all PEs of the node
-!> The information is store in an array of type sm_remote_array and can be retrieved
-!> by sm_remote_array to access remote data.
-!--------------------------------------------------------------------------------------------------!
- SUBROUTINE sm_all_allocate_shared_3d_64( this, p3, d1s, d1e, d2s, d2e, d3s, d3e, remote_arrays, win )
-
-    IMPLICIT NONE
-
-    CLASS(sm_class), INTENT(inout)      ::  this         !< class pointer
-    REAL(dp), DIMENSION(:,:,:), POINTER ::  p3           !< return local array pointer
-
-    INTEGER(iwp), INTENT(IN)            ::  d1e          !< end index dimension 1
-    INTEGER(iwp), INTENT(IN)            ::  d1s          !< start index dimension 1
-    INTEGER(iwp), INTENT(IN)            ::  d2e          !< end index dimension 2
-    INTEGER(iwp), INTENT(IN)            ::  d2s          !< start index dimension 2
-    INTEGER(iwp), INTENT(IN)            ::  d3e          !< end index dimension 3
-    INTEGER(iwp), INTENT(IN)            ::  d3s          !< start index dimension 3
-    INTEGER(iwp), INTENT(OUT)           ::  win          !< MPI Window
-
-    INTEGER(iwp), DIMENSION(3)          ::  buf_shape    !<
-    INTEGER(iwp)                        ::  disp_unit    !<
-    INTEGER(iwp)                        ::  i            !<
-    INTEGER(iwp), SAVE                  ::  pe_from = 0  !<
-
-    INTEGER(KIND=MPI_ADDRESS_KIND)      ::  rem_size     !<
-    INTEGER(KIND=MPI_ADDRESS_KIND)      ::  wsize        !<
-
-    REAL(dp), DIMENSION(:,:,:), POINTER ::  buf          !<
-
-    TYPE(sm_remote_array),INTENT(INOUT), DIMENSION(0:this%sh_npes-1) :: remote_arrays !< info about all remote arrays
-
-    TYPE(C_PTR), SAVE                   ::  base_ptr     !<
-
-    INTEGER(iwp),DIMENSION(6,0:this%sh_npes-1)              ::  all_indices_s
-    INTEGER(iwp),DIMENSION(6,0:this%sh_npes-1)              ::  all_indices
-
-
-    IF ( this%no_shared_memory_in_this_run )  RETURN
-
-    all_indices_s = 0
-
-
-    wsize = ( d3e - d3s + 1 ) * ( d2e - d2s + 1 ) * ( d1e - d1s + 1 )
-
-    wsize = wsize * dp   ! Please note, size is always in bytes, independently of the displacement unit
-
-    CALL MPI_WIN_ALLOCATE_SHARED( wsize, dp, MPI_INFO_NULL, this%comm_shared, base_ptr, win, ierr )
-!
-!-- Get C-pointer of the memory located on node-rank pe_from (sh_rank == pe_from)
-
-    all_indices_s(1,this%sh_rank) = d1s
-    all_indices_s(2,this%sh_rank) = d1e
-    all_indices_s(3,this%sh_rank) = d2s
-    all_indices_s(4,this%sh_rank) = d2e
-    all_indices_s(5,this%sh_rank) = d3s
-    all_indices_s(6,this%sh_rank) = d3e
-
-    CALL MPI_ALLREDUCE (all_indices_s ,all_indices, SIZE(all_indices_s), MPI_INTEGER, MPI_SUM, this%comm_shared, ierr)
-
-    DO i=0,this%sh_npes-1
-       CALL MPI_WIN_SHARED_QUERY( win, i, rem_size, disp_unit, remote_arrays(i)%rem_ptr, ierr )
-       remote_arrays(i)%d1s = all_indices(1,i)
-       remote_arrays(i)%d1e = all_indices(2,i)
-       remote_arrays(i)%d2s = all_indices(3,i)
-       remote_arrays(i)%d2e = all_indices(4,i)
-       remote_arrays(i)%d3s = all_indices(5,i)
-       remote_arrays(i)%d3e = all_indices(6,i)
-    END DO
-
-!
-!-- Convert C- to Fortran-pointer
-    buf_shape(3) = d3e - d3s + 1
-    buf_shape(2) = d2e - d2s + 1
-    buf_shape(1) = d1e - d1s + 1
-    CALL C_F_POINTER( remote_arrays(this%sh_rank)%rem_ptr, buf, buf_shape )
-    p3(d1s:,d2s:,d3s:) => buf
-!
-!-- Allocate shared memory in round robin on all PEs of a node.
-    pe_from = MOD( pe_from, this%sh_npes )
-
- END SUBROUTINE sm_all_allocate_shared_3d_64
 #endif
 
 
@@ -1515,11 +1242,9 @@
 ! ------------
 !> ...
 !--------------------------------------------------------------------------------------------------!
- SUBROUTINE sm_node_barrier( this, win )
+ SUBROUTINE sm_node_barrier( this )
 
     IMPLICIT NONE
-
-    INTEGER(iwp), OPTIONAL         ::  win   !<
 
     CLASS(sm_class), INTENT(inout) ::  this  !<
 
@@ -1529,13 +1254,6 @@
 #if defined( __parallel )
     CALL MPI_BARRIER( this%comm_shared, ierr )
 #endif
-    IF ( PRESENT(win) )  THEN
-#if defined( __parallel )
-       CALL MPI_WIN_FENCE(0, win, ierr )
-#else
-       CONTINUE
-#endif
-    ENDIF
 
  END SUBROUTINE sm_node_barrier
 

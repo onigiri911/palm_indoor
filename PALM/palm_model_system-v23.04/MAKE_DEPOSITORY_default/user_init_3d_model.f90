@@ -13,9 +13,31 @@
 ! You should have received a copy of the GNU General Public License along with PALM. If not, see
 ! <http://www.gnu.org/licenses/>.
 !
-! Copyright 1997-2021 Leibniz Universitaet Hannover
+! Copyright 1997-2020 Leibniz Universitaet Hannover
 !--------------------------------------------------------------------------------------------------!
 !
+!
+! Current revisions:
+! -----------------
+! 
+! 
+! Former revisions:
+! -----------------
+! $Id: user_init_3d_model.f90 4498 2020-04-15 14:26:31Z raasch $
+! file re-formatted to follow the PALM coding standard
+!
+!
+! 4360 2020-01-07 11:25:50Z suehring
+! Corrected "Former revisions" section
+!
+! 3768 2019-02-27 14:35:58Z raasch
+! variables commented out to avoid compiler warnings about unused variables
+!
+! 3655 2019-01-07 16:51:22Z knoop
+! Corrected "Former revisions" section
+!
+! 211 2008-11-11 04:46:24Z raasch
+! Former file user_interface.f90 split into one file per subroutine
 !
 ! Description:
 ! ------------
@@ -25,6 +47,7 @@
 !>            are normally set within init_3d_model!
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE user_init_3d_model
+
 
     USE arrays_3d
 
@@ -46,38 +69,49 @@
 !
 !-- Initialization of surface-related quantities.
 !-- The following example shows required initialization of surface quantitites at default-type
-!-- surfaces. The following loop includes all surface orientations. If only surfaces with
-!-- specific surface orientation shall be treated, the user can distinguish surfaces via
-!-- the attribute %koff(m), or alternatively by the logical attributions upward, downward,
-!-- northward, southward, eastward, and westward.
-!   DO  m = 1, surf_def%ns
-!      surf_def%ol(m)   = ...    ! Obukhov length
-!      surf_def%us(m  ) = ...    ! friction velocity
-!      surf_def%usws(m) = ...    ! vertical momentum flux, u-component
-!      surf_def%vsws(m) = ...    ! vertical momentum flux, v-component
-!      surf_def%z0(m)   = ...    ! roughness length for momentum
+!-- upward-facing surfaces.
+!   DO  m = 1, surf_def_h(0)%ns
+!      surf_def_h(0)%ol(m)   = ...    ! Obukhov length
+!      surf_def_h(0)%us(m  ) = ...    ! friction velocity
+!      surf_def_h(0)%usws(m) = ...    ! vertical momentum flux, u-component
+!      surf_def_h(0)%vsws(m) = ...    ! vertical momentum flux, v-component
+!      surf_def_h(0)%z0(m)   = ...    ! roughness length for momentum
 !      IF ( .NOT. neutral )  THEN
-!         surf_def%ts(m)   = ... ! scaling parameter
-!         surf_def%shf(m)  = ... ! surface sensible heat flux
-!         surf_def%z0h(m)  = ... ! roughness length for heat
+!         surf_def_h(0)%ts(m)   = ... ! scaling parameter
+!         surf_def_h(0)%shf(m)  = ... ! surface sensible heat flux
+!         surf_def_h(0)%z0h(m)  = ... ! roughness length for heat
 !      ENDIF
 !      IF ( humditiy )  THEN
-!         surf_def%qs(m)   = ... ! scaling parameter
-!         surf_def%qsws(m) = ... ! surface latent heat flux
-!         surf_def%z0q(m)  = ... ! roughness length for moisture
+!         surf_def_h(0)%qs(m)   = ... ! scaling parameter
+!         surf_def_h(0)%qsws(m) = ... ! surface latent heat flux
+!         surf_def_h(0)%z0q(m)  = ... ! roughness length for moisture
 !      ENDIF
 !      IF ( passive_scalar )  THEN
-!         surf_def%ss(m)   = ... ! scaling parameter
-!         surf_def%ssws(m) = ... ! surface latent heat flux
+!         surf_def_h(0)%ss(m)   = ... ! scaling parameter
+!         surf_def_h(0)%ssws(m) = ... ! surface latent heat flux
 !      ENDIF
 !   ENDDO
 !
 !-- Same for natural and urban type surfaces
-!   DO  m = 1, surf_lsm%ns
+!   DO  m = 1, surf_lsm_h%ns
 !      ...
 !   ENDDO
-!   DO  m = 1, surf_usm%ns
+!   DO  m = 1, surf_usm_h%ns
 !      ...
+!   ENDDO
+!
+!-- Also care for vertically aligned surfaces (default-, natural-, and
+!-- urban-type).
+!   DO  l = 0, 3
+!      DO  m = 1, surf_def_v(l)%ns
+!         ...
+!      ENDDO
+!      DO  m = 1, surf_lsm_v(l)%ns
+!         ...
+!      ENDDO
+!      DO  m = 1, surf_usm_v(l)%ns
+!         ...
+!      ENDDO
 !   ENDDO
 !
 !

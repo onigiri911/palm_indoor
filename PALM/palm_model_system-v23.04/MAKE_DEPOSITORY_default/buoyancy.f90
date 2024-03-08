@@ -14,8 +14,30 @@
 ! <http://www.gnu.org/licenses/>.
 !
 !
-! Copyright 1997-2021 Leibniz Universitaet Hannover
+! Copyright 1997-2020 Leibniz Universitaet Hannover
 !--------------------------------------------------------------------------------------------------!
+!
+! Current revisions:
+! ------------------
+! 
+! 
+! Former revisions:
+! -----------------
+! $Id: buoyancy.f90 4542 2020-05-19 15:45:12Z raasch $
+! file re-formatted to follow the PALM coding standard
+!
+! 4360 2020-01-07 11:25:50Z suehring
+! Corrected "Former revisions" section
+!
+! 3725 2019-02-07 10:11:02Z raasch
+! unused variables removed
+!
+! 3655 2019-01-07 16:51:22Z knoop
+! nopointer option removed
+!
+! Revision 1.1  1997/08/29 08:56:48  raasch
+! Initial revision
+!
 !
 ! Description:
 ! ------------
@@ -28,17 +50,10 @@
         ONLY:  g
 
     USE arrays_3d,                                                                                 &
-        ONLY:  pt,                                                                                 &
-               pt_slope_ref,                                                                       &
-               ref_state,                                                                          &
-               tend
+        ONLY:  pt, pt_slope_ref, ref_state, tend
 
     USE control_parameters,                                                                        &
-        ONLY:  atmos_ocean_sign,                                                                   &
-               cos_alpha_surface,                                                                  &
-               message_string,                                                                     &
-               pt_surface,                                                                         &
-               sin_alpha_surface,                                                                  &
+        ONLY:  atmos_ocean_sign, cos_alpha_surface, message_string, pt_surface, sin_alpha_surface, &
                sloping_surface
 
     USE kinds
@@ -62,13 +77,7 @@
     SUBROUTINE buoyancy( var, wind_component )
 
        USE indices,                                                                                &
-           ONLY:  nxl,                                                                             &
-                  nxlu,                                                                            &
-                  nxr,                                                                             &
-                  nyn,                                                                             &
-                  nys,                                                                             &
-                  nzb,                                                                             &
-                  nzt
+           ONLY:  nxl, nxlu, nxr, nyn, nys, nzb, nzt
 
 
        IMPLICIT NONE
@@ -135,8 +144,8 @@
 
           ELSE
 
-             WRITE( message_string, * ) 'no term for wind component "', wind_component, '"'
-             CALL message( 'buoyancy', 'PAC0002', 1, 2, 0, 6, 0 )
+             WRITE( message_string, * ) 'no term for component "', wind_component, '"'
+             CALL message( 'buoyancy', 'PA0159', 1, 2, 0, 6, 0 )
 
           ENDIF
 
@@ -157,8 +166,7 @@
 
 
        USE indices,                                                                                &
-           ONLY:  nzb,                                                                             &
-                  nzt
+           ONLY:  nzb, nzt
 
        IMPLICIT NONE
 
@@ -207,8 +215,8 @@
 
           ELSE
 
-             WRITE( message_string, * ) 'no term for wind component "', wind_component, '"'
-             CALL message( 'buoyancy', 'PAC0002', 1, 2, 0, 6, 0 )
+             WRITE( message_string, * ) 'no term for component "', wind_component, '"'
+             CALL message( 'buoyancy', 'PA0159', 1, 2, 0, 6, 0 )
 
           ENDIF
 

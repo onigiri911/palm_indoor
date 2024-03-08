@@ -13,8 +13,27 @@
 ! You should have received a copy of the GNU General Public License along with PALM. If not, see
 ! <http://www.gnu.org/licenses/>.
 !
-! Copyright 1997-2021 Leibniz Universitaet Hannover
+! Copyright 1997-2020 Leibniz Universitaet Hannover
 !--------------------------------------------------------------------------------------------------!
+!
+! Current revisions:
+! -----------------
+! 
+! 
+! Former revisions:
+! -----------------
+! $Id: advec_w_pw.f90 4488 2020-04-03 11:34:29Z raasch $
+! file re-formatted to follow the PALM coding standard
+!
+! 4360 2020-01-07 11:25:50Z suehring
+! Corrected "Former revisions" section
+! 
+! 3655 2019-01-07 16:51:22Z knoop
+! variables documented
+!
+! Revision 1.1  1997/08/11 06:10:29  raasch
+! Initial revision
+!
 !
 ! Description:
 ! ------------
@@ -45,27 +64,16 @@
  SUBROUTINE advec_w_pw
 
     USE arrays_3d,                                                                                 &
-        ONLY:  ddzu,                                                                               &
-               tend,                                                                               &
-               u,                                                                                  &
-               v,                                                                                  &
-               w
+        ONLY:  ddzu, tend, u, v, w
 
     USE control_parameters,                                                                        &
-        ONLY:  u_gtrans,                                                                           &
-               v_gtrans
+        ONLY:  u_gtrans, v_gtrans
 
     USE grid_variables,                                                                            &
-        ONLY:  ddx,                                                                                &
-               ddy
+        ONLY:  ddx, ddy
 
     USE indices,                                                                                   &
-        ONLY:  nxl,                                                                                &
-               nxr,                                                                                &
-               nyn,                                                                                &
-               nys,                                                                                &
-               nzb,                                                                                &
-               nzt
+        ONLY:  nxl, nxr, nyn, nys, nzb, nzt
 
     USE kinds
 
@@ -108,23 +116,16 @@
  SUBROUTINE advec_w_pw_ij( i, j )
 
     USE arrays_3d,                                                                                 &
-        ONLY:  ddzu,                                                                               &
-               tend,                                                                               &
-               u,                                                                                  &
-               v,                                                                                  &
-               w
+        ONLY:  ddzu, tend, u, v, w
 
     USE control_parameters,                                                                        &
-        ONLY:  u_gtrans,                                                                           &
-               v_gtrans
+        ONLY:  u_gtrans, v_gtrans
 
     USE grid_variables,                                                                            &
-        ONLY:  ddx,                                                                                &
-               ddy
+        ONLY:  ddx, ddy
 
     USE indices,                                                                                   &
-        ONLY:  nzb,                                                                                &
-               nzt
+        ONLY:  nzb, nzt
 
     USE kinds
 

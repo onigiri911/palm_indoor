@@ -13,9 +13,81 @@
 ! You should have received a copy of the GNU General Public License along with PALM. If not, see
 ! <http://www.gnu.org/licenses/>.
 !
-! Copyright 1997-2021 Leibniz Universitaet Hannover
-! Copyright 2022-2022 pecanode GmbH
+! Copyright 1997-2020 Leibniz Universitaet Hannover
 !--------------------------------------------------------------------------------------------------!
+!
+! Current revisions:
+! ------------------
+!
+!
+! Former revisions:
+! -----------------
+! $Id: data_output_2d.f90 4671 2020-09-09 20:27:58Z pavelkrc $
+! Implementation of downward facing USM and LSM surfaces
+! 
+! 4559 2020-06-11 08:51:48Z raasch
+! file re-formatted to follow the PALM coding standard
+!
+! 4518 2020-05-04 15:44:28Z suehring
+! remove double index
+!
+! 4514 2020-04-30 16:29:59Z suehring
+! Enable output of qsurf and ssurf
+!
+! 4500 2020-04-17 10:12:45Z suehring
+! Unify output conversion of sensible and latent heat flux
+!
+! 4457 2020-03-11 14:20:43Z raasch
+! use statement for exchange horiz added
+!
+! 4444 2020-03-05 15:59:50Z raasch
+! bugfix: cpp-directives for serial mode added
+!
+! 4442 2020-03-04 19:21:13Z suehring
+! Change order of dimension in surface array %frac to allow for better vectorization.
+!
+! 4441 2020-03-04 19:20:35Z suehring
+! Introduction of wall_flags_total_0, which currently sets bits based on static topography
+! information used in wall_flags_static_0
+!
+! 4331 2019-12-10 18:25:02Z suehring
+! Move 2-m potential temperature output to diagnostic_output_quantities
+!
+! 4329 2019-12-10 15:46:36Z motisi
+! Renamed wall_flags_0 to wall_flags_static_0
+!
+! 4182 2019-08-22 15:20:23Z scharf
+! Corrected "Former revisions" section
+!
+! 4048 2019-06-21 21:00:21Z knoop
+! Removed turbulence_closure_mod dependency
+!
+! 4039 2019-06-18 10:32:41Z suehring
+! modularize diagnostic output
+!
+! 3994 2019-05-22 18:08:09Z suehring
+! output of turbulence intensity added
+!
+! 3987 2019-05-22 09:52:13Z kanani
+! Introduce alternative switch for debug output during timestepping
+!
+! 3943 2019-05-02 09:50:41Z maronga
+! Added output of qsws for green roofs.
+!
+! 3885 2019-04-11 11:29:34Z kanani
+! Changes related to global restructuring of location messages and introductionof additional debug
+! messages
+!
+! 3766 2019-02-26 16:23:41Z raasch
+! unused variables removed
+!
+! 3655 2019-01-07 16:51:22Z knoop
+! Bugfix: use time_since_reference_point instead of simulated_time (relevant when using wall/soil
+!         spinup)
+!
+! Revision 1.1  1997/08/11 06:24:09  raasch
+! Initial revision
+!
 !
 ! Description:
 ! ------------
@@ -26,31 +98,10 @@
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE data_output_2d( mode, av )
 
-#if defined( __parallel )
-    USE MPI
-#endif
 
     USE arrays_3d,                                                                                 &
-        ONLY:  d_exner,                                                                            &
-               drho_air_zw,                                                                        &
-               dzw,                                                                                &
-               e,                                                                                  &
-               heatflux_output_conversion,                                                         &
-               p,                                                                                  &
-               pt,                                                                                 &
-               q,                                                                                  &
-               ql,                                                                                 &
-               ql_c,                                                                               &
-               ql_v,                                                                               &
-               s,                                                                                  &
-               tend,                                                                               &
-               u,                                                                                  &
-               v,                                                                                  &
-               vpt,                                                                                &
-               w,                                                                                  &
-               waterflux_output_conversion,                                                        &
-               zu,                                                                                 &
-               zw
+        ONLY:  d_exner, dzw, e, heatflux_output_conversion, p, pt, q, ql, ql_c, ql_v, s, tend, u,  &
+               v, vpt, w, waterflux_output_conversion, zu, zw
 
     USE averaging
 
@@ -63,56 +114,26 @@
     USE control_parameters,                                                                        &
         ONLY:  data_output_2d_on_each_pe,                                                          &
                debug_output_timestep,                                                              &
-               data_output_xy,                                                                     &
-               data_output_xz,                                                                     &
-               data_output_yz,                                                                     &
+               data_output_xy, data_output_xz, data_output_yz,                                     &
                do2d,                                                                               &
-               do2d_xy_last_time,                                                                  &
-               do2d_xy_time_count,                                                                 &
-               do2d_xz_last_time,                                                                  &
-               do2d_xz_time_count,                                                                 &
-               do2d_yz_last_time,                                                                  &
-               do2d_yz_time_count, dz,                                                             &
-               ibc_uv_b,                                                                           &
-               interpolate_to_grid_center,                                                         &
-               io_blocks,                                                                          &
-               io_group,                                                                           &
-               message_string,                                                                     &
-               ntdim_2d_xy,                                                                        &
-               ntdim_2d_xz,                                                                        &
-               ntdim_2d_yz,                                                                        &
-               psolver,                                                                            &
-               output_fill_value,                                                                  &
-               section,                                                                            &
+               do2d_xy_last_time, do2d_xy_time_count,                                              &
+               do2d_xz_last_time, do2d_xz_time_count,                                              &
+               do2d_yz_last_time, do2d_yz_time_count,                                              &
+               ibc_uv_b, io_blocks, io_group, message_string,                                      &
+               ntdim_2d_xy, ntdim_2d_xz, ntdim_2d_yz,                                              &
+               psolver, section,                                                                   &
                time_since_reference_point
 
     USE cpulog,                                                                                    &
-        ONLY:  cpu_log,                                                                            &
-               log_point
+        ONLY:  cpu_log, log_point
 
     USE exchange_horiz_mod,                                                                        &
         ONLY:  exchange_horiz
 
-    USE grid_variables,                                                                            &
-        ONLY:  dx,                                                                                 &
-               dy
-
     USE indices,                                                                                   &
-        ONLY:  nbgp,                                                                               &
-               nx,                                                                                 &
-               nxl,                                                                                &
-               nxlg,                                                                               &
-               nxr,                                                                                &
-               nxrg,                                                                               &
-               ny,                                                                                 &
-               nyn,                                                                                &
-               nyng,                                                                               &
-               nys,                                                                                &
-               nysg,                                                                               &
-               nzb,                                                                                &
-               nzt,                                                                                &
-               topo_flags,                                                                         &
-               topo_top_ind
+        ONLY:  nbgp, nx, nxl, nxlg, nxr, nxrg, ny, nyn, nyng, nys, nysg, nzb, nzt,                 &
+               topo_top_ind,                                                                       &
+               wall_flags_total_0
 
     USE kinds
 
@@ -127,40 +148,23 @@
 #endif
 
     USE netcdf_interface,                                                                          &
-        ONLY:  id_set_xy,                                                                          &
-               id_set_xz,                                                                          &
-               id_set_yz,                                                                          &
-               id_var_do2d,                                                                        &
-               id_var_time_xy,                                                                     &
-               id_var_time_xz,                                                                     &
-               id_var_time_yz,                                                                     &
-               nc_stat,                                                                            &
-               netcdf_data_format,                                                                 &
-               netcdf_handle_error
+        ONLY:  fill_value, id_set_xy, id_set_xz, id_set_yz, id_var_do2d, id_var_time_xy,           &
+               id_var_time_xz, id_var_time_yz, nc_stat, netcdf_data_format, netcdf_handle_error
 
     USE particle_attributes,                                                                       &
-        ONLY:  grid_particles,                                                                     &
-               number_of_particles,                                                                &
-               particle_advection_start,                                                           &
-               particles,                                                                          &
-               prt_count
+        ONLY:  grid_particles, number_of_particles, particle_advection_start, particles, prt_count
 
     USE pegrid
 
     USE surface_mod,                                                                               &
-        ONLY:  ind_pav_green,                                                                      &
-               ind_veg_wall,                                                                       &
-               ind_wat_win,                                                                        &
-               surf_def,                                                                           &
-               surf_lsm,                                                                           &
-               surf_usm
+        ONLY:  ind_pav_green, ind_veg_wall, ind_wat_win, surf_def_h, surf_lsm_h, surf_usm_h
 
 
     IMPLICIT NONE
 
-    CHARACTER (LEN=2) ::  do2d_mode    !< output mode of variable ('xy', 'xz', 'yz')
-    CHARACTER (LEN=2) ::  mode         !< mode with which the routine is called ('xy', 'xz', 'yz')
-    CHARACTER (LEN=4) ::  grid         !< string defining the vertical grid
+    CHARACTER (LEN=2)  ::  do2d_mode    !< output mode of variable ('xy', 'xz', 'yz')
+    CHARACTER (LEN=2)  ::  mode         !< mode with which the routine is called ('xy', 'xz', 'yz')
+    CHARACTER (LEN=4)  ::  grid         !< string defining the vertical grid
 
     INTEGER(iwp) ::  av        !< flag for (non-)average output
     INTEGER(iwp) ::  file_id   !< id of output files
@@ -193,7 +197,6 @@
     REAL(wp) ::  mean_r        !< mean particle radius
     REAL(wp) ::  s_r2          !< sum( particle-radius**2 )
     REAL(wp) ::  s_r3          !< sum( particle-radius**3 )
-    REAL(wp) ::  value         !< temporary storage
 
     REAL(wp), DIMENSION(:), ALLOCATABLE     ::  level_z             !< z levels for output array
 
@@ -324,8 +327,8 @@
           ENDIF
 
        CASE DEFAULT
-          message_string = 'unknown cross-section: "' // TRIM( mode ) // '"'
-          CALL message( 'data_output_2d', 'PAC0184', 1, 2, 0, 6, 0 )
+          message_string = 'unknown cross-section: ' // TRIM( mode )
+          CALL message( 'data_output_2d', 'PA0180', 1, 2, 0, 6, 0 )
 
     END SELECT
 
@@ -335,26 +338,26 @@
 !-- given output interval.
     IF ( netcdf_data_format > 4 )  THEN
        IF ( mode == 'xy'  .AND.  do2d_xy_time_count(av) + 1 > ntdim_2d_xy(av) )  THEN
-          WRITE ( message_string, * ) 'no output for xy cross-sections at t = ',                   &
-                                      time_since_reference_point, ' s because maximum number of',  &
-                                      ' output time levels is exceeded'
-          CALL message( 'data_output_2d', 'PAC0185', 0, 1, 0, 6, 0 )
+          WRITE ( message_string, * ) 'Output of xy cross-sections is not ',                       &
+                 'given at t=', time_since_reference_point, 's because the',                       &
+                 ' maximum number of output time levels is exceeded.'
+          CALL message( 'data_output_2d', 'PA0384', 0, 1, 0, 6, 0 )
           CALL cpu_log( log_point(3), 'data_output_2d', 'stop' )
           RETURN
        ENDIF
        IF ( mode == 'xz'  .AND.  do2d_xz_time_count(av) + 1 >  ntdim_2d_xz(av) )  THEN
-          WRITE ( message_string, * ) 'no output for xz cross-sections at t = ',                   &
-                                      time_since_reference_point, ' s because maximum number of',  &
-                                      ' output time levels is exceeded'
-          CALL message( 'data_output_2d', 'PAC0186', 0, 1, 0, 6, 0 )
+          WRITE ( message_string, * ) 'Output of xz cross-sections is not ',                       &
+                  'given at t=', time_since_reference_point, 's because the',                      &
+                  ' maximum number of output time levels is exceeded.'
+          CALL message( 'data_output_2d', 'PA0385', 0, 1, 0, 6, 0 )
           CALL cpu_log( log_point(3), 'data_output_2d', 'stop' )
           RETURN
        ENDIF
        IF ( mode == 'yz'  .AND.  do2d_yz_time_count(av) + 1 > ntdim_2d_yz(av) )  THEN
-          WRITE ( message_string, * ) 'no output for yz cross-sections at t = ',                   &
-                                      time_since_reference_point, ' s because maximum number of',  &
-                                      ' output time levels is exceeded'
-          CALL message( 'data_output_2d', 'PAC0187', 0, 1, 0, 6, 0 )
+          WRITE ( message_string, * ) 'Output of yz cross-sections is not ',                       &
+                  'given at t=', time_since_reference_point, 's because the',                      &
+                  ' maximum number of output time levels is exceeded.'
+          CALL message( 'data_output_2d', 'PA0386', 0, 1, 0, 6, 0 )
           CALL cpu_log( log_point(3), 'data_output_2d', 'stop' )
           RETURN
        ENDIF
@@ -363,6 +366,7 @@
 !
 !-- Allocate a temporary array for resorting (kji -> ijk).
     ALLOCATE( local_pf(nxl:nxr,nys:nyn,nzb:nzt+1) )
+    local_pf = 0.0
 
 !
 !-- Loop of all variables to be written.
@@ -381,8 +385,8 @@
           nzb_do = nzb
           nzt_do = nzt+1
 !
-!--       Before each output, set array local_pf to fill value.
-          local_pf = output_fill_value
+!--       Before each output, set array local_pf to fill value
+          local_pf = fill_value
 !
 !--       Set masking flag for topography for not resorted arrays
           flag_nr = 0
@@ -397,7 +401,7 @@
                 ELSE
                    IF ( .NOT. ALLOCATED( e_av ) )  THEN
                       ALLOCATE( e_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-                      e_av = 0.0_wp
+                      e_av = REAL( fill_value, KIND = wp )
                    ENDIF
                    to_be_resorted => e_av
                 ENDIF
@@ -409,7 +413,7 @@
                 ELSE
                    IF ( .NOT. ALLOCATED( lpt_av ) )  THEN
                       ALLOCATE( lpt_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-                      lpt_av = 0.0_wp
+                      lpt_av = REAL( fill_value, KIND = wp )
                    ENDIF
                    to_be_resorted => lpt_av
                 ENDIF
@@ -425,7 +429,7 @@
                 ELSE
                    IF ( .NOT. ALLOCATED( lwp_av ) )  THEN
                       ALLOCATE( lwp_av(nysg:nyng,nxlg:nxrg) )
-                      lwp_av = 0.0_wp
+                      lwp_av = REAL( fill_value, KIND = wp )
                    ENDIF
                    DO  i = nxl, nxr
                       DO  j = nys, nyn
@@ -439,29 +443,25 @@
 
              CASE ( 'ghf*_xy' )        ! 2d-array
                 IF ( av == 0 )  THEN
-                   DO  m = 1, surf_lsm%ns
-                      i = surf_lsm%i(m)
-                      j = surf_lsm%j(m)
-                      local_pf(i,j,nzb+1) = MERGE( surf_lsm%ghf(m), local_pf(i,j,nzb+1),           &
-                                                   surf_lsm%upward(m) )
+                   DO  m = 1, surf_lsm_h(0)%ns
+                      i                   = surf_lsm_h(0)%i(m)
+                      j                   = surf_lsm_h(0)%j(m)
+                      local_pf(i,j,nzb+1) = surf_lsm_h(0)%ghf(m)
                    ENDDO
-
-                   DO  m = 1, surf_usm%ns
-                      i = surf_usm%i(m)
-                      j = surf_usm%j(m)
-                      local_pf(i,j,nzb+1) = MERGE( surf_usm%frac(m,ind_veg_wall)  *                &
-                                                   surf_usm%wghf_eb(m)        +                    &
-                                                   surf_usm%frac(m,ind_pav_green) *                &
-                                                   surf_usm%wghf_eb_green(m)  +                    &
-                                                   surf_usm%frac(m,ind_wat_win)   *                &
-                                                   surf_usm%wghf_eb_window(m),                     &
-                                                   local_pf(i,j,nzb+1),                            &
-                                                   surf_usm%upward(m) )
+                   DO  m = 1, surf_usm_h(0)%ns
+                      i                   = surf_usm_h(0)%i(m)
+                      j                   = surf_usm_h(0)%j(m)
+                      local_pf(i,j,nzb+1) = surf_usm_h(0)%frac(m,ind_veg_wall)  *                     &
+                                            surf_usm_h(0)%wghf_eb(m)        +                         &
+                                            surf_usm_h(0)%frac(m,ind_pav_green) *                     &
+                                            surf_usm_h(0)%wghf_eb_green(m)  +                         &
+                                            surf_usm_h(0)%frac(m,ind_wat_win)   *                     &
+                                            surf_usm_h(0)%wghf_eb_window(m)
                    ENDDO
                 ELSE
                    IF ( .NOT. ALLOCATED( ghf_av ) )  THEN
                       ALLOCATE( ghf_av(nysg:nyng,nxlg:nxrg) )
-                      ghf_av = 0.0_wp
+                      ghf_av = REAL( fill_value, KIND = wp )
                    ENDIF
                    DO  i = nxl, nxr
                       DO  j = nys, nyn
@@ -476,28 +476,25 @@
 
              CASE ( 'ol*_xy' )        ! 2d-array
                 IF ( av == 0 )  THEN
-                   DO  m = 1, surf_def%ns
-                      i = surf_def%i(m)
-                      j = surf_def%j(m)
-                      local_pf(i,j,nzb+1) = MERGE( surf_def%ol(m), local_pf(i,j,nzb+1),            &
-                                                   surf_def%upward(m) )
+                   DO  m = 1, surf_def_h(0)%ns
+                      i = surf_def_h(0)%i(m)
+                      j = surf_def_h(0)%j(m)
+                      local_pf(i,j,nzb+1) = surf_def_h(0)%ol(m)
                    ENDDO
-                   DO  m = 1, surf_lsm%ns
-                      i = surf_lsm%i(m)
-                      j = surf_lsm%j(m)
-                      local_pf(i,j,nzb+1) = MERGE( surf_lsm%ol(m), local_pf(i,j,nzb+1),            &
-                                                   surf_lsm%upward(m) )
+                   DO  m = 1, surf_lsm_h(0)%ns
+                      i = surf_lsm_h(0)%i(m)
+                      j = surf_lsm_h(0)%j(m)
+                      local_pf(i,j,nzb+1) = surf_lsm_h(0)%ol(m)
                    ENDDO
-                   DO  m = 1, surf_usm%ns
-                      i = surf_usm%i(m)
-                      j = surf_usm%j(m)
-                      local_pf(i,j,nzb+1) = MERGE( surf_usm%ol(m), local_pf(i,j,nzb+1),            &
-                                                   surf_usm%upward(m) )
+                   DO  m = 1, surf_usm_h(0)%ns
+                      i = surf_usm_h(0)%i(m)
+                      j = surf_usm_h(0)%j(m)
+                      local_pf(i,j,nzb+1) = surf_usm_h(0)%ol(m)
                    ENDDO
                 ELSE
                    IF ( .NOT. ALLOCATED( ol_av ) )  THEN
                       ALLOCATE( ol_av(nysg:nyng,nxlg:nxrg) )
-                      ol_av = 0.0_wp
+                      ol_av = REAL( fill_value, KIND = wp )
                    ENDIF
                    DO  i = nxl, nxr
                       DO  j = nys, nyn
@@ -516,7 +513,7 @@
                 ELSE
                    IF ( .NOT. ALLOCATED( p_av ) )  THEN
                       ALLOCATE( p_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-                      p_av = 0.0_wp
+                      p_av = REAL( fill_value, KIND = wp )
                    ENDIF
                    IF ( psolver /= 'sor' )  CALL exchange_horiz( p_av, nbgp )
                    to_be_resorted => p_av
@@ -542,7 +539,7 @@
                 ELSE
                    IF ( .NOT. ALLOCATED( pc_av ) )  THEN
                       ALLOCATE( pc_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-                      pc_av = 0.0_wp
+                      pc_av = REAL( fill_value, KIND = wp )
                    ENDIF
 !                   CALL exchange_horiz( pc_av, nbgp )
                    to_be_resorted => pc_av
@@ -591,109 +588,34 @@
                 ELSE
                    IF ( .NOT. ALLOCATED( pr_av ) )  THEN
                       ALLOCATE( pr_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-                      pr_av = 0.0_wp
+                      pr_av = REAL( fill_value, KIND = wp )
                    ENDIF
 !                   CALL exchange_horiz( pr_av, nbgp )
                    to_be_resorted => pr_av
                 ENDIF
 
-             CASE ( 'pres_drag_x*_xy' )        ! 2d-array
+             CASE ( 'theta_xy', 'theta_xz', 'theta_yz' )
                 IF ( av == 0 )  THEN
-                   local_pf = 0.0_wp     ! fill value cannot be used because pressure drag is
-                                         ! calculated as a sum over k (see below)
-!
-!--                Pressure drag on right (east) and left (west) faces
-                   DO  m = 1, surf_def%ns
-                      i = surf_def%i(m)
-                      j = surf_def%j(m)
-                      k = surf_def%k(m)
-                      local_pf(i,j,nzb+1) = local_pf(i,j,nzb+1)                                    &
-                                  + MERGE( -p(k,j,i) * dy * dz(1), 0.0_wp, surf_def%eastward(m) )
-                      local_pf(i,j,nzb+1) = local_pf(i,j,nzb+1)                                    &
-                                  + MERGE(  p(k,j,i) * dy * dz(1), 0.0_wp, surf_def%westward(m) )
-                   ENDDO
-                   DO  m = 1, surf_lsm%ns
-                      i = surf_lsm%i(m)
-                      j = surf_lsm%j(m)
-                      k = surf_lsm%k(m)
-                      local_pf(i,j,nzb+1) = local_pf(i,j,nzb+1)                                    &
-                                  + MERGE( -p(k,j,i) * dy * dz(1), 0.0_wp, surf_lsm%eastward(m) )
-                      local_pf(i,j,nzb+1) = local_pf(i,j,nzb+1)                                    &
-                                  + MERGE(  p(k,j,i) * dy * dz(1), 0.0_wp, surf_lsm%westward(m) )
-                   ENDDO
-                   DO  m = 1, surf_usm%ns
-                      i = surf_usm%i(m)
-                      j = surf_usm%j(m)
-                      k = surf_usm%k(m)
-                      local_pf(i,j,nzb+1) = local_pf(i,j,nzb+1)                                    &
-                                  + MERGE( -p(k,j,i) * dy * dz(1), 0.0_wp, surf_usm%eastward(m) )
-                      local_pf(i,j,nzb+1) = local_pf(i,j,nzb+1)                                    &
-                                  + MERGE(  p(k,j,i) * dy * dz(1), 0.0_wp, surf_usm%westward(m) )
-                   ENDDO
-                ELSE
-                   IF ( .NOT. ALLOCATED( pres_drag_x_av ) )  THEN
-                      ALLOCATE( pres_drag_x_av(nysg:nyng,nxlg:nxrg) )
-                      pres_drag_x_av = 0.0_wp   ! fill value cannot be used because pressure drag is
-                                                ! calculated as a sum over k
-                   ENDIF
+                   IF ( .NOT. bulk_cloud_model )  THEN
+                      to_be_resorted => pt
+                   ELSE
                    DO  i = nxl, nxr
                       DO  j = nys, nyn
-                         local_pf(i,j,nzb+1) = pres_drag_x_av(j,i)
+                            DO  k = nzb, nzt+1
+                               local_pf(i,j,k) = pt(k,j,i) + lv_d_cp * d_exner(k) * ql(k,j,i)
+                            ENDDO
+                         ENDDO
                       ENDDO
-                   ENDDO
-                ENDIF
-                resorted = .TRUE.
-                two_d = .TRUE.
-                level_z(nzb+1) = zu(nzb+1)
-
-             CASE ( 'pres_drag_y*_xy' )        ! 2d-array
-                IF ( av == 0 )  THEN
-                   local_pf = 0.0_wp     ! fill value cannot be used because pressure drag is
-                                         ! calculated as a sum over k (see below)
-!
-!--                Pressure drag on north and south faces
-                   DO  m = 1, surf_def%ns
-                      i = surf_def%i(m)
-                      j = surf_def%j(m)
-                      k = surf_def%k(m)
-                      local_pf(i,j,nzb+1) = local_pf(i,j,nzb+1)                                    &
-                                  + MERGE( -p(k,j,i) * dx * dz(1), 0.0_wp, surf_def%northward(m) )
-                      local_pf(i,j,nzb+1) = local_pf(i,j,nzb+1)                                    &
-                                  + MERGE(  p(k,j,i) * dx * dz(1), 0.0_wp, surf_def%southward(m) )
-                   ENDDO
-                   DO  m = 1, surf_lsm%ns
-                      i = surf_lsm%i(m)
-                      j = surf_lsm%j(m)
-                      k = surf_lsm%k(m)
-                      local_pf(i,j,nzb+1) = local_pf(i,j,nzb+1)                                    &
-                                  + MERGE( -p(k,j,i) * dx * dz(1), 0.0_wp, surf_lsm%northward(m) )
-                      local_pf(i,j,nzb+1) = local_pf(i,j,nzb+1)                                    &
-                                  + MERGE(  p(k,j,i) * dx * dz(1), 0.0_wp, surf_lsm%southward(m) )
-                   ENDDO
-                   DO  m = 1, surf_usm%ns
-                      i = surf_usm%i(m)
-                      j = surf_usm%j(m)
-                      k = surf_usm%k(m)
-                      local_pf(i,j,nzb+1) = local_pf(i,j,nzb+1)                                    &
-                                  + MERGE( -p(k,j,i) * dx * dz(1), 0.0_wp, surf_usm%northward(m) )
-                      local_pf(i,j,nzb+1) = local_pf(i,j,nzb+1)                                    &
-                                  + MERGE(  p(k,j,i) * dx * dz(1), 0.0_wp, surf_usm%southward(m) )
-                   ENDDO
-                ELSE
-                   IF ( .NOT. ALLOCATED( pres_drag_y_av ) )  THEN
-                      ALLOCATE( pres_drag_y_av(nysg:nyng,nxlg:nxrg) )
-                      pres_drag_y_av = 0.0_wp   ! fill value cannot be used because pressure drag is
-                                                ! calculated as a sum over k
+                      resorted = .TRUE.
                    ENDIF
-                   DO  i = nxl, nxr
-                      DO  j = nys, nyn
-                         local_pf(i,j,nzb+1) = pres_drag_y_av(j,i)
-                      ENDDO
-                   ENDDO
+                ELSE
+                   IF ( .NOT. ALLOCATED( pt_av ) ) THEN
+                      ALLOCATE( pt_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
+                      pt_av = REAL( fill_value, KIND = wp )
+                   ENDIF
+                   to_be_resorted => pt_av
                 ENDIF
-                resorted = .TRUE.
-                two_d = .TRUE.
-                level_z(nzb+1) = zu(nzb+1)
+                IF ( mode == 'xy' )  level_z = zu
 
              CASE ( 'q_xy', 'q_xz', 'q_yz' )
                 IF ( av == 0 )  THEN
@@ -701,7 +623,7 @@
                 ELSE
                    IF ( .NOT. ALLOCATED( q_av ) )  THEN
                       ALLOCATE( q_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-                      q_av = 0.0_wp
+                      q_av = REAL( fill_value, KIND = wp )
                    ENDIF
                    to_be_resorted => q_av
                 ENDIF
@@ -713,7 +635,7 @@
                 ELSE
                    IF ( .NOT. ALLOCATED( ql_av ) )  THEN
                       ALLOCATE( ql_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-                      ql_av = 0.0_wp
+                      ql_av = REAL( fill_value, KIND = wp )
                    ENDIF
                    to_be_resorted => ql_av
                 ENDIF
@@ -725,7 +647,7 @@
                 ELSE
                    IF ( .NOT. ALLOCATED( ql_c_av ) )  THEN
                       ALLOCATE( ql_c_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-                      ql_c_av = 0.0_wp
+                      ql_c_av = REAL( fill_value, KIND = wp )
                    ENDIF
                    to_be_resorted => ql_c_av
                 ENDIF
@@ -737,7 +659,7 @@
                 ELSE
                    IF ( .NOT. ALLOCATED( ql_v_av ) )  THEN
                       ALLOCATE( ql_v_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-                      ql_v_av = 0.0_wp
+                      ql_v_av = REAL( fill_value, KIND = wp )
                    ENDIF
                    to_be_resorted => ql_v_av
                 ENDIF
@@ -776,7 +698,7 @@
                 ELSE
                    IF ( .NOT. ALLOCATED( ql_vp_av ) )  THEN
                       ALLOCATE( ql_vp_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-                      ql_vp_av = 0.0_wp
+                      ql_vp_av = REAL( fill_value, KIND = wp )
                    ENDIF
 !                   CALL exchange_horiz( ql_vp_av, nbgp )
                    to_be_resorted => ql_vp_av
@@ -785,28 +707,28 @@
 
              CASE ( 'qsurf*_xy' )        ! 2d-array
                 IF ( av == 0 )  THEN
-                   DO  m = 1, surf_def%ns
-                      i = surf_def%i(m)
-                      j = surf_def%j(m)
-                      local_pf(i,j,nzb+1) = MERGE( surf_def%q_surface(m), local_pf(i,j,nzb+1),     &
-                                                   surf_def%upward(m) )
+                   DO  m = 1, surf_def_h(0)%ns
+                      i                   = surf_def_h(0)%i(m)
+                      j                   = surf_def_h(0)%j(m)
+                      local_pf(i,j,nzb+1) = surf_def_h(0)%q_surface(m)
                    ENDDO
-                   DO  m = 1, surf_lsm%ns
-                      i = surf_lsm%i(m)
-                      j = surf_lsm%j(m)
-                      local_pf(i,j,nzb+1) = MERGE( surf_lsm%q_surface(m), local_pf(i,j,nzb+1),     &
-                                                   surf_lsm%upward(m) )
+
+                   DO  m = 1, surf_lsm_h(0)%ns
+                      i                   = surf_lsm_h(0)%i(m)
+                      j                   = surf_lsm_h(0)%j(m)
+                      local_pf(i,j,nzb+1) = surf_lsm_h(0)%q_surface(m)
                    ENDDO
-                   DO  m = 1, surf_usm%ns
-                      i = surf_usm%i(m)
-                      j = surf_usm%j(m)
-                      local_pf(i,j,nzb+1) = MERGE( surf_usm%q_surface(m), local_pf(i,j,nzb+1),     &
-                                                   surf_usm%upward(m) )
+
+                   DO  m = 1, surf_usm_h(0)%ns
+                      i                   = surf_usm_h(0)%i(m)
+                      j                   = surf_usm_h(0)%j(m)
+                      local_pf(i,j,nzb+1) = surf_usm_h(0)%q_surface(m)
                    ENDDO
+
                 ELSE
                    IF ( .NOT. ALLOCATED( qsurf_av ) )  THEN
                       ALLOCATE( qsurf_av(nysg:nyng,nxlg:nxrg) )
-                      qsurf_av = 0.0_wp
+                      qsurf_av = REAL( fill_value, KIND = wp )
                    ENDIF
                    DO  i = nxl, nxr
                       DO  j = nys, nyn
@@ -820,34 +742,32 @@
 
              CASE ( 'qsws*_xy' )        ! 2d-array
                 IF ( av == 0 ) THEN
+                   local_pf(:,:,nzb+1) = REAL( fill_value, KIND = wp )
 !
 !--                In case of default surfaces, clean-up flux by density.
 !--                In case of land-surfaces, convert fluxes into dynamic units.
-                   DO  m = 1, surf_def%ns
-                      i = surf_def%i(m)
-                      j = surf_def%j(m)
-                      k = surf_def%k(m)
-                      local_pf(i,j,nzb+1) = MERGE( surf_def%qsws(m)*waterflux_output_conversion(k),&
-                                                   local_pf(i,j,nzb+1), surf_def%upward(m) )
+                   DO  m = 1, surf_def_h(0)%ns
+                      i = surf_def_h(0)%i(m)
+                      j = surf_def_h(0)%j(m)
+                      k = surf_def_h(0)%k(m)
+                      local_pf(i,j,nzb+1) = surf_def_h(0)%qsws(m) * waterflux_output_conversion(k)
                    ENDDO
-                   DO  m = 1, surf_lsm%ns
-                      i = surf_lsm%i(m)
-                      j = surf_lsm%j(m)
-                      k = surf_lsm%k(m)
-                      local_pf(i,j,nzb+1) = MERGE( surf_lsm%qsws(m)*waterflux_output_conversion(k),&
-                                                   local_pf(i,j,nzb+1), surf_lsm%upward(m) )
+                   DO  m = 1, surf_lsm_h(0)%ns
+                      i = surf_lsm_h(0)%i(m)
+                      j = surf_lsm_h(0)%j(m)
+                      k = surf_lsm_h(0)%k(m)
+                      local_pf(i,j,nzb+1) = surf_lsm_h(0)%qsws(m) * waterflux_output_conversion(k)
                    ENDDO
-                   DO  m = 1, surf_usm%ns
-                      i = surf_usm%i(m)
-                      j = surf_usm%j(m)
-                      k = surf_usm%k(m)
-                      local_pf(i,j,nzb+1) = MERGE( surf_usm%qsws(m)*waterflux_output_conversion(k),&
-                                                   local_pf(i,j,nzb+1), surf_usm%upward(m) )
+                   DO  m = 1, surf_usm_h(0)%ns
+                      i = surf_usm_h(0)%i(m)
+                      j = surf_usm_h(0)%j(m)
+                      k = surf_usm_h(0)%k(m)
+                      local_pf(i,j,nzb+1) = surf_usm_h(0)%qsws(m) * waterflux_output_conversion(k)
                    ENDDO
                 ELSE
                    IF ( .NOT. ALLOCATED( qsws_av ) )  THEN
                       ALLOCATE( qsws_av(nysg:nyng,nxlg:nxrg) )
-                      qsws_av = 0.0_wp
+                      qsws_av = REAL( fill_value, KIND = wp )
                    ENDIF
                    DO  i = nxl, nxr
                       DO  j = nys, nyn
@@ -872,7 +792,7 @@
                 ELSE
                    IF ( .NOT. ALLOCATED( qv_av ) )  THEN
                       ALLOCATE( qv_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-                      qv_av = 0.0_wp
+                      qv_av = REAL( fill_value, KIND = wp )
                    ENDIF
                    to_be_resorted => qv_av
                 ENDIF
@@ -880,24 +800,26 @@
 
              CASE ( 'r_a*_xy' )        ! 2d-array
                 IF ( av == 0 )  THEN
-                   DO  m = 1, surf_lsm%ns
-                      i = surf_lsm%i(m)
-                      j = surf_lsm%j(m)
-                      local_pf(i,j,nzb+1) = MERGE( surf_lsm%r_a(m), local_pf(i,j,nzb+1),           &
-                                                   surf_lsm%upward(m) )
+                   DO  m = 1, surf_lsm_h(0)%ns
+                      i                   = surf_lsm_h(0)%i(m)
+                      j                   = surf_lsm_h(0)%j(m)
+                      local_pf(i,j,nzb+1) = surf_lsm_h(0)%r_a(m)
                    ENDDO
-                   DO  m = 1, surf_usm%ns
-                      i = surf_usm%i(m)
-                      j = surf_usm%j(m)
-                      value = surf_usm%frac(m,ind_veg_wall)  * surf_usm%r_a(m)       +             &
-                              surf_usm%frac(m,ind_pav_green) * surf_usm%r_a_green(m) +             &
-                              surf_usm%frac(m,ind_wat_win)   * surf_usm%r_a_window(m)
-                      local_pf(i,j,nzb+1) = MERGE( value, local_pf(i,j,nzb+1), surf_usm%upward(m) )
+
+                   DO  m = 1, surf_usm_h(0)%ns
+                      i   = surf_usm_h(0)%i(m)
+                      j   = surf_usm_h(0)%j(m)
+                      local_pf(i,j,nzb+1) = ( surf_usm_h(0)%frac(m,ind_veg_wall)  *                   &
+                                              surf_usm_h(0)%r_a(m)       +                            &
+                                              surf_usm_h(0)%frac(m,ind_pav_green) *                   &
+                                              surf_usm_h(0)%r_a_green(m) +                            &
+                                              surf_usm_h(0)%frac(m,ind_wat_win)   *                   &
+                                              surf_usm_h(0)%r_a_window(m) )
                    ENDDO
                 ELSE
                    IF ( .NOT. ALLOCATED( r_a_av ) )  THEN
                       ALLOCATE( r_a_av(nysg:nyng,nxlg:nxrg) )
-                      r_a_av = 0.0_wp
+                      r_a_av = REAL( fill_value, KIND = wp )
                    ENDIF
                    DO  i = nxl, nxr
                       DO  j = nys, nyn
@@ -915,7 +837,7 @@
                 ELSE
                    IF ( .NOT. ALLOCATED( s_av ) )  THEN
                       ALLOCATE( s_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-                      s_av = 0.0_wp
+                      s_av = REAL( fill_value, KIND = wp )
                    ENDIF
                    to_be_resorted => s_av
                 ENDIF
@@ -925,31 +847,28 @@
 !
 !--                In case of default surfaces, clean-up flux by density.
 !--                In case of land- and urban-surfaces, convert fluxes into dynamic units.
-                   DO  m = 1, surf_def%ns
-                      i = surf_def%i(m)
-                      j = surf_def%j(m)
-                      k = surf_def%k(m)
-                      local_pf(i,j,nzb+1) = MERGE( surf_def%shf(m) * heatflux_output_conversion(k),&
-                                                   local_pf(i,j,nzb+1), surf_def%upward(m) )
+                   DO  m = 1, surf_def_h(0)%ns
+                      i = surf_def_h(0)%i(m)
+                      j = surf_def_h(0)%j(m)
+                      k = surf_def_h(0)%k(m)
+                      local_pf(i,j,nzb+1) = surf_def_h(0)%shf(m) * heatflux_output_conversion(k)
                    ENDDO
-                   DO  m = 1, surf_lsm%ns
-                      i = surf_lsm%i(m)
-                      j = surf_lsm%j(m)
-                      k = surf_lsm%k(m)
-                      local_pf(i,j,nzb+1) = MERGE( surf_lsm%shf(m) * heatflux_output_conversion(k),&
-                                                   local_pf(i,j,nzb+1), surf_lsm%upward(m) )
+                   DO  m = 1, surf_lsm_h(0)%ns
+                      i = surf_lsm_h(0)%i(m)
+                      j = surf_lsm_h(0)%j(m)
+                      k = surf_lsm_h(0)%k(m)
+                      local_pf(i,j,nzb+1) = surf_lsm_h(0)%shf(m) * heatflux_output_conversion(k)
                    ENDDO
-                   DO  m = 1, surf_usm%ns
-                      i = surf_usm%i(m)
-                      j = surf_usm%j(m)
-                      k = surf_usm%k(m)
-                      local_pf(i,j,nzb+1) = MERGE( surf_usm%shf(m) * heatflux_output_conversion(k),&
-                                                   local_pf(i,j,nzb+1), surf_usm%upward(m) )
+                   DO  m = 1, surf_usm_h(0)%ns
+                      i = surf_usm_h(0)%i(m)
+                      j = surf_usm_h(0)%j(m)
+                      k = surf_usm_h(0)%k(m)
+                      local_pf(i,j,nzb+1) = surf_usm_h(0)%shf(m) * heatflux_output_conversion(k)
                    ENDDO
                 ELSE
                    IF ( .NOT. ALLOCATED( shf_av ) )  THEN
                       ALLOCATE( shf_av(nysg:nyng,nxlg:nxrg) )
-                      shf_av = 0.0_wp
+                      shf_av = REAL( fill_value, KIND = wp )
                    ENDIF
                    DO  i = nxl, nxr
                       DO  j = nys, nyn
@@ -972,7 +891,7 @@
                 ELSE
                    IF ( .NOT. ALLOCATED( ssurf_av ) )  THEN
                       ALLOCATE( ssurf_av(nysg:nyng,nxlg:nxrg) )
-                      ssurf_av = 0.0_wp
+                      ssurf_av = REAL( fill_value, KIND = wp )
                    ENDIF
                    DO  i = nxl, nxr
                       DO  j = nys, nyn
@@ -986,34 +905,25 @@
 
              CASE ( 'ssws*_xy' )        ! 2d-array
                 IF ( av == 0 )  THEN
-                   DO  m = 1, surf_def%ns
-                      i = surf_def%i(m)
-                      j = surf_def%j(m)
-                      k = surf_def%k(m)
-                      local_pf(i,j,nzb+1) = MERGE( surf_def%ssws(m) * drho_air_zw(k),              &
-                                                   local_pf(i,j,nzb+1),                            &
-                                                   surf_def%upward(m) )
+                   DO  m = 1, surf_def_h(0)%ns
+                      i = surf_def_h(0)%i(m)
+                      j = surf_def_h(0)%j(m)
+                      local_pf(i,j,nzb+1) = surf_def_h(0)%ssws(m)
                    ENDDO
-                   DO  m = 1, surf_lsm%ns
-                      i = surf_lsm%i(m)
-                      j = surf_lsm%j(m)
-                      k = surf_lsm%k(m)
-                      local_pf(i,j,nzb+1) = MERGE( surf_lsm%ssws(m) * drho_air_zw(k),              &
-                                                   local_pf(i,j,nzb+1),                            &
-                                                   surf_lsm%upward(m) )
+                   DO  m = 1, surf_lsm_h(0)%ns
+                      i = surf_lsm_h(0)%i(m)
+                      j = surf_lsm_h(0)%j(m)
+                      local_pf(i,j,nzb+1) = surf_lsm_h(0)%ssws(m)
                    ENDDO
-                   DO  m = 1, surf_usm%ns
-                      i = surf_usm%i(m)
-                      j = surf_usm%j(m)
-                      k = surf_usm%k(m)
-                      local_pf(i,j,nzb+1) = MERGE( surf_usm%ssws(m) * drho_air_zw(k),              &
-                                                   local_pf(i,j,nzb+1),                            &
-                                                   surf_usm%upward(m) )
+                   DO  m = 1, surf_usm_h(0)%ns
+                      i = surf_usm_h(0)%i(m)
+                      j = surf_usm_h(0)%j(m)
+                      local_pf(i,j,nzb+1) = surf_usm_h(0)%ssws(m)
                    ENDDO
                 ELSE
                    IF ( .NOT. ALLOCATED( ssws_av ) )  THEN
                       ALLOCATE( ssws_av(nysg:nyng,nxlg:nxrg) )
-                      ssws_av = 0.0_wp
+                      ssws_av = REAL( fill_value, KIND = wp )
                    ENDIF
                    DO  i = nxl, nxr
                       DO  j = nys, nyn
@@ -1025,53 +935,27 @@
                 two_d = .TRUE.
                 level_z(nzb+1) = zu(nzb+1)
 
-             CASE ( 'theta_xy', 'theta_xz', 'theta_yz' )
-                IF ( av == 0 )  THEN
-                   IF ( .NOT. bulk_cloud_model )  THEN
-                      to_be_resorted => pt
-                   ELSE
-                   DO  i = nxl, nxr
-                      DO  j = nys, nyn
-                            DO  k = nzb, nzt+1
-                               local_pf(i,j,k) = pt(k,j,i) + lv_d_cp * d_exner(k) * ql(k,j,i)
-                            ENDDO
-                         ENDDO
-                      ENDDO
-                      resorted = .TRUE.
-                   ENDIF
-                ELSE
-                   IF ( .NOT. ALLOCATED( pt_av ) ) THEN
-                      ALLOCATE( pt_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-                      pt_av = 0.0_wp
-                   ENDIF
-                   to_be_resorted => pt_av
-                ENDIF
-                IF ( mode == 'xy' )  level_z = zu
-
              CASE ( 't*_xy' )        ! 2d-array
                 IF ( av == 0 )  THEN
-                   DO  m = 1, surf_def%ns
-                      i = surf_def%i(m)
-                      j = surf_def%j(m)
-                      local_pf(i,j,nzb+1) = MERGE( surf_def%ts(m), local_pf(i,j,nzb+1),            &
-                                                   surf_def%upward(m) )
+                   DO  m = 1, surf_def_h(0)%ns
+                      i = surf_def_h(0)%i(m)
+                      j = surf_def_h(0)%j(m)
+                      local_pf(i,j,nzb+1) = surf_def_h(0)%ts(m)
                    ENDDO
-                   DO  m = 1, surf_lsm%ns
-                      i = surf_lsm%i(m)
-                      j = surf_lsm%j(m)
-                      local_pf(i,j,nzb+1) = MERGE( surf_lsm%ts(m), local_pf(i,j,nzb+1),            &
-                                                   surf_lsm%upward(m) )
+                   DO  m = 1, surf_lsm_h(0)%ns
+                      i = surf_lsm_h(0)%i(m)
+                      j = surf_lsm_h(0)%j(m)
+                      local_pf(i,j,nzb+1) = surf_lsm_h(0)%ts(m)
                    ENDDO
-                   DO  m = 1, surf_usm%ns
-                      i = surf_usm%i(m)
-                      j = surf_usm%j(m)
-                      local_pf(i,j,nzb+1) = MERGE( surf_usm%ts(m), local_pf(i,j,nzb+1),            &
-                                                   surf_usm%upward(m) )
+                   DO  m = 1, surf_usm_h(0)%ns
+                      i = surf_usm_h(0)%i(m)
+                      j = surf_usm_h(0)%j(m)
+                      local_pf(i,j,nzb+1) = surf_usm_h(0)%ts(m)
                    ENDDO
                 ELSE
                    IF ( .NOT. ALLOCATED( ts_av ) )  THEN
                       ALLOCATE( ts_av(nysg:nyng,nxlg:nxrg) )
-                      ts_av = 0.0_wp
+                      ts_av = REAL( fill_value, KIND = wp )
                    ENDIF
                    DO  i = nxl, nxr
                       DO  j = nys, nyn
@@ -1085,28 +969,28 @@
 
              CASE ( 'tsurf*_xy' )        ! 2d-array
                 IF ( av == 0 )  THEN
-                   DO  m = 1, surf_def%ns
-                      i = surf_def%i(m)
-                      j = surf_def%j(m)
-                      local_pf(i,j,nzb+1) = MERGE( surf_def%pt_surface(m), local_pf(i,j,nzb+1),    &
-                                                   surf_def%upward(m) )
+                   DO  m = 1, surf_def_h(0)%ns
+                      i                   = surf_def_h(0)%i(m)
+                      j                   = surf_def_h(0)%j(m)
+                      local_pf(i,j,nzb+1) = surf_def_h(0)%pt_surface(m)
                    ENDDO
-                   DO  m = 1, surf_lsm%ns
-                      i = surf_lsm%i(m)
-                      j = surf_lsm%j(m)
-                      local_pf(i,j,nzb+1) = MERGE( surf_lsm%pt_surface(m), local_pf(i,j,nzb+1),    &
-                                                   surf_lsm%upward(m) )
+
+                   DO  m = 1, surf_lsm_h(0)%ns
+                      i                   = surf_lsm_h(0)%i(m)
+                      j                   = surf_lsm_h(0)%j(m)
+                      local_pf(i,j,nzb+1) = surf_lsm_h(0)%pt_surface(m)
                    ENDDO
-                   DO  m = 1, surf_usm%ns
-                      i = surf_usm%i(m)
-                      j = surf_usm%j(m)
-                      local_pf(i,j,nzb+1) = MERGE( surf_usm%pt_surface(m), local_pf(i,j,nzb+1),    &
-                                                   surf_usm%upward(m) )
+
+                   DO  m = 1, surf_usm_h(0)%ns
+                      i   = surf_usm_h(0)%i(m)
+                      j   = surf_usm_h(0)%j(m)
+                      local_pf(i,j,nzb+1) = surf_usm_h(0)%pt_surface(m)
                    ENDDO
+
                 ELSE
                    IF ( .NOT. ALLOCATED( tsurf_av ) )  THEN
                       ALLOCATE( tsurf_av(nysg:nyng,nxlg:nxrg) )
-                      tsurf_av = 0.0_wp
+                      tsurf_av = REAL( fill_value, KIND = wp )
                    ENDIF
                    DO  i = nxl, nxr
                       DO  j = nys, nyn
@@ -1121,24 +1005,11 @@
              CASE ( 'u_xy', 'u_xz', 'u_yz' )
                 flag_nr = 1
                 IF ( av == 0 )  THEN
-                   IF ( .NOT. interpolate_to_grid_center )  THEN
-                      to_be_resorted => u
-                   ELSE
-                      DO  i = nxl, nxr
-                         DO  j = nys, nyn
-                            DO  k = nzb, nzt
-                               IF ( BTEST( topo_flags(k,j,i), 0 ) )  THEN
-                                  local_pf(i,j,k) = 0.5_wp * ( u(k,j,i) + u(k,j,i+1) )
-                               ENDIF
-                            ENDDO
-                         ENDDO
-                      ENDDO
-                      resorted = .TRUE.
-                   ENDIF
+                   to_be_resorted => u
                 ELSE
                    IF ( .NOT. ALLOCATED( u_av ) )  THEN
                       ALLOCATE( u_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-                      u_av = 0.0_wp
+                      u_av = REAL( fill_value, KIND = wp )
                    ENDIF
                    to_be_resorted => u_av
                 ENDIF
@@ -1152,28 +1023,25 @@
 
              CASE ( 'us*_xy' )        ! 2d-array
                 IF ( av == 0 )  THEN
-                   DO  m = 1, surf_def%ns
-                      i = surf_def%i(m)
-                      j = surf_def%j(m)
-                      local_pf(i,j,nzb+1) = MERGE( surf_def%us(m), local_pf(i,j,nzb+1),            &
-                                                   surf_def%upward(m) )
+                   DO  m = 1, surf_def_h(0)%ns
+                      i = surf_def_h(0)%i(m)
+                      j = surf_def_h(0)%j(m)
+                      local_pf(i,j,nzb+1) = surf_def_h(0)%us(m)
                    ENDDO
-                   DO  m = 1, surf_lsm%ns
-                      i = surf_lsm%i(m)
-                      j = surf_lsm%j(m)
-                      local_pf(i,j,nzb+1) = MERGE( surf_lsm%us(m), local_pf(i,j,nzb+1),            &
-                                                   surf_lsm%upward(m) )
+                   DO  m = 1, surf_lsm_h(0)%ns
+                      i = surf_lsm_h(0)%i(m)
+                      j = surf_lsm_h(0)%j(m)
+                      local_pf(i,j,nzb+1) = surf_lsm_h(0)%us(m)
                    ENDDO
-                   DO  m = 1, surf_usm%ns
-                      i = surf_usm%i(m)
-                      j = surf_usm%j(m)
-                      local_pf(i,j,nzb+1) = MERGE( surf_usm%us(m), local_pf(i,j,nzb+1),            &
-                                                   surf_usm%upward(m) )
+                   DO  m = 1, surf_usm_h(0)%ns
+                      i = surf_usm_h(0)%i(m)
+                      j = surf_usm_h(0)%j(m)
+                      local_pf(i,j,nzb+1) = surf_usm_h(0)%us(m)
                    ENDDO
                 ELSE
                    IF ( .NOT. ALLOCATED( us_av ) )  THEN
                       ALLOCATE( us_av(nysg:nyng,nxlg:nxrg) )
-                      us_av = 0.0_wp
+                      us_av = REAL( fill_value, KIND = wp )
                    ENDIF
                    DO  i = nxl, nxr
                       DO  j = nys, nyn
@@ -1188,24 +1056,11 @@
              CASE ( 'v_xy', 'v_xz', 'v_yz' )
                 flag_nr = 2
                 IF ( av == 0 )  THEN
-                   IF ( .NOT. interpolate_to_grid_center )  THEN
-                      to_be_resorted => v
-                   ELSE
-                      DO  i = nxl, nxr
-                         DO  j = nys, nyn
-                            DO  k = nzb, nzt
-                               IF ( BTEST( topo_flags(k,j,i), 0 ) )  THEN
-                                  local_pf(i,j,k) = 0.5_wp * ( v(k,j,i) + v(k,j+1,i) )
-                               ENDIF
-                            ENDDO
-                         ENDDO
-                      ENDDO
-                      resorted = .TRUE.
-                   ENDIF
+                   to_be_resorted => v
                 ELSE
                    IF ( .NOT. ALLOCATED( v_av ) )  THEN
                       ALLOCATE( v_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-                      v_av = 0.0_wp
+                      v_av = REAL( fill_value, KIND = wp )
                    ENDIF
                    to_be_resorted => v_av
                 ENDIF
@@ -1223,7 +1078,7 @@
                 ELSE
                    IF ( .NOT. ALLOCATED( vpt_av ) )  THEN
                       ALLOCATE( vpt_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-                      vpt_av = 0.0_wp
+                      vpt_av = REAL( fill_value, KIND = wp )
                    ENDIF
                    to_be_resorted => vpt_av
                 ENDIF
@@ -1232,27 +1087,11 @@
              CASE ( 'w_xy', 'w_xz', 'w_yz' )
                 flag_nr = 3
                 IF ( av == 0 )  THEN
-                   IF ( .NOT. interpolate_to_grid_center )  THEN
-                      to_be_resorted => w
-                   ELSE
-                      DO  i = nxl, nxr
-                         DO  j = nys, nyn
-!
-!--                         No interpolation to grid center at k=nzb.
-                            IF ( BTEST( topo_flags(nzb,j,i), 0 ) )  local_pf(i,j,nzb) = w(nzb,j,i)
-                            DO  k = nzb+1, nzt
-                               IF ( BTEST( topo_flags(k,j,i), 0 ) )  THEN
-                                  local_pf(i,j,k) = 0.5_wp * ( w(k,j,i) + w(k-1,j,i) )
-                               ENDIF
-                            ENDDO
-                         ENDDO
-                      ENDDO
-                      resorted = .TRUE.
-                   ENDIF
+                   to_be_resorted => w
                 ELSE
                    IF ( .NOT. ALLOCATED( w_av ) )  THEN
                       ALLOCATE( w_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-                      w_av = 0.0_wp
+                      w_av = REAL( fill_value, KIND = wp )
                    ENDIF
                    to_be_resorted => w_av
                 ENDIF
@@ -1260,28 +1099,25 @@
 
              CASE ( 'z0*_xy' )        ! 2d-array
                 IF ( av == 0 )  THEN
-                   DO  m = 1, surf_def%ns
-                      i = surf_def%i(m)
-                      j = surf_def%j(m)
-                      local_pf(i,j,nzb+1) = MERGE( surf_def%z0(m), local_pf(i,j,nzb+1),            &
-                                                   surf_def%upward(m) )
+                   DO  m = 1, surf_def_h(0)%ns
+                      i = surf_def_h(0)%i(m)
+                      j = surf_def_h(0)%j(m)
+                      local_pf(i,j,nzb+1) = surf_def_h(0)%z0(m)
                    ENDDO
-                   DO  m = 1, surf_lsm%ns
-                      i = surf_lsm%i(m)
-                      j = surf_lsm%j(m)
-                      local_pf(i,j,nzb+1) = MERGE( surf_lsm%z0(m), local_pf(i,j,nzb+1),            &
-                                                   surf_lsm%upward(m) )
+                   DO  m = 1, surf_lsm_h(0)%ns
+                      i = surf_lsm_h(0)%i(m)
+                      j = surf_lsm_h(0)%j(m)
+                      local_pf(i,j,nzb+1) = surf_lsm_h(0)%z0(m)
                    ENDDO
-                   DO  m = 1, surf_usm%ns
-                      i = surf_usm%i(m)
-                      j = surf_usm%j(m)
-                      local_pf(i,j,nzb+1) = MERGE( surf_usm%z0(m), local_pf(i,j,nzb+1),            &
-                                                   surf_usm%upward(m) )
+                   DO  m = 1, surf_usm_h(0)%ns
+                      i = surf_usm_h(0)%i(m)
+                      j = surf_usm_h(0)%j(m)
+                      local_pf(i,j,nzb+1) = surf_usm_h(0)%z0(m)
                    ENDDO
                 ELSE
                    IF ( .NOT. ALLOCATED( z0_av ) )  THEN
                       ALLOCATE( z0_av(nysg:nyng,nxlg:nxrg) )
-                      z0_av = 0.0_wp
+                      z0_av = REAL( fill_value, KIND = wp )
                    ENDIF
                    DO  i = nxl, nxr
                       DO  j = nys, nyn
@@ -1295,28 +1131,25 @@
 
              CASE ( 'z0h*_xy' )        ! 2d-array
                 IF ( av == 0 )  THEN
-                   DO  m = 1, surf_def%ns
-                      i = surf_def%i(m)
-                      j = surf_def%j(m)
-                      local_pf(i,j,nzb+1) = MERGE( surf_def%z0h(m), local_pf(i,j,nzb+1),           &
-                                                   surf_def%upward(m) )
+                   DO  m = 1, surf_def_h(0)%ns
+                      i = surf_def_h(0)%i(m)
+                      j = surf_def_h(0)%j(m)
+                      local_pf(i,j,nzb+1) = surf_def_h(0)%z0h(m)
                    ENDDO
-                   DO  m = 1, surf_lsm%ns
-                      i = surf_lsm%i(m)
-                      j = surf_lsm%j(m)
-                      local_pf(i,j,nzb+1) = MERGE( surf_lsm%z0h(m), local_pf(i,j,nzb+1),           &
-                                                   surf_lsm%upward(m) )
+                   DO  m = 1, surf_lsm_h(0)%ns
+                      i = surf_lsm_h(0)%i(m)
+                      j = surf_lsm_h(0)%j(m)
+                      local_pf(i,j,nzb+1) = surf_lsm_h(0)%z0h(m)
                    ENDDO
-                   DO  m = 1, surf_usm%ns
-                      i = surf_usm%i(m)
-                      j = surf_usm%j(m)
-                      local_pf(i,j,nzb+1) = MERGE( surf_usm%z0h(m), local_pf(i,j,nzb+1),           &
-                                                   surf_usm%upward(m) )
+                   DO  m = 1, surf_usm_h(0)%ns
+                      i = surf_usm_h(0)%i(m)
+                      j = surf_usm_h(0)%j(m)
+                      local_pf(i,j,nzb+1) = surf_usm_h(0)%z0h(m)
                    ENDDO
                 ELSE
                    IF ( .NOT. ALLOCATED( z0h_av ) )  THEN
                       ALLOCATE( z0h_av(nysg:nyng,nxlg:nxrg) )
-                      z0h_av = 0.0_wp
+                      z0h_av = REAL( fill_value, KIND = wp )
                    ENDIF
                    DO  i = nxl, nxr
                       DO  j = nys, nyn
@@ -1330,28 +1163,25 @@
 
              CASE ( 'z0q*_xy' )        ! 2d-array
                 IF ( av == 0 )  THEN
-                   DO  m = 1, surf_def%ns
-                      i = surf_def%i(m)
-                      j = surf_def%j(m)
-                      local_pf(i,j,nzb+1) = MERGE( surf_def%z0q(m), local_pf(i,j,nzb+1),           &
-                                                   surf_def%upward(m) )
+                   DO  m = 1, surf_def_h(0)%ns
+                      i = surf_def_h(0)%i(m)
+                      j = surf_def_h(0)%j(m)
+                      local_pf(i,j,nzb+1) = surf_def_h(0)%z0q(m)
                    ENDDO
-                   DO  m = 1, surf_lsm%ns
-                      i = surf_lsm%i(m)
-                      j = surf_lsm%j(m)
-                      local_pf(i,j,nzb+1) = MERGE( surf_lsm%z0q(m), local_pf(i,j,nzb+1),           &
-                                                   surf_lsm%upward(m) )
+                   DO  m = 1, surf_lsm_h(0)%ns
+                      i = surf_lsm_h(0)%i(m)
+                      j = surf_lsm_h(0)%j(m)
+                      local_pf(i,j,nzb+1) = surf_lsm_h(0)%z0q(m)
                    ENDDO
-                   DO  m = 1, surf_usm%ns
-                      i = surf_usm%i(m)
-                      j = surf_usm%j(m)
-                      local_pf(i,j,nzb+1) = MERGE( surf_usm%z0q(m), local_pf(i,j,nzb+1),           &
-                                                   surf_usm%upward(m) )
+                   DO  m = 1, surf_usm_h(0)%ns
+                      i = surf_usm_h(0)%i(m)
+                      j = surf_usm_h(0)%j(m)
+                      local_pf(i,j,nzb+1) = surf_usm_h(0)%z0q(m)
                    ENDDO
                 ELSE
                    IF ( .NOT. ALLOCATED( z0q_av ) )  THEN
                       ALLOCATE( z0q_av(nysg:nyng,nxlg:nxrg) )
-                      z0q_av = 0.0_wp
+                      z0q_av = REAL( fill_value, KIND = wp )
                    ENDIF
                    DO  i = nxl, nxr
                       DO  j = nys, nyn
@@ -1369,7 +1199,9 @@
 !--             Quantities of other modules
                 IF ( .NOT. found )  THEN
                    CALL module_interface_data_output_2d( av, do2d(av,ivar), found, grid, mode,     &
-                                                         local_pf, two_d, nzb_do, nzt_do )
+                                                         local_pf, two_d, nzb_do, nzt_do,          &
+                                                         fill_value                                &
+                                                       )
                 ENDIF
 
                 resorted = .TRUE.
@@ -1384,18 +1216,23 @@
                    IF ( mode == 'xy' )  level_z = zs
                 ENDIF
 
+                IF ( .NOT. found )  THEN
+                   message_string = 'no output provided for: ' // TRIM( do2d(av,ivar) )
+                   CALL message( 'data_output_2d', 'PA0181', 0, 0, 0, 6, 0 )
+                ENDIF
+
           END SELECT
 
 !
 !--       Resort the array to be output, if not done above. Flag topography grid points with fill
-!--       values, using the corresponding masking flag.
+!--       values, using the corresponding maksing flag.
           IF ( .NOT. resorted )  THEN
              DO  i = nxl, nxr
                 DO  j = nys, nyn
                    DO  k = nzb_do, nzt_do
-                      IF ( BTEST( topo_flags(k,j,i), flag_nr ) )  THEN
-                         local_pf(i,j,k) = to_be_resorted(k,j,i)
-                      ENDIF
+                      local_pf(i,j,k) = MERGE( to_be_resorted(k,j,i),                              &
+                                               REAL( fill_value, KIND = wp ),                      &
+                                               BTEST( wall_flags_total_0(k,j,i), flag_nr ) )
                    ENDDO
                 ENDDO
              ENDDO
@@ -2141,8 +1978,8 @@
                       CALL netcdf_handle_error( 'data_output_2d', 60 )
 
                    CASE DEFAULT
-                      message_string = 'unknown cross-section: "' // TRIM( mode ) // '"'
-                      CALL message( 'data_output_2d', 'PAC0184', 1, 2, 0, 6, 0 )
+                      message_string = 'unknown cross-section: ' // TRIM( mode )
+                      CALL message( 'data_output_2d', 'PA0180', 1, 2, 0, 6, 0 )
 
                 END SELECT
 

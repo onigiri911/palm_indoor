@@ -13,8 +13,27 @@
 ! You should have received a copy of the GNU General Public License along with PALM. If not, see
 ! <http://www.gnu.org/licenses/>.
 !
-! Copyright 1997-2021 Leibniz Universitaet Hannover
+! Copyright 1997-2020 Leibniz Universitaet Hannover
 !--------------------------------------------------------------------------------------------------!
+!
+! Current revisions:
+! -----------------
+!
+!
+! Former revisions:
+! -----------------
+! $Id: init_slope.f90 4648 2020-08-25 07:52:08Z raasch $
+! file re-formatted to follow the PALM coding standard
+!
+! 4360 2020-01-07 11:25:50Z suehring
+! Corrected "Former revisions" section
+!
+! 3655 2019-01-07 16:51:22Z knoop
+! Modularization of all bulk cloud physics code components
+!
+! Revision 1.1  2000/04/27 07:06:24  raasch
+! Initial revision
+!
 !
 ! Description:
 ! ------------
@@ -24,43 +43,22 @@
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE init_slope
 
-#if defined( __parallel )
-    USE MPI
-#endif
 
     USE arrays_3d,                                                                                 &
-        ONLY:  pt,                                                                                 &
-               pt_init,                                                                            &
-               pt_slope_ref,                                                                       &
-               zu
+        ONLY:  pt, pt_init, pt_slope_ref, zu
 
     USE basic_constants_and_equations_mod,                                                         &
         ONLY:  pi
 
     USE control_parameters,                                                                        &
-        ONLY:  alpha_surface,                                                                      &
-               initializing_actions,                                                               &
-               pt_slope_offset,                                                                    &
-               pt_surface,                                                                         &
-               pt_vertical_gradient,                                                               &
-               sin_alpha_surface
+        ONLY:  alpha_surface, initializing_actions, pt_slope_offset, pt_surface,                   &
+               pt_vertical_gradient, sin_alpha_surface
 
     USE grid_variables,                                                                            &
         ONLY:  dx
 
     USE indices,                                                                                   &
-        ONLY:  ngp_2dh,                                                                            &
-               nx,                                                                                 &
-               nxl,                                                                                &
-               nxlg,                                                                               &
-               nxr,                                                                                &
-               nxrg,                                                                               &
-               nyn,                                                                                &
-               nyng,                                                                               &
-               nys,                                                                                &
-               nysg,                                                                               &
-               nzb,                                                                                &
-               nzt
+        ONLY:  ngp_2dh, nx, nxl, nxlg, nxr, nxrg, nyn, nyng, nys, nysg, nzb, nzt
 
     USE kinds
 

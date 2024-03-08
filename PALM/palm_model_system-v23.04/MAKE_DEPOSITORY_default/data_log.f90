@@ -13,8 +13,30 @@
 ! You should have received a copy of the GNU General Public License along with PALM. If not, see
 ! <http://www.gnu.org/licenses/>.
 !
-! Copyright 1997-2021 Leibniz Universitaet Hannover
+! Copyright 1997-2020 Leibniz Universitaet Hannover
 !--------------------------------------------------------------------------------------------------!
+!
+! Current revisions:
+! -----------------
+! 
+! 
+! Former revisions:
+! -----------------
+! $Id: data_log.f90 4559 2020-06-11 08:51:48Z raasch $
+! file re-formatted to follow the PALM coding standard
+!
+! 4360 2020-01-07 11:25:50Z suehring
+! Corrected "Former revisions" section
+!
+! 3725 2019-02-07 10:11:02Z raasch
+! preprocessor directives removed to avoid compiler warnings
+!
+! 3655 2019-01-07 16:51:22Z knoop
+! Corrected "Former revisions" section
+!
+! Revision 1.1  2006/02/23 10:09:29  raasch
+! Initial revision
+!
 !
 ! Description:
 ! ------------
@@ -23,8 +45,7 @@
  SUBROUTINE data_log( array, i1, i2, j1, j2, k1, k2 )
 
     USE control_parameters,                                                                        &
-        ONLY:  log_message,                                                                        &
-               simulated_time
+        ONLY:  log_message, simulated_time
 
     USE kinds
 
@@ -67,11 +88,11 @@
 ! ------------
 !> Complete logging of data for 2d arrays
 !--------------------------------------------------------------------------------------------------!
+
  SUBROUTINE data_log_2d( array, i1, i2, j1, j2)
 
     USE control_parameters,                                                                        &
-        ONLY:  log_message,                                                                        &
-               simulated_time
+        ONLY:  log_message, simulated_time
 
     USE kinds
 
@@ -112,11 +133,11 @@
 ! ------------
 !> Complete logging of data for 2d integer arrays
 !--------------------------------------------------------------------------------------------------!
+
  SUBROUTINE data_log_2d_int( array, i1, i2, j1, j2)
 
     USE control_parameters,                                                                        &
-        ONLY:  log_message,                                                                        &
-               simulated_time
+        ONLY:  log_message, simulated_time
 
     USE kinds
 

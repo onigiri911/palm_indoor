@@ -13,51 +13,48 @@
 ! You should have received a copy of the GNU General Public License along with PALM. If not, see
 ! <http://www.gnu.org/licenses/>.
 !
-! Copyright 1997-2021 Leibniz Universitaet Hannover
+! Copyright 1997-2020 Leibniz Universitaet Hannover
 !--------------------------------------------------------------------------------------------------!
 !
 !
+! Current revisions:
+! -----------------
+!
+!
+! Former revisions:
+! -----------------
+! $Id: spectra_mod.f90 4629 2020-07-29 09:37:56Z raasch $
+! support for MPI Fortran77 interface (mpif.h) removed
+!
+! 4591 2020-07-06 15:56:08Z raasch
+! File re-formatted to follow the PALM coding standard
+!
+! 4429 2020-02-27 15:24:30Z raasch
+! Bugfix: preprocessor directives rearranged for serial mode
+!
+! 4360 2020-01-07 11:25:50Z suehring
+! Corrected "Former revisions" section
+!
+! 3805 2019-03-20 15:26:35Z raasch
+! Unused variable removed
+!
+! 3655 2019-01-07 16:51:22Z knoop
+! Renamed output variables
+!
+! Revision 1.1  2001/01/05 15:08:07  raasch
+! Initial revision
+!
+!--------------------------------------------------------------------------------------------------!
 ! Description:
 ! ------------
 !> Calculate horizontal spectra along x and y.
+!> ATTENTION: 1d-decomposition along y still needs improvement, because in that case the gridpoint
+!>            number along z still depends on the PE number because transpose_xz has to be used
+!>            (and possibly also transpose_zyd needs modification).
 !--------------------------------------------------------------------------------------------------!
  MODULE spectra_mod
 
-#if defined( __parallel )
-    USE MPI
-#endif
-
     USE kinds
-
-#if defined( __parallel )
-    USE transpose_mod,                                                                             &
-        ONLY:  resort_for_zx,                                                                      &
-               transpose_zx,                                                                       &
-               transpose_zyd
-#endif
-
-    USE indices,                                                                                   &
-        ONLY:  nx,                                                                                 &
-               ny,                                                                                 &
-               ngp_2dh,                                                                            &
-               nxl,                                                                                &
-               nxr,                                                                                &
-               nyn,                                                                                &
-               nys,                                                                                &
-               nzb,                                                                                &
-               nzt
-
-    USE transpose_mod,                                                                             &
-        ONLY:  nyn_x,                                                                              &
-               nys_x,                                                                              &
-               nzb_x,                                                                              &
-               nzt_x,                                                                              &
-               nxl_yd,                                                                             &
-               nxr_x_max,                                                                          &
-               nxr_yd,                                                                             &
-               nzb_yd,                                                                             &
-               nzt_yd,                                                                             &
-               nz_x_max
 
     PRIVATE
 
@@ -143,22 +140,24 @@
 !--------------------------------------------------------------------------------------------------!
 ! Description:
 ! ------------
-!> Parameter input for &spectra_par for calculating spectra.
+!> Parin for &spectra_par for calculating spectra
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE spectra_parin
 
     USE control_parameters,                                                                        &
-        ONLY:  dt_data_output
+        ONLY:  dt_data_output,                                                                     &
+               message_string
 
     IMPLICIT NONE
 
-    CHARACTER(LEN=100) ::  line  !< dummy string that contains the current line of the parameter file
+    CHARACTER (LEN=80) ::  line  !< dummy string that contains the current line of the parameter file
 
-    INTEGER(iwp) ::  io_status   !< status after reading the namelist file
-
-    LOGICAL ::  switch_off_module = .FALSE.  !< local namelist parameter to switch off the module
-                                             !< although the respective module namelist appears in
-                                             !< the namelist file
+    NAMELIST /spectra_par/  averaging_interval_sp,                                                 &
+                            comp_spectra_level,                                                    &
+                            data_output_sp,                                                        &
+                            dt_dosp,                                                               &
+                            skip_time_dosp,                                                        &
+                            spectra_direction
 
     NAMELIST /spectra_parameters/                                                                  &
                             averaging_interval_sp,                                                 &
@@ -166,44 +165,82 @@
                             data_output_sp,                                                        &
                             dt_dosp,                                                               &
                             skip_time_dosp,                                                        &
-                            spectra_direction,                                                     &
-                            switch_off_module
+                            spectra_direction
 !
-!-- Position the namelist-file at the beginning (it was already opened in parin), and try to read
-!-- the namelist.
-    REWIND( 11 )
-    READ( 11, spectra_parameters, IOSTAT=io_status )
+!-- Position the namelist-file at the beginning (it was already opened in parin), search for the
+!-- namelist-group of the package and position the file at this line.
+    line = ' '
 
 !
-!-- Action depending on the READ status.
-    IF ( io_status == 0 )  THEN
-!
-!--    spectra_parameters namelist was found and read correctly. Set flag to indicate that spectra
-!--    have to be calculated.
-       IF ( .NOT.  switch_off_module )  THEN
-          calculate_spectra = .TRUE.
-!--       Default setting of dt_dosp here (instead of check_parameters), because its current value
-!--       is needed in init_pegrid.
-          IF ( dt_dosp == 9999999.9_wp )  dt_dosp = dt_data_output
-       ENDIF
+!-- Try to find the spectra package
+    REWIND ( 11 )
+    line = ' '
+    DO WHILE ( INDEX( line, '&spectra_parameters' ) == 0 )
+       READ ( 11, '(A)', END=12 )  line
+    ENDDO
+    BACKSPACE ( 11 )
 
-    ELSEIF ( io_status > 0 )  THEN
 !
-!--    spectra_parameters namelist was found but contained errors. Print an error message including
-!--    the line that caused the problem.
-       BACKSPACE( 11 )
-       READ( 11 , '(A)' ) line
-       CALL parin_fail_message( 'spectra_parameters', line )
+!-- Read namelist
+    READ ( 11, spectra_parameters, ERR = 10 )
 
-    ENDIF
+!
+!-- Default setting of dt_dosp here (instead of check_parameters), because its current value is
+!-- needed in init_pegrid
+    IF ( dt_dosp == 9999999.9_wp )  dt_dosp = dt_data_output
+
+!
+!-- Set general switch that spectra shall be calculated
+    calculate_spectra = .TRUE.
+
+    GOTO 14
+
+ 10 BACKSPACE( 11 )
+    READ( 11 , '(A)') line
+    CALL parin_fail_message( 'spectra_parameters', line )
+!
+!-- Try to find the old namelist
+ 12 REWIND ( 11 )
+    line = ' '
+    DO WHILE ( INDEX( line, '&spectra_par' ) == 0 )
+       READ ( 11, '(A)', END=14 )  line
+    ENDDO
+    BACKSPACE ( 11 )
+
+!
+!-- Read namelist
+    READ ( 11, spectra_par, ERR = 13, END = 14 )
+
+
+    message_string = 'namelist spectra_par is deprecated and will be removed in near future.' //   &
+                     ' Please use namelist spectra_parameters instead'
+    CALL message( 'spectra_parin', 'PA0487', 0, 1, 0, 6, 0 )
+!
+!-- Default setting of dt_dosp here (instead of check_parameters), because its current value is
+!-- needed in init_pegrid
+    IF ( dt_dosp == 9999999.9_wp )  dt_dosp = dt_data_output
+
+!
+!-- Set general switch that spectra shall be calculated
+    calculate_spectra = .TRUE.
+
+    GOTO 14
+
+ 13 BACKSPACE( 11 )
+    READ( 11 , '(A)') line
+    CALL parin_fail_message( 'spectra_par', line )
+
+
+ 14 CONTINUE
 
  END SUBROUTINE spectra_parin
+
 
 
 !--------------------------------------------------------------------------------------------------!
 ! Description:
 ! ------------
-!> Initialization of spectra related variables.
+!> Initialization of spectra related variables
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE spectra_init
 
@@ -214,7 +251,6 @@
                nzt
 
     IMPLICIT NONE
-
 
     IF ( spectra_initialized )  RETURN
 
@@ -239,10 +275,11 @@
  END SUBROUTINE spectra_init
 
 
+
 !--------------------------------------------------------------------------------------------------!
 ! Description:
 ! ------------
-!> Check spectra related quantities.
+!> Check spectra related quantities
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE spectra_check_parameters
 
@@ -253,9 +290,8 @@
 
     IMPLICIT NONE
 
-
 !
-!-- Check the average interval.
+!-- Check the average interval
     IF ( averaging_interval_sp == 9999999.9_wp )  THEN
        averaging_interval_sp = averaging_interval
     ENDIF
@@ -263,35 +299,51 @@
     IF ( averaging_interval_sp > dt_dosp )  THEN
        WRITE( message_string, * )  'averaging_interval_sp = ', averaging_interval_sp,              &
                                    ' must be <= dt_dosp = ', dt_dosp
-       CALL message( 'spectra_check_parameters', 'PAC0311', 1, 2, 0, 6, 0 )
+       CALL message( 'spectra_check_parameters', 'PA0087', 1, 2, 0, 6, 0 )
     ENDIF
 
 !
-!-- Set the default skip time interval for data output, if necessary.
+!-- Set the default skip time interval for data output, if necessary
     IF ( skip_time_dosp == 9999999.9_wp )  skip_time_dosp = skip_time_data_output
 
  END SUBROUTINE spectra_check_parameters
 
 
+
 !--------------------------------------------------------------------------------------------------!
 ! Description:
 ! ------------
-!> Header output for spectra.
+!> Header output for spectra
+!>
+!> @todo Output of netcdf data format and compression level
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE spectra_header ( io )
 
     USE control_parameters,                                                                        &
         ONLY:  dt_averaging_input_pr
 
+!    USE netcdf_interface,                                                                          &
+!        ONLY:  netcdf_data_format_string,                                                          &
+!               netcdf_deflate
+
     IMPLICIT NONE
+
+!    CHARACTER (LEN=40) ::  output_format !< internal string
 
     INTEGER(iwp) ::  i               !< internal counter
     INTEGER(iwp), INTENT(IN) ::  io  !< unit of the output file
 
 !
-!-- Spectra output.
+!-- Spectra output
     IF ( dt_dosp /= 9999999.9_wp )  THEN
        WRITE ( io, 1 )
+
+!       output_format = netcdf_data_format_string
+!       IF ( netcdf_deflate == 0 )  THEN
+!          WRITE ( io, 2 )  output_format
+!       ELSE
+!          WRITE ( io, 3 )  TRIM( output_format ), netcdf_deflate
+!       ENDIF
        WRITE ( io, 2 )  'see profiles or other quantities'
        WRITE ( io, 4 )  dt_dosp
        IF ( skip_time_dosp /= 0.0_wp )  WRITE ( io, 5 )  skip_time_dosp
@@ -303,6 +355,7 @@
 
   1 FORMAT ('    Spectra:')
   2 FORMAT ('       Output format: ',A/)
+!  3 FORMAT ('       Output format: ',A, '   compressed with level: ',I1/)
   4 FORMAT ('       Output every ',F7.1,' s'/)
   5 FORMAT ('       No output during initial ',F8.2,' s')
   6 FORMAT ('       Arrays:     ', 10(A5,',')/                                                     &
@@ -322,16 +375,17 @@
 !--------------------------------------------------------------------------------------------------!
 ! Description:
 ! ------------
-!> Prepares the spectra calculations, i.e. initializes the fft-method, stores the quantities for
-!> which spectra shall be created on the transpose-array, and transposes the data so
-!> that all grids points of the resepctive direction resides on the same PE. The final spectra
-!> calculation (i.e. the Fourier transformation) is done in routines calc_spectra_x and
-!> calc_spectra_y.
+!> @todo Missing subroutine description.
 !--------------------------------------------------------------------------------------------------!
+
  SUBROUTINE calc_spectra
 
     USE arrays_3d,                                                                                 &
         ONLY:  d
+#if defined( __parallel )
+    USE arrays_3d,                                                                                 &
+        ONLY:  tend
+#endif
 
     USE control_parameters,                                                                        &
         ONLY:  bc_lr_cyc,                                                                          &
@@ -346,37 +400,45 @@
     USE fft_xy,                                                                                    &
         ONLY:  fft_init
 
+    USE indices,                                                                                   &
+        ONLY:  nxl,                                                                                &
+               nxr,                                                                                &
+               nyn,                                                                                &
+               nys,                                                                                &
+               nzb,                                                                                &
+               nzt
+
     USE kinds
 
     USE pegrid,                                                                                    &
         ONLY:  myid
+#if defined( __parallel )
+    USE pegrid,                                                                                    &
+        ONLY:  pdims
+#endif
 
     IMPLICIT NONE
 
     INTEGER(iwp) ::  m   !<
     INTEGER(iwp) ::  pr  !<
 
-#if defined( __parallel )
-    REAL(wp), DIMENSION(:,:,:), ALLOCATABLE ::  ddd    !< temporary array for non uniform domains
-    REAL(wp), DIMENSION(:,:,:), ALLOCATABLE ::  zx_in  !< temporary array for non uniform domains
-#endif
 
 !
-!-- Check if user gave any levels for spectra to be calculated.
+!-- Check if user gave any levels for spectra to be calculated
     IF ( comp_spectra_level(1) == 999999 )  RETURN
 
     CALL cpu_log( log_point(30), 'calc_spectra', 'start' )
 
 !
-!-- Initialize spectra related quantities.
+!-- Initialize spectra related quantities
     CALL spectra_init
 
 !
-!-- Initialize ffts.
+!-- Initialize ffts
     CALL fft_init
 
 !
-!-- Reallocate array d in required size.
+!-- Reallocate array d in required size
     IF ( psolver(1:9) == 'multigrid' )  THEN
        DEALLOCATE( d )
        ALLOCATE( d(nzb+1:nzt,nys:nyn,nxl:nxr) )
@@ -385,46 +447,47 @@
     m = 1
     DO WHILE ( data_output_sp(m) /= ' '  .AND.  m <= 10 )
 !
-!--    Transposition from z --> x.
+!--    Transposition from z --> x  ( y --> x in case of a 1d-decomposition along x)
        IF ( INDEX( spectra_direction(m), 'x' ) /= 0 )  THEN
 
 !
-!--       Calculation of spectra works for cyclic boundary conditions only.
+!--       Calculation of spectra works for cyclic boundary conditions only
           IF ( .NOT. bc_lr_cyc )  THEN
-             message_string = 'non-cyclic lateral boundaries along x do not & allow calculation' //&
-                              ' of spectra along x'
-             CALL message( 'calc_spectra', 'PAC0312', 1, 2, 0, 6, 0 )
+
+             message_string = 'non-cyclic lateral boundaries along x do' //                        &
+                              ' not &  allow calculation of spectra along x'
+             CALL message( 'calc_spectra', 'PA0160', 1, 2, 0, 6, 0 )
           ENDIF
-!
-!--       Store data of respective quantity (m) on array d.
+
           CALL preprocess_spectra( m, pr )
 
 #if defined( __parallel )
-          ALLOCATE( zx_in(nys:nyn,nxl:nxr_x_max,1:nz_x_max) )
-          ALLOCATE( ddd(0:nx,nys_x:nyn_x,nzb_x:nzt_x) )
-          CALL resort_for_zx( d, zx_in )
-          CALL transpose_zx( zx_in, ddd )
-          CALL calc_spectra_x( ddd, m )
-          DEALLOCATE( ddd )
-          DEALLOCATE( zx_in )
+          IF ( pdims(2) /= 1 )  THEN
+             CALL resort_for_zx( d, tend )
+             CALL transpose_zx( tend, d )
+          ELSE
+             CALL transpose_yxd( d, d )
+          ENDIF
+          CALL calc_spectra_x( d, m )
 #else
-          message_string = 'calculation of spectra in non parallel mode is not available'
-          CALL message( 'calc_spectra', 'PAC0313', 1, 2, 0, 6, 0 )
+          message_string = 'sorry, calculation of spectra in non parallel mode& is still not ' //  &
+                           'realized'
+          CALL message( 'calc_spectra', 'PA0161', 1, 2, 0, 6, 0 )
 #endif
 
        ENDIF
 
 !
-!--    Transposition from z --> y.
+!--    Transposition from z --> y (d is rearranged only in case of a 1d-decomposition along x)
        IF ( INDEX( spectra_direction(m), 'y' ) /= 0 )  THEN
 
 !
-!--       Calculation of spectra works for cyclic boundary conditions only.
+!--       Calculation of spectra works for cyclic boundary conditions only
           IF ( .NOT. bc_ns_cyc )  THEN
              IF ( myid == 0 )  THEN
-                message_string = 'non-cyclic lateral boundaries along y do not & allow ' //        &
-                                 'calculation of spectra along y'
-                CALL message( 'calc_spectra', 'PAC0312', 1, 2, 0, 6, 0 )
+                message_string = 'non-cyclic lateral boundaries along y' //                        &
+                                 ' do not & allow calculation of spectra along y'
+                CALL message( 'calc_spectra', 'PA0162', 1, 2, 0, 6, 0 )
              ENDIF
              CALL local_stop
           ENDIF
@@ -432,25 +495,24 @@
           CALL preprocess_spectra( m, pr )
 
 #if defined( __parallel )
-          ALLOCATE( ddd(0:ny,nxl_yd:nxr_yd,nzb_yd:nzt_yd) )
-          CALL transpose_zyd( d, ddd )
-          CALL calc_spectra_y( ddd, m )
-          DEALLOCATE( ddd )
+          CALL transpose_zyd( d, d )
+          CALL calc_spectra_y( d, m )
 #else
-          message_string = 'calculation of spectra in non parallel mode& is not available'
-          CALL message( 'calc_spectra', 'PAC0313', 1, 2, 0, 6, 0 )
+          message_string = 'sorry, calculation of spectra in non parallel mode& is still not ' //  &
+                           'realized'
+          CALL message( 'calc_spectra', 'PA0161', 1, 2, 0, 6, 0 )
 #endif
 
        ENDIF
 
 !
-!--    Increase counter for next spectrum.
+!--    Increase counter for next spectrum
        m = m + 1
 
     ENDDO
 
 !
-!-- Increase counter for averaging process in routine plot_spectra.
+!-- Increase counter for averaging process in routine plot_spectra
     average_count_sp = average_count_sp + 1
 
     CALL cpu_log( log_point(30), 'calc_spectra', 'stop' )
@@ -461,7 +523,7 @@
 !--------------------------------------------------------------------------------------------------!
 ! Description:
 ! ------------
-!> Store data of respective quantity (m) on array d.
+!> @todo Missing subroutine description.
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE preprocess_spectra( m, pr )
 
@@ -474,9 +536,20 @@
                v,                                                                                  &
                w
 
+    USE indices,                                                                                   &
+        ONLY:  ngp_2dh,                                                                            &
+               nxl,                                                                                &
+               nxr,                                                                                &
+               nyn,                                                                                &
+               nys,                                                                                &
+               nzb,                                                                                &
+               nzt
+
     USE kinds
 
 #if defined( __parallel )
+    USE MPI
+
     USE pegrid,                                                                                    &
         ONLY:  collective_wait,                                                                    &
                comm2d,                                                                             &
@@ -562,7 +635,7 @@
 !--------------------------------------------------------------------------------------------------!
 ! Description:
 ! ------------
-!> Performs the spectra calculation via calling the Fourier transformation routine fft_x.
+!> @todo Missing subroutine description.
 !--------------------------------------------------------------------------------------------------!
 #if defined( __parallel )
  SUBROUTINE calc_spectra_x( ddd, m )
@@ -573,12 +646,24 @@
     USE grid_variables,                                                                            &
         ONLY:  dx
 
+    USE indices,                                                                                   &
+        ONLY:  nx,                                                                                 &
+               ny
+
     USE kinds
+
+    USE MPI
 
     USE pegrid,                                                                                    &
         ONLY:  comm2d,                                                                             &
                ierr,                                                                               &
                myid
+
+    USE transpose_indices,                                                                         &
+        ONLY:  nyn_x,                                                                              &
+               nys_x,                                                                              &
+               nzb_x,                                                                              &
+               nzt_x
 
 
     IMPLICIT NONE
@@ -601,18 +686,18 @@
     REAL(wp), DIMENSION(0:nx,nys_x:nyn_x,nzb_x:nzt_x) ::  ddd  !<
 
 !
-!-- Exponent for geometric average.
+!-- Exponent for geometric average
     exponent = 1.0_wp / ( ny + 1.0_wp )
 
 !
-!-- Loop over all levels defined by the user.
+!-- Loop over all levels defined by the user
     n = 1
     DO WHILE ( comp_spectra_level(n) /= 999999  .AND.  n <= 100 )
 
        k = comp_spectra_level(n)
 
 !
-!--    Calculate FFT only if the corresponding level is situated on this PE.
+!--    Calculate FFT only if the corresponding level is situated on this PE
        IF ( k >= nzb_x  .AND.  k <= nzt_x )  THEN
 
           DO  j = nys_x, nyn_x
@@ -629,7 +714,7 @@
 
 !
 !--       Local sum and geometric average of these spectra (WARNING: no global sum should be
-!--       performed, because floating point overflow may occur).
+!--       performed, because floating point overflow may occur)
           DO  i = 0, nx/2
 
              sums_spectra_l(i) = 1.0_wp
@@ -646,7 +731,7 @@
        ENDIF
 
 !
-!--    Global sum of spectra on PE0 (from where they are written on file).
+!--    Global sum of spectra on PE0 (from where they are written on file)
        sums_spectra(:,n) = 0.0_wp
 #if defined( __parallel )
        CALL MPI_BARRIER( comm2d, ierr )  ! Necessary?
@@ -656,7 +741,7 @@
        sums_spectra(:,n) = sums_spectra_l
 #endif
 !
-!--    Normalize spectra by variance.
+!--    Normalize spectra by variance
        sum_spec_dum = SUM( sums_spectra(1:nx/2,n) )
 
        IF ( sum_spec_dum /= 0.0_wp )  THEN
@@ -669,7 +754,7 @@
 
     IF ( myid == 0 )  THEN
 !
-!--    Sum of spectra for later averaging (see routine data_output_spectra).
+!--    Sum of spectra for later averaging (see routine data_output_spectra)
        DO  i = 1, nx/2
           DO k = 1, n
              spectrum_x(i,k,m) = spectrum_x(i,k,m) + sums_spectra(i,k)
@@ -688,7 +773,7 @@
 !--------------------------------------------------------------------------------------------------!
 ! Description:
 ! ------------
-!> Performs the spectra calculation via calling the Fourier transformation routine fft_y.
+!> @todo Missing subroutine description.
 !--------------------------------------------------------------------------------------------------!
 #if defined( __parallel )
  SUBROUTINE calc_spectra_y( ddd, m )
@@ -699,12 +784,24 @@
     USE grid_variables,                                                                            &
         ONLY:  dy
 
+    USE indices,                                                                                   &
+        ONLY:  nx,                                                                                 &
+               ny
+
     USE kinds
+
+    USE MPI
 
     USE pegrid,                                                                                    &
         ONLY:  comm2d,                                                                             &
                ierr,                                                                               &
                myid
+
+    USE transpose_indices,                                                                         &
+        ONLY:  nxl_yd,                                                                             &
+               nxr_yd,                                                                             &
+               nzb_yd,                                                                             &
+               nzt_yd
 
 
     IMPLICIT NONE
@@ -728,18 +825,18 @@
 
 
 !
-!-- Exponent for geometric average.
+!-- Exponent for geometric average
     exponent = 1.0_wp / ( nx + 1.0_wp )
 
 !
-!-- Loop over all levels defined by the user.
+!-- Loop over all levels defined by the user
     n = 1
     DO WHILE ( comp_spectra_level(n) /= 999999  .AND.  n <= 100 )
 
        k = comp_spectra_level(n)
 
 !
-!--    Calculate FFT only if the corresponding level is situated on this PE.
+!--    Calculate FFT only if the corresponding level is situated on this PE
        IF ( k >= nzb_yd  .AND.  k <= nzt_yd )  THEN
 
           DO  i = nxl_yd, nxr_yd
@@ -756,7 +853,7 @@
 
 !
 !--       Local sum and geometric average of these spectra (WARNING: no global sum should be
-!--       performed, because floating point overflow may occur).
+!--       performed, because floating point overflow may occur)
           DO  j = 0, ny/2
 
              sums_spectra_l(j) = 1.0_wp
@@ -773,7 +870,7 @@
        ENDIF
 
 !
-!--    Global sum of spectra on PE0 (from where they are written on file).
+!--    Global sum of spectra on PE0 (from where they are written on file)
        sums_spectra(:,n) = 0.0_wp
 #if defined( __parallel )
        CALL MPI_BARRIER( comm2d, ierr )  ! Necessary?
@@ -783,7 +880,7 @@
        sums_spectra(:,n) = sums_spectra_l
 #endif
 !
-!--    Normalize spectra by variance.
+!--    Normalize spectra by variance
        sum_spec_dum = SUM( sums_spectra(1:ny/2,n) )
        IF ( sum_spec_dum /= 0.0_wp )  THEN
           sums_spectra(1:ny/2,n) = sums_spectra(1:ny/2,n) * var_d(k) / sum_spec_dum
@@ -796,7 +893,7 @@
 
     IF ( myid == 0 )  THEN
 !
-!--    Sum of spectra for later averaging (see routine data_output_spectra).
+!--    Sum of spectra for later averaging (see routine data_output_spectra)
        DO  j = 1, ny/2
           DO k = 1, n
              spectrum_y(j,k,m) = spectrum_y(j,k,m) + sums_spectra(j,k)
@@ -806,7 +903,7 @@
     ENDIF
 
 !
-!-- n_sp_y is needed by data_output_spectra_y.
+!-- n_sp_y is needed by data_output_spectra_y
     n_sp_y = n
 
  END SUBROUTINE calc_spectra_y

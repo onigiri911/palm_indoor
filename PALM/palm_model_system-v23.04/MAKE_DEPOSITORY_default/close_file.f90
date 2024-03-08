@@ -13,8 +13,31 @@
 ! You should have received a copy of the GNU General Public License along with PALM. If not, see
 ! <http://www.gnu.org/licenses/>.
 !
-! Copyright 1997-2021 Leibniz Universitaet Hannover
+! Copyright 1997-2020 Leibniz Universitaet Hannover
 !--------------------------------------------------------------------------------------------------!
+!
+! Current revisions:
+! -----------------
+! 
+! 
+! Former revisions:
+! -----------------
+! $Id: close_file.f90 4559 2020-06-11 08:51:48Z raasch $
+! file re-formatted to follow the PALM coding standard
+!
+! 4360 2020-01-07 11:25:50Z suehring
+! Corrected "Former revisions" section
+!
+! 4069 2019-07-01 14:05:51Z Giersch
+! Masked output running index mid has been introduced as a local variable to
+! avoid runtime error (Loop variable has been modified) in time_integration
+!
+! 3655 2019-01-07 16:51:22Z knoop
+! unused variables and format statements removed
+!
+! Revision 1.1 (close_files) 1997/08/11 06:11:18  raasch
+! Initial revision
+!
 !
 ! Description:
 ! ------------
@@ -23,44 +46,21 @@
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE close_file( file_id )
 
+
     USE control_parameters,                                                                        &
-        ONLY:  debug_output,                                                                       &
-               debug_string,                                                                       &
-               max_masks,                                                                          &
-               openfile,                                                                           &
-               output_3d_file_size
+        ONLY:  max_masks, openfile
 
     USE kinds
-
-#if defined( __parallel )
-    USE MPI
-#endif
 
 #if defined( __netcdf )
     USE NETCDF
 #endif
 
-    USE netcdf_interface,                                                                          &
-        ONLY:  id_set_mask,                                                                        &
-               id_set_pr,                                                                          &
-               id_set_sp,                                                                          &
-               id_set_ts,                                                                          &
-               id_set_xy,                                                                          &
-               id_set_xz,                                                                          &
-               id_set_yz,                                                                          &
-               id_set_3d,                                                                          &
-               id_set_fl,                                                                          &
-               nc_stat,                                                                            &
-               netcdf_data_format,                                                                 &
-               netcdf_handle_error
+    USE netcdf_interface,                                                      &
+        ONLY:  id_set_mask, id_set_pr, id_set_pts, id_set_sp,  id_set_ts, id_set_xy, id_set_xz,    &
+               id_set_yz, id_set_3d, id_set_fl, nc_stat, netcdf_data_format, netcdf_handle_error
 
-    USE pegrid,                                                                                    &
-        ONLY:  myid
-#if defined( __parallel )
-    USE pegrid,                                                                                    &
-        ONLY:  comm2d,                                                                             &
-               ierr
-#endif
+    USE pegrid
 
     IMPLICIT NONE
 
@@ -139,20 +139,6 @@
                 ENDIF
 
              CASE ( 106 )
-!
-!--             Calculate the file size (to be output to the CPU log).
-!--             Only makes sense for parallel I/O on all cores. For other cases 3d-data output is
-!--             done in Fortran binary format to separate files (one per core) and gathered to
-!--             a NetCDF file in post-processing.
-                IF ( netcdf_data_format > 4 )  THEN
-#if defined( __parallel )
-                   CALL MPI_ALLREDUCE( MPI_IN_PLACE, output_3d_file_size, 1, MPI_REAL, MPI_SUM,    &
-                                       comm2d, ierr )
-#endif
-!
-!--                Default precision for output is 4 byte. Converted to Mbyte.
-                   output_3d_file_size = output_3d_file_size * 4.0_wp / 1.0E6
-                ENDIF
 
                 IF ( myid == 0  .OR.  netcdf_data_format > 4 )  THEN
                    nc_stat = NF90_CLOSE( id_set_3d(0) )
@@ -165,6 +151,18 @@
                    nc_stat = NF90_CLOSE( id_set_sp )
                    CALL netcdf_handle_error( 'close_file', 50 )
                 ENDIF
+
+!
+!--           Currently disabled
+!             CASE ( 108 )
+
+!                nc_stat = NF90_CLOSE( id_set_prt )
+!                CALL netcdf_handle_error( 'close_file', 51 )
+
+             CASE ( 109 )
+
+                nc_stat = NF90_CLOSE( id_set_pts )
+                CALL netcdf_handle_error( 'close_file', 412 )
 
              CASE ( 111 )
 
@@ -223,14 +221,7 @@
           END SELECT
 !
 !--       Close file
-          IF ( openfile(fid)%opened )  THEN
-             IF ( debug_output )  THEN
-                WRITE( debug_string, '(A,1X,I3)' )  'closing file id', fid
-                CALL debug_message( debug_string, 'start' )
-             ENDIF
-             CLOSE ( fid )
-             IF ( debug_output )  CALL debug_message( debug_string, 'end' )
-          ENDIF
+          IF ( openfile(fid)%opened )  CLOSE ( fid )
 
        ENDIF
 

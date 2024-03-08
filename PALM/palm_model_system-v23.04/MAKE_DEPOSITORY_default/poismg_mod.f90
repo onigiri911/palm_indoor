@@ -13,10 +13,50 @@
 ! You should have received a copy of the GNU General Public License along with PALM. If not, see
 ! <http://www.gnu.org/licenses/>.
 !
-! Copyright 1997-2021 Leibniz Universitaet Hannover
+! Copyright 1997-2020 Leibniz Universitaet Hannover
 !--------------------------------------------------------------------------------------------------!
 !
 !
+! Current revisions:
+! -----------------
+!
+!
+! Former revisions:
+! -----------------
+! $Id: poismg_mod.f90 4649 2020-08-25 12:11:17Z raasch $
+! File re-formatted to follow the PALM coding standard
+!
+!
+! 4457 2020-03-11 14:20:43Z raasch
+! Use statement for exchange horiz added
+!
+! 4432 2020-02-28 07:43:21Z raasch
+! Bugfix for previous revision (vector directive was changed by mistake)
+!
+! 4429 2020-02-27 15:24:30Z raasch
+! Statement added to avoid compile error due to unused dummy argument
+! Bugfix: cpp-directives added for serial mode
+!
+! 4360 2020-01-07 11:25:50Z suehring
+! Corrected "Former revisions" section
+!
+! 3725 2019-02-07 10:11:02Z raasch
+! Unused subroutine removed
+!
+! 3655 2019-01-07 16:51:22Z knoop
+! Unnecessary check eliminated
+!
+! Following optimisations have been made:
+! - Vectorisation (for Intel-CPUs) of the red-black algorithm by resorting array elements with even
+!   and odd indices
+! - Explicit boundary conditions for building walls removed (solver is running through the
+!   buildings)
+! - Reduced data transfer in case of ghost point exchange, because only "red" or "black" data points
+!   need to be exchanged. This is not applied for coarser grid levels, since for then the transfer
+!   time is latency bound
+!
+!
+!--------------------------------------------------------------------------------------------------!
 ! Description:
 ! ------------
 !> Solves the Poisson equation for the perturbation pressure with a multigrid V- or W-Cycle scheme.
@@ -30,10 +70,6 @@
 !> @todo Further work required.
 !--------------------------------------------------------------------------------------------------!
  MODULE poismg_mod
-
-#if defined( __parallel )
-    USE MPI
-#endif
 
     USE control_parameters,                                                                        &
         ONLY:  bc_dirichlet_l,                                                                     &
@@ -64,10 +100,7 @@
 
     INTEGER, DIMENSION(:), SAVE, ALLOCATABLE  ::  even_odd_level  !< stores ind_even_odd for all MG levels
 
-    REAL(wp), DIMENSION(:,:), SAVE, ALLOCATABLE ::  f1_mg_b       !< blocked version of f1_mg
-    REAL(wp), DIMENSION(:,:), SAVE, ALLOCATABLE ::  f2_mg_b       !< blocked version of f2_mg
-    REAL(wp), DIMENSION(:,:), SAVE, ALLOCATABLE ::  f3_mg_b       !< blocked version of f3_mg
-    REAL(wp), DIMENSION(:,:), SAVE, ALLOCATABLE ::  rho_air_mg_b  !< blocked version of rho_air_mg
+    REAL(wp), DIMENSION(:,:), SAVE, ALLOCATABLE ::  f1_mg_b, f2_mg_b, f3_mg_b  !< blocked version of f1_mg ...
 
     INTERFACE poismg
        MODULE PROCEDURE poismg
@@ -231,7 +264,7 @@
 !--    convergence
        IF ( mgcycles > 1000  .AND.  mg_cycles == -1 )  THEN
           message_string = 'no sufficient convergence within 1000 cycles'
-          CALL message( 'poismg', 'PAC0265', 1, 2, 0, 6, 0 )
+          CALL message( 'poismg', 'PA0283', 1, 2, 0, 6, 0 )
        ENDIF
 
     ENDDO
@@ -255,6 +288,10 @@
 !> Computes the residual of the perturbation pressure.
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE resid( f_mg, p_mg, r )
+
+
+    USE arrays_3d,                                                                                 &
+        ONLY:  rho_air_mg
 
     USE control_parameters,                                                                        &
         ONLY:  bc_lr_cyc,                                                                          &
@@ -303,9 +340,9 @@
           DO k = ind_even_odd+1, nzt_mg(l)
              km1 = k-ind_even_odd-1
              kp1 = k-ind_even_odd
-             r(k,j,i) = f_mg(k,j,i) - rho_air_mg_b(k,l) * ddx2_mg(l)                               &
+             r(k,j,i) = f_mg(k,j,i) - rho_air_mg(k,l) * ddx2_mg(l)                                 &
                         * ( p_mg(k,j,i+1) + p_mg(k,j,i-1) )                                        &
-                        - rho_air_mg_b(k,l) * ddy2_mg(l) * ( p_mg(k,j+1,i) + p_mg(k,j-1,i) )       &
+                        - rho_air_mg(k,l) * ddy2_mg(l) * ( p_mg(k,j+1,i) + p_mg(k,j-1,i) )         &
                         - f2_mg_b(k,l) * p_mg(kp1,j,i) - f3_mg_b(k,l) * p_mg(km1,j,i)              &
                         + f1_mg_b(k,l) * p_mg(k,j,i)
           ENDDO
@@ -313,8 +350,8 @@
           DO k = nzb+1, ind_even_odd
              km1 = k+ind_even_odd
              kp1 = k+ind_even_odd+1
-             r(k,j,i) = f_mg(k,j,i) - rho_air_mg_b(k,l) * ddx2_mg(l)                               &
-                        * ( p_mg(k,j,i+1) +  p_mg(k,j,i-1) ) - rho_air_mg_b(k,l) * ddy2_mg(l)      &
+             r(k,j,i) = f_mg(k,j,i) - rho_air_mg(k,l) * ddx2_mg(l)                                 &
+                        * ( p_mg(k,j,i+1) +  p_mg(k,j,i-1) ) - rho_air_mg(k,l) * ddy2_mg(l)        &
                         * ( p_mg(k,j+1,i) +  p_mg(k,j-1,i) ) - f2_mg_b(k,l) * p_mg(kp1,j,i)        &
                         - f3_mg_b(k,l) * p_mg(km1,j,i)       + f1_mg_b(k,l) * p_mg(k,j,i)
           ENDDO
@@ -373,6 +410,7 @@
 !> Interpolates the residual on the next coarser grid with "full weighting" scheme
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE restrict( f_mg, r )
+
 
     USE control_parameters,                                                                        &
         ONLY:  bc_lr_cyc,                                                                          &
@@ -507,12 +545,12 @@
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE prolong( p, temp )
 
+
     USE control_parameters,                                                                        &
         ONLY:  bc_lr_cyc,                                                                          &
                bc_ns_cyc,                                                                          &
                ibc_p_b,                                                                            &
                ibc_p_t
-
     USE indices,                                                                                   &
         ONLY:  nxl_mg,                                                                             &
                nxr_mg,                                                                             &
@@ -667,6 +705,10 @@
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE redblack( f_mg, p_mg )
 
+
+    USE arrays_3d,                                                                                 &
+        ONLY:  rho_air_mg
+
     USE control_parameters,                                                                        &
         ONLY:  bc_lr_cyc,                                                                          &
                bc_ns_cyc,                                                                          &
@@ -699,41 +741,18 @@
     INTEGER(iwp) ::  kp1    !< index variable (k+1)
     INTEGER(iwp) ::  l      !< grid level
     INTEGER(iwp) ::  n      !< loop variable Gauß-Seidel iterations
-    INTEGER(iwp) ::  save_nxl_mg  !< to save nxl_mg on coarsest level 1
-    INTEGER(iwp) ::  save_nys_mg  !< to save nys_mg on coarsest level 1
 
 
-    LOGICAL ::  adjust_lower_i_index  !< adjust lower limit of i loop in case of odd number of grid points
-    LOGICAL ::  adjust_lower_j_index  !< adjust lower limit of j loop in case of odd number of grid points
-    LOGICAL ::  unroll                !< flag indicating whether loop unrolling is possible
+    LOGICAL ::  unroll  !< flag indicating whether loop unrolling is possible
 
     REAL(wp), DIMENSION(nzb:nzt_mg(grid_level)+1,nys_mg(grid_level)-1:nyn_mg(grid_level)+1,        &
                         nxl_mg(grid_level)-1:nxr_mg(grid_level)+1) ::  f_mg  !< residual of perturbation pressure
     REAL(wp), DIMENSION(nzb:nzt_mg(grid_level)+1,nys_mg(grid_level)-1:nyn_mg(grid_level)+1,        &
                         nxl_mg(grid_level)-1:nxr_mg(grid_level)+1) ::  p_mg  !< perturbation pressure
 
-
     l = grid_level
 
     unroll = ( MOD( nyn_mg(l)-nys_mg(l)+1, 4 ) == 0  .AND.  MOD( nxr_mg(l)-nxl_mg(l)+1, 2 ) == 0 )
-
-!
-!-- The red/black decomposition requires that on the lower i,j indices need to start alternatively with an
-!-- even or odd value on the coarsest grid level, depending on the core-id, and if the subdomain has an
-!-- uneven number of gridpoints along x/y. Set the respective steering switches here.
-    IF ( l == 1  .AND.  MOD( myidx, 2 ) /= 0  .AND.  MOD( nxl_mg(l) - nxr_mg(l), 2 ) == 0 )  THEN
-       adjust_lower_i_index = .TRUE.
-       save_nxl_mg = nxl_mg(1)
-    ELSE
-       adjust_lower_i_index = .FALSE.
-    ENDIF
-    IF ( l == 1  .AND.  MOD( myidy, 2 ) /= 0  .AND.  MOD( nyn_mg(l) - nys_mg(l), 2 ) == 0 )  THEN
-       adjust_lower_j_index = .TRUE.
-       save_nys_mg = nys_mg(l)
-    ELSE
-       adjust_lower_j_index = .FALSE.
-    ENDIF
-
 
     DO  n = 1, ngsrb
 
@@ -742,18 +761,6 @@
           IF ( .NOT. unroll )  THEN
 
              CALL cpu_log( log_point_s(36), 'redblack_no_unroll_f', 'start' )
-
-             IF ( adjust_lower_i_index )  THEN
-                nxl_mg(l) = save_nxl_mg + 1
-             ENDIF
-
-             IF ( adjust_lower_j_index )  THEN
-                IF ( color == 1 )  THEN
-                  nys_mg(l) = save_nys_mg - 1
-                ELSE
-                  nys_mg(l) = save_nys_mg + 1
-                ENDIF
-             ENDIF
 !
 !--          Without unrolling of loops, no cache optimization
              !$OMP PARALLEL PRIVATE (i,j,k,km1,kp1)
@@ -765,9 +772,9 @@
                       km1 = k-ind_even_odd-1
                       kp1 = k-ind_even_odd
                       p_mg(k,j,i) = 1.0_wp / f1_mg_b(k,l)                                          &
-                                    * ( rho_air_mg_b(k,l) * ddx2_mg(l) *                           &
+                                    * ( rho_air_mg(k,l) * ddx2_mg(l) *                             &
                                     ( p_mg(k,j,i+1) + p_mg(k,j,i-1) )                              &
-                                    + rho_air_mg_b(k,l) * ddy2_mg(l) *                             &
+                                    + rho_air_mg(k,l) * ddy2_mg(l) *                               &
                                     ( p_mg(k,j+1,i) + p_mg(k,j-1,i) )                              &
                                     + f2_mg_b(k,l) * p_mg(kp1,j,i)                                 &
                                     + f3_mg_b(k,l) * p_mg(km1,j,i) - f_mg(k,j,i)                   &
@@ -775,18 +782,6 @@
                    ENDDO
                 ENDDO
              ENDDO
-
-             IF ( adjust_lower_i_index )  THEN
-                nxl_mg(l) = save_nxl_mg - 1
-             ENDIF
-
-             IF ( adjust_lower_j_index )  THEN
-                IF ( color == 1 )  THEN
-                  nys_mg(l) = save_nys_mg + 1
-                ELSE
-                  nys_mg(l) = save_nys_mg - 1
-                ENDIF
-             ENDIF
 
              !$OMP DO
              DO  i = nxl_mg(l)+1, nxr_mg(l), 2
@@ -796,9 +791,9 @@
                       km1 = k-ind_even_odd-1
                       kp1 = k-ind_even_odd
                       p_mg(k,j,i) = 1.0_wp / f1_mg_b(k,l) * (                                      &
-                                      rho_air_mg_b(k,l) * ddx2_mg(l) *                             &
+                                      rho_air_mg(k,l) * ddx2_mg(l) *                               &
                                     ( p_mg(k,j,i+1) + p_mg(k,j,i-1) )                              &
-                                    + rho_air_mg_b(k,l) * ddy2_mg(l) *                             &
+                                    + rho_air_mg(k,l) * ddy2_mg(l) *                               &
                                     ( p_mg(k,j+1,i) + p_mg(k,j-1,i) )                              &
                                     + f2_mg_b(k,l) * p_mg(kp1,j,i)                                 &
                                     + f3_mg_b(k,l) * p_mg(km1,j,i)                                 &
@@ -806,18 +801,6 @@
                    ENDDO
                 ENDDO
              ENDDO
-
-             IF ( adjust_lower_i_index )  THEN
-                nxl_mg(l) = save_nxl_mg + 1
-             ENDIF
-
-             IF ( adjust_lower_j_index )  THEN
-                IF ( color == 1 )  THEN
-                  nys_mg(l) = save_nys_mg + 1
-                ELSE
-                  nys_mg(l) = save_nys_mg - 1
-                ENDIF
-             ENDIF
 
              !$OMP DO
              DO  i = nxl_mg(l), nxr_mg(l), 2
@@ -827,9 +810,9 @@
                       km1 = k+ind_even_odd
                       kp1 = k+ind_even_odd+1
                       p_mg(k,j,i) = 1.0_wp / f1_mg_b(k,l) * (                                      &
-                                      rho_air_mg_b(k,l) * ddx2_mg(l) *                             &
+                                      rho_air_mg(k,l) * ddx2_mg(l) *                               &
                                     ( p_mg(k,j,i+1) + p_mg(k,j,i-1) )                              &
-                                    + rho_air_mg_b(k,l) * ddy2_mg(l) *                             &
+                                    + rho_air_mg(k,l) * ddy2_mg(l) *                               &
                                     ( p_mg(k,j+1,i) + p_mg(k,j-1,i) )                              &
                                     + f2_mg_b(k,l) * p_mg(kp1,j,i)                                 &
                                     + f3_mg_b(k,l) * p_mg(km1,j,i)                                 &
@@ -837,18 +820,6 @@
                    ENDDO
                 ENDDO
              ENDDO
-
-             IF ( adjust_lower_i_index )  THEN
-                nxl_mg(l) = save_nxl_mg - 1
-             ENDIF
-
-             IF ( adjust_lower_j_index )  THEN
-                IF ( color == 1 )  THEN
-                  nys_mg(l) = save_nys_mg - 1
-                ELSE
-                  nys_mg(l) = save_nys_mg + 1
-                ENDIF
-             ENDIF
 
              !$OMP DO
              DO  i = nxl_mg(l)+1, nxr_mg(l), 2
@@ -858,9 +829,9 @@
                       km1 = k+ind_even_odd
                       kp1 = k+ind_even_odd+1
                       p_mg(k,j,i) = 1.0_wp / f1_mg_b(k,l) * (                                      &
-                                      rho_air_mg_b(k,l) * ddx2_mg(l) *                             &
+                                      rho_air_mg(k,l) * ddx2_mg(l) *                               &
                                     ( p_mg(k,j,i+1) + p_mg(k,j,i-1) )                              &
-                                    + rho_air_mg_b(k,l) * ddy2_mg(l) *                             &
+                                    + rho_air_mg(k,l) * ddy2_mg(l) *                               &
                                     ( p_mg(k,j+1,i) + p_mg(k,j-1,i) )                              &
                                     + f2_mg_b(k,l) * p_mg(kp1,j,i)                                 &
                                     + f3_mg_b(k,l) * p_mg(km1,j,i)                                 &
@@ -889,9 +860,9 @@
                       kp1 = k-ind_even_odd
                       j   = jj
                       p_mg(k,j,i) = 1.0_wp / f1_mg_b(k,l) * (                                      &
-                                      rho_air_mg_b(k,l) * ddx2_mg(l) *                             &
+                                      rho_air_mg(k,l) * ddx2_mg(l) *                               &
                                     ( p_mg(k,j,i+1) + p_mg(k,j,i-1) )                              &
-                                    + rho_air_mg_b(k,l) * ddy2_mg(l) *                             &
+                                    + rho_air_mg(k,l) * ddy2_mg(l) *                               &
                                     ( p_mg(k,j+1,i) + p_mg(k,j-1,i) )                              &
                                     + f2_mg_b(k,l) * p_mg(kp1,j,i)                                 &
                                     + f3_mg_b(k,l) * p_mg(km1,j,i)                                 &
@@ -899,9 +870,9 @@
 
                       j = jj+2
                       p_mg(k,j,i) = 1.0_wp / f1_mg_b(k,l) * (                                      &
-                                      rho_air_mg_b(k,l) * ddx2_mg(l) *                             &
+                                      rho_air_mg(k,l) * ddx2_mg(l) *                               &
                                     ( p_mg(k,j,i+1) + p_mg(k,j,i-1) )                              &
-                                    + rho_air_mg_b(k,l) * ddy2_mg(l) *                             &
+                                    + rho_air_mg(k,l) * ddy2_mg(l) *                               &
                                     ( p_mg(k,j+1,i) + p_mg(k,j-1,i) )                              &
                                     + f2_mg_b(k,l) * p_mg(kp1,j,i)                                 &
                                     + f3_mg_b(k,l) * p_mg(km1,j,i)                                 &
@@ -916,9 +887,9 @@
                       kp1 = k-ind_even_odd
                       j   = jj
                       p_mg(k,j,i) = 1.0_wp / f1_mg_b(k,l) * (                                      &
-                                      rho_air_mg_b(k,l) * ddx2_mg(l) *                             &
+                                      rho_air_mg(k,l) * ddx2_mg(l) *                               &
                                     ( p_mg(k,j,i+1) + p_mg(k,j,i-1) )                              &
-                                    + rho_air_mg_b(k,l) * ddy2_mg(l) *                             &
+                                    + rho_air_mg(k,l) * ddy2_mg(l) *                               &
                                     ( p_mg(k,j+1,i) + p_mg(k,j-1,i) )                              &
                                     + f2_mg_b(k,l) * p_mg(kp1,j,i)                                 &
                                     + f3_mg_b(k,l) * p_mg(km1,j,i)                                 &
@@ -926,9 +897,9 @@
 
                       j = jj+2
                       p_mg(k,j,i) = 1.0_wp / f1_mg_b(k,l) * (                                      &
-                                      rho_air_mg_b(k,l) * ddx2_mg(l) *                             &
+                                      rho_air_mg(k,l) * ddx2_mg(l) *                               &
                                     ( p_mg(k,j,i+1) + p_mg(k,j,i-1) )                              &
-                                    + rho_air_mg_b(k,l) * ddy2_mg(l) *                             &
+                                    + rho_air_mg(k,l) * ddy2_mg(l) *                               &
                                     ( p_mg(k,j+1,i) + p_mg(k,j-1,i) )                              &
                                     + f2_mg_b(k,l) * p_mg(kp1,j,i)                                 &
                                     + f3_mg_b(k,l) * p_mg(km1,j,i)                                 &
@@ -943,9 +914,9 @@
                       kp1 = k+ind_even_odd+1
                       j   = jj
                       p_mg(k,j,i) = 1.0_wp / f1_mg_b(k,l) * (                                      &
-                                      rho_air_mg_b(k,l) * ddx2_mg(l) *                             &
+                                      rho_air_mg(k,l) * ddx2_mg(l) *                               &
                                     ( p_mg(k,j,i+1) + p_mg(k,j,i-1) )                              &
-                                    + rho_air_mg_b(k,l) * ddy2_mg(l) *                             &
+                                    + rho_air_mg(k,l) * ddy2_mg(l) *                               &
                                     ( p_mg(k,j+1,i) + p_mg(k,j-1,i) )                              &
                                     + f2_mg_b(k,l) * p_mg(kp1,j,i)                                 &
                                     + f3_mg_b(k,l) * p_mg(km1,j,i)                                 &
@@ -953,9 +924,9 @@
 
                       j = jj+2
                       p_mg(k,j,i) = 1.0_wp / f1_mg_b(k,l) * (                                      &
-                                      rho_air_mg_b(k,l) * ddx2_mg(l) *                             &
+                                      rho_air_mg(k,l) * ddx2_mg(l) *                               &
                                     ( p_mg(k,j,i+1) + p_mg(k,j,i-1) )                              &
-                                    + rho_air_mg_b(k,l) * ddy2_mg(l) *                             &
+                                    + rho_air_mg(k,l) * ddy2_mg(l) *                               &
                                     ( p_mg(k,j+1,i) + p_mg(k,j-1,i) )                              &
                                     + f2_mg_b(k,l) * p_mg(kp1,j,i)                                 &
                                     + f3_mg_b(k,l) * p_mg(km1,j,i)                                 &
@@ -970,9 +941,9 @@
                       kp1 = k+ind_even_odd+1
                       j   = jj
                       p_mg(k,j,i) = 1.0_wp / f1_mg_b(k,l) * (                                      &
-                                      rho_air_mg_b(k,l) * ddx2_mg(l) *                             &
+                                      rho_air_mg(k,l) * ddx2_mg(l) *                               &
                                     ( p_mg(k,j,i+1) + p_mg(k,j,i-1) )                              &
-                                    + rho_air_mg_b(k,l) * ddy2_mg(l) *                             &
+                                    + rho_air_mg(k,l) * ddy2_mg(l) *                               &
                                     ( p_mg(k,j+1,i) + p_mg(k,j-1,i) )                              &
                                     + f2_mg_b(k,l) * p_mg(kp1,j,i)                                 &
                                     + f3_mg_b(k,l) * p_mg(km1,j,i)                                 &
@@ -980,9 +951,9 @@
 
                       j = jj+2
                       p_mg(k,j,i) = 1.0_wp / f1_mg_b(k,l) * (                                      &
-                                      rho_air_mg_b(k,l) * ddx2_mg(l) *                             &
+                                      rho_air_mg(k,l) * ddx2_mg(l) *                               &
                                     ( p_mg(k,j,i+1) + p_mg(k,j,i-1) )                              &
-                                    + rho_air_mg_b(k,l) * ddy2_mg(l) *                             &
+                                    + rho_air_mg(k,l) * ddy2_mg(l) *                               &
                                     ( p_mg(k,j+1,i) + p_mg(k,j-1,i) )                              &
                                     + f2_mg_b(k,l) * p_mg(kp1,j,i)                                 &
                                     + f3_mg_b(k,l) * p_mg(km1,j,i)                                 &
@@ -1041,17 +1012,6 @@
 
     ENDDO
 
-!
-!-- Reset lower index limits to their standard values (may happen on coarsest levels only)
-    IF ( adjust_lower_i_index )  THEN
-       nxl_mg(l) = save_nxl_mg
-    ENDIF
-
-    IF ( adjust_lower_j_index )  THEN
-       nys_mg(l) = save_nys_mg
-    ENDIF
-
-
  END SUBROUTINE redblack
 
 
@@ -1062,6 +1022,7 @@
 !> red-black subroutine. Version for 3D-REAL arrays
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE sort_k_to_even_odd_blocks( p_mg , glevel )
+
 
     USE indices,                                                                                   &
         ONLY:  nxl_mg,                                                                             &
@@ -1130,6 +1091,7 @@
 !> red-black subroutine. Version for 1D-REAL arrays
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE sort_k_to_even_odd_blocks_1d( f_mg, f_mg_b, glevel )
+
 
     USE indices,                                                                                   &
         ONLY:  nzb,                                                                                &
@@ -1237,6 +1199,7 @@
 !> Sort k-dimension from blocks of even and odd into sequential
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE sort_k_to_sequential( p_mg )
+
 
     USE control_parameters,                                                                        &
         ONLY:  grid_level
@@ -1787,8 +1750,7 @@
     USE arrays_3d,                                                                                 &
         ONLY:  f1_mg,                                                                              &
                f2_mg,                                                                              &
-               f3_mg,                                                                              &
-               rho_air_mg
+               f3_mg
 
     USE control_parameters,                                                                        &
         ONLY:  grid_level,                                                                         &
@@ -1817,7 +1779,7 @@
     ALLOCATE( even_odd_level(maximum_grid_level) )
 
     ALLOCATE( f1_mg_b(nzb:nzt+1,maximum_grid_level), f2_mg_b(nzb:nzt+1,maximum_grid_level),        &
-              f3_mg_b(nzb:nzt+1,maximum_grid_level), rho_air_mg_b(nzb:nzt+1,maximum_grid_level) )
+              f3_mg_b(nzb:nzt+1,maximum_grid_level) )
 
 !
 !-- Set border index between the even and odd block
@@ -1835,8 +1797,6 @@
                                        f2_mg_b(nzb:nzt_mg(grid_level)+1,l), l )
        CALL sort_k_to_even_odd_blocks( f3_mg(nzb+1:nzt_mg(grid_level),l),                          &
                                        f3_mg_b(nzb:nzt_mg(grid_level)+1,l), l )
-       CALL sort_k_to_even_odd_blocks( rho_air_mg(nzb+1:nzt_mg(grid_level),l),                     &
-                                       rho_air_mg_b(nzb:nzt_mg(grid_level)+1,l), l )
     ENDDO
 
     lfirst = .FALSE.
@@ -1851,6 +1811,7 @@
 !> points.
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE special_exchange_horiz( p_mg, color )
+
 
     USE control_parameters,                                                                        &
         ONLY:  grid_level

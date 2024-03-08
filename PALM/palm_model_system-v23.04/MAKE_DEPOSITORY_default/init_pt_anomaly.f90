@@ -13,8 +13,37 @@
 ! You should have received a copy of the GNU General Public License along with PALM. If not, see
 ! <http://www.gnu.org/licenses/>.
 !
-! Copyright 1997-2021 Leibniz Universitaet Hannover
+! Copyright 1997-2020 Leibniz Universitaet Hannover
 !--------------------------------------------------------------------------------------------------!
+!
+! Current revisions:
+! -----------------
+!
+!
+! Former revisions:
+! -----------------
+! $Id: init_pt_anomaly.f90 4648 2020-08-25 07:52:08Z raasch $
+! file re-formatted to follow the PALM coding standard
+!
+! 4457 2020-03-11 14:20:43Z raasch
+! use statement for exchange horiz added
+!
+! 4360 2020-01-07 11:25:50Z suehring
+! Introduction of wall_flags_total_0, which currently sets bits based on static topography
+! information used in wall_flags_static_0
+!
+! 4329 2019-12-10 15:46:36Z motisi
+! Renamed wall_flags_0 to wall_flags_static_0
+!
+! 4182 2019-08-22 15:20:23Z scharf
+! Corrected "Former revisions" section
+!
+! 3655 2019-01-07 16:51:22Z knoop
+! Added topography flags
+!
+! Revision 1.1  1997/08/29 08:58:56  raasch
+! Initial revision
+!
 !
 ! Description:
 ! ------------
@@ -22,9 +51,9 @@
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE init_pt_anomaly
 
+
     USE arrays_3d,                                                                                 &
-        ONLY:  pt,                                                                                 &
-               zu
+        ONLY:  pt, zu
 
     USE control_parameters
 
@@ -32,20 +61,10 @@
         ONLY:  exchange_horiz
 
     USE grid_variables,                                                                            &
-        ONLY:  dx,                                                                                 &
-               dy
+        ONLY:  dx, dy
 
     USE indices,                                                                                   &
-        ONLY:  nbgp,                                                                               &
-               nx,                                                                                 &
-               nxl,                                                                                &
-               nxr,                                                                                &
-               ny,                                                                                 &
-               nyn,                                                                                &
-               nys,                                                                                &
-               nzb,                                                                                &
-               nzt,                                                                                &
-               topo_flags
+        ONLY:  nbgp, nx, nxl, nxr, ny, nyn, nys, nzb, nzt, wall_flags_total_0
 
     USE kinds
 
@@ -88,7 +107,7 @@
              DO  k = nzb+1, nzt
 !
 !--             Predetermine flag to mask topography
-                flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
 
                 x = ( i - ic ) * dx
                 y = ( j - jc ) * dy
@@ -120,7 +139,7 @@
              DO  k = nzb+1, nzt
 !
 !--             Predetermine flag to mask topography
-                flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
 
                 pt(k,j,i) = pt(k,j,i) +                                                            &
                                EXP( -0.5 * ( (j* dy - bubble_center_y) / bubble_sigma_y )**2) *    &

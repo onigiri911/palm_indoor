@@ -13,10 +13,119 @@
 ! You should have received a copy of the GNU General Public License along with PALM. If not, see
 ! <http://www.gnu.org/licenses/>.
 !
-! Copyright 2018-2021 Deutscher Wetterdienst (DWD)
-! Copyright 2018-2021 Institute of Computer Science, Academy of Sciences, Prague
-! Copyright 2018-2021 Leibniz Universitaet Hannover
+! Copyright 2018-2020 Deutscher Wetterdienst (DWD)
+! Copyright 2018-2020 Institute of Computer Science, Academy of Sciences, Prague
+! Copyright 2018-2020 Leibniz Universitaet Hannover
 !--------------------------------------------------------------------------------------------------!
+!
+! Current revisions:
+! ------------------
+!
+!
+! Former revisions:
+! -----------------
+! $Id: biometeorology_mod.f90 4768 2020-11-02 19:11:23Z suehring $
+! Enable 3D data output also with 64-bit precision
+!
+! 4633 2020-08-05 14:21:14Z suehring
+! Bugfix in check for humidity
+!
+! 4590 2020-07-06 14:34:59Z suehring
+! Enable restart via mpi-IO. Therefore, allocated array mrt_av_grid as 3D array instead of an
+! 1D array.
+! 
+! 4577 2020-06-25 09:53:58Z raasch
+! further re-formatting concerning Fortran parameter variables
+!
+! 4540 2020-05-18 15:23:29Z raasch
+! file re-formatted to follow the PALM coding standard
+!
+! 4535 2020-05-15 12:07:23Z raasch
+! bugfix for restart data format query
+!
+! 4517 2020-05-03 14:29:30Z raasch
+! added restart with MPI-IO for reading local arrays
+!
+! 4495 2020-04-13 20:11:20Z raasch
+! restart data handling with MPI-IO added
+!
+! 4493 2020-04-10 09:49:43Z pavelkrc
+! Revise bad formatting
+!
+! 4286 2019-10-30 16:01:14Z resler
+! implement new palm_date_time_mod
+!
+! 4223 2019-09-10 09:20:47Z gronemeier
+! Corrected "Former revisions" section
+!
+! 4168 2019-08-16 13:50:17Z suehring
+! Replace function get_topography_top_index by topo_top_ind
+!
+! 4144 2019-08-06 09:11:47Z raasch
+! relational operators .EQ., .NE., etc. replaced by ==, /=, etc.
+!
+! 4127 2019-07-30 14:47:10Z suehring
+! Output for bio_mrt added (merge from branch resler)
+!
+! 4126 2019-07-30 11:09:11Z gronemeier
+! renamed vitd3_exposure_av into vitd3_dose,
+! renamed uvem_calc_exposure into bio_calculate_uv_exposure
+!
+! 3885 2019-04-11 11:29:34Z kanani
+! Changes related to global restructuring of location messages and introduction of additional debug
+! messages
+!
+! 3753 2019-02-19 14:48:54Z dom_dwd_user
+! - Added automatic setting of mrt_nlevels in case it was not part of radiation_parameters namelist
+!   (or set to 0 accidentially).
+! - Minor speed improvoemnts in perceived temperature calculations.
+! - Perceived temperature regression arrays now declared as PARAMETERs.
+!
+! 3750 2019-02-19 07:29:39Z dom_dwd_user
+! - Added addittional safety meassures to bio_calculate_thermal_index_maps.
+! - Replaced several REAL (un-)equality comparisons.
+!
+! 3742 2019-02-14 11:25:22Z dom_dwd_user
+! - Allocation of the input _av grids was moved to the "sum" section of bio_3d_data_averaging to
+!   make sure averaging is only done once!
+! - Moved call of bio_calculate_thermal_index_maps from biometeorology module to time_integration to
+!   make sure averaged input is updated before calculating.
+!
+! 3740 2019-02-13 12:35:12Z dom_dwd_user
+! - Added safety-meassure to catch the case that 'bio_mrt_av' is stated after 'bio_<index>' in the
+!   output section of the p3d file.
+!
+! 3739 2019-02-13 08:05:17Z dom_dwd_user
+! - Auto-adjusting thermal_comfort flag if not set by user, but thermal_indices set as output
+!   quantities.
+! - Renamed flags "bio_<index>" to "do_calculate_<index>" for better readability
+! - Removed everything related to "time_bio_results" as this is never used.
+! - Moved humidity warning to check_data_output.
+! - Fixed bug in mrt calculation introduced with my commit yesterday.
+!
+! 3735 2019-02-12 09:52:40Z dom_dwd_user
+! - Fixed auto-setting of thermal index calculation flags by output as originally proposed by
+!   resler.
+! - removed bio_pet and outher configuration variables.
+! - Updated namelist.
+!
+! 3711 2019-01-31 13:44:26Z knoop
+! Introduced interface routine bio_init_checks + small error message changes
+!
+! 3693 2019-01-23 15:20:53Z dom_dwd_user
+! Added usage of time_averaged mean radiant temperature, together with calculation, grid and restart
+! routines. General cleanup and commenting.
+!
+! 3685 2019-01-21 01:02:11Z knoop
+! Some interface calls moved to module_interface + cleanup
+!
+! 3650 2019-01-04 13:01:33Z kanani
+! Bugfixes and additions for enabling restarts with biometeorology
+!
+! 3448 2018-10-29 18:14:31Z kanani
+! Initial revision
+!
+!
 !
 ! Authors:
 ! --------
@@ -37,107 +146,50 @@
 !> @todo Comments start with capital letter --> "!-- Include..."
 !> @todo uv_vitd3dose-->new output type necessary (cumulative)
 !> @todo consider upwelling radiation in UV
-!> @todo re-design module to work with PALM's module interface and reduce number of workarounds
-!> @todo some queries for initial values (e.g. <= -998.0) should be adjusted to the new initial
-!>       value -999999.0
 !>
 !> @note nothing now
 !>
-!> @bug  checks for proper parameter settings and required input data are missing. Currently
-!<       implemented only by a workaround!
+!> @bug  no known bugs by now
 !--------------------------------------------------------------------------------------------------!
  MODULE biometeorology_mod
 
     USE arrays_3d,                                                                                 &
-        ONLY:  p,                                                                                  &
-               pt,                                                                                 &
-               q,                                                                                  &
-               u,                                                                                  &
-               v,                                                                                  &
-               w
+        ONLY:  pt, p, u, v, w, q
 
     USE averaging,                                                                                 &
-        ONLY:  pt_av,                                                                              &
-               q_av,                                                                               &
-               u_av,                                                                               &
-               v_av,                                                                               &
-               w_av
+        ONLY:  pt_av, q_av, u_av, v_av, w_av
 
     USE basic_constants_and_equations_mod,                                                         &
-        ONLY: c_p,                                                                                 &
-              degc_to_k,                                                                           &
-              l_v,                                                                                 &
-              magnus,                                                                              &
-              pi,                                                                                  &
-              sigma_sb
+        ONLY: degc_to_k, c_p, l_v, magnus, pi, sigma_sb
 
     USE control_parameters,                                                                        &
-        ONLY:  average_count_3d,                                                                   &
-               biometeorology,                                                                     &
-               cyclic_fill_initialization,                                                         &
+        ONLY:  average_count_3d, biometeorology,                                                   &
                debug_output,                                                                       &
-               dz,                                                                                 &
-               dz_stretch_factor,                                                                  &
-               dz_stretch_level,                                                                   &
-               humidity,                                                                           &
-               initializing_actions, message_string,                                               &
-               nz_do3d,                                                                            &
-               output_fill_value,                                                                  &
-               restart_data_format_output,                                                         &
-               surface_pressure
+               dz, dz_stretch_factor,                                                              &
+               dz_stretch_level, humidity, initializing_actions, nz_do3d,                          &
+               restart_data_format_output, surface_pressure
 
     USE grid_variables,                                                                            &
-        ONLY:  ddx,                                                                                &
-               ddy,                                                                                &
-               dx,                                                                                 &
-               dy
+        ONLY:  ddx, dx, ddy, dy
 
     USE indices,                                                                                   &
-        ONLY:  nxl,                                                                                &
-               nxlg,                                                                               &
-               nxr,                                                                                &
-               nxrg,                                                                               &
-               nys,                                                                                &
-               nysg,                                                                               &
-               nyn,                                                                                &
-               nyng,                                                                               &
-               nzb,                                                                                &
-               nzt,                                                                                &
+        ONLY:  nxl, nxr, nys, nyn, nzb, nzt, nys, nyn, nxl, nxr, nxlg, nxrg, nysg, nyng,           &
                topo_top_ind
 
-    USE kinds
+    USE kinds  !< Set precision of INTEGER and REAL arrays according to PALM
 
     USE netcdf_data_input_mod,                                                                     &
-        ONLY: building_obstruction_f,                                                              &
-              input_file_uvem,                                                                     &
-              input_pids_uvem,                                                                     &
-              netcdf_data_input_uvem,                                                              &
-              uvem_integration_f,                                                                  &
-              uvem_irradiance_f,                                                                   &
-              uvem_projarea_f,                                                                     &
-              uvem_radiance_f
+        ONLY: building_obstruction_f, netcdf_data_input_uvem, uvem_integration_f,                  &
+              uvem_irradiance_f, uvem_projarea_f, uvem_radiance_f
 
     USE palm_date_time_mod,                                                                        &
         ONLY:  get_date_time
-
+!
+!-- Import radiation model to obtain input for mean radiant temperature
     USE radiation_model_mod,                                                                       &
-        ONLY:  id,                                                                                 &
-               ix,                                                                                 &
-               iy,                                                                                 &
-               iz,                                                                                 &
-               mrt_include_sw,                                                                     &
-               mrt_minlevel,                                                                       &
-               mrt_nlevels,                                                                        &
-               mrtbl,                                                                              &
-               mrtinlw,                                                                            &
-               mrtinsw,                                                                            &
-               nmrtbl,                                                                             &
-               radiation,                                                                          &
-               rad_lw_in,                                                                          &
-               rad_lw_out,                                                                         &
-               rad_sw_in,                                                                          &
-               rad_sw_out,                                                                         &
-               radiation_interactions
+        ONLY:  id, ix, iy, iz, mrt_include_sw, mrt_nlevels,                                        &
+               mrtbl, mrtinlw, mrtinsw, nmrtbl, radiation,                                         &
+               rad_lw_in, rad_lw_out, rad_sw_in, rad_sw_out, radiation_interactions
 
     USE restart_data_mpi_io_mod,                                                                   &
         ONLY:  rrd_mpi_io,                                                                         &
@@ -147,11 +199,13 @@
 
     IMPLICIT NONE
 
-    REAL(wp), PARAMETER ::  bio_initial_value = -999999.0_wp  !< initial value for some quantities
-    REAL(wp), PARAMETER ::  human_absorb = 0.7_wp             !< SW absorbtivity of a human body (Fanger 1972)
-    REAL(wp), PARAMETER ::  human_emiss = 0.97_wp             !< LW emissivity of a human body after (Fanger 1972)
+!
+!-- Declare all global variables within the module (alphabetical order)
+    REAL(wp), PARAMETER ::  bio_fill_value = -9999.0_wp  !< set module fill value, replace by global fill value as soon as available
+    REAL(wp), PARAMETER ::  human_absorb = 0.7_wp  !< SW absorbtivity of a human body (Fanger 1972)
+    REAL(wp), PARAMETER ::  human_emiss = 0.97_wp  !< LW emissivity of a human body after (Fanger 1972)
 
-    INTEGER(iwp) ::  bio_cell_level  !< cell level biom calculates for
+    INTEGER(iwp) ::  bio_cell_level     !< cell level biom calculates for
 
     LOGICAL ::  thermal_comfort        = .FALSE.  !< Enables or disables the entire thermal comfort part
     LOGICAL ::  do_average_theta       = .FALSE.  !< switch: do theta averaging in this module? (if .FALSE. this is done globally)
@@ -167,20 +221,22 @@
     LOGICAL ::  do_calculate_perct     = .FALSE.  !< Turn index PT (instant. input) on or off
     LOGICAL ::  do_calculate_perct_av  = .FALSE.  !< Turn index PT (averaged input) on or off
     LOGICAL ::  do_calculate_pet       = .FALSE.  !< Turn index PET (instant. input) on or off
-    LOGICAL ::  do_calculate_pet_av    = .FALSE.  !< Turn index PET (averaged input)                                                                        & on or off
+    LOGICAL ::  do_calculate_pet_av    = .FALSE.  !< Turn index PET (averaged input) on or off
     LOGICAL ::  do_calculate_utci      = .FALSE.  !< Turn index UTCI (instant. input) on or off
     LOGICAL ::  do_calculate_utci_av   = .FALSE.  !< Turn index UTCI (averaged input) on or off
     LOGICAL ::  do_calculate_mrt2d     = .FALSE.  !< Turn index MRT 2D (averaged or inst) on or off
 
     REAL(wp)    ::  bio_output_height  !< height output is calculated in m
 
-    REAL(wp), DIMENSION(:,:), ALLOCATABLE ::  perct         !< PT results   (degree_C)
+    REAL(wp), DIMENSION(:,:), ALLOCATABLE ::  perct      !< PT results   (degree_C)
+    REAL(wp), DIMENSION(:,:), ALLOCATABLE ::  pet        !< PET results  (degree_C)
+    REAL(wp), DIMENSION(:,:), ALLOCATABLE ::  tmrt_grid  !< tmrt results (degree_C)
+    REAL(wp), DIMENSION(:,:), ALLOCATABLE ::  utci       !< UTCI results (degree_C)
+!
+!-- Grids for averaged thermal indices
     REAL(wp), DIMENSION(:,:), ALLOCATABLE ::  perct_av      !< PT results (aver. input)   (degree_C)
-    REAL(wp), DIMENSION(:,:), ALLOCATABLE ::  pet           !< PET results  (degree_C)
     REAL(wp), DIMENSION(:,:), ALLOCATABLE ::  pet_av        !< PET results (aver. input)  (degree_C)
-    REAL(wp), DIMENSION(:,:), ALLOCATABLE ::  tmrt_grid     !< tmrt results (degree_C)
     REAL(wp), DIMENSION(:,:), ALLOCATABLE ::  tmrt_av_grid  !< tmrt results (degree_C)
-    REAL(wp), DIMENSION(:,:), ALLOCATABLE ::  utci          !< UTCI results (degree_C)
     REAL(wp), DIMENSION(:,:), ALLOCATABLE ::  utci_av       !< UTCI results (aver. input) (degree_C)
 
     REAL(wp), DIMENSION(:,:,:), ALLOCATABLE ::  mrt_av_grid   !< time average mean radiant temperature
@@ -196,8 +252,8 @@
     INTEGER(iwp) ::  obstruction_direct_beam = 0  !< Obstruction information for direct beam
     INTEGER(iwp) ::  zi                      = 0  !< loop index in zenith direction
 
-    INTEGER(ibp), DIMENSION(0:44)  ::  obstruction_temp1 = 0  !< temporary obstruction information stored with ibset
-    INTEGER(iwp), DIMENSION(0:359) ::  obstruction_temp2 = 0  !< restored temporary obstruction information from ibset file
+    INTEGER(KIND=1), DIMENSION(0:44)  ::  obstruction_temp1 = 0  !< temporary obstruction information stored with ibset
+    INTEGER(iwp),    DIMENSION(0:359) ::  obstruction_temp2 = 0  !< restored temporary obstruction information from ibset file
 
     INTEGER(iwp), DIMENSION(0:35,0:9) ::  obstruction       = 1  !< final 2D obstruction information array
 
@@ -236,108 +292,113 @@
 
     PRIVATE
 
-    PUBLIC bio_3d_data_averaging,                                                                  &
-           bio_calculate_mrt_grid,                                                                 &
-           bio_calculate_thermal_index_maps,                                                       &
-           bio_calculate_uv_exposure,                                                              &
-           bio_calc_ipt,                                                                           &
-           bio_check_data_output,                                                                  &
-           bio_check_parameters,                                                                   &
-           bio_data_output_2d,                                                                     &
-           bio_data_output_3d,                                                                     &
-           bio_define_netcdf_grid,                                                                 &
-           bio_get_thermal_index_input_ij,                                                         &
-           bio_header,                                                                             &
-           bio_init,                                                                               &
-           bio_init_checks,                                                                        &
-           bio_nmrtbl,                                                                             &
-           bio_parin,                                                                              &
-           bio_rrd_global,                                                                         &
-           bio_rrd_local,                                                                          &
-           bio_vm_sampling,                                                                        &
-           bio_wrd_global,                                                                         &
-           bio_wrd_local,                                                                          &
-           thermal_comfort,                                                                        &
-           uv_exposure
+!
+!-- INTERFACES that must be available to other modules (alphabetical order)
+    PUBLIC bio_3d_data_averaging,  bio_calculate_mrt_grid, bio_calculate_thermal_index_maps,       &
+           bio_calc_ipt, bio_check_data_output, bio_check_parameters,                              &
+           bio_data_output_2d, bio_data_output_3d,  bio_define_netcdf_grid,                        &
+           bio_get_thermal_index_input_ij, bio_header, bio_init, bio_init_checks, bio_nmrtbl,      &
+           bio_parin, bio_rrd_global, bio_rrd_local, bio_wrd_global, bio_wrd_local, thermal_comfort
+!
+!-- UVEM PUBLIC variables and methods
+    PUBLIC bio_calculate_uv_exposure, uv_exposure
 
+!
+!-- PALM interfaces:
+!
+!-- 3D averaging for HTCM _INPUT_ variables
     INTERFACE bio_3d_data_averaging
        MODULE PROCEDURE bio_3d_data_averaging
     END INTERFACE bio_3d_data_averaging
-
+!
+!-- Calculate mtr from rtm fluxes and assign into 2D grid
     INTERFACE bio_calculate_mrt_grid
        MODULE PROCEDURE bio_calculate_mrt_grid
     END INTERFACE bio_calculate_mrt_grid
-
+!
+!-- Calculate static thermal indices PT, UTCI and/or PET
     INTERFACE bio_calculate_thermal_index_maps
        MODULE PROCEDURE bio_calculate_thermal_index_maps
     END INTERFACE bio_calculate_thermal_index_maps
-
+!
+!-- Calculate the dynamic index iPT (to be caled by the agent model)
     INTERFACE bio_calc_ipt
        MODULE PROCEDURE bio_calc_ipt
     END INTERFACE bio_calc_ipt
-
+!
+!-- Data output checks for 2D/3D data to be done in check_parameters
     INTERFACE bio_check_data_output
        MODULE PROCEDURE bio_check_data_output
     END INTERFACE bio_check_data_output
-
+!
+!-- Input parameter checks to be done in check_parameters
     INTERFACE bio_check_parameters
        MODULE PROCEDURE bio_check_parameters
     END INTERFACE bio_check_parameters
-
+!
+!-- Data output of 2D quantities
     INTERFACE bio_data_output_2d
        MODULE PROCEDURE bio_data_output_2d
     END INTERFACE bio_data_output_2d
-
+!
+!-- no 3D data, thus, no averaging of 3D data, removed
     INTERFACE bio_data_output_3d
        MODULE PROCEDURE bio_data_output_3d
     END INTERFACE bio_data_output_3d
-
+!
+!-- Definition of data output quantities
     INTERFACE bio_define_netcdf_grid
        MODULE PROCEDURE bio_define_netcdf_grid
     END INTERFACE bio_define_netcdf_grid
-
+!
+!-- Obtains all relevant input values to estimate local thermal comfort/stress
     INTERFACE bio_get_thermal_index_input_ij
        MODULE PROCEDURE bio_get_thermal_index_input_ij
     END INTERFACE bio_get_thermal_index_input_ij
-
+!
+!-- Output of information to the header file
     INTERFACE bio_header
        MODULE PROCEDURE bio_header
     END INTERFACE bio_header
-
+!
+!-- Initialization actions
     INTERFACE bio_init
        MODULE PROCEDURE bio_init
     END INTERFACE bio_init
-
+!
+!-- Initialization checks
     INTERFACE bio_init_checks
        MODULE PROCEDURE bio_init_checks
     END INTERFACE bio_init_checks
-
+!
+!-- Reading of NAMELIST parameters
     INTERFACE bio_parin
        MODULE PROCEDURE bio_parin
     END INTERFACE bio_parin
-
+!
+!-- Read global restart parameters
     INTERFACE bio_rrd_global
        MODULE PROCEDURE bio_rrd_global_ftn
        MODULE PROCEDURE bio_rrd_global_mpi
     END INTERFACE bio_rrd_global
-
+!
+!-- Read local restart parameters
     INTERFACE bio_rrd_local
        MODULE PROCEDURE bio_rrd_local_ftn
        MODULE PROCEDURE bio_rrd_local_mpi
     END INTERFACE bio_rrd_local
-
-    INTERFACE bio_vm_sampling
-       MODULE PROCEDURE bio_vm_sampling
-    END INTERFACE bio_vm_sampling
-
+!
+!-- Write global restart parameters
     INTERFACE bio_wrd_global
        MODULE PROCEDURE bio_wrd_global
     END INTERFACE bio_wrd_global
-
+!
+!-- Write local restart parameters
     INTERFACE bio_wrd_local
        MODULE PROCEDURE bio_wrd_local
     END INTERFACE bio_wrd_local
-
+!
+!-- Calculate UV exposure grid
     INTERFACE bio_calculate_uv_exposure
        MODULE PROCEDURE bio_calculate_uv_exposure
     END INTERFACE bio_calculate_uv_exposure
@@ -679,7 +740,7 @@
              ENDIF
 
 !
-!--     No averaging for UVEM since we are calculating a dose (only sum is calculated and saved to
+!--     No averaging for UVEM SINce we are calculating a dose (only sum is calculated and saved to
 !--     av.nc file)
         END SELECT
 
@@ -698,8 +759,7 @@
  SUBROUTINE bio_check_data_output( var, unit, i, j, ilen, k )
 
     USE control_parameters,                                                                        &
-        ONLY: data_output,                                                                         &
-              message_string
+        ONLY: data_output, message_string
 
     IMPLICIT NONE
 
@@ -711,20 +771,19 @@
     INTEGER(iwp), INTENT(IN) ::  ilen  !< Length of current entry in data_output
     INTEGER(iwp), INTENT(IN) ::  k     !< Output is xy mode? 0 = no, 1 = yes
 
-
     SELECT CASE ( TRIM( var ) )
 !
 !--    Allocate a temporary array with the desired output dimensions.
 !--    Arrays for time-averaged thermal indices are also allocated here because they are not running
 !--    through the standard averaging procedure in bio_3d_data_averaging as the values of the
-!--    averaged thermal indices are derived in a single step based on priorly averaged arrays (see
+!--    averaged thermal indices are derived in a SINgle step based on priorly averaged arrays (see
 !--    bio_calculate_thermal_index_maps).
        CASE ( 'bio_mrt', 'bio_mrt*' )
           unit = 'degree_C'
           thermal_comfort = .TRUE.  !< enable thermal_comfort if user forgot to do so
           IF ( .NOT. ALLOCATED( tmrt_grid ) )  THEN
              ALLOCATE( tmrt_grid (nys:nyn,nxl:nxr) )
-             tmrt_grid = output_fill_value
+             tmrt_grid = REAL( bio_fill_value, KIND = wp )
           ENDIF
           IF ( TRIM( var ) == 'bio_mrt*' )  THEN
              do_calculate_mrt2d = .TRUE.
@@ -737,13 +796,13 @@
              do_calculate_perct = .TRUE.
              IF ( .NOT. ALLOCATED( perct ) )  THEN
                 ALLOCATE( perct (nys:nyn,nxl:nxr) )
-                perct = output_fill_value
+                perct = REAL( bio_fill_value, KIND = wp )
              ENDIF
           ELSE                               !< if averaged input
              do_calculate_perct_av = .TRUE.
              IF ( .NOT. ALLOCATED( perct_av ) )  THEN
                 ALLOCATE( perct_av (nys:nyn,nxl:nxr) )
-                perct_av = 0.0_wp
+                perct_av = REAL( bio_fill_value, KIND = wp )
              ENDIF
           ENDIF
 
@@ -754,13 +813,13 @@
              do_calculate_utci = .TRUE.
              IF ( .NOT. ALLOCATED( utci ) )  THEN
                 ALLOCATE( utci (nys:nyn,nxl:nxr) )
-                utci = output_fill_value
+                utci = REAL( bio_fill_value, KIND = wp )
              ENDIF
           ELSE
              do_calculate_utci_av = .TRUE.
              IF ( .NOT. ALLOCATED( utci_av ) )  THEN
                 ALLOCATE( utci_av (nys:nyn,nxl:nxr) )
-                utci_av = 0.0_wp
+                utci_av = REAL( bio_fill_value, KIND = wp )
              ENDIF
           ENDIF
 
@@ -771,28 +830,28 @@
              do_calculate_pet = .TRUE.
              IF ( .NOT. ALLOCATED( pet ) )  THEN
                 ALLOCATE( pet (nys:nyn,nxl:nxr) )
-                pet = output_fill_value
+                pet = REAL( bio_fill_value, KIND = wp )
              ENDIF
           ELSE
              do_calculate_pet_av = .TRUE.
              IF ( .NOT. ALLOCATED( pet_av ) )  THEN
                 ALLOCATE( pet_av (nys:nyn,nxl:nxr) )
-                pet_av = 0.0_wp
+                pet_av = REAL( bio_fill_value, KIND = wp )
              ENDIF
           ENDIF
 
 
        CASE ( 'uvem_vitd3*' )
-          IF ( .NOT. uv_exposure )  THEN
-             message_string = 'output of "' // TRIM( var ) // '" requires uv_exposure = .TRUE.' // &
-                              '&in namelist "biometeorology_parameters"'
-             CALL message( 'uvem_check_data_output', 'BIO0001', 1, 2, 0, 6, 0 )
-          ENDIF
+!           IF ( .NOT. uv_exposure )  THEN
+!              message_string = 'output of "' // TRIM( var ) // '" requi' //                       &
+!                       'res a namelist &uvexposure_par'
+!              CALL message( 'uvem_check_data_output', 'UV0001', 1, 2, 0, 6, 0 )
+!           ENDIF
           IF ( k == 0  .OR.  data_output(i)(ilen-2:ilen) /= '_xy' )  THEN
              message_string = 'illegal value for data_output: "' //                                &
                               TRIM( var ) // '" & only 2d-horizontal ' //                          &
                               'cross sections are allowed for this value'
-             CALL message( 'check_parameters', 'BIO0002', 1, 2, 0, 6, 0 )
+             CALL message( 'check_parameters', 'PA0111', 1, 2, 0, 6, 0 )
           ENDIF
           unit = 'IU/s'
           IF ( .NOT. ALLOCATED( vitd3_exposure ) )  THEN
@@ -801,16 +860,16 @@
           vitd3_exposure = 0.0_wp
 
        CASE ( 'uvem_vitd3dose*' )
-          IF (  .NOT.  uv_exposure )  THEN
-             message_string = 'output of "' // TRIM( var ) // '" requires uv_exposure = .TRUE.' // &
-                              '&in namelist "biometeorology_parameters"'
-             CALL message( 'uvem_check_data_output', 'BIO0001', 1, 2, 0, 6, 0 )
-          ENDIF
+!           IF (  .NOT.  uv_exposure )  THEN
+!              message_string = 'output of "' // TRIM( var ) // '" requi' //     &
+!                       'res  a namelist &uvexposure_par'
+!              CALL message( 'uvem_check_data_output', 'UV0001', 1, 2, 0, 6, 0 )
+!           ENDIF
           IF ( k == 0  .OR.  data_output(i)(ilen-2:ilen) /= '_xy' )  THEN
              message_string = 'illegal value for data_output: "' //                                &
                               TRIM( var ) // '" & only 2d-horizontal ' //                          &
                               'cross sections are allowed for this value'
-             CALL message( 'check_parameters', 'BIO0002', 1, 2, 0, 6, 0 )
+             CALL message( 'check_parameters', 'PA0111', 1, 2, 0, 6, 0 )
           ENDIF
           unit = 'IU/av-h'
           IF ( .NOT. ALLOCATED( vitd3_dose ) )  THEN
@@ -829,8 +888,8 @@
 !
 !--    Break if required modules "radiation" is not available.
        IF ( .NOT.  radiation )  THEN
-          message_string = 'output of "' // TRIM( var ) // '" requires radiation = .TRUE.'
-          CALL message( 'check_parameters', 'BIO0003', 1, 2, 0, 6, 0 )
+          message_string = 'output of "' // TRIM( var ) // '" require' // 's radiation = .TRUE.'
+          CALL message( 'check_parameters', 'PA0509', 1, 2, 0, 6, 0 )
           unit = 'illegal'
        ENDIF
 !
@@ -838,8 +897,10 @@
 !--    also for that.
        IF ( TRIM( var ) /= 'bio_mrt' )  THEN
           IF ( .NOT.  humidity )  THEN
-             message_string = 'thermal comfort requires humidity = .TRUE.'
-             CALL message( 'check_parameters', 'BIO0004', 1, 2, 0, 6, 0 )
+             message_string = 'The estimation of thermal comfort '    //                           &
+                              'requires air humidity information, but ' //                         &
+                              'humidity module is disabled!'
+             CALL message( 'check_parameters', 'PA0561', 1, 2, 0, 6, 0 )
              unit = 'illegal'
           ENDIF
        ENDIF
@@ -860,38 +921,6 @@
 
     IMPLICIT NONE
 
-!
-!-- Check settings for UV exposure part
-    IF ( uv_exposure )  THEN
-
-!
-!--    Input file not present
-       IF ( .NOT. input_pids_uvem )  THEN
-          WRITE( message_string, * ) 'uv_exposure = .TRUE. but input file "' //                    &
-                                     TRIM( input_file_uvem ) // '" is not present'
-          CALL message( 'bio_check_parameters', 'BIO0005', 1, 2, 0, 6, 0 )
-       ELSE
-
-!
-!--       Required variables not given in input file
-          IF ( .NOT. uvem_integration_f%from_file  .OR.  .NOT. uvem_irradiance_f%from_file  .OR.   &
-               .NOT. uvem_projarea_f%from_file  .OR.  .NOT. uvem_radiance_f%from_file )  THEN
-             WRITE( message_string, * ) 'uv_exposure = .TRUE. but one or more required input ' //  &
-                                        'varaibles are not present in file "' //                   &
-                                        TRIM( input_file_uvem ) // '"'
-             CALL message( 'bio_check_parameters', 'BIO0006', 1, 2, 0, 6, 0 )
-          ENDIF
-
-!
-!--       Obstruction requested but not given
-          IF ( consider_obstructions  .AND.  .NOT. building_obstruction_f%from_file )  THEN
-             WRITE( message_string, * ) 'consider_obstructions = .TRUE. but varaible ' //          &
-                                        '"obstruction" is not present in file "' //                &
-                                        TRIM( input_file_uvem ) // '"'
-             CALL message( 'bio_check_parameters', 'BIO0007', 1, 2, 0, 6, 0 )
-          ENDIF
-       ENDIF
-    ENDIF
 
  END SUBROUTINE bio_check_parameters
 
@@ -932,6 +961,7 @@
 
 
     found = .TRUE.
+    local_pf = bio_fill_value
 
     SELECT CASE ( TRIM( variable ) )
 
@@ -939,6 +969,7 @@
         CASE ( 'bio_mrt_xy' )
            grid = 'zu1'
            two_d = .FALSE.  !< can be calculated for several levels
+           local_pf = REAL( bio_fill_value, KIND = wp )
            DO  l = 1, nmrtbl
               i = mrtbl(ix,l)
               j = mrtbl(iy,l)
@@ -1109,6 +1140,7 @@
     SELECT CASE ( TRIM( variable ) )
 
         CASE ( 'bio_mrt' )
+            local_pf = REAL( bio_fill_value, KIND = sp )
             DO  l = 1, nmrtbl
                i = mrtbl(ix,l)
                j = mrtbl(iy,l)
@@ -1117,15 +1149,17 @@
                   j > nyn  .OR.  i < nxl  .OR.  i > nxr )  CYCLE
                IF ( av == 0 )  THEN
                   IF ( mrt_include_sw )  THEN
-                     local_pf(i,j,k) = ( ( human_absorb * mrtinsw(l) + mrtinlw(l) ) /              &
-                                         ( human_emiss * sigma_sb )                                &
-                                       )**0.25_wp - degc_to_k
+                     local_pf(i,j,k) = REAL( ( ( human_absorb * mrtinsw(l) +                       &
+                                       mrtinlw(l) ) /                                              &
+                                       ( human_emiss * sigma_sb ) )**0.25_wp - degc_to_k,          &
+                                         KIND = sp )
                   ELSE
-                     local_pf(i,j,k) = ( mrtinlw(l) / ( human_emiss * sigma_sb ) )**0.25_wp -      &
-                                       degc_to_k
+                     local_pf(i,j,k) = REAL( ( mrtinlw(l) /                                        &
+                                       ( human_emiss * sigma_sb ) )**0.25_wp - degc_to_k,          &
+                                         KIND = sp )
                   ENDIF
                ELSE
-                  local_pf(i,j,k) = mrt_av_grid(k,j,i)
+                  local_pf(i,j,k) = REAL( mrt_av_grid(k,j,i), KIND = sp )
                ENDIF
             ENDDO
 
@@ -1238,7 +1272,7 @@
 !-- Determine cell level corresponding to 1.1 m above ground level (gravimetric center of sample
 !-- human)
 
-    bio_cell_level = 0
+    bio_cell_level = 0_iwp
     bio_output_height = 0.5_wp * dz(1)
     height = 0.0_wp
 
@@ -1246,28 +1280,12 @@
     bio_output_height = bio_output_height + bio_cell_level * dz(1)
 !
 !-- Set radiation level if not done by user
-    IF ( mrt_minlevel == 0  .AND.  mrt_nlevels == 0 )  THEN
-       mrt_minlevel = bio_cell_level
-       mrt_nlevels = 1
-    ELSE
-       IF ( bio_cell_level < mrt_minlevel  .OR.  bio_cell_level > mrt_minlevel + mrt_nlevels - 1 )  &
-       THEN
-          WRITE( message_string, * ) 'combination of mrt_minlevel = ', mrt_minlevel,               &
-                                     ' and mrt_nlevels = ', mrt_nlevels, ' does not include',      &
-                                     ' bio_cell_level (gravimetric center of the sample human',    &
-                                     ' body 1,1 m)'
-          CALL message( 'bio_init', 'BIO0008', 1, 2, 0, 6, 0 )
-       ENDIF
+    IF ( mrt_nlevels == 0 )  THEN
+       mrt_nlevels = bio_cell_level + 1_iwp
     ENDIF
 !
 !-- Init UVEM and load lookup tables
     IF ( uv_exposure )  CALL netcdf_data_input_uvem
-
-!
-!-- Check parameters
-!-- WARNING This is a WORKAROUND! Due to the design of the module, checks are called at this point
-!-- rather than within module_interface_check_parameters.
-    CALL bio_check_parameters
 
     IF ( debug_output )  CALL debug_message( 'bio_init', 'end' )
 
@@ -1285,8 +1303,10 @@
         ONLY: message_string
 
     IF ( (.NOT. radiation_interactions) .AND. ( thermal_comfort ) )  THEN
-       message_string = 'thermal comfort requires radiation_interaction = .TRUE.'
-       CALL message( 'bio_init_checks', 'BIO0009', 1, 2, 0, 6, 0 )
+       message_string = 'The mrt calculation requires ' //                                         &
+                        'enabled radiation_interactions but it ' //                                &
+                        'is disabled!'
+       CALL message( 'bio_init_checks', 'PAHU03', 1, 2, 0, 6, 0 )
     ENDIF
 
 
@@ -1304,48 +1324,47 @@
 
 !
 !-- Internal variables
-    CHARACTER (LEN=100) ::  line  !< Dummy string for current line in parameter file
-
-    INTEGER(iwp) ::  io_status   !< Status after reading the namelist file
-
-    LOGICAL ::  switch_off_module = .FALSE.  !< local namelist parameter to switch off the module
-                                             !< although the respective module namelist appears in
-                                             !< the namelist file
+    CHARACTER (LEN=80) ::  line  !< Dummy string for current line in parameter file
 
     NAMELIST /biometeorology_parameters/  clothing,                                                &
                                           consider_obstructions,                                   &
                                           orientation_angle,                                       &
                                           sun_in_south,                                            &
-                                          switch_off_module,                                       &
                                           thermal_comfort,                                         &
                                           turn_to_sun,                                             &
                                           uv_exposure
 
-!
-!-- Move to the beginning of the namelist file and try to find and read the namelist named
-!-- biometeorology_parameters.
-    REWIND( 11 )
-    READ( 11, biometeorology_parameters, IOSTAT=io_status )
-!
-!-- Action depending on the READ status
-    IF ( io_status == 0 )  THEN
-!
-!--    biometeorology_parameters namelist was found and read correctly. Set flag that
-!--    biometeorology_mod is switched on.
-       IF ( .NOT. switch_off_module )  biometeorology = .TRUE.
 
-    ELSEIF ( io_status > 0 )  THEN
-!
-!--    biometeorology_parameters namelist was found, but contained errors. Print an error message
-!--    containing the line that caused the problem.
-       BACKSPACE( 11 )
-       READ( 11 , '(A)') line
-       CALL parin_fail_message( 'biometeorology_parameters', line )
+!-- Try to find biometeorology_parameters namelist
+    REWIND ( 11 )
+    line = ' '
+    DO WHILE ( INDEX( line, '&biometeorology_parameters' ) == 0 )
+       READ ( 11, '(A)', END = 20 )  line
+    ENDDO
+    BACKSPACE ( 11 )
 
-    ENDIF
+!
+!-- Read biometeorology_parameters namelist
+    READ ( 11, biometeorology_parameters, ERR = 10, END = 20 )
+
+!
+!-- Set flag that indicates that the biomet_module is switched on
+    biometeorology = .TRUE.
+
+    GOTO 20
+
+!
+!-- In case of error
+ 10 BACKSPACE( 11 )
+    READ( 11 , '(A)') line
+    CALL parin_fail_message( 'biometeorology_parameters', line )
+
+!
+!-- Complete
+ 20 CONTINUE
+
 
  END SUBROUTINE bio_parin
-
 
 !--------------------------------------------------------------------------------------------------!
 ! Description:
@@ -1355,8 +1374,7 @@
  SUBROUTINE bio_rrd_global_ftn( found )
 
     USE control_parameters,                                                                        &
-        ONLY:  length,                                                                             &
-               restart_string
+        ONLY:  length, restart_string
 
 
     IMPLICIT NONE
@@ -1448,8 +1466,7 @@
 
 
     USE control_parameters,                                                                        &
-        ONLY:  length,                                                                             &
-               restart_string
+        ONLY:  length, restart_string
 
 
     IMPLICIT NONE
@@ -1497,17 +1514,10 @@
 
     LOGICAL      ::  array_found  !<
 
-!
-!-- Note, restart input of time-averaged quantities is skipped in case of cyclic-fill
-!-- initialization. This case, input of time-averaged data is useless and can lead to faulty
-!-- averaging.
-    IF ( .NOT. cyclic_fill_initialization )  THEN
-       CALL rd_mpi_io_check_array( 'mrt_av_grid' , found = array_found )
-       IF ( array_found )  THEN
-          IF ( .NOT. ALLOCATED( mrt_av_grid ) )                                                    &
-             ALLOCATE( mrt_av_grid(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-          CALL rrd_mpi_io( 'mrt_av_grid', mrt_av_grid )
-       ENDIF
+    CALL rd_mpi_io_check_array( 'mrt_av_grid' , found = array_found )
+    IF ( array_found )  THEN
+       IF ( .NOT. ALLOCATED( mrt_av_grid ) )  ALLOCATE( mrt_av_grid(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
+       CALL rrd_mpi_io( 'mrt_av_grid', mrt_av_grid )
     ENDIF
 
  END SUBROUTINE bio_rrd_local_mpi
@@ -1605,11 +1615,11 @@
 !-- We need to differentiate if averaged input is desired (av == .TRUE.) or not.
     IF ( av )  THEN
 !
-!--    Make sure tmrt_av_grid is present and set initial value
+!--    Make sure tmrt_av_grid is present and initialize with the fill value
        IF ( .NOT. ALLOCATED( tmrt_av_grid ) )  THEN
           ALLOCATE( tmrt_av_grid(nys:nyn,nxl:nxr) )
        ENDIF
-       tmrt_av_grid = bio_initial_value
+       tmrt_av_grid = REAL( bio_fill_value, KIND = wp )
 
 !
 !--    mrt_av_grid should always be allcoated here, but better make sure ist actually is.
@@ -1622,7 +1632,7 @@
              i = mrtbl(ix,l)
              j = mrtbl(iy,l)
              k = mrtbl(iz,l)
-             IF ( k - topo_top_ind(j,i,0) == bio_cell_level + 1 )  THEN
+             IF ( k - topo_top_ind(j,i,0) == bio_cell_level + 1_iwp)  THEN
 !
 !--             Averaging was done before, so we can just copy the result here.
                 tmrt_av_grid(j,i) = mrt_av_grid(k,j,i)
@@ -1641,13 +1651,13 @@
        IF ( .NOT. ALLOCATED( tmrt_grid ) )  THEN
           ALLOCATE( tmrt_grid (nys:nyn,nxl:nxr) )
        ENDIF
-       tmrt_grid = bio_initial_value
+       tmrt_grid = REAL( bio_fill_value, KIND = wp )
 
        DO  l = 1, nmrtbl
           i = mrtbl(ix,l)
           j = mrtbl(iy,l)
           k = mrtbl(iz,l)
-          IF ( k - topo_top_ind(j,i,0) == bio_cell_level + 1 )  THEN
+          IF ( k - topo_top_ind(j,i,0) == bio_cell_level + 1_iwp)  THEN
              IF ( mrt_include_sw )  THEN
                 tmrt_grid(j,i) = ( ( human_absorb * mrtinsw(l) +                                   &
                                  mrtinlw(l) )  /                                                   &
@@ -1699,25 +1709,25 @@
 !
 !-- Avoid non-representative horizontal u and v of 0.0 m/s too close to ground
     k_wind = k
-    IF ( bio_cell_level < 1 )  THEN
-       k_wind = k + 1
+    IF ( bio_cell_level < 1_iwp )  THEN
+       k_wind = k + 1_iwp
     ENDIF
 !
 !-- Determine local values:
     IF ( average_input )  THEN
 !
 !--    Calculate ta from Tp assuming dry adiabatic laps rate
-       ta = bio_initial_value
+       ta = bio_fill_value
        IF ( ALLOCATED( pt_av ) )  THEN
           ta = pt_av(k,j,i) - ( 0.0098_wp * dz(1) * ( k + 0.5_wp ) ) - degc_to_k
        ENDIF
 
-       vp = bio_initial_value
+       vp = bio_fill_value
        IF ( humidity  .AND.  ALLOCATED( q_av ) )  THEN
           vp = q_av(k,j,i)
        ENDIF
 
-       ws = bio_initial_value
+       ws = bio_fill_value
        IF ( ALLOCATED( u_av )  .AND.  ALLOCATED( v_av )  .AND.                                     &
           ALLOCATED( w_av ) )  THEN
              ws = ( 0.5_wp * ABS( u_av(k_wind,j,i) + u_av(k_wind,j,i+1) ) +                        &
@@ -1729,7 +1739,7 @@
 !--    Calculate ta from Tp assuming dry adiabatic laps rate
        ta = pt(k,j,i) - ( 0.0098_wp * dz(1) * (  k + 0.5_wp ) ) - degc_to_k
 
-       vp = bio_initial_value
+       vp = bio_fill_value
        IF ( humidity )  THEN
           vp = q(k,j,i)
        ENDIF
@@ -1751,8 +1761,8 @@
        IF ( vp > vp_sat )  vp = vp_sat
     ENDIF
 !
-!-- Local mtr value at [i,j]. Inital values (fill values) will be kept inside terrain/buildings.
-    tmrt = bio_initial_value
+!-- Local mtr value at [i,j]
+    tmrt = bio_fill_value  !< this can be a valid result (e.g. for inside some ostacle)
     IF ( .NOT. average_input )  THEN
 !
 !--    Use MRT from RTM precalculated in tmrt_grid
@@ -1803,21 +1813,21 @@
           DO  j = nys, nyn
 !
 !--          Determine local input conditions
-             tmrt_ij = bio_initial_value
-             vp      = bio_initial_value
+             tmrt_ij = bio_fill_value
+             vp      = bio_fill_value
 !
 !--          Determine local meteorological conditions
              CALL bio_get_thermal_index_input_ij ( av, i, j, ta, vp, ws, pair, tmrt_ij )
 !
 !--          Only proceed if input is available
-             pet_ij   = bio_initial_value
-             perct_ij = bio_initial_value
-             utci_ij  = bio_initial_value
-             IF ( .NOT. ( tmrt_ij <= -998.0_wp  .OR.  vp <= -998.0_wp  .OR.                        &
-                          ws <= -998.0_wp  .OR.  ta <= -998.0_wp ) )  THEN
+             pet_ij   = bio_fill_value   !< set fail value, e.g. valid for
+             perct_ij = bio_fill_value   !< within some obstacle
+             utci_ij  = bio_fill_value
+             IF ( .NOT. ( tmrt_ij <= -998.0_wp  .OR.  vp <= -998.0_wp  .OR.   ws <= -998.0_wp  .OR.&
+                  ta <= -998.0_wp ) )  THEN
 !
 !--             Calculate static thermal indices based on local tmrt
-                clo = bio_initial_value
+                clo = bio_fill_value
 
                 IF ( do_calculate_perct  .OR.  do_calculate_perct_av )  THEN
 !
@@ -1885,7 +1895,7 @@
     INTEGER(iwp), INTENT ( IN ) ::  sex  !< Sex of agent (1 = male, 2 = female)
 
     REAL(wp), INTENT ( IN )  ::  age     !< Age of agent                     (y)
-    REAL(wp), INTENT ( IN )  ::  dt      !< Time past since last calculation (s)
+    REAL(wp), INTENT ( IN )  ::  dt      !< Time past SINce last calculation (s)
     REAL(wp), INTENT ( IN )  ::  height  !< Height of agent                  (m)
     REAL(wp), INTENT ( IN )  ::  pair    !< Air pressure                     (hPa)
     REAL(wp), INTENT ( IN )  ::  ta      !< Air temperature                  (degree_C)
@@ -2005,7 +2015,7 @@
 !
 !-- Check if input values in range after Broede et al. (2012)
     IF ( ( d_tmrt > 70.0_wp )  .OR.  ( d_tmrt < -30.0_wp )  .OR.  ( vp >= 50.0_wp ) )  THEN
-       utci_ij = bio_initial_value
+       utci_ij = bio_fill_value
        RETURN
     ENDIF
 !
@@ -2333,10 +2343,10 @@
 
 !
 !-- Initialise
-    perct_ij = bio_initial_value
+    perct_ij = bio_fill_value
 
-    nerr     = 0
-    ncount   = 0
+    nerr     = 0_iwp
+    ncount   = 0_iwp
     sultrieness  = .FALSE.
 !
 !-- Tresholds: clothing insulation (account for model inaccuracies)
@@ -2366,8 +2376,8 @@
 !--                values
              CALL iso_ridder ( ta, tmrt, vp, ws, pair, actlev, eta, sclo, pmv_s, wclo, pmv_w, eps, &
                                pmva, ncount, clo )
-             IF ( ncount < 0 )  THEN
-                nerr = -1
+             IF ( ncount < 0_iwp )  THEN
+                nerr = -1_iwp
                 RETURN
              ENDIF
           ELSE IF ( pmva > 0.06_wp )  THEN
@@ -2398,8 +2408,8 @@
 !--                values
              CALL iso_ridder ( ta, tmrt, vp, ws, pair, actlev, eta, sclo, pmv_s, wclo, pmv_w, eps, &
                                pmva, ncount, clo )
-             IF ( ncount < 0 )  THEN
-                nerr = -1
+             IF ( ncount < 0_iwp )  THEN
+                nerr = -1_iwp
                 RETURN
              ENDIF
           ELSE IF ( pmva < - 0.11_wp )  THEN
@@ -2421,7 +2431,7 @@
 !
 !--    Adjust for cold conditions according to Gagge 1986
        CALL dpmv_cold ( pmva, ta, ws, tmrt, nerr_cold, d_pmv )
-       IF ( nerr_cold > 0 )  nerr = -5
+       IF ( nerr_cold > 0_iwp )  nerr = -5_iwp
        pmvs = pmva - d_pmv
        IF ( pmvs > - 0.11_wp )  THEN
           d_pmv  = 0.0_wp
@@ -2533,7 +2543,7 @@
     REAL(wp), INTENT ( OUT ) :: pmva     !< 0 (set to zero, because clo is evaluated for comfort)
 !
 !-- Type of program variables
-    INTEGER(iwp), PARAMETER  ::  max_iteration = 15  !< max number of iterations
+    INTEGER(iwp), PARAMETER  ::  max_iteration = 15_iwp       !< max number of iterations
 
     REAL(wp),     PARAMETER  ::  guess_0       = -1.11e30_wp  !< initial guess
 
@@ -2553,10 +2563,10 @@
     REAL(wp) ::  y_upper     !< predicted mean vote for winter clothing
 !
 !-- Initialise
-    nerr    = 0
+    nerr    = 0_iwp
 !
 !-- Set pmva = 0 (comfort): Root of PMV depending on clothing insulation
-    x_ridder    = bio_initial_value
+    x_ridder    = bio_fill_value
     pmva        = 0.0_wp
     clo_lower   = sclo
     y_lower     = pmv_s
@@ -2568,7 +2578,7 @@
        x_upper  = clo_upper
        x_ridder = guess_0
 
-       DO  j = 1, max_iteration
+       DO  j = 1_iwp, max_iteration
           x_average = 0.5_wp * ( x_lower + x_upper )
           CALL fanger ( ta, tmrt, vp, ws, pair, x_average, actlev, eta, y_average )
           sroot = SQRT( y_average**2 - y_lower * y_upper )
@@ -2604,8 +2614,8 @@
              y_lower = y_new
           ELSE
 !
-!--          Never get here in x_ridder: singularity in y
-             nerr    = -1
+!--          Never get here in x_ridder: SINgularity in y
+             nerr    = -1_iwp
              clo_res = x_ridder
              RETURN
           ENDIF
@@ -2617,7 +2627,7 @@
        ENDDO
 !
 !--    x_ridder exceed maximum iterations
-       nerr       = -2
+       nerr       = -2_iwp
        clo_res = y_new
        RETURN
     ELSE IF ( ABS( y_lower ) < 0.00001_wp )  THEN
@@ -2627,7 +2637,7 @@
     ELSE
 !
 !--    x_ridder not bracketed by u_clo and o_clo
-       nerr = -3
+       nerr = -3_iwp
        clo_res = x_ridder
        RETURN
     ENDIF
@@ -2871,9 +2881,9 @@
 !
 !-- Test for compliance with regression range
     IF ( pmva < -1.0_wp  .OR.  pmva > 7.0_wp )  THEN
-       nerr = -2
+       nerr = -2_iwp
     ELSE
-       nerr = 0
+       nerr = 0_iwp
     ENDIF
 !
 !-- Initialise classic PMV
@@ -2885,7 +2895,7 @@
     IF ( vp >= p10  .AND.  vp <= p95 )  THEN
        pa = vp
     ELSE
-       nerr = -3
+       nerr = -3_iwp
        IF ( vp < p10 )  THEN
 !
 !--       Due to conditions of regression: r.H. >= 5 %
@@ -2926,7 +2936,7 @@
 !
 !-- Select the valid regression coefficients
     nreg = INT( pmv )
-    IF ( nreg < 0 )  THEN
+    IF ( nreg < 0_iwp )  THEN
 !
 !--    Value of the FUNCTION in the case pmv <= -1
        deltapmv = 0.0_wp
@@ -2934,11 +2944,11 @@
     ENDIF
     weight = MOD ( pmv, 1.0_wp )
     IF ( weight < 0.0_wp )  weight = 0.0_wp
-    IF ( nreg > 5 )  THEN
-       nreg  = 5
+    IF ( nreg > 5_iwp )  THEN
+       nreg  = 5_iwp
        weight   = pmv - 5.0_wp
        weight2  = pmv - 6.0_wp
-       IF ( weight2 > 0 )  THEN
+       IF ( weight2 > 0_iwp )  THEN
           weight = ( weight - weight2 ) / weight
        ENDIF
     ENDIF
@@ -2956,17 +2966,17 @@
              + aconst(nreg)
 
 !    dpmv_2 = 0.0_wp
-!    IF ( nreg < 6 )  THEN  !< nreg is always <= 5, see above
+!    IF ( nreg < 6_iwp )  THEN  !< nreg is always <= 5, see above
     dpmv_2 =                                                                                       &
-             + bpa(nreg+1)     * pa                                                                &
-             + bpmv(nreg+1)    * pmv                                                               &
-             + bapa(nreg+1)    * apa                                                               &
-             + bta(nreg+1)     * ta                                                                &
-             + bdtmrt(nreg+1)  * dtmrt                                                             &
-             + bdapa(nreg+1)   * dapa                                                              &
-             + bsqvel(nreg+1)  * sqvel                                                             &
-             + bpa_p50(nreg+1) * pa_p50                                                            &
-             + aconst(nreg+1)
+             + bpa(nreg+1_iwp)     * pa                                                            &
+             + bpmv(nreg+1_iwp)    * pmv                                                           &
+             + bapa(nreg+1_iwp)    * apa                                                           &
+             + bta(nreg+1_iwp)     * ta                                                            &
+             + bdtmrt(nreg+1_iwp)  * dtmrt                                                         &
+             + bdapa(nreg+1_iwp)   * dapa                                                          &
+             + bsqvel(nreg+1_iwp)  * sqvel                                                         &
+             + bpa_p50(nreg+1_iwp) * pa_p50                                                        &
+             + aconst(nreg+1_iwp)
 !    ENDIF
 !
 !-- Calculate pmv modification
@@ -2975,7 +2985,7 @@
     IF ( ( pmvs ) < 0.0_wp )  THEN
 !
 !--    Prevent negative pmv* due to problems with clothing insulation
-       nerr = -4
+       nerr = -4_iwp
        IF ( pmvs > -0.11_wp )  THEN
 !
 !--       Threshold from perct_regression for winter clothing insulation
@@ -3105,7 +3115,7 @@
        /), SHAPE( coeff ), order=(/ 2, 1 /)                    )
 !
 !-- Initialise
-    nerr           = 0
+    nerr           = 0_iwp
     dpmv_cold_res  = 0.0_wp
     dtmrt          = tmrt - ta
     sqrt_ws        = ws
@@ -3131,7 +3141,7 @@
        IF ( ABS( r_denominator ) > 0.00001_wp )  THEN
           pmv_cross(i) = ( reg_a(i+1) - reg_a(i) ) / r_denominator
        ELSE
-          nerr = 1
+          nerr = 1_iwp
           RETURN
        ENDIF
     ENDDO
@@ -3180,11 +3190,11 @@
 !
 !-- Select thermal range
     IF ( pmva <= -2.1226_wp )  THEN     !< very cold
-       thr = 3
+       thr = 3_iwp
     ELSE IF ( pmva <= -1.28_wp )  THEN  !< cold
-       thr = 2
+       thr = 2_iwp
     ELSE                                !< slightly cold
-       thr = 1
+       thr = 1_iwp
     ENDIF
 !
 !-- Initialize
@@ -3222,7 +3232,7 @@
     REAL(wp)                     ::  perct02
 !
 !-- Initialise
-    nerr = 0
+    nerr = 0_iwp
 !
 !-- Convert perceived temperature from basis 0.1 m/s to basis 0.2 m/s
     perct02 = 1.8788_wp + 0.9296_wp * perct_ij
@@ -3233,14 +3243,14 @@
 !-- Regression only defined for perct <= 10 (degC)
     IF ( ireq_neutral < 0.5_wp )  THEN
        IF ( ireq_neutral < 0.48_wp )  THEN
-          nerr = 1
+          nerr = 1_iwp
        ENDIF
        ireq_neutral = 0.5_wp
     ENDIF
 !
 !-- Minimal required clothing insulation: maximal acceptable body cooling
     ireq_minimal = 1.26_wp - 0.0588_wp * perct02
-    IF ( nerr > 0 )  THEN
+    IF ( nerr > 0_iwp )  THEN
        ireq_minimal = ireq_neutral
     ENDIF
 
@@ -3270,8 +3280,8 @@
     height = height_cm * 100.0_wp
 !
 !-- According to Gehan-George, for children
-    IF ( age < 19 )  THEN
-       IF ( age < 5 )  THEN
+    IF ( age < 19_iwp )  THEN
+       IF ( age < 5_iwp )  THEN
           surf = 0.02667_wp * height**0.42246_wp * weight**0.51456_wp
           RETURN
        ENDIF
@@ -3326,10 +3336,10 @@
     s = height * 100.0_wp / ( weight**( 1.0_wp / 3.0_wp ) )
     factor = 1.0_wp + .004_wp  * ( 30.0_wp - age )
     basic_heat_prod = 0.0_wp
-    IF ( sex == 1 )  THEN
+    IF ( sex == 1_iwp )  THEN
        basic_heat_prod = 3.45_wp * weight**( 3.0_wp / 4.0_wp ) * ( factor + 0.01_wp                &
                          * ( s - 43.4_wp ) )
-    ELSE IF ( sex == 2 )  THEN
+    ELSE IF ( sex == 2_iwp )  THEN
        basic_heat_prod = 3.19_wp * weight**( 3.0_wp / 4.0_wp ) * ( factor + 0.018_wp               &
                          * ( s - 42.1_wp ) )
     ENDIF
@@ -3408,8 +3418,8 @@
     CALL persdat( age, weight, height, sex, work, a_surf, actlev )
 !
 !-- Initialise
-    t_clothing = bio_initial_value
-    ipt        = bio_initial_value
+    t_clothing = bio_fill_value
+    ipt        = bio_fill_value
     nerr       = 0_wp
     ncount     = 0_wp
     sultrieness    = .FALSE.
@@ -3425,7 +3435,7 @@
 !
 !--    First guess: winter clothing insulation: cold stress
        clo = wclo
-       t_clothing = bio_initial_value  ! force initial run
+       t_clothing = bio_fill_value  ! force initial run
        CALL fanger_s_acti ( ta, tmrt, vp, ws, pair, clo, actlev, work, t_clothing, storage, dt,    &
                             pmva )
        pmv_w = pmva
@@ -3434,7 +3444,7 @@
 !
 !--       Case summer clothing insulation: heat load ?
           clo = sclo
-          t_clothing = bio_initial_value  ! force initial run
+          t_clothing = bio_fill_value  ! force initial run
           CALL fanger_s_acti ( ta, tmrt, vp, ws, pair, clo, actlev, work, t_clothing, storage, dt, &
                                pmva )
           pmv_s = pmva
@@ -3444,19 +3454,19 @@
 !--                values
              CALL iso_ridder ( ta, tmrt, vp, ws, pair, actlev, eta , sclo, pmv_s, wclo, pmv_w, eps,&
                                pmva, ncount, clo )
-             IF ( ncount < 0 )  THEN
-                nerr = -1
+             IF ( ncount < 0_iwp )  THEN
+                nerr = -1_iwp
                 RETURN
              ENDIF
           ELSE IF ( pmva > 0.06_wp )  THEN
              clo = 0.5_wp
-             t_clothing = bio_initial_value
+             t_clothing = bio_fill_value
              CALL fanger_s_acti ( ta, tmrt, vp, ws, pair, clo, actlev, work, t_clothing, storage,  &
                                   dt, pmva )
           ENDIF
        ELSE IF ( pmva < - 0.11_wp )  THEN
           clo = 1.75_wp
-          t_clothing = bio_initial_value
+          t_clothing = bio_fill_value
           CALL fanger_s_acti ( ta, tmrt, vp, ws, pair, clo, actlev, work, t_clothing, storage, dt, &
                                pmva )
        ENDIF
@@ -3465,7 +3475,7 @@
 !
 !--    First guess: summer clothing insulation: heat load
        clo = sclo
-       t_clothing = bio_initial_value
+       t_clothing = bio_fill_value
        CALL fanger_s_acti ( ta, tmrt, vp, ws, pair, clo, actlev, work, t_clothing, storage, dt,    &
                             pmva )
        pmv_s = pmva
@@ -3474,7 +3484,7 @@
 !
 !--       Case winter clothing insulation: cold stress ?
           clo = wclo
-          t_clothing = bio_initial_value
+          t_clothing = bio_fill_value
           CALL fanger_s_acti ( ta, tmrt, vp, ws, pair, clo, actlev, work, t_clothing, storage, dt, &
                                pmva )
           pmv_w = pmva
@@ -3486,18 +3496,18 @@
              CALL iso_ridder ( ta, tmrt, vp, ws, pair, actlev, eta, sclo, pmv_s, wclo, pmv_w, eps, &
                                pmva, ncount, clo )
              IF ( ncount < 0_wp )  THEN
-                nerr = -1
+                nerr = -1_iwp
                 RETURN
              ENDIF
           ELSE IF ( pmva < - 0.11_wp )  THEN
              clo = 1.75_wp
-             t_clothing = bio_initial_value
+             t_clothing = bio_fill_value
              CALL fanger_s_acti ( ta, tmrt, vp, ws, pair, clo, actlev, work, t_clothing, storage,  &
                                   dt, pmva )
           ENDIF
        ELSE IF ( pmva > 0.06_wp )  THEN
           clo = 0.5_wp
-          t_clothing = bio_initial_value
+          t_clothing = bio_fill_value
           CALL fanger_s_acti ( ta, tmrt, vp, ws, pair, clo, actlev, work, t_clothing, storage, dt, &
                                pmva )
        ENDIF
@@ -3512,7 +3522,7 @@
 !
 !--    Adjust for cold conditions according to Gagge 1986
        CALL dpmv_cold ( pmva, ta, ws, tmrt, nerr_cold, d_pmv )
-       IF ( nerr_cold > 0 )  nerr = -5
+       IF ( nerr_cold > 0_iwp )  nerr = -5_iwp
        pmvs = pmva - d_pmv
        IF ( pmvs > - 0.11_wp )  THEN
           d_pmv  = 0.0_wp
@@ -3596,9 +3606,9 @@
     REAL(wp) ::  svp_ta
 !
 !-- Initialise
-    ipt = bio_initial_value
+    ipt = bio_fill_value
 
-    nerr     = 0
+    nerr     = 0_iwp
     sultrieness  = .FALSE.
 !
 !-- Determine pmv_adjusted for current conditions
@@ -3612,7 +3622,7 @@
 !
 !--    Adjust for cold conditions according to Gagge 1986
        CALL dpmv_cold ( pmva, ta, ws, tmrt, nerr_cold, d_pmv )
-       IF ( nerr_cold > 0 )  nerr = -5
+       IF ( nerr_cold > 0_iwp )  nerr = -5_iwp
        pmvs = pmva - d_pmv
        IF ( pmvs > - 0.11_wp )  THEN
           d_pmv  = 0.0_wp
@@ -3733,7 +3743,7 @@
 !-- Calculation of clothing surface temperature (t_clothing) based on Newton-approximation with air
 !-- temperature as initial guess
     niter = INT( dt * 10.0_wp, KIND=iwp )
-    IF ( niter < 1 )  niter = 1
+    IF ( niter < 1 )  niter = 1_iwp
     adjustrate = 1.0_wp - EXP( -1.0_wp * ( 10.0_wp / time_equil ) * dt )
     IF ( adjustrate >= 1.0_wp )  adjustrate = 1.0_wp
     adjustrate_cloth = adjustrate * 30.0_wp
@@ -3741,7 +3751,7 @@
 !
 !-- Set initial values for niter, adjustrates and t_clothing if this is the first call
     IF ( t_cloth <= -998.0_wp )  THEN  ! If initial run
-       niter = 3
+       niter = 3_iwp
        adjustrate = 1.0_wp
        adjustrate_cloth = 1.0_wp
        t_clothing = ta
@@ -4044,9 +4054,9 @@
     DO  j = 1, 7
 
        tsk    = 34.0_wp
-       count1 = 0
+       count1 = 0_iwp
        tcl    = ( ta + tmrt + tsk ) / 3.0_wp
-       count3 = 1
+       count3 = 1_iwp
        enbal2 = 0.0_wp
 
        DO  i = 1, 100  ! allow for 100 iterations max
@@ -4139,10 +4149,10 @@
 !
 !--       Clothing temperature
           xx = 0.001_wp
-          IF ( count1 == 0 )  xx = 1.0_wp
-          IF ( count1 == 1 )  xx = 0.1_wp
-          IF ( count1 == 2 )  xx = 0.01_wp
-          IF ( count1 == 3 )  xx = 0.001_wp
+          IF ( count1 == 0_iwp )  xx = 1.0_wp
+          IF ( count1 == 1_iwp )  xx = 0.1_wp
+          IF ( count1 == 2_iwp )  xx = 0.01_wp
+          IF ( count1 == 3_iwp )  xx = 0.001_wp
 
           IF ( enbal > 0.0_wp )  tcl = tcl + xx
           IF ( enbal < 0.0_wp )  tcl = tcl - xx
@@ -4153,12 +4163,12 @@
              skipincreasecount = .TRUE.
           ELSE
              enbal2 = enbal
-             count3 = count3 + 1
+             count3 = count3 + 1_iwp
           ENDIF
 
-          IF ( ( count3 > 200 )  .OR.  skipincreasecount )  THEN
-             IF ( count1 < 3 )  THEN
-                count1 = count1 + 1
+          IF ( ( count3 > 200_iwp )  .OR.  skipincreasecount )  THEN
+             IF ( count1 < 3_iwp )  THEN
+                count1 = count1 + 1_iwp
                 enbal2 = 0.0_wp
              ELSE
                 EXIT
@@ -4166,7 +4176,7 @@
           ENDIF
        ENDDO
 
-       IF ( count1 == 3 )  THEN
+       IF ( count1 == 3_iwp )  THEN
           SELECT CASE ( j )
              CASE ( 2, 5)
                 IF ( .NOT. ( ( tcore(j) >= 36.6_wp )  .AND.  ( tsk <= 34.050_wp ) ) )  CYCLE
@@ -4181,8 +4191,8 @@
           END SELECT
        ENDIF
 
-       IF ( ( j /= 4 )  .AND.  ( vb >= 91.0_wp ) )  CYCLE
-       IF ( ( j == 4 )  .AND.  ( vb < 89.0_wp ) )  CYCLE
+       IF ( ( j /= 4_iwp )  .AND.  ( vb >= 91.0_wp ) )  CYCLE
+       IF ( ( j == 4_iwp )  .AND.  ( vb < 89.0_wp ) )  CYCLE
        IF ( vb > 90.0_wp ) vb = 90.0_wp
 !
 !--    Loses by water
@@ -4289,10 +4299,10 @@
 !
 !--       Iteration concerning ta
           xx = 0.001_wp
-          IF ( count1 == 0 )  xx = 1.0_wp
-          IF ( count1 == 1 )  xx = 0.1_wp
-          IF ( count1 == 2 )  xx = 0.01_wp
-!           IF ( count1 == 3 )  xx = 0.001_wp
+          IF ( count1 == 0_iwp )  xx = 1.0_wp
+          IF ( count1 == 1_iwp )  xx = 0.1_wp
+          IF ( count1 == 2_iwp )  xx = 0.01_wp
+!           IF ( count1 == 3_iwp )  xx = 0.001_wp
           IF ( enbal > 0.0_wp )  pet_ij = pet_ij - xx
           IF ( enbal < 0.0_wp )  pet_ij = pet_ij + xx
           IF ( ( enbal <= 0.0_wp )  .AND.  ( enbal2 > 0.0_wp ) )  EXIT
@@ -4314,9 +4324,7 @@
  SUBROUTINE uvem_solar_position
 
     USE control_parameters,                                                                        &
-       ONLY:  latitude,                                                                            &
-              longitude,                                                                           &
-              time_since_reference_point
+       ONLY:  latitude, longitude, time_SINce_reference_point
 
     IMPLICIT NONE
 
@@ -4336,7 +4344,7 @@
     REAL(wp) ::  wsp           = 0.0_wp    !< calculated exposure by direct beam
 
 
-    CALL get_date_time( time_since_reference_point, day_of_year = day_of_year,                     &
+    CALL get_date_time( time_SINce_reference_point, day_of_year = day_of_year,                     &
                         second_of_day = second_of_day )
     dtor = pi / 180.0_wp
     lat = latitude
@@ -4384,6 +4392,10 @@
 !> Module-specific routine for new module
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE bio_calculate_uv_exposure
+
+    USE indices,                                                                                   &
+        ONLY:  nxl, nxr, nyn, nys
+
 
     IMPLICIT NONE
 
@@ -4534,99 +4546,5 @@
     ENDIF
 
  END SUBROUTINE bio_calculate_uv_exposure
-
-
-!--------------------------------------------------------------------------------------------------!
-! Description:
-! ------------
-!> Sampling of biometeorological variables along customized measurement coordinates.
-!--------------------------------------------------------------------------------------------------!
- SUBROUTINE bio_vm_sampling( variable, var_atmos, i_atmos, j_atmos, k_atmos, ns_atmos,             &
-                             var_soil, i_soil, j_soil, k_soil, ns_soil, sampled )
-
-    CHARACTER(LEN=*) ::  variable  !< treated variable
-
-    INTEGER(iwp) ::  i         !< grid index in x-direction
-    INTEGER(iwp) ::  j         !< grid index in y-direction
-    INTEGER(iwp) ::  m         !< running index over all virtual observation coordinates
-    INTEGER(iwp) ::  ns_atmos  !< number of sampling points for atmosphere and surface variables
-    INTEGER(iwp) ::  ns_soil   !< number of sampling points for soil variables
-
-    INTEGER(iwp), DIMENSION(1:ns_atmos) ::  i_atmos  !< sampling index in x-direction for atmosphere variables
-    INTEGER(iwp), DIMENSION(1:ns_atmos) ::  j_atmos  !< sampling index in y-direction for atmosphere variables
-    INTEGER(iwp), DIMENSION(1:ns_atmos) ::  k_atmos  !< sampling index in z-direction for atmosphere variables
-
-    INTEGER(iwp), DIMENSION(1:ns_soil) ::   i_soil   !< sampling index in x-direction for soil variables
-    INTEGER(iwp), DIMENSION(1:ns_soil) ::   j_soil   !< sampling index in y-direction for soil variables
-    INTEGER(iwp), DIMENSION(1:ns_soil) ::   k_soil   !< sampling index in z-direction for soil variables
-
-    LOGICAL ::  sampled !< flag indicating whether a variable has been sampled
-
-    REAL(wp), DIMENSION(1:ns_atmos) ::  var_atmos  !< array to store atmosphere variables
-
-    REAL(wp), DIMENSION(1:ns_soil ) ::  var_soil   !< array to store soil variables
-
-
-    SELECT CASE ( TRIM( variable ) )
-!
-!--    Mean radiant temperature.
-       CASE ( 't_mrt' )
-          IF ( ALLOCATED( tmrt_grid ) )  THEN
-             DO  m = 1, ns_atmos
-                j = j_atmos(m)
-                i = i_atmos(m)
-                var_atmos(m) = tmrt_grid(j,i)
-             ENDDO
-             sampled = .TRUE.
-          ENDIF
-!
-!--    Perceived temperature.
-       CASE ( 't_perceived' )
-          IF ( ALLOCATED( perct ) )  THEN
-             DO  m = 1, ns_atmos
-                j = j_atmos(m)
-                i = i_atmos(m)
-                var_atmos(m) = perct(j,i)
-             ENDDO
-             sampled = .TRUE.
-          ENDIF
-!
-!--    Physiological equivalent temperature.
-       CASE ( 't_pet' )
-          IF ( ALLOCATED( pet ) )  THEN
-             DO  m = 1, ns_atmos
-                j = j_atmos(m)
-                i = i_atmos(m)
-                var_atmos(m) = pet(j,i)
-             ENDDO
-             sampled = .TRUE.
-          ENDIF
-!
-!--    UTCI.
-       CASE ( 't_utci' )
-          IF ( ALLOCATED( utci ) )  THEN
-             DO  m = 1, ns_atmos
-                j = j_atmos(m)
-                i = i_atmos(m)
-                var_atmos(m) = utci(j,i)
-             ENDDO
-             sampled = .TRUE.
-          ENDIF
-
-       CASE DEFAULT
-
-    END SELECT
-!
-!-- Avoid compiler warning for unused variables by constructing an if condition which is never
-!-- fulfilled.
-    IF ( .FALSE.  .AND.  ns_soil < 0 )  THEN
-       i_soil = i_soil
-       j_soil = j_soil
-       k_soil = k_soil
-       k_atmos = k_atmos
-       var_soil = var_soil
-    ENDIF
-
- END SUBROUTINE bio_vm_sampling
 
  END MODULE biometeorology_mod

@@ -13,8 +13,27 @@
 ! You should have received a copy of the GNU General Public License along with PALM. If not, see
 ! <http://www.gnu.org/licenses/>.
 !
-! Copyright 1997-2021 Leibniz Universitaet Hannover
+! Copyright 1997-2020 Leibniz Universitaet Hannover
 !--------------------------------------------------------------------------------------------------!
+!
+! Current revisions:
+! ------------------
+! 
+! 
+! Former revisions:
+! -----------------
+! $Id: data_output_spectra.f90 4577 2020-06-25 09:53:58Z raasch $
+! file re-formatted to follow the PALM coding standard
+!
+! 4360 2020-01-07 11:25:50Z suehring
+! Corrected "Former revisions" section
+!
+! 3655 2019-01-07 16:51:22Z knoop
+! variables documented
+!
+! Revision 1.1  2001/01/05 15:14:20  raasch
+! Initial revision
+!
 !
 ! Description:
 ! ------------
@@ -25,34 +44,24 @@
 
 #if defined( __netcdf )
     USE control_parameters,                                                                        &
-        ONLY:  message_string,                                                                     &
-               time_since_reference_point
+        ONLY:  message_string, time_since_reference_point
 
     USE cpulog,                                                                                    &
-        ONLY:  cpu_log,                                                                            &
-               log_point
+        ONLY:  cpu_log, log_point
 
     USE kinds
 
     USE NETCDF
 
     USE netcdf_interface,                                                                          &
-        ONLY:  id_set_sp,                                                                          &
-               id_var_time_sp,                                                                     &
-               nc_stat,                                                                            &
-               netcdf_handle_error
+        ONLY:  id_set_sp, id_var_time_sp, nc_stat, netcdf_handle_error
 
     USE pegrid
 
     USE spectra_mod,                                                                               &
-        ONLY:  average_count_sp,                                                                   &
-               averaging_interval_sp,                                                              &
-               comp_spectra_level,                                                                 &
-               data_output_sp,                                                                     &
-               dosp_time_count,                                                                    &
-               spectra_direction,                                                                  &
-               spectrum_x,                                                                         &
-               spectrum_y
+        ONLY:  average_count_sp, averaging_interval_sp, comp_spectra_level, data_output_sp,        &
+               dosp_time_count, spectra_direction, spectrum_x, spectrum_y
+
 
     IMPLICIT NONE
 
@@ -88,7 +97,7 @@
 !--    If necessary, calculate time average and reset average counter
        IF ( average_count_sp == 0 )  THEN
           message_string = 'no spectra data available'
-          CALL message( 'data_output_spectra', 'PAC0190', 0, 0, 0, 6, 0 )
+          CALL message( 'data_output_spectra', 'PA0186', 0, 0, 0, 6, 0 )
        ENDIF
        IF ( average_count_sp /= 1 )  THEN
           spectrum_x = spectrum_x / REAL( average_count_sp, KIND=wp )
@@ -177,30 +186,21 @@
         ONLY:  pi
 
     USE grid_variables,                                                                            &
-        ONLY:  dx,                                                                                 &
-               dy
+        ONLY:  dx, dy
 
     USE indices,                                                                                   &
-        ONLY:  nx,                                                                                 &
-               ny
+        ONLY:  nx, ny
 
     USE kinds
 
     USE NETCDF
 
     USE netcdf_interface,                                                                          &
-        ONLY:  id_set_sp,                                                                          &
-               id_var_dospx,                                                                       &
-               id_var_dospy,                                                                       &
-               nc_stat,                                                                            &
-               netcdf_handle_error
+        ONLY:  id_set_sp, id_var_dospx, id_var_dospy, nc_stat, netcdf_handle_error
 
     USE spectra_mod,                                                                               &
-        ONLY:  dosp_time_count,                                                                    &
-               n_sp_x,                                                                             &
-               n_sp_y,                                                                             &
-               spectrum_x,                                                                         &
-               spectrum_y
+        ONLY:  dosp_time_count, n_sp_x, n_sp_y, spectrum_x, spectrum_y
+
 
     IMPLICIT NONE
 

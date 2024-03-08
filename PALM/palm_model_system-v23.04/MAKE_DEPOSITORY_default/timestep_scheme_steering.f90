@@ -13,8 +13,28 @@
 ! You should have received a copy of the GNU General Public License along with PALM. If not, see
 ! <http://www.gnu.org/licenses/>.
 !
-! Copyright 1997-2021 Leibniz Universitaet Hannover
+! Copyright 1997-2020 Leibniz Universitaet Hannover
 !--------------------------------------------------------------------------------------------------!
+!
+!
+! Current revisions:
+! -----------------
+! 
+! 
+! Former revisions:
+! -----------------
+! $Id: timestep_scheme_steering.f90 4540 2020-05-18 15:23:29Z raasch $
+! File re-formatted to follow the PALM coding standard
+!
+!
+! 4360 2020-01-07 11:25:50Z suehring
+! Corrected "Former revisions" section
+!
+! 3655 2019-01-07 16:51:22Z knoop
+! OpenACC port for SPEC
+!
+! Revision 1.1  2004/01/28 15:34:47  raasch
+! Initial revision
 !
 !
 ! Description:
@@ -22,6 +42,7 @@
 !> Depending on the timestep scheme set the steering factors for the prognostic equations.
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE timestep_scheme_steering
+
 
     USE control_parameters,                                                                        &
         ONLY:  intermediate_timestep_count,                                                        &

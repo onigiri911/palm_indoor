@@ -13,8 +13,69 @@
 ! You should have received a copy of the GNU General Public License along with PALM. If not, see
 ! <http://www.gnu.org/licenses/>.
 !
-! Copyright 1997-2021 Leibniz Universitaet Hannover
+! Copyright 1997-2020 Leibniz Universitaet Hannover
 !--------------------------------------------------------------------------------------------------!
+!
+!
+! Current revisions:
+! -----------------
+!
+!
+! Former revisions:
+! -----------------
+! $Id: user_module.f90 4768 2020-11-02 19:11:23Z suehring $
+! Enable 3D data output also with 64-bit precision
+! 
+! 4535 2020-05-15 12:07:23Z raasch
+! bugfix for restart data format query
+! 
+! 4517 2020-05-03 14:29:30Z raasch
+! added restart with MPI-IO for reading local arrays
+!
+! 4504 2020-04-20 12:11:24Z raasch
+! hint for setting rmask arrays added
+! 
+! 4497 2020-04-15 10:20:51Z raasch
+! file re-formatted to follow the PALM coding standard
+!
+! 4495 2020-04-13 20:11:20Z raasch
+! restart data handling with MPI-IO added
+!
+! 4360 2020-01-07 11:25:50Z suehring
+! Introduction of wall_flags_total_0, which currently sets bits based on static topography
+! information used in wall_flags_static_0
+!
+! 4329 2019-12-10 15:46:36Z motisi
+! Renamed wall_flags_0 to wall_flags_static_0
+!
+! 4287 2019-11-01 14:50:20Z raasch
+! reading of namelist file and actions in case of namelist errors revised so that statement labels
+! and goto statements are not required any more; this revision also removes a previous bug which
+! appeared when the namelist has been commented out in the namelist file
+!
+! 4182 2019-08-22 15:20:23Z scharf
+! Corrected "Former revisions" section
+!
+! 3986 2019-05-20 14:08:14Z Giersch
+! Redundant integration of control parameters in user_rrd_global removed
+!
+! 3911 2019-04-17 12:26:19Z knoop
+! Bugfix: added before_prognostic_equations case in user_actions
+!
+! 3768 2019-02-27 14:35:58Z raasch
+! variables commented + statements added to avoid compiler warnings about unused variables
+!
+! 3767 2019-02-27 08:18:02Z raasch
+! unused variable for file index removed from rrd-subroutines parameter list
+!
+! 3747 2019-02-16 15:15:23Z gronemeier
+! Add routine user_init_arrays
+!
+! 3703 2019-01-29 16:43:53Z knoop
+! An example for a user defined global variable has been added (Giersch)
+!
+! Revision 1.1  1998/03/24 15:29:04  raasch
+! Initial revision
 !
 !
 ! Description:
@@ -29,7 +90,12 @@
     USE control_parameters
 
     USE cpulog
-
+!
+!-- COVID-19 related code begins
+    USE grid_variables,                                                                             &
+         ONLY:  dx, dy
+!
+!-- COVID-19 related code ends   
     USE indices
 
     USE kinds
@@ -40,12 +106,9 @@
 
     USE surface_mod
 
-    IMPLICIT NONE
+    USE netcdf_data_input_mod
 
-!-- Please change the revision number in case that the current revision does not match with previous
-!-- revisions (e.g. if routines have been added/deleted or if parameter lists in subroutines have
-!-- been changed).
-    CHARACTER (LEN=12) ::  user_interface_current_revision = '1.0'
+    IMPLICIT NONE
 
     INTEGER(iwp) ::  dots_num_palm      !<
     INTEGER(iwp) ::  dots_num_user = 0  !<
@@ -65,13 +128,48 @@
 
     SAVE
 
-    PRIVATE
+!
+!-- COVID-19 related code begins
+    INTEGER(iwp) :: num_user_sources = 0                 !< number of user-defined source-term boxes  
+    INTEGER(iwp), PARAMETER :: max_user_sources = 50     !< max number of user-defined sources
+    LOGICAL :: reset_scalar_at_restart = .FALSE.         !< logical switch for resetting scalar to
+                                                         !< zero at restart 
+    TYPE user_source_type
+       INTEGER(iwp) ::  i_sbl = 0
+       INTEGER(iwp) ::  i_sbr =-9
+       INTEGER(iwp) ::  j_sbs = 0
+       INTEGER(iwp) ::  j_sbn =-9
+       INTEGER(iwp) ::  k_sbb = 0
+       INTEGER(iwp) ::  k_sbt =-9
+       REAL(wp) ::  end_time     =-9999999.9_wp
+       REAL(wp) ::  start_time   = 9999999.9_wp
+       REAL(wp) ::  s_q          = 9999999.9_wp
+       REAL(wp) ::  s_target     = 9999999.9_wp
+       REAL(wp) ::  s_tau        = 1.0_wp
+       REAL(wp) ::  s_reset      = 9999999.9_wp
+       LOGICAL  ::  s_monitor    = .FALSE.
+       REAL(wp) ::  theta_q      = 9999999.9_wp
+       REAL(wp) ::  theta_target = 9999999.9_wp
+       REAL(wp) ::  theta_tau    = 1.0_wp
+       REAL(wp) ::  u_q          = 9999999.9_wp
+       REAL(wp) ::  u_target     = 9999999.9_wp
+       REAL(wp) ::  u_tau        = 1.0_wp
+       REAL(wp) ::  v_q          = 9999999.9_wp
+       REAL(wp) ::  v_target     = 9999999.9_wp
+       REAL(wp) ::  v_tau        = 1.0_wp
+       REAL(wp) ::  w_q          = 9999999.9_wp
+       REAL(wp) ::  w_target     = 9999999.9_wp
+       REAL(wp) ::  w_tau        = 1.0_wp
+    END TYPE user_source_type
 
+    TYPE(user_source_type), DIMENSION(1:max_user_sources) ::  user_source
+!
+!-- COVID-19 related code ends
+    PRIVATE   
 !
 !- Public functions
     PUBLIC                                                                                         &
        user_actions,                                                                               &
-       user_boundary_conditions,                                                                   &
        user_check_data_output,                                                                     &
        user_check_data_output_pr,                                                                  &
        user_check_data_output_ts,                                                                  &
@@ -79,34 +177,37 @@
        user_data_output_2d,                                                                        &
        user_data_output_3d,                                                                        &
        user_define_netcdf_grid,                                                                    &
-       user_exchange_horiz,                                                                        &
        user_header,                                                                                &
        user_init,                                                                                  &
        user_init_arrays,                                                                           &
        user_last_actions,                                                                          &
        user_parin,                                                                                 &
-       user_prognostic_equations,                                                                  &
        user_rrd_global,                                                                            &
        user_rrd_local,                                                                             &
        user_statistics,                                                                            &
-       user_swap_timelevel,                                                                        &
        user_3d_data_averaging,                                                                     &
        user_wrd_global,                                                                            &
        user_wrd_local
-
+!
+!-- COVID-19 related code begins
+    PUBLIC                                                                                         &
+       user_reset_scalar  
+!
+!-- COVID-19 related code ends
+    
 !
 !- Public parameters, constants and initial values
    PUBLIC                                                                                          &
       user_module_enabled
-
-
+!
+!-- COVID-19 related code begins
+    PUBLIC                                                                                         &
+      reset_scalar_at_restart
+!
+!-- COVID-19 related code ends
     INTERFACE user_parin
        MODULE PROCEDURE user_parin
     END INTERFACE user_parin
-
-    INTERFACE user_boundary_conditions
-       MODULE PROCEDURE user_boundary_conditions
-    END INTERFACE user_boundary_conditions
 
     INTERFACE user_check_parameters
        MODULE PROCEDURE user_check_parameters
@@ -128,10 +229,6 @@
        MODULE PROCEDURE user_define_netcdf_grid
     END INTERFACE user_define_netcdf_grid
 
-    INTERFACE user_exchange_horiz
-       MODULE PROCEDURE user_exchange_horiz
-    END INTERFACE user_exchange_horiz
-
     INTERFACE user_init
        MODULE PROCEDURE user_init
     END INTERFACE user_init
@@ -149,11 +246,6 @@
        MODULE PROCEDURE user_actions_ij
     END INTERFACE user_actions
 
-    INTERFACE user_prognostic_equations
-       MODULE PROCEDURE user_prognostic_equations
-       MODULE PROCEDURE user_prognostic_equations_ij
-    END INTERFACE user_prognostic_equations
-
     INTERFACE user_3d_data_averaging
        MODULE PROCEDURE user_3d_data_averaging
     END INTERFACE user_3d_data_averaging
@@ -169,10 +261,6 @@
     INTERFACE user_statistics
        MODULE PROCEDURE user_statistics
     END INTERFACE user_statistics
-
-    INTERFACE user_swap_timelevel
-       MODULE PROCEDURE user_swap_timelevel
-    END INTERFACE user_swap_timelevel
 
     INTERFACE user_rrd_global
        MODULE PROCEDURE user_rrd_global_ftn
@@ -195,7 +283,14 @@
     INTERFACE user_last_actions
        MODULE PROCEDURE user_last_actions
     END INTERFACE user_last_actions
-
+!
+!-- COVID-19 related code begins
+    INTERFACE user_reset_scalar
+       MODULE PROCEDURE user_reset_scalar
+    END INTERFACE user_reset_scalar
+!
+!-- COVID-19 related code ends
+    
 
  CONTAINS
 
@@ -209,22 +304,34 @@
 
     CHARACTER (LEN=80) ::  line  !< string containing the last line read from namelist file
 
-    INTEGER(iwp) ::  cmi        !< end position of major index in user_interface_current_revision
     INTEGER(iwp) ::  i          !<
+!
+!-- COVID-19 related code begins
+    INTEGER(iwp) ::  is         !< running index over user-defined source-term boxes
+    CHARACTER(LEN=19) :: fname  !< output file name for user_source-output
+    LOGICAL  :: fexist          !< boolean for checking if the file already exists
+
+!-- COVID-19 related code ends
     INTEGER(iwp) ::  io_status  !< status after reading the namelist file
     INTEGER(iwp) ::  j          !<
-    INTEGER(iwp) ::  rmi        !< end position of major index in user_interface_required_revision
 
-    LOGICAL ::  switch_off_module = .FALSE.  !< local namelist parameter to switch off the module
-                                             !< although the respective module namelist appears in
-                                             !< the namelist file
-
-    NAMELIST /user_parameters/  data_output_masks_user,                                            &
-                                data_output_pr_user,                                               &
-                                data_output_user,                                                  &
-                                region,                                                            &
-                                switch_off_module
-
+!
+!-- COVID-19 related code begins
+!    NAMELIST /user_parameters/                                                                     &
+!       data_output_masks_user,                                                                     &
+!       data_output_pr_user,                                                                        &
+!       data_output_user,                                                                           &
+!       region
+    NAMELIST /user_parameters/                                                                     &
+       data_output_masks_user,                                                                     &
+       data_output_pr_user,                                                                        &
+       data_output_user,                                                                           &
+       region,                                                                                     &
+       reset_scalar_at_restart,                                                                    &
+       user_source
+!
+!-- COVID-19 related code ends
+    
 !
 !-- Next statement is to avoid compiler warnings about unused variables. Please remove in case
 !-- that you are using them.
@@ -232,30 +339,24 @@
          user_rdummy == 0.0_wp )  CONTINUE
 
 !
-!-- Check for the user's interface version. Only major numbers must match.
-    cmi = INDEX( user_interface_current_revision, '.' ) - 1
-    rmi = INDEX( user_interface_required_revision, '.' ) - 1
-    IF ( user_interface_current_revision(1:cmi) /= user_interface_required_revision(1:rmi) )  THEN
-       message_string = 'current user-interface revision "' //                                     &
-                        TRIM( user_interface_current_revision ) // '" does ' //                    &
-                        'not match the required revision "' //                                     &
-                        TRIM( user_interface_required_revision ) // '"'
-        CALL message( 'user_parin', 'USR0001', 1, 2, 0, 6, 0 )
-    ENDIF
+!-- Set revision number of this default interface version. It will be checked within the main
+!-- program (palm). Please change the revision number in case that the current revision does not
+!-- match with previous revisions (e.g. if routines have been added/deleted or if parameter lists
+!-- in subroutines have been changed).
+    user_interface_current_revision = 'r4495'
 
 !
 !-- Position the namelist-file at the beginning (it has already been opened in parin), and try to
 !-- read (find) a namelist named "user_parameters".
     REWIND ( 11 )
     READ( 11, user_parameters, IOSTAT=io_status )
-
 !
 !-- Actions depending on the READ status
     IF ( io_status == 0 )  THEN
 !
 !--    User namelist found and correctly read. Set default module switch to true. This activates
 !--    calls of the user-interface subroutines.
-       IF ( .NOT. switch_off_module )  user_module_enabled = .TRUE.
+       user_module_enabled = .TRUE.
 
     ELSEIF ( io_status > 0 )  THEN
 !
@@ -273,11 +374,11 @@
     IF ( user_module_enabled )  THEN
        IF ( data_output_pr_user(1) /= ' ' )  THEN
           i = 1
-          DO WHILE ( data_output_pr(i) /= ' '  .AND.  i <= 200 )
+          DO WHILE ( data_output_pr(i) /= ' '  .AND.  i <= 100 )
              i = i + 1
           ENDDO
           j = 1
-          DO WHILE ( data_output_pr_user(j) /= ' '  .AND.  j <= 300 )
+          DO WHILE ( data_output_pr_user(j) /= ' '  .AND.  j <= 100 )
              data_output_pr(i) = data_output_pr_user(j)
              max_pr_user_tmp   = max_pr_user_tmp + 1
              i = i + 1
@@ -285,52 +386,39 @@
           ENDDO
        ENDIF
     ENDIF
+!
+!-- COVID-19 related code begins        
+!-- Define the number of user-defined source-term boxes    
+    is = 1
+    DO WHILE ( ( user_source(is)%i_sbr /= -9 )  .AND.  is <= max_user_sources )
+       is = is + 1
+    ENDDO
+    num_user_sources = is - 1
+!
+!-- Open channels for user-source output
+    DO  is = 1, num_user_sources
+       IF ( user_source(is)%s_monitor )  THEN
+          WRITE( fname, '(a12,i3.3,a4)') 'user_source_', is, '.dat'
+          INQUIRE( file=fname, exist=fexist)
+          
+          IF( fexist ) THEN 
+             OPEN(700+is, FILE = fname, FORM='FORMATTED', STATUS='OLD', POSITION='APPEND')
+          ELSE
+             OPEN(700+is, FILE = fname, FORM='FORMATTED' )
+          ENDIF
 
-
+       ENDIF
+    ENDDO
+!
+!-- COVID-19 related code ends
+    
  END SUBROUTINE user_parin
 
 
 !--------------------------------------------------------------------------------------------------!
 ! Description:
 ! ------------
-!> Set boundary conditions for a user-defined prognostic quantity.
-!--------------------------------------------------------------------------------------------------!
- SUBROUTINE user_boundary_conditions
-
-!
-!-- Example code for a user-defined prognostic quantity s1.
-!    IMPLICIT NONE
-
-!    INTEGER(iwp) ::  i                            !< grid index x direction.
-!    INTEGER(iwp) ::  j                            !< grid index y direction.
-!    INTEGER(iwp) ::  k                            !< grid index z direction.
-!    INTEGER(iwp) ::  m                            !< running index surface elements.
-
-!!
-!!-- Boundary conditions for s1.
-!!-- Bottom boundary: Neumann condition because s1 flux is always given.
-!    !$OMP PARALLEL DO PRIVATE( i, j, k )
-!    DO  m = 1, bc_hv%ns
-!       i = bc_hv%i(m)
-!       j = bc_hv%j(m)
-!       k = bc_hv%k(m)
-!       s1_p(k+bc_hv%koff(m),j+bc_hv%joff(m),i+bc_hv%ioff(m)) = s1_p(k,j,i)
-!    ENDDO
-!!
-!!-- Top boundary: Dirichlet or Neumann
-!    IF ( ibc_s1_t == 0 )  THEN
-!        s1_p(nzt+1,:,:) = s1(nzt+1,:,:)
-!    ELSEIF ( ibc_sa_t == 1 )  THEN
-!        s1_p(nzt+1,:,:) = s1_p(nzt,:,:)
-!    ENDIF
-
- END SUBROUTINE user_boundary_conditions
-
-
-!--------------------------------------------------------------------------------------------------!
-! Description:
-! ------------
-!> Check &user_parameters control parameters and deduce further quantities.
+!> Check &userpar control parameters and deduce further quantities.
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE user_check_parameters
 
@@ -470,30 +558,6 @@
 !--------------------------------------------------------------------------------------------------!
 ! Description:
 ! ------------
-!> Exchange ghost points for a user-defined prognostic quantity.
-!--------------------------------------------------------------------------------------------------!
- SUBROUTINE user_exchange_horiz( location )
-
-    CHARACTER (LEN=*), INTENT(IN) ::  location !< call location string
-
-    SELECT CASE ( location )
-
-       CASE ( 'before_prognostic_equation' )
-
-       CASE ( 'after_prognostic_equation' )
-
-!
-!--        Example for an additional passive scalar quantity s1.
-!          CALL exchange_horiz( s1_p, nbgp )
-
-    END SELECT
-
- END SUBROUTINE user_exchange_horiz
-
-
-!--------------------------------------------------------------------------------------------------!
-! Description:
-! ------------
 !> Initialize user-defined arrays
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE user_init_arrays
@@ -541,13 +605,117 @@
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE user_init
 
+    USE exchange_horiz_mod
 
-!    CHARACTER(LEN=20) :: field_char  !<
+    CHARACTER(LEN=100), DIMENSION(:), ALLOCATABLE ::  var_names  !< variable names in static input file
+
+    INTEGER(iwp) ::  id_static                               !< file id for static input file
+    INTEGER(iwp) ::  k, j, i                                      !< running index along z-direction
+    INTEGER(iwp) ::  l                                       !< running index surface orientation
+    INTEGER(iwp) ::  num_vars                                !< number of variables in static input file
+ 
+    INTEGER(iwp), DIMENSION(:,:,:), ALLOCATABLE ::  human_gp !< flag array indicating human grid points
+
+    TYPE(real_3d) ::  pt_3d !< input variable for human temperatures
+    TYPE(surf_type), POINTER ::  surfaces !< surface array
+
 !
-!-- Here the user-defined initializing actions follow:
-!-- Sample for user-defined output
-!    ustvst = 0.0_wp
+!-- Open NetCDF file and read 3D temperature field
+    CALL open_read_file( TRIM( input_file_static ) // TRIM( coupling_char ) , id_static )
+!
+!-- Inquire all variable names.
+!-- This will be used to check whether an optional input variable exists or not.
+    CALL inquire_num_variables( id_static, num_vars )
 
+    ALLOCATE( var_names(1:num_vars) )
+    CALL inquire_variable_names( id_static, var_names )
+
+
+    IF ( check_existence( var_names, 'theta_3d' ) )  THEN
+       pt_3d%from_file = .TRUE.
+       CALL get_attribute( id_static, char_fill, pt_3d%fill, .FALSE., 'theta_3d' )
+
+       CALL get_dimension_length( id_static, pt_3d%nz, 'z' )
+       ALLOCATE( pt_3d%var(0:pt_3d%nz-1,nys:nyn,nxl:nxr) )
+
+       CALL get_variable( id_static, 'theta_3d', pt_3d%var, nxl, nxr, nys, nyn, 0, pt_3d%nz-1 )
+!
+!--    Resize the temperature array and exchange ghost points, which is required for surface temperature
+!--    mapping. Before doing this, replace possible NaNs in the array.
+       pt_3d%var = MERGE( pt_3d%fill, pt_3d%var,                                          &
+                             pt_3d%var == pt_3d%fill  .OR.                                   &
+                             .NOT. ( pt_3d%var == pt_3d%var ) )
+       CALL resize_array_3d_real( pt_3d%var, 0, pt_3d%nz-1, nys, nyn, nxl, nxr )
+       DO  k = 0, pt_3d%nz-1
+          CALL exchange_horiz_2d( pt_3d%var(k,:,:) )
+       ENDDO
+    ELSE
+       pt_3d%from_file = .FALSE.
+    ENDIF
+
+    DEALLOCATE( var_names )
+!
+!-- Note, somehow distinguish whether the object is human or an obstacle - in order to correctly employ heating
+    ALLOCATE( human_gp(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
+    human_gp = 0
+!
+!-- Flag human grid points. These are given when a 3D topography is defined and a temperature is 
+!-- given. Any other topography is something else like tables, chairs, walls, etc.
+    IF ( buildings_f%from_file  .AND.  pt_3d%from_file )  THEN
+       IF ( buildings_f%lod == 2 )                                                                 &
+          human_gp(nzb:buildings_f%nz-1,nys:nyn,nxl:nxr) =                                         &
+                MERGE( 1_iwp, 0_iwp, buildings_f%var_3d(nzb:buildings_f%nz-1,nys:nyn,nxl:nxr) == 1 &
+                              .AND.  pt_3d%var(nzb:pt_3d%nz-1,nys:nyn,nxl:nxr) /= pt_3d%fill )
+    ENDIF
+    CALL exchange_horiz_int( human_gp, nys, nyn, nxl, nxr, nzt, nbgp )
+
+!     DO i = nxlg, nxrg
+!        DO j = nysg, nyng
+!           DO k = nzb+1, pt_3d%nz-1
+!              IF ( human_gp(k,j,i) == 1 )  write(9,*) k, j, i, .NOT. ( pt_3d%var(k,j,i) == pt_3d%var(k,j,i) ), &
+!                                          pt_3d%var(k,j,i), i < nxl .OR. i > nxr .OR. j < nys .OR. j > nyn
+!           ENDDO
+!        ENDDO
+!     ENDDO
+
+    IF ( pt_3d%from_file )  THEN
+       DO  l = 0, 1
+          surfaces => surf_def_h(l)
+          CALL set_human_temperature
+       ENDDO
+
+       DO  l = 0, 3
+          surfaces => surf_def_v(l)
+          CALL set_human_temperature
+       ENDDO
+    ENDIF
+
+    CONTAINS
+
+       SUBROUTINE set_human_temperature
+
+          INTEGER(iwp) ::  i
+          INTEGER(iwp) ::  j
+          INTEGER(iwp) ::  k
+          INTEGER(iwp) ::  m
+
+!
+!--       Allocate surface array for human heating. This is further used in surface-layer flux
+!--       calculation to set surface temperature at non-human grid points where we want to have a 
+!--       zero flux (tables, chairs, etc. should have zero storage).
+          ALLOCATE( surfaces%human_heating(1:surfaces%ns) )
+          surfaces%human_heating = .FALSE.
+          DO m = 1, surfaces%ns
+             i = surfaces%i(m) + surfaces%ioff
+             j = surfaces%j(m) + surfaces%joff
+             k = surfaces%k(m) + surfaces%koff
+             IF ( human_gp(k,j,i) == 1 )  THEN
+                surfaces%pt_surface(m) = pt_3d%var(k,j,i)
+                surfaces%human_heating(m) = .TRUE.
+             ENDIF
+          ENDDO
+
+    END SUBROUTINE set_human_temperature
 
  END SUBROUTINE user_init
 
@@ -744,7 +912,17 @@
 
     INTEGER(iwp) ::  i  !<
     INTEGER(iwp) ::  j  !<
+!
+!-- COVID-19 related code begins  
+    INTEGER(iwp) ::  is !< running index over user-defined source-term boxes
+    INTEGER(iwp) ::  k  !< grid index in the z-direction
 
+    REAL(wp) :: maxsrc  !< maximum value for the source term in the target-value mode
+    REAL(wp) :: minsrc  !< minimum value for the source term in the target-value mode
+    REAL(wp) :: src     !< temporary variable for the source term
+!
+!-- COVID-19 related code ends  
+    
 !
 !-- Here the user-defined actions follow
     SELECT CASE ( location )
@@ -753,20 +931,138 @@
 
 !
 !--       Next line is to avoid compiler warning about unused variables. Please remove.
-          IF ( i == 0  .OR.  j == 0 )  CONTINUE
-
+!          IF ( i == 0  .OR.  j == 0 )  CONTINUE
 !
 !--       Enter actions to be done in the u-tendency term here
-
-
+!
+!--       COVID-19 related code begins    
+!--       The source term can be given either in the source-strength mode or in the target-value mode.
+!--       The former is controlled by u_q and the latter by u_target and u_tau. A single source term
+!--       can only be specified in one mode. If both u_q and u_target are given, then the source-
+!--       strength mode will be used. This applies also to variables v, w, pt and s.
+          DO  is = 1, num_user_sources
+             IF ( simulated_time >= user_source(is)%start_time  .AND.                               &
+                  simulated_time <= user_source(is)%end_time )  THEN
+                IF ( ( i >= user_source(is)%i_sbl  .AND.  i <= user_source(is)%i_sbr )  .AND.       &
+                     ( j >= user_source(is)%j_sbs  .AND.  j <= user_source(is)%j_sbn ) )  THEN  
+                   DO  k = user_source(is)%k_sbb, user_source(is)%k_sbt
+                      IF ( user_source(is)%u_q < 9999999.0_wp )  THEN
+                         src = user_source(is)%u_q
+                      ELSE IF ( user_source(is)%u_target < 9999999.0_wp )  THEN
+                         maxsrc =  ABS( user_source(is)%u_target ) / user_source(is)%u_tau
+                         minsrc = -maxsrc
+                         src = ( user_source(is)%u_target - u(k,j,i) ) / user_source(is)%u_tau
+                         src = MAX( MIN( src, maxsrc ), minsrc )
+                      ELSE
+                         src = 0.0_wp
+                      ENDIF
+                      tend(k,j,i) = tend(k,j,i) + src
+                   ENDDO
+                ENDIF
+             ENDIF
+          ENDDO
+!
+!--       COVID-19 related code ends
+          
        CASE ( 'v-tendency' )
-
+!
+!--       COVID-19 related code begins
+!--       The source term can be given either in the source-strength mode or in the target-value mode.
+!--       The former is controlled by v_q and the latter by v_target and v_tau. A single source term
+!--       can only be specified in one mode. If both v_q and v_target are given, then the source-
+!--       strength mode will be used. This applies also to variables u, w, pt and s.       
+          DO  is = 1, num_user_sources
+             IF ( simulated_time >= user_source(is)%start_time  .AND.                               &
+                  simulated_time <= user_source(is)%end_time )  THEN
+                IF ( ( i >= user_source(is)%i_sbl  .AND.  i <= user_source(is)%i_sbr )  .AND.       &
+                     ( j >= user_source(is)%j_sbs  .AND.  j <= user_source(is)%j_sbn ) )  THEN  
+                   DO  k = user_source(is)%k_sbb, user_source(is)%k_sbt
+                      IF ( user_source(is)%v_q < 9999999.0_wp )  THEN
+                         src = user_source(is)%v_q
+                      ELSE IF ( user_source(is)%v_target < 9999999.0_wp )  THEN
+                         maxsrc =  ABS( user_source(is)%v_target ) / user_source(is)%v_tau
+                         minsrc = -maxsrc
+                         src = ( user_source(is)%v_target - v(k,j,i) ) / user_source(is)%v_tau
+                         src = MAX( MIN( src, maxsrc ), minsrc )
+                      ELSE
+                         src = 0.0_wp
+                      ENDIF
+                      tend(k,j,i) = tend(k,j,i) + src
+                   ENDDO
+                ENDIF
+             ENDIF
+          ENDDO
+!
+!--       COVID-19 related code ends             
 
        CASE ( 'w-tendency' )
-
+!
+!--       COVID-19 related code begins    
+!--       The source term can be given either in the source-strength mode or in the target-value mode.
+!--       The former is controlled by w_q and the latter by w_target and w_tau. A single source term
+!--       can only be specified in one mode. If both w_q and w_target are given, then the source-
+!--       strength mode will be used. This applies also to variables u, v, pt and s.
+          DO  is = 1, num_user_sources
+             IF ( simulated_time >= user_source(is)%start_time  .AND.                               &
+                  simulated_time <= user_source(is)%end_time )  THEN
+                IF ( ( i >= user_source(is)%i_sbl  .AND.  i <= user_source(is)%i_sbr )  .AND.       &
+                     ( j >= user_source(is)%j_sbs  .AND.  j <= user_source(is)%j_sbn ) )  THEN  
+                   DO  k = user_source(is)%k_sbb, user_source(is)%k_sbt
+                      IF ( user_source(is)%w_q < 9999999.0_wp )  THEN
+                         src = user_source(is)%w_q
+                      ELSE IF ( user_source(is)%w_target < 9999999.0_wp )  THEN
+                         maxsrc =  ABS( user_source(is)%w_target ) / user_source(is)%w_tau
+                         minsrc = -maxsrc
+                         src = ( user_source(is)%w_target - w(k,j,i) ) / user_source(is)%w_tau
+                         src = MAX( MIN( src, maxsrc ), minsrc )
+                      ELSE
+                         src = 0.0_wp
+                      ENDIF
+                      tend(k,j,i) = tend(k,j,i) + src
+                   ENDDO
+                ENDIF
+             ENDIF
+          ENDDO
+!
+!--       COVID-19 related code ends              
 
        CASE ( 'pt-tendency' )
-
+!
+!--       COVID-19 related code begins    
+!--       The source term can be given either in the source-strength mode or in the target-value mode.
+!--       The former is controlled by theta_q and the latter by theta_target and theta_tau. A single 
+!--       source term can only be specified in one mode. If both theta_q and theta_target are given, 
+!--       then the source-strength mode will be used. This applies also to variables u, v, w, and s.
+          DO  is = 1, num_user_sources
+             IF ( simulated_time >= user_source(is)%start_time  .AND.                               &
+                  simulated_time <= user_source(is)%end_time )  THEN
+                IF ( ( i >= user_source(is)%i_sbl  .AND.  i <= user_source(is)%i_sbr )  .AND.       &
+                     ( j >= user_source(is)%j_sbs  .AND.  j <= user_source(is)%j_sbn ) )  THEN  
+                   DO  k = user_source(is)%k_sbb, user_source(is)%k_sbt
+                      IF ( user_source(is)%theta_q < 9999999.0_wp )  THEN
+                         src = user_source(is)%theta_q
+                      ELSE IF ( user_source(is)%theta_target < 9999999.0_wp )  THEN
+                         IF ( user_source(is)%theta_target >= pt_surface )  THEN
+                            maxsrc =  ( user_source(is)%theta_target - pt_surface ) /               &
+                              user_source(is)%theta_tau
+                         ELSE
+                            maxsrc =  ( pt_surface - user_source(is)%theta_target ) /               &
+                              user_source(is)%theta_tau
+                         ENDIF
+                         minsrc = -maxsrc
+                         src = ( user_source(is)%theta_target - pt(k,j,i) ) /                       &
+                              user_source(is)%theta_tau
+                         src = MAX( MIN( src, maxsrc ), minsrc )
+                      ELSE
+                         src = 0.0_wp
+                      ENDIF
+                      tend(k,j,i) = tend(k,j,i) + src
+                   ENDDO
+                ENDIF
+             ENDIF
+          ENDDO
+!
+!--       COVID-19 related code ends 
 
        CASE ( 'sa-tendency' )
 
@@ -778,7 +1074,37 @@
 
 
        CASE ( 's-tendency' )
-
+!
+!--       COVID-19 related code begins    
+!--       The source term can be given either in the source-strength mode or in the target-value mode.
+!--       The former is controlled by s_q and the latter by s_target and s_tau. A single source term
+!--       can only be specified in one mode. If both s_q and s_target are given, then the source-
+!--       strength mode will be used. This applies also to variables u, v, w and pt.
+          DO  is = 1, num_user_sources
+             IF ( simulated_time >= user_source(is)%start_time  .AND.                               &
+                  simulated_time <= user_source(is)%end_time )  THEN
+                IF ( ( i >= user_source(is)%i_sbl  .AND.  i <= user_source(is)%i_sbr )  .AND.       &
+                     ( j >= user_source(is)%j_sbs  .AND.  j <= user_source(is)%j_sbn ) )  THEN  
+                   DO  k = user_source(is)%k_sbb, user_source(is)%k_sbt
+                      IF ( user_source(is)%s_q < 9999999.0_wp )  THEN
+                         src = user_source(is)%s_q
+                      ELSE IF ( user_source(is)%s_target < 9999999.0_wp )  THEN
+                         maxsrc =  user_source(is)%s_target / user_source(is)%s_tau
+!
+!--                      Limit negative source from below to ensure positivity of s.
+                         minsrc = -0.25 * ( s(k,j,i) / dt_3d )
+                         src = ( user_source(is)%s_target - s(k,j,i) ) / user_source(is)%s_tau
+                         src = MAX( MIN( src, maxsrc ), minsrc )
+                      ELSE
+                         src = 0.0_wp
+                      ENDIF
+                      tend(k,j,i) = tend(k,j,i) + src
+                   ENDDO
+                ENDIF
+             ENDIF
+          ENDDO
+!
+!--       COVID-19 related code ends        
 
        CASE DEFAULT
           CONTINUE
@@ -787,197 +1113,77 @@
 
  END SUBROUTINE user_actions_ij
 
+!
+!-- COVID-19 related code begins
+ SUBROUTINE user_reset_scalar
 
-!--------------------------------------------------------------------------------------------------!
-! Description:
-! ------------
-!> Execution of user-defined prognostic equations.
-!> Vector optimized version (call for all grid points).
-!--------------------------------------------------------------------------------------------------!
- SUBROUTINE user_prognostic_equations
-!
-!-- What follows is an example about how to add an equation for an additional passive scalar s1.
-!-- Keep in mind, that this scalar has to be introduced in several other user-interface routines,
-!-- too, e.g. in user_init or the routines reading/writing restart data.
-!    USE advec_s_bc_mod,                                                                            &
-!        ONLY:  advec_s_bc
-!
-!    USE advec_s_pw_mod,                                                                            &
-!        ONLY:  advec_s_pw
-!
-!    USE advec_s_up_mod,                                                                            &
-!        ONLY:  advec_s_up
-!
-!    USE advec_ws,                                                                                  &
-!        ONLY:  advec_s_ws
-!
-!    USE arrays_3d,                                                                                 &
-!        ONLY:  rdf_sc,                                                                             &
-!               tend,                                                                               &
-!
-!    USE control_parameters,                                                                        &
-!        ONLY:  bc_dirichlet_l,                                                                     &
-!               bc_dirichlet_n,                                                                     &
-!               bc_dirichlet_r,                                                                     &
-!               bc_dirichlet_s,                                                                     &
-!               bc_radiation_l,                                                                     &
-!               bc_radiation_n,                                                                     &
-!               bc_radiation_r,                                                                     &
-!               bc_radiation_s,                                                                     &
-!               dt_3d,                                                                              &
-!               intermediate_timestep_count,                                                        &
-!               intermediate_timestep_count_max,                                                    &
-!               scalar_advec,                                                                       &
-!               simulated_time,                                                                     &
-!               timestep_scheme,                                                                    &
-!               tsc,                                                                                &
-!               ws_scheme_sca
-!
-!    USE diffusion_s_mod,                                                                           &
-!        ONLY:  diffusion_s
-!
-!    IMPLICIT NONE
-!
-!    INTEGER(iwp) ::  i       !< loop index
-!    INTEGER(iwp) ::  j       !< loop index
-!    INTEGER(iwp) ::  k       !< loop index
-!
-!    REAL(wp)     ::  sbt     !< weighting factor for sub-time step
-!
-!
-!!
-!!-- Compute a prognostic equations for an additional scalar s1.
-!
-!!
-!!-- tendency terms with communication
-!    sbt = tsc(2)
-!    IF ( scalar_advec == 'bc-scheme' )  THEN
-!
-!       IF ( timestep_scheme(1:5) /= 'runge' )  THEN
-!!
-!!--       Bott-Chlond scheme always uses Euler time step. Thus:
-!          sbt = 1.0_wp
-!       ENDIF
-!       tend = 0.0_wp
-!       CALL advec_s_bc( s1, 's1' )
-!
-!    ENDIF
-!
-!!
-!!-- tendency terms with no communication
-!    IF ( scalar_advec /= 'bc-scheme' )  THEN
-!       tend = 0.0_wp
-!       IF ( timestep_scheme(1:5) == 'runge' )  THEN
-!          IF ( ws_scheme_sca )  THEN
-!             CALL advec_s_ws( advc_flags_s, s1, 's1',                                           &
-!                              bc_dirichlet_l  .OR.  bc_radiation_l,                             &
-!                              bc_dirichlet_n  .OR.  bc_radiation_n,                             &
-!                              bc_dirichlet_r  .OR.  bc_radiation_r,                             &
-!                              bc_dirichlet_s  .OR.  bc_radiation_s )
-!          ELSE
-!             CALL advec_s_pw( s1 )
-!          ENDIF
-!       ELSE
-!          CALL advec_s_up( s1 )
-!       ENDIF
-!    ENDIF
-!
-!    CALL diffusion_s( s1, surf_top%s1sws, surf_def%s1sws, surf_lsm%s1sws, surf_usm%s1sws )
-!
-!!
-!!-- Prognostic equation for s1
-!    DO  i = nxl, nxr
-!       DO  j = nys, nyn
-!          !following directive is required to vectorize on Intel19
-!          !DIR$ IVDEP
-!          DO  k = nzb+1, nzt
-!             s1_p(k,j,i) = s1(k,j,i) + ( dt_3d * ( sbt * tend(k,j,i) + tsc(3) * ts1_m(k,j,i) )  &
-!                                         - tsc(5) * rdf_sc(k) * ( s1(k,j,i) - s1_init(k) )      &
-!                                       )                                                        &
-!                                         * MERGE( 1.0_wp, 0.0_wp,                               &
-!                                                  BTEST( topo_flags(k,j,i), 0 )                 &
-!                                                )
-!             IF ( s1_p(k,j,i) < 0.0_wp )  s1_p(k,j,i) = 0.1_wp * s1(k,j,i)
-!          ENDDO
-!       ENDDO
-!    ENDDO
-!
-!!
-!!-- Calculate tendencies for the next Runge-Kutta step
-!    IF ( timestep_scheme(1:5) == 'runge' )  THEN
-!       IF ( intermediate_timestep_count == 1 )  THEN
-!          DO  i = nxl, nxr
-!             DO  j = nys, nyn
-!                DO  k = nzb+1, nzt
-!                  ts1_m(k,j,i) = tend(k,j,i)
-!                ENDDO
-!             ENDDO
-!          ENDDO
-!       ELSEIF ( intermediate_timestep_count < intermediate_timestep_count_max )  THEN
-!          DO  i = nxl, nxr
-!             DO  j = nys, nyn
-!                DO  k = nzb+1, nzt
-!                   ts1_m(k,j,i) = -9.5625_wp * tend(k,j,i) + 5.3125_wp * ts1_m(k,j,i)
-!                ENDDO
-!             ENDDO
-!          ENDDO
-!       ENDIF
-!    ENDIF
+   INTEGER(iwp) ::  i
+   INTEGER(iwp) ::  ierr
+   INTEGER(iwp) ::  is
+   INTEGER(iwp) ::  j
+   INTEGER(iwp) ::  k
+   INTEGER(iwp), DIMENSION(1:num_user_sources) :: nsum
+   INTEGER(iwp), DIMENSION(1:num_user_sources) :: nsum_l
 
- END SUBROUTINE user_prognostic_equations
+   REAL(wp), DIMENSION(1:num_user_sources) :: ssum
+   REAL(wp), DIMENSION(1:num_user_sources) :: ssum_l
+   REAL(wp), DIMENSION(1:num_user_sources) :: wsum
+   REAL(wp), DIMENSION(1:num_user_sources) :: wsum_l
+   REAL(wp) :: vol
 
+   
+   ssum   = 0.0_wp
+   ssum_l = 0.0_wp
+   wsum   = 0.0_wp
+   wsum_l = 0.0_wp
+   nsum   = 0.0_wp
+   nsum_l = 0.0_wp
+!   
+!--Assume there is no grid stretching
+   vol    = dx * dy * dz(1)
+   
+   DO  is = 1, num_user_sources      
+      IF ( simulated_time >= user_source(is)%start_time  .AND.                                      &
+           simulated_time <= user_source(is)%end_time )  THEN
+         IF ( user_source(is)%s_monitor  .OR.  user_source(is)%s_reset < 9999999.0_wp )  THEN
+         
+            DO  i = user_source(is)%i_sbl, user_source(is)%i_sbr
+               DO  j = user_source(is)%j_sbs, user_source(is)%j_sbn
+                  IF ( ( i >= nxl  .AND.  i <= nxr ) .AND. ( j >= nys .AND.  j <= nyn ) )  THEN          
+                     DO  k = user_source(is)%k_sbb, user_source(is)%k_sbt
+                        ssum_l(is) = ssum_l(is) + s(k,j,i)
+                        wsum_l(is) = wsum_l(is) + w(k,j,i)
+                        nsum_l(is) = nsum_l(is) + 1
+                        IF ( user_source(is)%s_reset < 9999999.0_wp )  THEN
+                           s(k,j,i) = user_source(is)%s_reset
+                           s_p(k,j,i) = user_source(is)%s_reset
+                        ENDIF
+                     ENDDO  ! k-loop
+                  ENDIF
+               ENDDO  ! j-loop
+            ENDDO  ! i-loop
 
-!--------------------------------------------------------------------------------------------------!
-! Description:
-! ------------
-!> Execution of user-defined prognostic equations.
-!> Cache optimized version (call for all k along grid point (j,i)).
-!--------------------------------------------------------------------------------------------------!
- SUBROUTINE user_prognostic_equations_ij( i, j, i_omp_start, tn )
+         ENDIF
+      ENDIF
+      
+      CALL MPI_ALLREDUCE( nsum_l, nsum, num_user_sources, MPI_INTEGER, MPI_SUM, comm2d, ierr )
+      CALL MPI_ALLREDUCE( ssum_l, ssum, num_user_sources, MPI_REAL, MPI_SUM, comm2d, ierr )
+      CALL MPI_ALLREDUCE( wsum_l, wsum, num_user_sources, MPI_REAL, MPI_SUM, comm2d, ierr )
+
+      IF ( myid == 0 )  THEN
+!         
+!--      Write only if there is something to be written for this source (is).
+         IF ( user_source(is)%s_monitor .AND.  nsum(is) > 0 )  THEN
+            WRITE(700+is,"(3(e13.5e3,2x))") simulated_time, vol * ssum(is),                           &
+                 wsum(is) / REAL( nsum(is), wp )
+         ENDIF
+      ENDIF
+
+   ENDDO  ! is-loop
+       
+ END SUBROUTINE user_reset_scalar
 !
-!-- Use code based on the vector optimized routine above.
-!-- See e.g. routine ocean_prognostic_equations_ij on how to setup for a specific i,j index.
-    INTEGER(iwp) ::  i             !< loop index x direction
-    INTEGER(iwp) ::  i_omp_start   !< first loop index of i-loop in calling routine prognostic_equations
-    INTEGER(iwp) ::  j             !< loop index y direction
-!    INTEGER(iwp) ::  k             !< loop index z direction
-    INTEGER(iwp) ::  tn            !< task number of openmp task
-
-
-!
-!-- Dummy code to avoid compiler warnings. Please remove
-    IF ( i == -100 )  tn = i_omp_start + j + tn
-
- END SUBROUTINE user_prognostic_equations_ij
-
-
-!--------------------------------------------------------------------------------------------------!
-! Description:
-! ------------
-!> Swapping of timelevels for a user-defined prognostic quantity.
-!--------------------------------------------------------------------------------------------------!
- SUBROUTINE user_swap_timelevel( mod_count )
-
-    IMPLICIT NONE
-
-    INTEGER, INTENT(IN) ::  mod_count  !< flag defining where pointers point to
-
-
-!
-!-- Example code for a user-defined prognostic quantity s1.
-    SELECT CASE ( mod_count )
-
-       CASE ( 0 )
-!          s1 => s1_1;    s1_p => s1_2
-
-       CASE ( 1 )
-!          s1 => s1_2;    s1_p => s1_1
-
-    END SELECT
-
-
- END SUBROUTINE user_swap_timelevel
-
+!--       COVID-19 related code ends          
 
 !--------------------------------------------------------------------------------------------------!
 ! Description:
@@ -1091,6 +1297,8 @@
     LOGICAL      ::  found  !<
     LOGICAL      ::  two_d  !< flag parameter that indicates 2D variables (horizontal cross sections)
 
+!    REAL(wp) ::  fill_value = -999.0_wp    !< value for the _FillValue attribute
+
     REAL(wp), DIMENSION(nxl:nxr,nys:nyn,nzb_do:nzt_do) ::  local_pf  !<
 
 !
@@ -1119,7 +1327,7 @@
 !          ELSE
 !             IF ( .NOT. ALLOCATED( u2_av ) )  THEN
 !                ALLOCATE( u2_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-!                u2_av = 0.0_wp
+!                u2_av = REAL( fill_value, KIND = wp )
 !             ENDIF
 !             DO  i = nxl, nxr
 !                DO  j = nys, nyn
@@ -1135,36 +1343,29 @@
 !--    In case two-dimensional surface variables are output, the user has to access related
 !--    surface-type. Uncomment and extend following lines appropriately (example output of vertical
 !--    surface momentum flux of u-component). Please note, surface elements can be distributed over
-!--    several data types, depending on their respective surface properties. The example shows how
-!--    to sample data on horizontally-upward facing surfaces
+!--    several data types, depending on their respective surface properties.
 !       CASE ( 'usws_xy' )
 !          IF ( av == 0 )  THEN
 !
 !--           Horizontal default-type surfaces
-!             DO  m = 1, surf_def%ns
-!                i = surf_def%i(m)
-!                j = surf_def%j(m)
-!                local_pf(i,j,1) = MERGE( surf_def%usws(m),                                        &
-!                                         local_pf(i,j,1),                                         &
-!                                         surf_def%upward(m) )
+!             DO  m = 1, surf_def_h(0)%ns
+!                i = surf_def_h(0)%i(m)
+!                j = surf_def_h(0)%j(m)
+!                local_pf(i,j,1) = surf_def_h(0)%usws(m)
 !             ENDDO
 !
 !--           Horizontal natural-type surfaces
-!             DO  m = 1, surf_lsm%ns
-!                i = surf_lsm%i(m)
-!                j = surf_lsmj(m)
-!                local_pf(i,j,1) = MERGE( surf_lsm%usws(m),                                        &
-!                                         local_pf(i,j,1),                                         &
-!                                         surf_lsm%upward(m) )
+!             DO  m = 1, surf_lsm_h%ns
+!                i = surf_lsm_h%i(m)
+!                j = surf_lsm_h%j(m)
+!                local_pf(i,j,1) = surf_lsm_h%usws(m)
 !             ENDDO
 !
 !--           Horizontal urban-type surfaces
-!             DO  m = 1, surf_usm%ns
-!                i = surf_usm%i(m)
-!                j = surf_usm%j(m)
-!                local_pf(i,j,1) = MERGE( surf_usm%usws(m),                                        &
-!                                         local_pf(i,j,1),                                         &
-!                                         surf_usm%upward(m) )
+!             DO  m = 1, surf_usm_h%ns
+!                i = surf_usm_h%i(m)
+!                j = surf_usm_h%j(m)
+!                local_pf(i,j,1) = surf_usm_h%usws(m)
 !             ENDDO
 !          ENDIF
 !
@@ -1202,12 +1403,14 @@
 
     LOGICAL      ::  found  !<
 
-    REAL(wp), DIMENSION(nxl:nxr,nys:nyn,nzb_do:nzt_do) ::  local_pf  !<
+!    REAL(wp) ::  fill_value = -999.0_wp  !< value for the _FillValue attribute
 
+    REAL(wp), DIMENSION(nxl:nxr,nys:nyn,nzb_do:nzt_do) ::  local_pf  !<
 
 !
 !-- Next line is to avoid compiler warning about unused variables. Please remove.
     IF ( av == 0  .OR.  local_pf(nxl,nys,nzb_do) == 0.0_wp )  CONTINUE
+
 
     found = .TRUE.
 
@@ -1230,7 +1433,7 @@
 !          ELSE
 !             IF ( .NOT. ALLOCATED( u2_av ) )  THEN
 !                ALLOCATE( u2_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-!                u2_av = 0.0_wp
+!                u2_av = REAL( fill_value, KIND = wp )
 !             ENDIF
 !             DO  i = nxl, nxr
 !                DO  j = nys, nyn
@@ -1293,7 +1496,7 @@
 !                                         ( 0.5_wp * ( u(k,j,i) + u(k,j,i+1) ) - hom(k,1,1,sr) ) *  &
 !                                         ( 0.5_wp * ( v(k,j,i) + v(k,j+1,i) ) - hom(k,1,2,sr) ) *  &
 !                                         rmask(j,i,sr) * MERGE( 1.0_wp, 0.0_wp,                    &
-!                                         BTEST( topo_flags(k,j,i), 0 ) )
+!                                         BTEST( wall_flags_total_0(k,j,i), 0 ) )
 !!
 !!--             Further profiles can be defined and calculated by increasing the second index of
 !!--             array sums_l (replace ... appropriately)
@@ -1450,19 +1653,10 @@
 !    USE restart_data_mpi_io_mod,                                                                   &
 !        ONLY:  rd_mpi_io_check_array, rrd_mpi_io
 
-!    LOGICAL  ::  array_found     !<
-
-!
-!--  Restart input of time-averaged quantities is skipped in case of cyclic-fill initialization.
-!--  This case, input of time-averaged data is useless and can lead to faulty averaging.
-!    IF ( .NOT. cyclic_fill_initialization )  THEN
-
-!       CALL rd_mpi_io_check_array( 'u2_av' , found = array_found )
-!       IF ( array_found )  THEN
-!          IF ( .NOT. ALLOCATED( u2_av ) )  ALLOCATE( u2_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-!          CALL rrd_mpi_io( 'u2_av', u2_av )
-!       ENDIF
-
+!    CALL rd_mpi_io_check_array( 'u2_av' , found = array_found )
+!    IF ( array_found )  THEN
+!       IF ( .NOT. ALLOCATED( u2_av ) )  ALLOCATE( u2_av(nysg:nyng,nxlg:nxrg) )
+!       CALL rrd_mpi_io( 'rad_u2_av', rad_u2_av )
 !    ENDIF
 
     CONTINUE

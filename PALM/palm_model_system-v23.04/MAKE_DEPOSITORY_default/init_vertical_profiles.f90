@@ -13,8 +13,23 @@
 ! You should have received a copy of the GNU General Public License along with PALM. If not, see
 ! <http://www.gnu.org/licenses/>.
 !
-! Copyright 2017-2021 Leibniz Universitaet Hannover
+! Copyright 2017-2020 Leibniz Universitaet Hannover
 !--------------------------------------------------------------------------------------------------!
+!
+! Current revisions:
+! -----------------
+!
+!
+! Former revisions:
+! -----------------
+! $Id: init_vertical_profiles.f90 4648 2020-08-25 07:52:08Z raasch $
+! file re-formatted to follow the PALM coding standard
+!
+! 4481 2020-03-31 18:55:54Z maronga
+! split from check_parameters as separate file to avoid circular dependency with ocean_mod
+!
+!
+!
 !
 ! Authors:
 ! --------
@@ -24,20 +39,19 @@
 ! ------------
 !> Inititalizes the vertical profiles of scalar quantities.
 !--------------------------------------------------------------------------------------------------!
- SUBROUTINE init_vertical_profiles( vertical_gradient_level_ind, vertical_gradient_level,          &
-                                    vertical_gradient, initial_profile, surface_value,             &
-                                    bc_top_gradient )
+ SUBROUTINE init_vertical_profiles( vertical_gradient_level_ind,                                   &
+                                    vertical_gradient_level,                                       &
+                                    vertical_gradient, initial_profile,                            &
+                                    surface_value, bc_top_gradient )
 
     USE arrays_3d,                                                                                 &
-        ONLY:  dzu,                                                                                &
-               zu
+        ONLY:  dzu, zu
 
     USE control_parameters,                                                                        &
         ONLY:  ocean_mode
 
     USE indices,                                                                                   &
-        ONLY:  nz,                                                                                 &
-               nzt
+        ONLY:  nz, nzt
 
     USE kinds
 

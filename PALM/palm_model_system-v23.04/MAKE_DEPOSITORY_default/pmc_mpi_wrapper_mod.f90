@@ -13,10 +13,37 @@
 ! You should have received a copy of the GNU General Public License along with PALM. If not, see
 ! <http://www.gnu.org/licenses/>.
 !
-! Copyright 1997-2021 Leibniz Universitaet Hannover
+! Copyright 1997-2020 Leibniz Universitaet Hannover
 !--------------------------------------------------------------------------------------------------!
 !
 !
+! Current revisions:
+! -----------------
+!
+!
+! Former revisions:
+! -----------------
+! $Id: pmc_mpi_wrapper_mod.f90 4649 2020-08-25 12:11:17Z raasch $
+! File re-formatted to follow the PALM coding standard
+!
+! Current revisions:
+! ------------------
+!
+!
+! 4629 2020-07-29 09:37:56Z raasch
+! Support for MPI Fortran77 interface (mpif.h) removed
+!
+! 4360 2020-01-07 11:25:50Z suehring
+! Corrected "Former revisions" section
+!
+! 3655 2019-01-07 16:51:22Z knoop
+! Extent interface by logical buffer
+!
+! 1762 2016-02-25 12:31:13Z hellstea
+! Initial revision by K. Ketelsen
+!
+!
+!--------------------------------------------------------------------------------------------------!
 ! Description:
 ! ------------
 !
@@ -30,12 +57,14 @@
 
     USE kinds
     USE pmc_handle_communicator,                                                                   &
-        ONLY:  m_model_comm,                                                                       &
-               m_model_rank,                                                                       &
-               m_to_child_comm,                                                                    &
-               m_to_parent_comm
+        ONLY: m_model_comm,                                                                        &
+              m_model_rank,                                                                        &
+              m_to_child_comm,                                                                     &
+              m_to_parent_comm
+
 
     IMPLICIT NONE
+
 
     PRIVATE
     SAVE

@@ -13,15 +13,39 @@
 ! You should have received a copy of the GNU General Public License along with PALM. If not, see
 ! <http://www.gnu.org/licenses/>.
 !
-! Copyright 1997-2021 Leibniz Universitaet Hannover
+! Copyright 1997-2020 Leibniz Universitaet Hannover
 !--------------------------------------------------------------------------------------------------!
 !
+!
+! Current revisions:
+! -----------------
+! 
+! 
+! Former revisions:
+! -----------------
+! $Id: user_init_grid.f90 4498 2020-04-15 14:26:31Z raasch $
+! file re-formatted to follow the PALM coding standard
+!
+!
+! 4360 2020-01-07 11:25:50Z suehring
+! Corrected "Former revisions" section
+!
+! 3768 2019-02-27 14:35:58Z raasch
+! variables commented + statement added to avoid compiler warnings about unused variables
+!
+! 3655 2019-01-07 16:51:22Z knoop
+! dz was replaced by dz(1)
+!
+! 217 2008-12-09 18:00:48Z letzel
+! +topography_grid_convention
+! Former file user_interface.f90 split into one file per subroutine
 !
 ! Description:
 ! ------------
 !> Execution of user-defined grid initializing actions
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE user_init_grid( topo_3d )
+
 
     USE control_parameters
 
@@ -60,7 +84,7 @@
 !--       Here the user can define their own topography.
 !--       After definition, please remove the following three lines!
           message_string = 'topography "' // topography // '" not available yet'
-          CALL message( 'user_init_grid', 'USR0002', 1, 2, 0, 6, 0 )
+          CALL message( 'user_init_grid', 'UI0005', 1, 2, 0, 6, 0 )
 !
 !--       The user is allowed to set surface-mounted as well as non-surface mounted topography
 !--       (e.g. overhanging structures). For both, use 3D array topo_3d and set bit 0. The
@@ -82,7 +106,7 @@
 !--       The DEFAULT case is reached if the parameter topography contains a wrong character string
 !--       that is neither recognized in init_grid nor here in user_init_grid.
           message_string = 'unknown topography "' // topography // '"'
-          CALL message( 'user_init_grid', 'USR0003', 1, 2, 0, 6, 0 )
+          CALL message( 'user_init_grid', 'UI0006', 1, 2, 0, 6, 0 )
 
     END SELECT
 

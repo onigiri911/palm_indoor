@@ -13,9 +13,37 @@
 ! You should have received a copy of the GNU General Public License along with PALM. If not, see
 ! <http://www.gnu.org/licenses/>.
 !
-! Copyright 2018-2021 Leibniz Universitaet Hannover
-! Copyright 2018-2021 Karlsruhe Institute of Technology
+! Copyright 2018-2020 Leibniz Universitaet Hannover
+! Copyright 2018-2020 Karlsruhe Institute of Technology
 !--------------------------------------------------------------------------------------------------!
+!
+! Current revisions:
+! -----------------
+! 
+! 
+! Former revisions:
+! -----------------
+! $Id: chem_photolysis_mod.f90 4577 2020-06-25 09:53:58Z raasch $
+! further re-formatting to follow the PALM coding standard
+!
+! 4559 2020-06-11 08:51:48Z raasch
+! file re-formatted to follow the PALM coding standard
+!
+! 4481 2020-03-31 18:55:54Z maronga
+! Change call to calc_zenith
+!
+! 4223 2019-09-10 09:20:47Z gronemeier
+! Corrected "Former revisions" section
+!
+! 3876 2019-04-08 18:41:49Z knoop
+! some formatting and comments added
+!
+! 3824 2019-03-27 15:56:16Z pavelkrc
+! unused variables removed
+!
+! 2718 2018-01-02 08:49:38Z maronga
+! Initial revision
+!
 !
 ! Authors:
 ! --------
@@ -29,28 +57,36 @@
 !--------------------------------------------------------------------------------------------------!
  MODULE chem_photolysis_mod
 
-    USE chem_gasphase_mod,                                                                         &
-        ONLY:  nphot,                                                                              &
-               phot,                                                                               &
-               phot_names
-
-    USE chem_modules,                                                                              &
-        ONLY:  phot_frequen,                                                                       &
-               photolysis_scheme,                                                                  &
-               photolysis_shading
+!   USE arrays_3d,                                                                                  &
+!       ONLY:  dzw, q, ql, zu, zw
 
     USE control_parameters,                                                                        &
         ONLY:  time_since_reference_point
 
+    USE pegrid,                                                                                    &
+        ONLY: myid, threads_per_task
+
     USE indices,                                                                                   &
-        ONLY:  nxl,                                                                                &
-               nxr,                                                                                &
-               nyn,                                                                                &
-               nys,                                                                                &
-               nzb,                                                                                &
-               nzt
+        ONLY:  nxl, nxlg, nxr, nxrg, nyn, nyng, nys, nysg, nzb, nzt
+
+    USE control_parameters,                                                                        &
+        ONLY:  initializing_actions
+
+    USE chem_gasphase_mod,                                                                         &
+        ONLY: nphot, phot, phot_names
+
+    USE chem_modules,                                                                              &
+        ONLY: phot_frequen, photolysis_scheme
+
+    USE chem_modules,                                                                              &
+        ONLY: chem_debug2
 
     USE kinds
+
+#if defined ( __netcdf )
+    USE NETCDF
+#endif
+
 
     IMPLICIT NONE
 
@@ -67,7 +103,7 @@
 
 !
 !-- Parameters for constant photolysis frequencies
-    INTEGER,PARAMETER :: nconst = 15               !< available predefined photolysis prequencies for constant
+    INTEGER,PARAMETER :: nconst  = 15               !< available predefined photolysis prequencies for constant
 !
 !-- Names for predefined fixed photolysis frequencies at zenith angle 0
     CHARACTER(LEN=10), PARAMETER, DIMENSION(nconst) :: names_c =  (/                               &
@@ -208,29 +244,16 @@
         ONLY:  get_date_time
 
     USE radiation_model_mod,                                                                       &
-        ONLY:  calc_zenith,                                                                        &
-               cos_zenith,                                                                         &
-               rad_sw_in_diff,                                                                     &
-               rad_sw_in_dir,                                                                      &
-               rad_shade_h,                                                                        &
-               solar_constant
+        ONLY:  calc_zenith, cos_zenith
 
     IMPLICIT NONE
 
-    INTEGER(iwp) ::  day_of_year  !< day of the year
-    INTEGER(iwp) ::  i            !< loop index x-direction
-    INTEGER(iwp) ::  iav          !< loop indix for photolysis reaction
-    INTEGER(iwp) ::  iphot        !< loop index for photolysis reaction
-    INTEGER(iwp) ::  j            !< loop index y-direction
-    INTEGER(iwp) ::  nhmax        !< level of maximum height of shade
+    INTEGER(iwp) :: day_of_year  !< day of the year
+    INTEGER(iwp) :: iav          !< loop indix for photolysis reaction
+    INTEGER(iwp) :: iphot        !< loop indix for photolysis reaction
 
-    REAL(wp)     ::  cos_exp          !< pre-calculatated cosine power of
-    REAL(wp)     ::  coszi            !< 1./cosine of zenith angle
-    REAL(wp)     ::  cloud_factor     !< ratio between clear-sky and current value of solar radiation
-    REAL(wp)     ::  exp_cos          !< pre-calculatated exponential function
-    REAL(wp)     ::  second_of_day    !< second of the day
-    REAL(wp)     ::  rad_sw_in_clear  !< incoming clear-sky solar radiation  (simple)
-    REAL(wp)     ::  sky_trans        !< 1./cosine of zenith angle
+    REAL(wp)     :: coszi          !< 1./cosine of zenith angle
+    REAL(wp)     :: second_of_day  !< second of the day
 
     DO  iphot = 1, nphot
        phot_frequen(iphot)%freq = 0.0_wp
@@ -242,42 +265,17 @@
 
     IF ( cos_zenith > 0.0_wp )  THEN
        coszi = 1.0_wp / cos_zenith
-       sky_trans = 0.6_wp + 0.2_wp * cos_zenith
-       rad_sw_in_clear = solar_constant * sky_trans * cos_zenith
 
-       DO  iphot = 1, nphot
-          DO  iav = 1, nsimple
-
+       DO iphot = 1, nphot
+          DO iav = 1, nsimple
              IF ( TRIM( names_s(iav) ) == TRIM( phot_names(iphot) ) )  THEN
-                exp_cos = EXP( - par_n(iav) * coszi )
-                cos_exp = par_l(iav) * cos_zenith**par_m(iav)
-
-                DO  i = nxl, nxr
-                   DO  j = nys, nyn
-                      cloud_factor = ( rad_sw_in_dir(j,i) + rad_sw_in_diff(j,i) ) / rad_sw_in_clear
-                      phot_frequen(iphot)%freq(nzb+1:nzt,j,i) = cos_exp * exp_cos * cloud_factor
-
-                   ENDDO
-                ENDDO
-!
-!--             Reduce photolysis frequency inside shadows (simple approach based on maximum shadow
-!--             height only: reduce down to 20 %).
-                IF ( photolysis_shading )  THEN
-                   DO  i = nxl, nxr
-                      DO  j = nys, nyn
-                         nhmax = rad_shade_h(j,i)
-                         phot_frequen(iphot)%freq(nzb+1:nhmax,j,i) =                               &
-                                                phot_frequen(iphot)%freq(nzb+1:nhmax,j,i) * 0.2_wp
-                      ENDDO
-                   ENDDO
-                ENDIF
-
+                phot_frequen(iphot)%freq(nzb+1:nzt,:,:) =  par_l(iav) * cos_zenith**par_m(iav) *   &
+                                                           EXP( - par_n(iav) * coszi )
              ENDIF
-
           ENDDO
        ENDDO
-
     ENDIF
+
 
  END SUBROUTINE photolysis_simple
 

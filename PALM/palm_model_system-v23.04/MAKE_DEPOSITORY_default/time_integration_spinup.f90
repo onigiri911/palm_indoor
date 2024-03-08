@@ -13,8 +13,84 @@
 ! You should have received a copy of the GNU General Public License along with PALM. If not, see
 ! <http://www.gnu.org/licenses/>.
 !
-! Copyright 1997-2021 Leibniz Universitaet Hannover
+! Copyright 1997-2020 Leibniz Universitaet Hannover
 !--------------------------------------------------------------------------------------------------!
+!
+!
+! Current revisions:
+! -----------------
+!
+!
+! Former revisions:
+! -----------------
+! $Id: time_integration_spinup.f90 4750 2020-10-16 14:27:48Z suehring $
+! - bugfix, call hourly-based indoor model only once per hour, not every timestep.
+! - optionally switch-off/on the indoor model during spinup
+!
+! 4687 2020-09-21 19:40:16Z maronga
+! Indoor model is now available during spinup
+!
+! 4671 2020-09-09 20:27:58Z pavelkrc
+! Implementation of downward facing USM and LSM surfaces
+!
+! 4669 2020-09-09 13:43:47Z pavelkrc
+! - Fix missing call of radiation after spinup
+! - Fix calculation of force_radiation_call
+! - Fix calculation of radiation times
+!
+! 4668 2020-09-09 13:00:16Z pavelkrc
+! Improve debug messages during timestepping
+!
+! 4654 2020-08-28 13:47:23Z pavelkrc
+! Add possibility to output surface data during spinup (author: J. Resler)
+!
+! 4635 2020-08-05 16:44:15Z suehring
+! Bugfix in calling radiation_control, was called every dt_spinup rather than only dt_radiation
+!
+! 4631 2020-08-03 13:48:14Z suehring
+! Set pt1 attribute only element-wise
+! 
+! 4540 2020-05-18 15:23:29Z raasch
+! File re-formatted to follow the PALM coding standard
+!
+! 4457 2020-03-11 14:20:43Z raasch
+! Use statement for exchange horiz added
+!
+! 4444 2020-03-05 15:59:50Z raasch
+! Bugfix: cpp-directives for serial mode added
+!
+! 4360 2020-01-07 11:25:50Z suehring
+! Enable output of diagnostic quantities, e.g. 2-m temperature
+!
+! 4227 2019-09-10 18:04:34Z gronemeier
+! Implement new palm_date_time_mod
+!
+! 4223 2019-09-10 09:20:47Z gronemeier
+! Corrected "Former revisions" section
+!
+! 4064 2019-07-01 05:33:33Z gronemeier
+! Moved call to radiation module out of intermediate time loop
+!
+! 4023 2019-06-12 13:20:01Z maronga
+! Time stamps are now negative in run control output
+!
+! 3885 2019-04-11 11:29:34Z kanani
+! Changes related to global restructuring of location messages and introduction of additional debug
+! messages
+!
+! 3766 2019-02-26 16:23:41Z raasch
+! Unused variable removed
+!
+! 3719 2019-02-06 13:10:18Z kanani
+! Removed log_point(19,54,74,50,75), since they count together with same log points in
+! time_integration, impossible to separate the contributions. Instead, the entire spinup gets an
+! individual log_point in palm.f90
+!
+! 3655 2019-01-07 16:51:22Z knoop
+! Removed call to calculation of near air (10 cm) potential temperature (now in surface layer fluxes)
+!
+! 2296 2017-06-28 07:53:56Z maronga
+! Initial revision
 !
 !
 ! Description:
@@ -23,10 +99,6 @@
 !> surface model
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE time_integration_spinup
-
-#if defined( __parallel )
-    USE MPI
-#endif
 
     USE arrays_3d,                                                                                 &
         ONLY:  pt,                                                                                 &
@@ -42,7 +114,6 @@
                constant_flux_layer,                                                                &
                coupling_start_time,                                                                &
                data_output_during_spinup,                                                          &
-               dcep,                                                                               &
                debug_output_timestep,                                                              &
                debug_string,                                                                       &
                dopr_n,                                                                             &
@@ -82,9 +153,6 @@
         ONLY:  cpu_log,                                                                            &
                log_point_s
 
-    USE dcep_mod,                                                                                  &
-        ONLY:  dcep_main
-
     USE diagnostic_output_quantities_mod,                                                          &
         ONLY:  doq_calculate
 
@@ -106,22 +174,22 @@
                indoor_during_spinup,                                                               &
                time_indoor
 
-    USE kinds
-
     USE land_surface_model_mod,                                                                    &
         ONLY:  lsm_energy_balance,                                                                 &
                lsm_swap_timelevel
-
-    USE palm_date_time_mod,                                                                        &
-        ONLY:  get_date_time,                                                                      &
-               seconds_per_hour
 
     USE pegrid
 
 #if defined( __parallel )
     USE pmc_interface,                                                                             &
-        ONLY:  atmosphere_ocean_coupled_run, nested_run
+        ONLY:  nested_run
 #endif
+
+    USE kinds
+
+    USE palm_date_time_mod,                                                                        &
+        ONLY:  get_date_time,                                                                      &
+               seconds_per_hour
 
     USE radiation_model_mod,                                                                       &
         ONLY:  dt_radiation,                                                                       &
@@ -145,12 +213,16 @@
         ONLY:  surface_layer_fluxes
 
     USE surface_mod,                                                                               &
-        ONLY:  surf_lsm,                                                                           &
-               surf_usm
+        ONLY :  surf_lsm_h,                                                                        &
+                surf_lsm_v, surf_usm_h,                                                            &
+                surf_usm_v
 
     USE urban_surface_mod,                                                                         &
         ONLY:  usm_energy_balance,                                                                 &
                usm_swap_timelevel
+
+
+
 
     IMPLICIT NONE
 
@@ -165,6 +237,7 @@
     INTEGER(iwp) ::  i  !< running index
     INTEGER(iwp) ::  j  !< running index
     INTEGER(iwp) ::  k  !< running index
+    INTEGER(iwp) ::  l  !< running index
     INTEGER(iwp) ::  m  !< running index
 
 
@@ -187,8 +260,8 @@
     ALLOCATE( v_save(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
 
     CALL exchange_horiz( pt, nbgp )
-    CALL exchange_horiz( u, nbgp )
-    CALL exchange_horiz( v, nbgp )
+    CALL exchange_horiz( u,  nbgp )
+    CALL exchange_horiz( v,  nbgp )
 
     pt_save = pt
     u_save  = u
@@ -199,22 +272,46 @@
 !-- must be preserved because the surface schemes crash otherwise. The precise reason is still
 !-- unknown. A minimum velocity of 0.1 m/s is used to maintain turbulent transfer at the surface.
     IF ( land_surface )  THEN
-       DO  m = 1, surf_lsm%ns
-          i = surf_lsm%i(m)
-          j = surf_lsm%j(m)
-          k = surf_lsm%k(m)
-          u(k,j,i) = SIGN( 1.0_wp, u_init(k) ) * MAX( ABS( u_init(k) ), 0.1_wp )
-          v(k,j,i) = SIGN( 1.0_wp, v_init(k) ) * MAX( ABS( v_init(k) ), 0.1_wp )
+       DO  l = 0, 1
+          DO  m = 1, surf_lsm_h(l)%ns
+             i   = surf_lsm_h(l)%i(m)
+             j   = surf_lsm_h(l)%j(m)
+             k   = surf_lsm_h(l)%k(m)
+             u(k,j,i) = SIGN( 1.0_wp, u_init(k) ) * MAX( ABS( u_init(k) ), 0.1_wp)
+             v(k,j,i) = SIGN( 1.0_wp, v_init(k) ) * MAX( ABS( v_init(k) ), 0.1_wp)
+          ENDDO
+       ENDDO
+
+       DO  l = 0, 3
+          DO  m = 1, surf_lsm_v(l)%ns
+             i   = surf_lsm_v(l)%i(m)
+             j   = surf_lsm_v(l)%j(m)
+             k   = surf_lsm_v(l)%k(m)
+             u(k,j,i) = SIGN( 1.0_wp, u_init(k) ) * MAX( ABS( u_init(k) ), 0.1_wp)
+             v(k,j,i) = SIGN( 1.0_wp, v_init(k) ) * MAX( ABS( v_init(k) ), 0.1_wp)
+          ENDDO
        ENDDO
     ENDIF
 
     IF ( urban_surface )  THEN
-       DO  m = 1, surf_usm%ns
-          i = surf_usm%i(m)
-          j = surf_usm%j(m)
-          k = surf_usm%k(m)
-          u(k,j,i) = SIGN( 1.0_wp, u_init(k) ) * MAX( ABS( u_init(k) ), 0.1_wp )
-          v(k,j,i) = SIGN( 1.0_wp, v_init(k) ) * MAX( ABS( v_init(k) ), 0.1_wp )
+       DO  l = 0, 1
+          DO  m = 1, surf_usm_h(l)%ns
+             i   = surf_usm_h(l)%i(m)
+             j   = surf_usm_h(l)%j(m)
+             k   = surf_usm_h(l)%k(m)
+             u(k,j,i) = SIGN( 1.0_wp, u_init(k) ) * MAX( ABS( u_init(k) ), 0.1_wp)
+             v(k,j,i) = SIGN( 1.0_wp, v_init(k) ) * MAX( ABS( v_init(k) ), 0.1_wp)
+          ENDDO
+       ENDDO
+
+       DO  l = 0, 3
+          DO  m = 1, surf_usm_v(l)%ns
+             i   = surf_usm_v(l)%i(m)
+             j   = surf_usm_v(l)%j(m)
+             k   = surf_usm_v(l)%k(m)
+             u(k,j,i) = SIGN( 1.0_wp, u_init(k) ) * MAX( ABS( u_init(k) ), 0.1_wp)
+             v(k,j,i) = SIGN( 1.0_wp, v_init(k) ) * MAX( ABS( v_init(k) ), 0.1_wp)
+          ENDDO
        ENDDO
     ENDIF
 
@@ -261,46 +358,72 @@
 !
 !--       Map air temperature to all grid points in the vicinity of a surface element
           IF ( land_surface )  THEN
-             DO  m = 1, surf_lsm%ns
-                i = surf_lsm%i(m)
-                j = surf_lsm%j(m)
-                k = surf_lsm%k(m)
-                pt(k,j,i) = pt_spinup
+             DO  l = 0, 1
+                DO  m = 1, surf_lsm_h(l)%ns
+                   i   = surf_lsm_h(l)%i(m)
+                   j   = surf_lsm_h(l)%j(m)
+                   k   = surf_lsm_h(l)%k(m)
+                   pt(k,j,i) = pt_spinup
+                ENDDO
+             ENDDO
+
+             DO  l = 0, 3
+                DO  m = 1, surf_lsm_v(l)%ns
+                   i   = surf_lsm_v(l)%i(m)
+                   j   = surf_lsm_v(l)%j(m)
+                   k   = surf_lsm_v(l)%k(m)
+                   pt(k,j,i) = pt_spinup
+                ENDDO
              ENDDO
           ENDIF
 
           IF ( urban_surface )  THEN
-             DO  m = 1, surf_usm%ns
-                i = surf_usm%i(m)
-                j = surf_usm%j(m)
-                k = surf_usm%k(m)
-                pt(k,j,i) = pt_spinup
-                !!!!!!!!!!!!!!!!HACK!!!!!!!!!!!!!
-                surf_usm%pt1(m) = pt_spinup
-                !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+             DO  l = 0, 1
+                DO  m = 1, surf_usm_h(l)%ns
+                   i   = surf_usm_h(l)%i(m)
+                   j   = surf_usm_h(l)%j(m)
+                   k   = surf_usm_h(l)%k(m)
+                   pt(k,j,i) = pt_spinup
+                   !!!!!!!!!!!!!!!!HACK!!!!!!!!!!!!!
+                   surf_usm_h(l)%pt1(m) = pt_spinup
+                   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+                ENDDO
+             ENDDO
+
+             DO  l = 0, 3
+                DO  m = 1, surf_usm_v(l)%ns
+                   i   = surf_usm_v(l)%i(m)
+                   j   = surf_usm_v(l)%j(m)
+                   k   = surf_usm_v(l)%k(m)
+                   pt(k,j,i) = pt_spinup
+                   !!!!!!!!!!!!!!!!HACK!!!!!!!!!!!!!
+                   surf_usm_v(l)%pt1(m) = pt_spinup
+                   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+                ENDDO
              ENDDO
           ENDIF
 
           CALL exchange_horiz( pt, nbgp )
+
 
 !
 !--       Swap the time levels in preparation for the next time step.
           timestep_count = timestep_count + 1
 
           IF ( land_surface )  THEN
-              CALL lsm_swap_timelevel( 0 )
+              CALL lsm_swap_timelevel ( 0 )
           ENDIF
 
           IF ( urban_surface )  THEN
-             CALL usm_swap_timelevel( 0 )
+             CALL usm_swap_timelevel ( 0 )
           ENDIF
 
           IF ( land_surface )  THEN
-             CALL lsm_swap_timelevel( MOD( timestep_count, 2 ) )
+             CALL lsm_swap_timelevel ( MOD( timestep_count, 2 ) )
           ENDIF
 
           IF ( urban_surface )  THEN
-             CALL usm_swap_timelevel( MOD( timestep_count, 2 ) )
+             CALL usm_swap_timelevel ( MOD( timestep_count, 2 ) )
           ENDIF
 
 !
@@ -312,23 +435,30 @@
 !
 !--       Compute the diffusion quantities
           IF ( .NOT. constant_diffusion )  THEN
+
 !
 !--          First the vertical (and horizontal) fluxes in the surface (constant flux) layer are
 !--          computed
              IF ( constant_flux_layer )  THEN
                 CALL surface_layer_fluxes
              ENDIF
+
 !
 !--          If required, solve the energy balance for the surface and run soil model. Call for
 !--          horizontal as well as vertical surfaces. The prognostic equation for soil moisure is
 !--          switched off
              IF ( land_surface )  THEN
+
                 CALL lsm_energy_balance( .TRUE. )
+
              ENDIF
+
 !
 !--          If required, solve the energy balance for urban surfaces and run the material heat model
-             IF ( urban_surface )  THEN
+             IF (urban_surface) THEN
+
                 CALL usm_energy_balance( .TRUE. )
+
              ENDIF
 
           ENDIF
@@ -358,9 +488,6 @@
 
           ENDIF
        ENDIF
-!
-!--    If DCEP set, call dcep main routine.
-       IF ( dcep )  CALL dcep_main
 
 !
 !--    If required, calculate indoor temperature, waste heat, heat flux
@@ -373,11 +500,14 @@
           time_indoor = time_indoor + dt_3d
 
           IF ( time_indoor >= dt_indoor  .OR.  current_timestep_number_spinup == 0 )  THEN
-             IF ( time_indoor >= dt_indoor )  time_indoor = time_indoor - dt_indoor
-             CALL im_main_heatcool
-          ENDIF
 
+             time_indoor = time_indoor - dt_indoor
+
+             CALL im_main_heatcool
+
+          ENDIF
        ENDIF
+
 !
 !--    Increase simulation time and output times
        current_timestep_number_spinup = current_timestep_number_spinup + 1
@@ -391,6 +521,7 @@
        ELSE
           sign_chr = ' '
        ENDIF
+
 
        IF ( data_output_during_spinup )  THEN
           IF ( simulated_time >= skip_time_do2d_xy )  THEN
@@ -409,6 +540,7 @@
              ENDIF
           ENDIF
           time_run_control     = time_run_control + dt_3d
+
 !
 !--       Carry out statistical analysis and output at the requested output times.
 !--       The MOD function is used for calculating the output time counters (like time_dopr) in
@@ -417,6 +549,7 @@
 !
 !--       Set a flag indicating that so far no statistics have been created for this time step
           flow_statistics_called = .FALSE.
+
 !
 !--       If required, call flow_statistics for averaging in time
           IF ( averaging_interval_pr /= 0.0_wp  .AND.                                              &
@@ -430,6 +563,7 @@
              ENDIF
           ENDIF
           IF ( do_sum )  CALL flow_statistics
+
 !
 !--       Output of profiles
           IF ( time_dopr >= dt_dopr )  THEN
@@ -438,11 +572,13 @@
              time_dopr_av = 0.0_wp    ! Due to averaging (see above)
           ENDIF
 
+!
 !--       Output of time series
           IF ( time_dots >= dt_dots )  THEN
              CALL data_output_tseries
              time_dots = MOD( time_dots, MAX( dt_dots, dt_3d ) )
           ENDIF
+
 !
 !--       2d-data output (cross-sections)
           IF ( time_do2d_xy >= dt_do2d_xy )  THEN
@@ -450,6 +586,7 @@
              CALL data_output_2d( 'xy', 0 )
              time_do2d_xy = MOD( time_do2d_xy, MAX( dt_do2d_xy, dt_3d ) )
           ENDIF
+
 !
 !--       3d-data output (volume data)
           IF ( time_do3d >= dt_do3d )  THEN
@@ -467,6 +604,7 @@
           ENDIF
 
        ENDIF
+
 !
 !--    Computation and output of run control parameters. This is also done whenever perturbations
 !--    have been imposed
@@ -479,6 +617,8 @@
 !        ENDIF
 
        CALL cpu_log( log_point_s(15), 'timesteps spinup', 'stop' )
+
+
 !
 !--    Run control output
        IF ( myid == 0 )  THEN
@@ -520,12 +660,12 @@
 !-- It is performed at the end of init_radiation in case of run without spinup
     time_radiation = dt_radiation
 
-    DEALLOCATE( pt_save )
-    DEALLOCATE( u_save )
-    DEALLOCATE( v_save )
+    DEALLOCATE(pt_save)
+    DEALLOCATE(u_save)
+    DEALLOCATE(v_save)
 
 #if defined( __parallel )
-    IF ( nested_run  .OR.  atmosphere_ocean_coupled_run )  CALL MPI_BARRIER( MPI_COMM_WORLD, ierr )
+    IF ( nested_run )  CALL MPI_BARRIER( MPI_COMM_WORLD, ierr )
 #endif
 
     CALL location_message( 'wall/soil spinup time-stepping', 'finished' )

@@ -13,10 +13,146 @@
 ! You should have received a copy of the GNU General Public License along with PALM. If not, see
 ! <http://www.gnu.org/licenses/>.
 !
-! Copyright 1997-2021 Leibniz Universitaet Hannover
-! Copyright 2022-2022 pecanode GmbH
+! Copyright 1997-2020 Leibniz Universitaet Hannover
 !--------------------------------------------------------------------------------------------------!
 !
+!
+! Current revisions:
+! -----------------
+!
+!
+! Former revisions:
+! -----------------
+! $Id: virtual_measurement_mod.f90 4764 2020-10-30 12:50:36Z suehring $
+! Missing variable declaration and directives for netcdf4 added
+!
+! 4763 2020-10-30 12:06:47Z suehring
+! - Simplified input of coordinates. All coordinate and height arrays are now 1D, independent on
+!   featuretype. This allows easier usage also for other campaign data sets independent of UC2.
+! - Avoid type conversion from 64 to 32 bit when output the data
+! - Increase dimension size of sample-variable string (sometimes more than 100 variables are listed
+!   for heavy measured locations)
+! - Remove quantities that cannot be sampled
+!
+! 4752 2020-10-21 13:54:51Z suehring
+! Remove unnecessary output and merge output for quantities that are represented by the same
+! variable in PALM, e.g. surface temperature and brightness temperature
+!
+! 4707 2020-09-28 14:25:28Z suehring
+! Bugfix for previous commit + minor formatting adjustments
+!
+! 4706 2020-09-28 13:15:23Z suehring
+! Revise setting of measurement height above ground for trajectory measurements
+!
+! 4695 2020-09-24 11:30:03Z suehring
+! Introduce additional namelist parameters to further customize sampling in the horizontal and
+! vertical surroundings of the original observation coordinates
+!
+! 4671 2020-09-09 20:27:58Z pavelkrc
+! Implementation of downward facing USM and LSM surfaces
+!
+! 4645 2020-08-24 13:55:58Z suehring
+! Bugfix in output of E_UTM_soil coordinate
+!
+! 4642 2020-08-13 15:47:33Z suehring
+! Do not set attribute bounds for time variable, as it refers to time_bounds which is not defined
+! for non-aggregated quantities (according to data standard)
+!
+! 4641 2020-08-13 09:57:07Z suehring
+! - To be in agreement with (UC)2 data standard do not list the measured variables in attribute
+!   data_content but simply set 'airmeteo'
+! - Bugfix in setting long_name attribute for variable t_va and for global attribute creation_time
+! 
+! 4536 2020-05-17 17:24:13Z raasch
+! bugfix: preprocessor directive adjusted
+!
+! 4504 2020-04-20 12:11:24Z raasch
+! file re-formatted to follow the PALM coding standard
+!
+! 4481 2020-03-31 18:55:54Z maronga
+! bugfix: cpp-directives for serial mode added
+!
+! 4438 2020-03-03 20:49:28Z suehring
+! Add cpu-log points
+!
+! 4422 2020-02-24 22:45:13Z suehring
+! Missing trim()
+!
+! 4408 2020-02-14 10:04:39Z gronemeier
+! - Output of character string station_name after DOM has been enabled to
+!   output character variables
+! - Bugfix, missing coupling_char statement when opening the input file
+!
+! 4408 2020-02-14 10:04:39Z gronemeier
+! write fill_value attribute
+!
+! 4406 2020-02-13 20:06:29Z knoop
+! Bugix: removed oro_rel wrong loop bounds and removed unnecessary restart method
+!
+! 4400 2020-02-10 20:32:41Z suehring
+! Revision of the module:
+! - revised input from NetCDF setup file
+! - parallel NetCDF output via data-output module ( Tobias Gronemeier )
+! - variable attributes added
+! - further variables defined
+!
+! 4346 2019-12-18 11:55:56Z motisi
+! Introduction of wall_flags_total_0, which currently sets bits based on static
+! topography information used in wall_flags_static_0
+!
+! 4329 2019-12-10 15:46:36Z motisi
+! Renamed wall_flags_0 to wall_flags_static_0
+!
+! 4226 2019-09-10 17:03:24Z suehring
+! Netcdf input routine for dimension length renamed
+!
+! 4182 2019-08-22 15:20:23Z scharf
+! Corrected "Former revisions" section
+!
+! 4168 2019-08-16 13:50:17Z suehring
+! Replace function get_topography_top_index by topo_top_ind
+!
+! 3988 2019-05-22 11:32:37Z kanani
+! Add variables to enable steering of output interval for virtual measurements
+!
+! 3913 2019-04-17 15:12:28Z gronemeier
+! Bugfix: rotate positions of measurements before writing them into file
+!
+! 3910 2019-04-17 11:46:56Z suehring
+! Bugfix in rotation of UTM coordinates
+!
+! 3904 2019-04-16 18:22:51Z gronemeier
+! Rotate coordinates of stations by given rotation_angle
+!
+! 3876 2019-04-08 18:41:49Z knoop
+! Remove print statement
+!
+! 3854 2019-04-02 16:59:33Z suehring
+! renamed nvar to nmeas, replaced USE chem_modules by USE chem_gasphase_mod and
+! nspec by nvar
+!
+! 3766 2019-02-26 16:23:41Z raasch
+! unused variables removed
+!
+! 3718 2019-02-06 11:08:28Z suehring
+! Adjust variable name connections between UC2 and chemistry variables
+!
+! 3717 2019-02-05 17:21:16Z suehring
+! Additional check + error numbers adjusted
+!
+! 3706 2019-01-29 20:02:26Z suehring
+! unused variables removed
+!
+! 3705 2019-01-29 19:56:39Z suehring
+! - initialization revised
+! - binary data output
+! - list of allowed variables extended
+!
+! 3704 2019-01-29 19:51:41Z suehring
+! Sampling of variables
+!
+! 3473 2018-10-30 20:50:15Z suehring
+! Initial revision
 !
 ! Authors:
 ! --------
@@ -35,14 +171,9 @@
 !--------------------------------------------------------------------------------------------------!
  MODULE virtual_measurement_mod
 
-#if defined( __parallel )
-    USE MPI
-#endif
-
     USE arrays_3d,                                                                                 &
         ONLY:  dzw,                                                                                &
                exner,                                                                              &
-               heatflux_output_conversion,                                                         &
                hyp,                                                                                &
                q,                                                                                  &
                ql,                                                                                 &
@@ -51,7 +182,6 @@
                u,                                                                                  &
                v,                                                                                  &
                w,                                                                                  &
-               waterflux_output_conversion,                                                        &
                zu,                                                                                 &
                zw
 
@@ -62,9 +192,6 @@
                pi,                                                                                 &
                rd_d_rv
 
-    USE biometeorology_mod,                                                                        &
-        ONLY:  bio_vm_sampling
-
     USE chem_gasphase_mod,                                                                         &
         ONLY:  nvar
 
@@ -73,20 +200,17 @@
 
     USE control_parameters,                                                                        &
         ONLY:  air_chemistry,                                                                      &
-               biometeorology,                                                                     &
                coupling_char,                                                                      &
                debug_output,                                                                       &
                dz,                                                                                 &
                end_time,                                                                           &
                humidity,                                                                           &
-               land_surface,                                                                       &
                message_string,                                                                     &
                neutral,                                                                            &
                origin_date_time,                                                                   &
                rho_surface,                                                                        &
                surface_pressure,                                                                   &
                time_since_reference_point,                                                         &
-               urban_surface,                                                                      &
                virtual_measurement
 
     USE cpulog,                                                                                    &
@@ -105,23 +229,18 @@
         ONLY:  nbgp,                                                                               &
                nzb,                                                                                &
                nzt,                                                                                &
-               nx,                                                                                 &
                nxl,                                                                                &
                nxlg,                                                                               &
                nxr,                                                                                &
                nxrg,                                                                               &
-               ny,                                                                                 &
                nys,                                                                                &
                nysg,                                                                               &
                nyn,                                                                                &
                nyng,                                                                               &
                topo_top_ind,                                                                       &
-               topo_flags
+               wall_flags_total_0
 
     USE kinds
-
-    USE land_surface_model_mod,                                                                    &
-        ONLY:  lsm_vm_sampling
 
     USE netcdf_data_input_mod,                                                                     &
         ONLY:  close_input_file,                                                                   &
@@ -141,25 +260,35 @@
 
     USE pegrid
 
-    USE radiation_model_mod,                                                                       &
-        ONLY:  radiation,                                                                          &
-               radiation_vm_sampling
-
     USE surface_mod,                                                                               &
-        ONLY:  surf_def,                                                                           &
-               surf_lsm,                                                                           &
-               surf_usm
+        ONLY:  surf_lsm_h,                                                                         &
+               surf_usm_h
+
+    USE land_surface_model_mod,                                                                    &
+        ONLY:  m_soil_h,                                                                           &
+               nzb_soil,                                                                           &
+               nzt_soil,                                                                           &
+               t_soil_h,                                                                           &
+               zs
+
+    USE radiation_model_mod,                                                                       &
+        ONLY:  rad_lw_in,                                                                          &
+               rad_lw_out,                                                                         &
+               rad_sw_in,                                                                          &
+               rad_sw_in_diff,                                                                     &
+               rad_sw_out,                                                                         &
+               radiation_scheme
 
     USE urban_surface_mod,                                                                         &
-        ONLY:  usm_vm_sampling
+        ONLY:  nzb_wall,                                                                           &
+               nzt_wall,                                                                           &
+               t_wall_h
+
 
     IMPLICIT NONE
 
     TYPE virt_general
        INTEGER(iwp) ::  nvm = 0  !< number of virtual measurements
-
-       REAL(wp) ::  origin_x_pd = HUGE( -1.0_wp ) !< EUTM coordinate of the western PALM domain boundary
-       REAL(wp) ::  origin_y_pd = HUGE( -1.0_wp ) !< NUTM coordinate of the southern PALM domain boundary
     END TYPE virt_general
 
     TYPE virt_var_atts
@@ -170,17 +299,15 @@
        CHARACTER(LEN=100) ::  standard_name         !< defined standard name of the variable
        CHARACTER(LEN=100) ::  units                 !< unit of the output variable
 
-       LOGICAL            ::  sampled               !< flag indicating whether a variable has been sampled
-
        REAL(wp)           ::  fill_value = -9999.0  !< _FillValue attribute
     END TYPE virt_var_atts
 
     TYPE virt_mea
-       CHARACTER(LEN=100) ::  feature_type                      !< type of the real-world measurement
-       CHARACTER(LEN=100) ::  feature_type_out = 'timeSeries'   !< type of the virtual measurement
+       CHARACTER(LEN=100)  ::  feature_type                      !< type of the real-world measurement
+       CHARACTER(LEN=100)  ::  feature_type_out = 'timeSeries'   !< type of the virtual measurement
                                                                  !< (all will be timeSeries, even trajectories)
-       CHARACTER(LEN=100) ::  nc_filename                       !< name of the NetCDF output file for the station
-       CHARACTER(LEN=100) ::  site                              !< name of the measurement site
+       CHARACTER(LEN=100)  ::  nc_filename                       !< name of the NetCDF output file for the station
+       CHARACTER(LEN=100)  ::  site                              !< name of the measurement site
 
        CHARACTER(LEN=1000) ::  data_content = REPEAT(' ', 1000)  !< string of measured variables (data output only)
 
@@ -207,12 +334,10 @@
        INTEGER(iwp), DIMENSION(:), ALLOCATABLE ::  j_soil  !< grid index for measurement position in y-direction
        INTEGER(iwp), DIMENSION(:), ALLOCATABLE ::  k_soil  !< grid index for measurement position in k-direction
 
-       LOGICAL ::  interpolate         = .FALSE.  !< flag indicating that interpolation onto sampling location is desired
-       LOGICAL ::  soil_sampling       = .FALSE.  !< flag indicating that soil state variables are present
-       LOGICAL ::  soil_var_out        = .FALSE.  !< flag indicating that soil state variables were actually sampled
-       LOGICAL ::  trajectory          = .FALSE.  !< flag indicating that the observation is a mobile observation
-       LOGICAL ::  timeseries          = .FALSE.  !< flag indicating that the observation is a point measurement fixed in space
-       LOGICAL ::  timeseries_profile  = .FALSE.  !< flag indicating that the observation is a stationary profile measurement
+       LOGICAL ::  soil_sampling      = .FALSE.  !< flag indicating that soil state variables were sampled
+       LOGICAL ::  trajectory         = .FALSE.  !< flag indicating that the observation is a mobile observation
+       LOGICAL ::  timseries          = .FALSE.  !< flag indicating that the observation is a stationary point measurement
+       LOGICAL ::  timseries_profile  = .FALSE.  !< flag indicating that the observation is a stationary profile measurement
 
        REAL(wp) ::  fill_eutm          !< fill value for UTM coordinates in case of missing values
        REAL(wp) ::  fill_nutm          !< fill value for UTM coordinates in case of missing values
@@ -221,9 +346,8 @@
        REAL(wp) ::  origin_x_obs       !< origin of the observation in UTM coordiates in x-direction
        REAL(wp) ::  origin_y_obs       !< origin of the observation in UTM coordiates in y-direction
 
-       REAL(wp), DIMENSION(:), ALLOCATABLE ::  coords  !< exact sampling location
-       REAL(wp), DIMENSION(:), ALLOCATABLE ::  depth   !< measurement depth in soil
-       REAL(wp), DIMENSION(:), ALLOCATABLE ::  zar     !< measurement height above ground level
+       REAL(wp), DIMENSION(:), ALLOCATABLE   ::  depth  !< measurement depth in soil
+       REAL(wp), DIMENSION(:), ALLOCATABLE   ::  zar    !< measurement height above ground level
 
        REAL(wp), DIMENSION(:,:), ALLOCATABLE ::  measured_vars       !< measured variables
        REAL(wp), DIMENSION(:,:), ALLOCATABLE ::  measured_vars_soil  !< measured variables
@@ -235,26 +359,25 @@
     CHARACTER(LEN=11) ::  char_feature = 'featureType'   !< attribute name for feature type
 
     ! This need to be generalized
-    CHARACTER(LEN=10)  ::  char_fill = '_FillValue'                 !< attribute name for fill value
-    CHARACTER(LEN=6)   ::  char_height = 'height'                   !< attribute name indicating height above surface (for trajectories only)
-    CHARACTER(LEN=9)   ::  char_long = 'long_name'                  !< attribute name for long_name
-    CHARACTER(LEN=18)  ::  char_mv = 'measured_variables'           !< variable name for the array with the measured variable names
-    CHARACTER(LEN=5)   ::  char_nutm = 'N_UTM'                      !< dimension name for UTM coordinate northing
-    CHARACTER(LEN=18)  ::  char_numstations = 'number_of_stations'  !< attribute name for number of stations
-    CHARACTER(LEN=8)   ::  char_origx = 'origin_x'                  !< attribute name for station coordinate in x
-    CHARACTER(LEN=8)   ::  char_origy = 'origin_y'                  !< attribute name for station coordinate in y
-    CHARACTER(LEN=4)   ::  char_site = 'site'                       !< attribute name for site name
-    CHARACTER(LEN=11)  ::  char_soil = 'soil_sample'                !< attribute name for soil sampling indication
-    CHARACTER(LEN=13)  ::  char_standard = 'standard_name'          !< attribute name for standard_name
-    CHARACTER(LEN=9)   ::  char_station_h = 'station_h'             !< variable name indicating height of the site
-    CHARACTER(LEN=5)   ::  char_unit = 'units'                      !< attribute name for standard_name
-    CHARACTER(LEN=1)   ::  char_zar = 'z'                           !< attribute name indicating height above reference level
-    CHARACTER(LEN=800) ::  dom_error_message                        !< error message returned by the data-output module
-    CHARACTER(LEN=10)  ::  type_ts   = 'timeSeries'                 !< name of stationary point measurements
-    CHARACTER(LEN=10)  ::  type_traj = 'trajectory'                 !< name of line measurements
-    CHARACTER(LEN=17)  ::  type_tspr = 'timeSeriesProfile'          !< name of stationary profile measurements
+    CHARACTER(LEN=10) ::  char_fill = '_FillValue'                 !< attribute name for fill value
+    CHARACTER(LEN=6)  ::  char_height = 'height'                   !< attribute name indicating height above surface (for trajectories only)
+    CHARACTER(LEN=9)  ::  char_long = 'long_name'                  !< attribute name for long_name
+    CHARACTER(LEN=18) ::  char_mv = 'measured_variables'           !< variable name for the array with the measured variable names
+    CHARACTER(LEN=5)  ::  char_nutm = 'N_UTM'                      !< dimension name for UTM coordinate northing
+    CHARACTER(LEN=18) ::  char_numstations = 'number_of_stations'  !< attribute name for number of stations
+    CHARACTER(LEN=8)  ::  char_origx = 'origin_x'                  !< attribute name for station coordinate in x
+    CHARACTER(LEN=8)  ::  char_origy = 'origin_y'                  !< attribute name for station coordinate in y
+    CHARACTER(LEN=4)  ::  char_site = 'site'                       !< attribute name for site name
+    CHARACTER(LEN=11) ::  char_soil = 'soil_sample'                !< attribute name for soil sampling indication
+    CHARACTER(LEN=13) ::  char_standard = 'standard_name'          !< attribute name for standard_name
+    CHARACTER(LEN=9)  ::  char_station_h = 'station_h'             !< variable name indicating height of the site
+    CHARACTER(LEN=5)  ::  char_unit = 'units'                      !< attribute name for standard_name
+    CHARACTER(LEN=1)  ::  char_zar = 'z'                           !< attribute name indicating height above reference level
+    CHARACTER(LEN=10) ::  type_ts   = 'timeSeries'                 !< name of stationary point measurements
+    CHARACTER(LEN=10) ::  type_traj = 'trajectory'                 !< name of line measurements
+    CHARACTER(LEN=17) ::  type_tspr = 'timeSeriesProfile'          !< name of stationary profile measurements
 
-    CHARACTER(LEN=6), DIMENSION(1:5) ::  soil_vars = (/ 't_soil',                                  & !< list of soil variables
+    CHARACTER(LEN=6), DIMENSION(1:5) ::  soil_vars = (/ 't_soil', & !< list of soil variables
                                                         'm_soil',                                  &
                                                         'lwc   ',                                  &
                                                         'lwcs  ',                                  &
@@ -273,31 +396,25 @@
 
     INTEGER(iwp) ::  maximum_name_length = 32  !< maximum name length of station names
     INTEGER(iwp) ::  ntimesteps                !< number of timesteps defined in NetCDF output file
-    INTEGER(iwp) ::  off_pr              = 0   !< number of neighboring grid points (in horizontal direction) where virtual profile
+    INTEGER(iwp) ::  off_pr              = 1   !< number of neighboring grid points (in horizontal direction) where virtual profile
                                                !< measurements shall be taken, in addition to the given coordinates in the driver
-    INTEGER(iwp) ::  off_pr_z            = 0   !< number of additional grid points (in each upwardd and downward direction) where
+    INTEGER(iwp) ::  off_pr_z            = 0   !< number of additional grid points (in each upwardd and downward direction) where 
                                                !< virtual profile measurements shall be taken, in addition to the given z coordinates in the driver
-    INTEGER(iwp) ::  off_ts              = 0   !< number of neighboring grid points (in horizontal direction) where virtual profile
+    INTEGER(iwp) ::  off_ts              = 1   !< number of neighboring grid points (in horizontal direction) where virtual profile
                                                !< measurements shall be taken, in addition to the given coordinates in the driver
-    INTEGER(iwp) ::  off_ts_z            = 0   !< number of additional grid points (in each upwardd and downward direction) where
+    INTEGER(iwp) ::  off_ts_z            = 50  !< number of additional grid points (in each upwardd and downward direction) where 
                                                !< virtual profile measurements shall be taken, in addition to the given z coordinates in the driver
-    INTEGER(iwp) ::  off_tr              = 0   !< number of neighboring grid points (in horizontal direction) where virtual profile
+    INTEGER(iwp) ::  off_tr              = 1   !< number of neighboring grid points (in horizontal direction) where virtual profile
                                                !< measurements shall be taken, in addition to the given coordinates in the driver
-    INTEGER(iwp) ::  off_tr_z            = 0   !< number of additional grid points (in each upward and downward direction) where
+    INTEGER(iwp) ::  off_tr_z            = 1   !< number of additional grid points (in each upwardd and downward direction) where 
                                                !< virtual profile measurements shall be taken, in addition to the given z coordinates in the driver
-    LOGICAL ::  interpolate_to_location      = .FALSE.  !< flag to control if either nearest neighbor or interpolation is used
-    LOGICAL ::  global_attribute             = .TRUE.   !< flag indicating a global attribute
-    LOGICAL ::  initial_write_coordinates    = .FALSE.  !< flag indicating a global attribute
-    LOGICAL ::  warn_out_of_domain_locations = .FALSE.  !< flag to enable warnings
+    LOGICAL ::  global_attribute          = .TRUE.   !< flag indicating a global attribute
+    LOGICAL ::  initial_write_coordinates = .FALSE.  !< flag indicating a global attribute
+    LOGICAL ::  use_virtual_measurement   = .FALSE.  !< Namelist parameter
 
-    REAL(wp) ::  dt_virtual_measurement      = -HUGE( 0.0_wp )  !< overall sampling interval
-    REAL(wp) ::  dt_virtual_measurement_pr   = -HUGE( 0.0_wp )  !< sampling interval escpecially for profile meausrements
-    REAL(wp) ::  dt_virtual_measurement_ts   = -HUGE( 0.0_wp )  !< sampling interval escpecially for point meausrements
-    REAL(wp) ::  dt_virtual_measurement_tr   = -HUGE( 0.0_wp )  !< sampling interval escpecially for trajectory meausrements
-    REAL(wp) ::  time_virtual_measurement_pr = 0.0_wp           !< time since last sampling of profile data
-    REAL(wp) ::  time_virtual_measurement_ts = 0.0_wp           !< time since last sampling of point data
-    REAL(wp) ::  time_virtual_measurement_tr = 0.0_wp           !< time since last sampling of trajectory data
-    REAL(wp) ::  vm_time_start               = 0.0_wp           !< time after which sampling shall start
+    REAL(wp) ::  dt_virtual_measurement   = 0.0_wp  !< sampling interval
+    REAL(wp) ::  time_virtual_measurement = 0.0_wp  !< time since last sampling
+    REAL(wp) ::  vm_time_start            = 0.0     !< time after which sampling shall start
 
     TYPE( virt_general )                        ::  vmea_general  !< data structure which encompasses global variables
     TYPE( virt_mea ), DIMENSION(:), ALLOCATABLE ::  vmea          !< data structure containing station-specific variables
@@ -341,12 +458,8 @@
 
 !
 !-- Public variables
-    PUBLIC  dt_virtual_measurement_pr,                                                             &
-            dt_virtual_measurement_ts,                                                             &
-            dt_virtual_measurement_tr,                                                             &
-            time_virtual_measurement_pr,                                                           &
-            time_virtual_measurement_ts,                                                           &
-            time_virtual_measurement_tr,                                                           &
+    PUBLIC  dt_virtual_measurement,                                                                &
+            time_virtual_measurement,                                                              &
             vmea,                                                                                  &
             vmea_general,                                                                          &
             vm_time_start
@@ -365,48 +478,49 @@
 !
 !-- Virtual measurements require a setup file.
     IF ( .NOT. input_pids_vm )  THEN
-       message_string = 'virtual measurements require a setup input a setup input file for ' //    &
-                        'the site locations'
-       CALL message( 'vm_check_parameters', 'VME0001', 1, 2, 0, 6, 0 )
+       message_string = 'If virtual measurements are taken, a setup input ' //                     &
+                        'file for the site locations is mandatory.'
+       CALL message( 'vm_check_parameters', 'PA0533', 1, 2, 0, 6, 0 )
+    ENDIF
+!
+!-- In case virtual measurements are taken, a static input file is required.
+!-- This is because UTM coordinates for the PALM domain origin are required for correct mapping of
+!-- the measurements.
+!-- ToDo: Revise this later and remove this requirement.
+    IF ( .NOT. input_pids_static )  THEN
+       message_string = 'If virtual measurements are taken, a static input file is mandatory.'
+       CALL message( 'vm_check_parameters', 'PA0534', 1, 2, 0, 6, 0 )
     ENDIF
 
 #if !defined( __netcdf4_parallel )
 !
 !-- In case of non-parallel NetCDF the virtual measurement output is not
 !-- working. This is only designed for parallel NetCDF.
-    message_string = 'virtual measurements require parallel netCDF'
-    CALL message( 'vm_check_parameters', 'VME0002', 1, 2, 0, 6, 0 )
+    message_string = 'If virtual measurements are taken, parallel NetCDF is required.'
+    CALL message( 'vm_check_parameters', 'PA0708', 1, 2, 0, 6, 0 )
 #endif
 !
 !-- Check if the given number of neighboring grid points do not exceed the number
 !-- of ghost points.
     IF ( off_pr > nbgp - 1  .OR.  off_ts > nbgp - 1  .OR.  off_tr > nbgp - 1 )  THEN
-       WRITE ( message_string,* )  'for virtual measurements the number of surrounding grid ' //   &
-                                   'points must not be larger than the number of ghost points ' // &
-                                   '- 1, which is: ', nbgp - 1
-       CALL message( 'vm_check_parameters', 'VME0003', 1, 2, 0, 6, 0 )
+       WRITE(message_string,*)                                                                     &
+                        'If virtual measurements are taken, the number ' //                        &
+                        'of surrounding grid points must not be larger ' //                        &
+                        'than the number of ghost points - 1, which is: ', nbgp - 1
+       CALL message( 'vm_check_parameters', 'PA0705', 1, 2, 0, 6, 0 )
     ENDIF
-!
-!-- Set sampling intervals to general sampling interval if not set properly. Finally, check
-!-- sampling intervals for consistency.
-    IF ( dt_virtual_measurement_pr < 0.0_wp )  dt_virtual_measurement_pr = dt_virtual_measurement
-    IF ( dt_virtual_measurement_ts < 0.0_wp )  dt_virtual_measurement_ts = dt_virtual_measurement
-    IF ( dt_virtual_measurement_tr < 0.0_wp )  dt_virtual_measurement_tr = dt_virtual_measurement
 
-    IF ( dt_virtual_measurement_pr <= 0.0  .OR.  dt_virtual_measurement_ts <= 0.0_wp  .OR.         &
-         dt_virtual_measurement_tr <= 0.0 )                                                        &
-    THEN
-       message_string = 'dt_virtual_measurement(pr/ts/tr) must be > 0.0.'
-       CALL message( 'check_parameters', 'VME0004', 1, 2, 0, 6, 0 )
+    IF ( dt_virtual_measurement <= 0.0 )  THEN
+       message_string = 'dt_virtual_measurement must be > 0.0'
+       CALL message( 'check_parameters', 'PA0706', 1, 2, 0, 6, 0 )
     ENDIF
 
  END SUBROUTINE vm_check_parameters
 
-
 !--------------------------------------------------------------------------------------------------!
 ! Description:
 ! ------------
-!> Subroutine defines variable attributes according to UC2 standard. Note, later this list can be
+!> Subroutine defines variable attributes according to UC2 standard. Note, later  this list can be
 !> moved to the data-output module where it can be re-used also for other output.
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE vm_set_attributes( output_variable )
@@ -479,22 +593,6 @@
        CASE ( 't_va' )
           output_variable%long_name     = 'virtual acoustic temperature'
           output_variable%units         = 'K'
-
-       CASE ( 't_mrt' )
-          output_variable%long_name     = 'mean radiant temperature'
-          output_variable%units         = 'degree_C'
-
-       CASE ( 't_perceived' )
-          output_variable%long_name     = 'perceived temperature'
-          output_variable%units         = 'degree_C'
-
-       CASE ( 't_pet' )
-          output_variable%long_name     = 'physiological equivalent temperature'
-          output_variable%units         = 'degree_C'
-
-       CASE ( 't_utci' )
-          output_variable%long_name     = 'universal thermal climate index'
-          output_variable%units         = 'degree_C'
 
        CASE ( 'haa' )
           output_variable%long_name     = 'absolute atmospheric humidity'
@@ -714,51 +812,42 @@
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE vm_parin
 
-    CHARACTER(LEN=100) ::  line  !< dummy string that contains the current line of the parameter file
-
-    INTEGER(iwp) ::  io_status   !< status after reading the namelist file
-
-    LOGICAL ::  switch_off_module = .FALSE.  !< local namelist parameter to switch off the module
-                                             !< although the respective module namelist appears in
-                                             !< the namelist file
+    CHARACTER(LEN=80) ::  line   !< dummy string that contains the current line of the parameter file
 
     NAMELIST /virtual_measurement_parameters/  dt_virtual_measurement,                             &
-                                               dt_virtual_measurement_pr,                          &
-                                               dt_virtual_measurement_ts,                          &
-                                               dt_virtual_measurement_tr,                          &
-                                               interpolate_to_location,                            &
                                                off_pr,                                             &
                                                off_pr_z,                                           &
                                                off_tr,                                             &
                                                off_tr_z,                                           &
                                                off_ts,                                             &
                                                off_ts_z,                                           &
-                                               switch_off_module,                                  &
-                                               vm_time_start,                                      &
-                                               warn_out_of_domain_locations
+                                               use_virtual_measurement,                            &
+                                               vm_time_start
+
+    line = ' '
+!
+!-- Try to find stg package
+    REWIND ( 11 )
+    line = ' '
+    DO  WHILE ( INDEX( line, '&virtual_measurement_parameters' ) == 0 )
+       READ ( 11, '(A)', END=20 )  line
+    ENDDO
+    BACKSPACE ( 11 )
 
 !
-!-- Move to the beginning of the namelist file and try to find and read the namelist.
-    REWIND( 11 )
-    READ( 11, virtual_measurement_parameters, IOSTAT=io_status )
+!-- Read namelist
+    READ ( 11, virtual_measurement_parameters, ERR = 10, END = 20 )
 
 !
-!-- Action depending on the READ status
-    IF ( io_status == 0 )  THEN
-!
-!--    virtual_measurements_parameters namelist was found and read correctly. Enable the
-!--    virtual measurements.
-       IF ( .NOT. switch_off_module )  virtual_measurement = .TRUE.
+!-- Set flag that indicates that the virtual measurement module is switched on
+    IF ( use_virtual_measurement )  virtual_measurement = .TRUE.
+    GOTO 20
 
-    ELSEIF ( io_status > 0 )  THEN
-!
-!--    virtual_measurement_parameters namelist was found but contained errors. Print an error
-!--    message including the line that caused the problem.
-       BACKSPACE( 11 )
-       READ( 11 , '(A)' ) line
-       CALL parin_fail_message( 'virtual_measurement_parameters', line )
+ 10 BACKSPACE( 11 )
+    READ( 11 , '(A)') line
+    CALL parin_fail_message( 'virtual_measurement_parameters', line )
 
-    ENDIF
+ 20 CONTINUE
 
  END SUBROUTINE vm_parin
 
@@ -797,7 +886,7 @@
     INTEGER(iwp) ::  off_z      !< number of vertically surrounding grid points to be sampled
     INTEGER(iwp) ::  t          !< running index over number of trajectories
 
-    INTEGER(ibp)                                ::  soil_dum  !< dummy variable to input a soil flag
+    INTEGER(KIND=1)                             ::  soil_dum  !< dummy variable to input a soil flag
 
     INTEGER(iwp), DIMENSION(:), ALLOCATABLE     ::  ns_all  !< dummy array used to sum-up the number of observation coordinates
 
@@ -837,36 +926,10 @@
     ALLOCATE( vmea(1:vmea_general%nvm) )
 !
 !-- Allocate flag array. This dummy array is used to identify grid points where virtual measurements
-!-- should be taken. In order to include also the surrounding grid points of the original coordinate,
-!-- ghost points are required.
+!-- should be taken. Please note, in order to include also the surrounding grid points of the
+!-- original coordinate, ghost points are required.
     ALLOCATE( meas_flag(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
     meas_flag = 0
-!
-!-- Determine reference coordinate of the lower-left corner of the model domain. This will be used
-!-- to determine the discrete sampling locations. Either this coordinate is taken from the
-!-- static input file, which is the preference, or it is read from the measurement input file. In
-!-- case it is not provided anyway, an error message will be given.
-!-- Take it from the static input file.
-    IF ( input_pids_static )  THEN
-      vmea_general%origin_x_pd = init_model%origin_x
-      vmea_general%origin_y_pd = init_model%origin_y
-!
-!-- Read from measurement file.
-    ELSE
-       CALL get_attribute( pids_id, char_origx, vmea_general%origin_x_pd, global_attribute,        &
-                           ignore_error = .FALSE. )
-       CALL get_attribute( pids_id, char_origy, vmea_general%origin_y_pd, global_attribute,        &
-                           ignore_error = .FALSE. )
-    ENDIF
-
-!
-!-- Check if the reference coordinate is given.
-    IF ( vmea_general%origin_x_pd < 0.0_wp  .OR.  vmea_general%origin_y_pd < 0.0_wp )  THEN
-       message_string = "no reference coordinate for the lower-left model domain corner are " //   &
-                        "provided, neither in the static driver nor in the measurement input file"
-       CALL message( 'vm_init', 'VME0005', 1, 2, 0, 6, 0 )
-    ENDIF
-
 !
 !-- Loop over all sites in the setup file.
     DO  l = 1, vmea_general%nvm
@@ -899,22 +962,20 @@
        IF ( soil_dum == 1 )  vmea(l)%soil_sampling = .TRUE.
 !
 !--    Read type of the measurement (trajectory, profile, timeseries).
-       CALL get_attribute( pids_id, char_feature // TRIM( dum ), vmea(l)%feature_type,             &
-                           global_attribute )
+       CALL get_attribute( pids_id, char_feature // TRIM( dum ), vmea(l)%feature_type, global_attribute )
 !
 !---   Set logicals depending on the type of the measurement
        IF ( INDEX( vmea(l)%feature_type, type_tspr     ) /= 0 )  THEN
-          vmea(l)%timeseries_profile = .TRUE.
+          vmea(l)%timseries_profile = .TRUE.
        ELSEIF ( INDEX( vmea(l)%feature_type, type_ts   ) /= 0 )  THEN
-          vmea(l)%timeseries = .TRUE.
+          vmea(l)%timseries         = .TRUE.
        ELSEIF ( INDEX( vmea(l)%feature_type, type_traj ) /= 0 )  THEN
-          vmea(l)%trajectory = .TRUE.
+          vmea(l)%trajectory        = .TRUE.
 !
-!--    Give error message in case the type matches none of the pre-defined types.
+!--    Give error message in case the type matches non of the pre-defined types.
        ELSE
-          message_string = 'attribute feature_type = "' // TRIM( vmea(l)%feature_type ) //         &
-                           '" is not allowed'
-          CALL message( 'vm_init', 'VME0006', 1, 2, 0, 6, 0 )
+          message_string = 'Attribue featureType = ' // TRIM( vmea(l)%feature_type ) // ' is not allowed.'
+          CALL message( 'vm_init', 'PA0535', 1, 2, 0, 6, 0 )
        ENDIF
 !
 !--    Read string with all measured variables at this site.
@@ -922,7 +983,7 @@
        CALL get_variable( pids_id, char_mv // TRIM( dum ), measured_variables_file )
 !
 !--    Count the number of measured variables.
-!--    For some NetCDF internal reasons, characters end with a NULL, i.e. also empty
+!--    Please note, for some NetCDF interal reasons, characters end with a NULL, i.e. also empty
 !--    characters contain a NULL. Therefore, check the strings for a NULL to get the correct
 !--    character length in order to compare them with the list of allowed variables.
        vmea(l)%nmeas  = 1
@@ -960,7 +1021,7 @@
        ENDDO
 !
 !--    Read all the UTM coordinates for the site. Based on the coordinates, define the grid-index
-!--    space on each subdomain where virtual measurements should be taken. The entire
+!--    space on each subdomain where virtual measurements should be taken. Note, the entire
 !--    coordinate array (on the entire model domain) won't be stored as this would exceed memory
 !--    requirements, particularly for trajectories.
        IF ( vmea(l)%nmeas > 0 )  THEN
@@ -969,8 +1030,8 @@
 !--       is "station".
           CALL get_dimension_length( pids_id, vmea(l)%nst, "station" // TRIM( dum ) )
 !
-!--       Allocate temporary arrays for UTM and height coordinates. On file, UTM coordinates
-!--       can be 1D or 2D variables
+!--       Allocate temporary arrays for UTM and height coordinates. Note, on file UTM coordinates
+!--       might be 1D or 2D variables
           ALLOCATE( e_utm(1:vmea(l)%nst)       )
           ALLOCATE( n_utm(1:vmea(l)%nst)       )
           ALLOCATE( station_h(1:vmea(l)%nst)   )
@@ -985,8 +1046,8 @@
           ALLOCATE( e_utm_tmp(1:vmea(l)%nst) )
           ALLOCATE( n_utm_tmp(1:vmea(l)%nst) )
 !
-!--       Read UTM and height coordinates for all trajectories and times. In case
-!--       they contain any missing values, replace them with default _FillValues.
+!--       Read UTM and height coordinates for all trajectories and times. Note, in case
+!--       these obtain any missing values, replace them with default _FillValues.
           CALL inquire_fill_value( pids_id, char_eutm   // TRIM( dum ), nofill, fill_eutm    )
           CALL inquire_fill_value( pids_id, char_nutm   // TRIM( dum ), nofill, fill_nutm    )
           CALL inquire_fill_value( pids_id, char_zar    // TRIM( dum ), nofill, fill_zar     )
@@ -996,8 +1057,9 @@
 !--       Further line is just to avoid compiler warnings. nofill might be used in future.
           IF ( nofill == 0  .OR.  nofill /= 0 )  CONTINUE
 !
-!--       Read observation coordinates. For trajectories the observation height is stored directly
-!--       in z, while for timeSeries it is stored in z - station_h, according to UC2-standard.
+!--       Read observation coordinates. Please note, for trajectories the observation height is
+!--       stored directly in z, while for timeSeries it is stored in z - station_h, according to
+!--       UC2-standard.
           IF ( vmea(l)%trajectory )  THEN
              CALL get_variable( pids_id, char_eutm      // TRIM( dum ), e_utm(:)     )
              CALL get_variable( pids_id, char_nutm      // TRIM( dum ), n_utm(:)     )
@@ -1030,46 +1092,37 @@
           DO  t = 1, vmea(l)%nst
 !
 !--          First, compute relative x- and y-coordinates with respect to the lower-left origin of
-!--          the model domain, which is the difference between UTM coordinates. If the origin
-!--          is not correct, the virtual sites will be misplaced. Further, in case of a rotated
+!--          the model domain, which is the difference between UTM coordinates. Note, if the origin
+!--          is not correct, the virtual sites will be misplaced. Further, in case of an rotated
 !--          model domain, the UTM coordinates must also be rotated.
-             e_utm_tmp(t) = e_utm(t) - vmea_general%origin_x_pd
-             n_utm_tmp(t) = n_utm(t) - vmea_general%origin_y_pd
-             e_utm(t) = COS( init_model%rotation_angle * pi / 180.0_wp ) * e_utm_tmp(t)            &
-                      - SIN( init_model%rotation_angle * pi / 180.0_wp ) * n_utm_tmp(t)
-             n_utm(t) = SIN( init_model%rotation_angle * pi / 180.0_wp ) * e_utm_tmp(t)            &
-                      + COS( init_model%rotation_angle * pi / 180.0_wp ) * n_utm_tmp(t)
+             e_utm_tmp(t) = e_utm(t) - init_model%origin_x
+             n_utm_tmp(t) = n_utm(t) - init_model%origin_y
+             e_utm(t) = COS( init_model%rotation_angle * pi / 180.0_wp )                           &
+                                    * e_utm_tmp(t)                                                 &
+                                  - SIN( init_model%rotation_angle * pi / 180.0_wp )               &
+                                    * n_utm_tmp(t)
+             n_utm(t) = SIN( init_model%rotation_angle * pi / 180.0_wp )                           &
+                                    * e_utm_tmp(t)                                                 &
+                                  + COS( init_model%rotation_angle * pi / 180.0_wp )               &
+                                    * n_utm_tmp(t)
 !
 !--          Compute grid indices relative to origin and check if these are on the subdomain. Note,
 !--          virtual measurements will be taken also at grid points surrounding the station, hence,
 !--          check also for these grid points. The number of surrounding grid points is set
 !--          according to the featureType.
-             IF ( vmea(l)%timeseries_profile )  THEN
+             IF ( vmea(l)%timseries_profile )  THEN
                 off   = off_pr
                 off_z = off_pr_z
-             ELSEIF ( vmea(l)%timeseries )  THEN
+             ELSEIF ( vmea(l)%timseries     )  THEN
                 off   = off_ts
                 off_z = off_ts_z
-             ELSEIF ( vmea(l)%trajectory )  THEN
+             ELSEIF ( vmea(l)%trajectory    )  THEN
                 off   = off_tr
                 off_z = off_tr_z
              ENDIF
 
-             is = INT( e_utm(t) * ddx, KIND = iwp )
-             js = INT( n_utm(t) * ddy, KIND = iwp )
-
-!
-!--          For timeseries output, check if the sampling location lies within the model domain.
-             IF ( warn_out_of_domain_locations  .AND.  vmea(l)%timeseries )  THEN
-                IF ( is < 0  .OR.  is > nx+1  .OR.  js < 0  .OR.  js > ny+1  .OR.                  &
-                     zar(t) < 0.0_wp  .OR.  zar(t) >= zw(nzt) )                                    &
-                THEN
-                   WRITE( message_string, * ) 'sampling coordinates of site "',                    &
-                                              TRIM( vmea(l)%site ), '" do not lie within the ',    &
-                                              'PALM domain'
-                   CALL message( 'vm_init', 'VME0007', 0, 1, 0, 6, 0 )
-                ENDIF
-             ENDIF
+             is = INT( ( e_utm(t) + 0.5_wp * dx ) * ddx, KIND = iwp )
+             js = INT( ( n_utm(t) + 0.5_wp * dy ) * ddy, KIND = iwp )
 !
 !--          Is the observation point on subdomain?
              on_pe = ( is >= nxl  .AND.  is <= nxr  .AND.  js >= nys  .AND.  js <= nyn )
@@ -1091,36 +1144,17 @@
                    DO  j = js-off, js+off
                       DO  k = kl, ku
                          meas_flag(k,j,i) = MERGE( IBSET( meas_flag(k,j,i), 0 ), 0,                &
-                                                   BTEST( topo_flags(k,j,i), 0 ) )
+                                                          BTEST( wall_flags_total_0(k,j,i), 0 ) )
                       ENDDO
                    ENDDO
                 ENDDO
              ENDIF
-!
-!--          In case of timeseries output with one single point, exact interpolation onto the
-!--          sampling location is possible. This case, store the respective relative coordinate.
-!--          For trajectories and profiles interpolation onto the exact sampling location is
-!--          not possible at the moment. If this is desired at a later point in time, the following
-!--          block needs to be moved out of the loop over t.
-             IF ( vmea(l)%timeseries  .AND.  interpolate_to_location  .AND.  off_ts == 0  .AND.    &
-                  off_ts_z == 0 )                                                                  &
-             THEN
-                ALLOCATE( vmea(l)%coords(3) )
-
-                IF ( on_pe )  THEN
-                   vmea(l)%coords(1) = e_utm(t)
-                   vmea(l)%coords(2) = n_utm(t)
-                   vmea(l)%coords(3) = zar(t) + zw(topo_top_ind(js,is,0))
-
-                   vmea(l)%interpolate = .TRUE.
-                ENDIF
-             ENDIF
 
           ENDDO
 !
-!--       Based on the flag array, count the number of sampling coordinates. Sampling coordinates in
-!--       atmosphere and soil may be different, as within the soil all levels will be measured.
-!--       Hence, count individually. Start with atmoshere.
+!--       Based on the flag array, count the number of sampling coordinates. Please note, sampling
+!--       coordinates in atmosphere and soil may be different, as within the soil all levels will be
+!--       measured. Hence, count individually. Start with atmoshere.
           ns = 0
           DO  i = nxl-off, nxr+off
              DO  j = nys-off, nyn+off
@@ -1151,7 +1185,7 @@
                       vmea(l)%i(ns) = i
                       vmea(l)%j(ns) = j
                       vmea(l)%k(ns) = k
-                      vmea(l)%zar(ns) = zu(k) - zw(topo_top_ind(j,i,0))
+                      vmea(l)%zar(ns)  = zu(k) - zw(topo_top_ind(j,i,0))
                    ENDIF
                 ENDDO
              ENDDO
@@ -1164,13 +1198,11 @@
              DO  i = nxl, nxr
                 DO  j = nys, nyn
                    IF ( ANY( BTEST( meas_flag(:,j,i), 0 ) ) )  THEN
-                      IF ( surf_lsm%start_index(j,i) <= surf_lsm%end_index(j,i) )  THEN
-                         vmea(l)%ns_soil = vmea(l)%ns_soil +                                       &
-                                           surf_lsm%nzt_soil - surf_lsm%nzb_soil + 1
+                      IF ( surf_lsm_h(0)%start_index(j,i) <= surf_lsm_h(0)%end_index(j,i) )  THEN
+                         vmea(l)%ns_soil = vmea(l)%ns_soil + nzt_soil - nzb_soil + 1
                       ENDIF
-                      IF ( surf_usm%start_index(j,i) <= surf_usm%end_index(j,i) )  THEN
-                         vmea(l)%ns_soil = vmea(l)%ns_soil +                                       &
-                                           surf_usm%nzt_wall - surf_usm%nzb_wall + 1
+                      IF ( surf_usm_h(0)%start_index(j,i) <= surf_usm_h(0)%end_index(j,i) )  THEN
+                         vmea(l)%ns_soil = vmea(l)%ns_soil + nzt_wall - nzb_wall + 1
                       ENDIF
                    ENDIF
                 ENDDO
@@ -1191,25 +1223,25 @@
              DO  i = nxl, nxr
                 DO  j = nys, nyn
                    IF ( ANY( BTEST( meas_flag(:,j,i), 0 ) ) )  THEN
-                      IF ( surf_lsm%start_index(j,i) <= surf_lsm%end_index(j,i) )  THEN
-                         m = surf_lsm%start_index(j,i)
-                         DO  k = surf_lsm%nzb_soil, surf_lsm%nzt_soil
+                      IF ( surf_lsm_h(0)%start_index(j,i) <= surf_lsm_h(0)%end_index(j,i) )  THEN
+                         m = surf_lsm_h(0)%start_index(j,i)
+                         DO  k = nzb_soil, nzt_soil
                             ns = ns + 1
                             vmea(l)%i_soil(ns) = i
                             vmea(l)%j_soil(ns) = j
                             vmea(l)%k_soil(ns) = k
-                            vmea(l)%depth(ns)  = -surf_lsm%zs(k)
+                            vmea(l)%depth(ns)  = - zs(k)
                          ENDDO
                       ENDIF
 
-                      IF ( surf_usm%start_index(j,i) <= surf_usm%end_index(j,i) )  THEN
-                         m = surf_usm%start_index(j,i)
-                         DO  k = surf_usm%nzb_wall, surf_usm%nzt_wall
+                      IF ( surf_usm_h(0)%start_index(j,i) <= surf_usm_h(0)%end_index(j,i) )  THEN
+                         m = surf_usm_h(0)%start_index(j,i)
+                         DO  k = nzb_wall, nzt_wall
                             ns = ns + 1
                             vmea(l)%i_soil(ns) = i
                             vmea(l)%j_soil(ns) = j
                             vmea(l)%k_soil(ns) = k
-                            vmea(l)%depth(ns)  = -surf_usm%zw(k,m)
+                            vmea(l)%depth(ns)  = - surf_usm_h(0)%zw(k,m)
                          ENDDO
                       ENDIF
                    ENDIF
@@ -1220,17 +1252,15 @@
 !--       Allocate array to save the sampled values.
           ALLOCATE( vmea(l)%measured_vars(1:vmea(l)%ns,1:vmea(l)%nmeas) )
 
-          IF ( vmea(l)%soil_sampling )  THEN
-             ALLOCATE( vmea(l)%measured_vars_soil(1:vmea(l)%ns_soil,1:vmea(l)%nmeas) )
-          ENDIF
+          IF ( vmea(l)%soil_sampling )                                                             &
+             ALLOCATE( vmea(l)%measured_vars_soil(1:vmea(l)%ns_soil, 1:vmea(l)%nmeas) )
 !
-!--       Initialize with _FillValues.
+!--       Initialize with _FillValues
           vmea(l)%measured_vars(1:vmea(l)%ns,1:vmea(l)%nmeas) = vmea(l)%fillout
-          IF ( vmea(l)%soil_sampling )  THEN
+          IF ( vmea(l)%soil_sampling )                                                             &
              vmea(l)%measured_vars_soil(1:vmea(l)%ns_soil,1:vmea(l)%nmeas) = vmea(l)%fillout
-          ENDIF
 !
-!--       Deallocate temporary coordinate arrays.
+!--       Deallocate temporary coordinate arrays
           IF ( ALLOCATED( e_utm )     )  DEALLOCATE( e_utm )
           IF ( ALLOCATED( n_utm )     )  DEALLOCATE( n_utm )
           IF ( ALLOCATED( e_utm_tmp ) )  DEALLOCATE( e_utm_tmp )
@@ -1295,7 +1325,7 @@
 #endif
 
 !
-!-- Determine the start coordinate in NetCDF file for the local arrays. Start coordinates are
+!-- Determine the start coordinate in NetCDF file for the local arrays. Note, start coordinates are
 !-- initialized with zero for sake of simplicity in summation. However, in NetCDF the start
 !-- coordinates must be >= 1, so that a one needs to be added at the end.
     DO  l = 1, vmea_general%nvm
@@ -1320,7 +1350,6 @@
 
 #endif
     IF ( debug_output )  CALL debug_message( 'vm_init', 'end' )
-
  END SUBROUTINE vm_init
 
 
@@ -1339,33 +1368,22 @@
 
     INTEGER(iwp), DIMENSION(:), ALLOCATABLE ::  ndim !< dummy to write dimension
 
-    REAL(wp) ::  dt_vm    !< sampling interval of specific measurement
     REAL(wp) ::  dum_lat  !< transformed geographical coordinate (latitude)
     REAL(wp) ::  dum_lon  !< transformed geographical coordinate (longitude)
 
 !
+!-- Determine the number of output timesteps.
+    ntimesteps = CEILING( ( end_time - MAX( vm_time_start, time_since_reference_point )            &
+                          ) / dt_virtual_measurement )
+!
 !-- Create directory where output files will be stored.
     CALL local_system( 'mkdir -p VM_OUTPUT' // TRIM( coupling_char ) )
-
 !
 !-- Loop over all sites.
     DO  l = 1, vmea_general%nvm
 !
 !--    Skip if no observations will be taken for this site.
        IF ( vmea(l)%ns_tot == 0  .AND.  vmea(l)%ns_soil_tot == 0 )  CYCLE
-!
-!--    Determine the number of output timesteps, which depend on the type of the measurement.
-       IF ( vmea(l)%timeseries )  THEN
-          dt_vm = dt_virtual_measurement_ts
-       ELSEIF ( vmea(l)%timeseries_profile )  THEN
-          dt_vm = dt_virtual_measurement_pr
-       ELSE
-          dt_vm = dt_virtual_measurement_tr
-       ENDIF
-
-       ntimesteps = CEILING( ( end_time - MAX( vm_time_start, time_since_reference_point )         &
-                             ) / dt_vm )
-
 !
 !--    Define output file.
        WRITE( vmea(l)%nc_filename, '(A,I4.4)' ) 'VM_OUTPUT' // TRIM( coupling_char ) // '/' //     &
@@ -1408,8 +1426,7 @@
                                    value = dum_lon )
        return_value = dom_def_att( vmea(l)%nc_filename, attribute_name = 'origin_lat',             &
                                    value = dum_lat )
-       return_value = dom_def_att( vmea(l)%nc_filename, attribute_name = 'origin_z',               &
-                                   value = init_model%origin_z )
+       return_value = dom_def_att( vmea(l)%nc_filename, attribute_name = 'origin_z', value = 0.0 )
        return_value = dom_def_att( vmea(l)%nc_filename, attribute_name = 'rotation_angle',         &
                                    value = input_file_atts%rotation_angle )
        return_value = dom_def_att( vmea(l)%nc_filename, attribute_name = 'featureType',            &
@@ -1485,73 +1502,63 @@
        variable_name = 'time'
        return_value = dom_def_var( vmea(l)%nc_filename, variable_name = variable_name,             &
                                    dimension_names = (/ 'station  ', 'ntime    '/),                &
-                                   write_mode = 'independent', output_type = 'real32' )
+                                   output_type = 'real32' )
 !
 !--    station_name
        variable_name = 'station_name'
        return_value = dom_def_var( vmea(l)%nc_filename, variable_name = variable_name,             &
                                    dimension_names = (/ 'max_name_len', 'station     ' /),         &
-                                   write_mode = 'independent', output_type = 'char' )
+                                   output_type = 'char' )
 !
 !--    vrs (vertical reference system)
        variable_name = 'vrs'
        return_value = dom_def_var( vmea(l)%nc_filename, variable_name = variable_name,             &
-                                   dimension_names = (/ 'station' /), write_mode = 'independent',  &
-                                   output_type = 'int8' )
+                                   dimension_names = (/ 'station' /), output_type = 'int8' )
 !
 !--    crs (coordinate reference system)
        variable_name = 'crs'
        return_value = dom_def_var( vmea(l)%nc_filename, variable_name = variable_name,             &
-                                   dimension_names = (/ 'station' /), write_mode = 'independent',  &
-                                   output_type = 'int8' )
+                                   dimension_names = (/ 'station' /), output_type = 'int8' )
 !
 !--    z
        variable_name = 'z'
        return_value = dom_def_var( vmea(l)%nc_filename, variable_name = variable_name,             &
-                                   dimension_names = (/'station'/), write_mode = 'independent',    &
-                                   output_type = 'real32' )
+                                   dimension_names = (/'station'/), output_type = 'real32' )
 !
 !--    station_h
        variable_name = 'station_h'
        return_value = dom_def_var( vmea(l)%nc_filename, variable_name = variable_name,             &
-                                   dimension_names = (/'station'/), write_mode = 'independent',    &
-                                   output_type = 'real32' )
+                                   dimension_names = (/'station'/), output_type = 'real32' )
 !
 !--    x
        variable_name = 'x'
        return_value = dom_def_var( vmea(l)%nc_filename, variable_name = variable_name,             &
-                                   dimension_names = (/'station'/), write_mode = 'independent',    &
-                                   output_type = 'real32' )
+                                   dimension_names = (/'station'/), output_type = 'real32' )
 !
 !--    y
        variable_name = 'y'
        return_value = dom_def_var( vmea(l)%nc_filename, variable_name = variable_name,             &
-                                   dimension_names = (/'station'/), write_mode = 'independent',    &
-                                   output_type = 'real32' )
+                                   dimension_names = (/'station'/), output_type = 'real32' )
 !
 !--    E-UTM
        variable_name = 'E_UTM'
        return_value = dom_def_var( vmea(l)%nc_filename, variable_name = variable_name,             &
-                                   dimension_names = (/'station'/), write_mode = 'independent',    &
-                                   output_type = 'real32' )
+                                   dimension_names = (/'station'/), output_type = 'real32' )
 !
 !--    N-UTM
        variable_name = 'N_UTM'
        return_value = dom_def_var( vmea(l)%nc_filename, variable_name = variable_name,             &
-                                   dimension_names = (/'station'/), write_mode = 'independent',    &
-                                   output_type = 'real32' )
+                                   dimension_names = (/'station'/), output_type = 'real32' )
 !
 !--    latitude
        variable_name = 'lat'
        return_value = dom_def_var( vmea(l)%nc_filename, variable_name = variable_name,             &
-                                   dimension_names = (/'station'/), write_mode = 'independent',    &
-                                   output_type = 'real32' )
+                                   dimension_names = (/'station'/), output_type = 'real32' )
 !
 !--    longitude
        variable_name = 'lon'
        return_value = dom_def_var( vmea(l)%nc_filename, variable_name = variable_name,             &
-                                   dimension_names = (/'station'/), write_mode = 'independent',    &
-                                   output_type = 'real32' )
+                                   dimension_names = (/'station'/), output_type = 'real32' )
 !
 !--    Set attributes for the coordinate variables. Note, not all coordinates have the same number
 !--    of attributes.
@@ -1668,7 +1675,7 @@
                                    attribute_name = 'inverse_flattening',                          &
                                    value = coord_ref_sys%inverse_flattening )
        return_value = dom_def_att( vmea(l)%nc_filename, variable_name = 'crs',                     &
-                                   attribute_name = 'latitude_of_projection_origin',               &
+                                   attribute_name = 'latitude_of_projection_origin',&
                                    value = coord_ref_sys%latitude_of_projection_origin )
        return_value = dom_def_att( vmea(l)%nc_filename, variable_name = 'crs',                     &
                                    attribute_name = char_long, value = coord_ref_sys%long_name )
@@ -1716,61 +1723,53 @@
           variable_name = 'time_soil'
           return_value = dom_def_var( vmea(l)%nc_filename, variable_name = variable_name,          &
                                       dimension_names = (/'station_soil', 'ntime_soil  '/),        &
-                                      write_mode = 'independent', output_type = 'real32' )
+                                      output_type = 'real32' )
 !
 !--       station_name for soil
           variable_name = 'station_name_soil'
           return_value = dom_def_var( vmea(l)%nc_filename, variable_name = variable_name,          &
                                       dimension_names = (/ 'max_name_len', 'station_soil' /),      &
-                                      write_mode = 'independent', output_type = 'char' )
+                                      output_type = 'char' )
 !
 !--       z
           variable_name = 'z_soil'
           return_value = dom_def_var( vmea(l)%nc_filename, variable_name = variable_name,          &
-                                      dimension_names = (/'station_soil'/),                        &
-                                      write_mode = 'independent', output_type = 'real32' )
+                                      dimension_names = (/'station_soil'/), output_type = 'real32' )
 !
 !--       station_h for soil
           variable_name = 'station_h_soil'
           return_value = dom_def_var( vmea(l)%nc_filename, variable_name = variable_name,          &
-                                      dimension_names = (/'station_soil'/),                        &
-                                      write_mode = 'independent',  output_type = 'real32' )
+                                      dimension_names = (/'station_soil'/), output_type = 'real32' )
 !
 !--       x soil
           variable_name = 'x_soil'
           return_value = dom_def_var( vmea(l)%nc_filename, variable_name = variable_name,          &
-                                      dimension_names = (/'station_soil'/),                        &
-                                      write_mode = 'independent', output_type = 'real32' )
+                                      dimension_names = (/'station_soil'/), output_type = 'real32' )
 !
 !-        y soil
           variable_name = 'y_soil'
           return_value = dom_def_var( vmea(l)%nc_filename, variable_name = variable_name,          &
-                                      dimension_names = (/'station_soil'/),                        &
-                                      write_mode = 'independent', output_type = 'real32' )
+                                      dimension_names = (/'station_soil'/), output_type = 'real32' )
 !
 !--       E-UTM soil
           variable_name = 'E_UTM_soil'
           return_value = dom_def_var( vmea(l)%nc_filename, variable_name = variable_name,          &
-                                      dimension_names = (/'station_soil'/),                        &
-                                      write_mode = 'independent', output_type = 'real32' )
+                                      dimension_names = (/'station_soil'/), output_type = 'real32' )
 !
 !--       N-UTM soil
           variable_name = 'N_UTM_soil'
           return_value = dom_def_var( vmea(l)%nc_filename, variable_name = variable_name,          &
-                                      dimension_names = (/'station_soil'/),                        &
-                                      write_mode = 'independent', output_type = 'real32' )
+                                      dimension_names = (/'station_soil'/), output_type = 'real32' )
 !
 !--       latitude soil
           variable_name = 'lat_soil'
           return_value = dom_def_var( vmea(l)%nc_filename, variable_name = variable_name,          &
-                                      dimension_names = (/'station_soil'/),                        &
-                                      write_mode = 'independent', output_type = 'real32' )
+                                      dimension_names = (/'station_soil'/), output_type = 'real32' )
 !
 !--       longitude soil
           variable_name = 'lon_soil'
           return_value = dom_def_var( vmea(l)%nc_filename, variable_name = variable_name,          &
-                                      dimension_names = (/'station_soil'/),                        &
-                                      write_mode = 'independent', output_type = 'real32' )
+                                      dimension_names = (/'station_soil'/), output_type = 'real32' )
 !
 !--       Set attributes for the coordinate variables. Note, not all coordinates have the same
 !--       number of attributes.
@@ -1877,15 +1876,15 @@
 
              return_value = dom_def_var( vmea(l)%nc_filename, variable_name = variable_name,       &
                                          dimension_names = (/'station_soil', 'ntime_soil  '/),     &
-                                         write_mode = 'independent', output_type = 'real32' )
+                                         output_type = 'real32' )
           ELSE
 
              return_value = dom_def_var( vmea(l)%nc_filename, variable_name = variable_name,       &
                                          dimension_names = (/'station', 'ntime  '/),               &
-                                         write_mode = 'independent', output_type = 'real32' )
+                                         output_type = 'real32' )
           ENDIF
 !
-!--       Set variable attributes. For some variables not all attributes are defined,
+!--       Set variable attributes. Please note, for some variables not all attributes are defined,
 !--       e.g. standard_name for the horizontal wind components.
           CALL vm_set_attributes( vmea(l)%var_atts(n) )
 
@@ -1921,26 +1920,17 @@
 
     ENDDO  ! loop over sites
 
-!
-!-- Check if DOM reported any error
-    dom_error_message = dom_get_error_message()
-    IF ( TRIM( dom_error_message ) /= '' )  THEN
-       message_string = 'error while defining output: "' // TRIM( dom_error_message ) // '"'
-       CALL message( 'vm_init_output', 'VME0008', 0, 1, 0, 6, 0 )
-    ENDIF
 
  END SUBROUTINE vm_init_output
-
 
 !--------------------------------------------------------------------------------------------------!
 ! Description:
 ! ------------
 !> Parallel NetCDF output via data-output module.
 !--------------------------------------------------------------------------------------------------!
- SUBROUTINE vm_data_output( output_pr, output_ts, output_tr )
+ SUBROUTINE vm_data_output
 
     CHARACTER(LEN=100) ::  variable_name  !< name of output variable
-
     CHARACTER(LEN=maximum_name_length), DIMENSION(:), ALLOCATABLE :: station_name  !< string for station name, consecutively ordered
 
     CHARACTER(LEN=1), DIMENSION(:,:), ALLOCATABLE, TARGET ::  output_values_2d_char_target  !< target for output name arrays
@@ -1952,13 +1942,6 @@
     INTEGER            ::  return_value  !< returned status value of called function
     INTEGER(iwp)       ::  t_ind         !< time index
 
-    LOGICAL ::  output_pr  !< flag indicating profile data to be output
-    LOGICAL ::  output_ts  !< flag indicating timeseries data to be output
-    LOGICAL ::  output_tr  !< flag indicating trajectory data to be output
-
-    REAL(wp) ::  eutm  !< easting (UTM)
-    REAL(wp) ::  nutm  !< northing (UTM)
-
     REAL(wp), DIMENSION(:), ALLOCATABLE           ::  dum_lat                   !< transformed geographical coordinate (latitude)
     REAL(wp), DIMENSION(:), ALLOCATABLE           ::  dum_lon                   !< transformed geographical coordinate (longitude)
     REAL(wp), DIMENSION(:), ALLOCATABLE           ::  oro_rel                   !< relative altitude of model surface
@@ -1967,9 +1950,7 @@
     REAL(sp), DIMENSION(:,:), POINTER             ::  output_values_2d_pointer  !< pointer for 2d output array
     REAL(sp), DIMENSION(:,:), ALLOCATABLE, TARGET ::  output_values_2d_target   !< target for 2d output array
 
-
     CALL cpu_log( log_point_s(26), 'VM output', 'start' )
-
 !
 !-- At the first call of this routine write the spatial coordinates.
     IF ( .NOT. initial_write_coordinates )  THEN
@@ -1982,45 +1963,26 @@
 
           ALLOCATE( output_values_1d_target(vmea(l)%start_coord_a:vmea(l)%end_coord_a) )
 !
-!--       Output of Easting coordinate. Before output, recalculate EUTM. Note, in case of single-
-!--       point timeseries output and exact sampling location output, the sampling coordinates
-!--       are already available in the %coords array.
-          IF ( vmea(l)%interpolate  .AND.  SIZE( output_values_1d_target ) == 1 )  THEN
-             output_values_1d_target = vmea_general%origin_x_pd                                    &
-                                    + vmea(l)%coords(1) *                                          &
-                                      COS( init_model%rotation_angle * pi / 180.0_wp )             &
-                                    + vmea(l)%coords(2) *                                          &
-                                      SIN( init_model%rotation_angle * pi / 180.0_wp )
-          ELSE
-             output_values_1d_target = vmea_general%origin_x_pd                                    &
-                                    + REAL( vmea(l)%i(1:vmea(l)%ns) + 0.5_wp, KIND = wp ) * dx *   &
-                                      COS( init_model%rotation_angle * pi / 180.0_wp )             &
-                                    + REAL( vmea(l)%j(1:vmea(l)%ns) + 0.5_wp, KIND = wp ) * dy *   &
-                                      SIN( init_model%rotation_angle * pi / 180.0_wp )
-          ENDIF
+!--       Output of Easting coordinate. Before output, recalculate EUTM.
+          output_values_1d_target = init_model%origin_x                                            &
+                    + REAL( vmea(l)%i(1:vmea(l)%ns) + 0.5_wp, KIND = wp ) * dx                     &
+                    * COS( init_model%rotation_angle * pi / 180.0_wp )                             &
+                    + REAL( vmea(l)%j(1:vmea(l)%ns) + 0.5_wp, KIND = wp ) * dy                     &
+                    * SIN( init_model%rotation_angle * pi / 180.0_wp )
 
           output_values_1d_pointer => output_values_1d_target
+
           return_value = dom_write_var( vmea(l)%nc_filename, 'E_UTM',                              &
                                         values_real32_1d = output_values_1d_pointer,               &
                                         bounds_start = (/vmea(l)%start_coord_a/),                  &
                                         bounds_end   = (/vmea(l)%end_coord_a  /) )
 !
-!--       Output of Northing coordinate. Before output, recalculate NUTM. Note, in case of single-
-!--       point timeseries output and exact sampling location output, the sampling coordinates
-!--       are already available in the %coords array.
-          IF ( vmea(l)%interpolate  .AND.  SIZE( output_values_1d_target ) == 1 )  THEN
-             output_values_1d_target = vmea_general%origin_y_pd                                    &
-                                    - vmea(l)%coords(1) *                                          &
-                                      SIN( init_model%rotation_angle * pi / 180.0_wp )             &
-                                    + vmea(l)%coords(2) *                                          &
-                                      COS( init_model%rotation_angle * pi / 180.0_wp )
-          ELSE
-             output_values_1d_target = vmea_general%origin_y_pd                                    &
-                                    - REAL( vmea(l)%i(1:vmea(l)%ns) + 0.5_wp, KIND = wp ) * dx *   &
-                                      SIN( init_model%rotation_angle * pi / 180.0_wp )             &
-                                    + REAL( vmea(l)%j(1:vmea(l)%ns) + 0.5_wp, KIND = wp ) * dy *   &
-                                      COS( init_model%rotation_angle * pi / 180.0_wp )
-          ENDIF
+!--       Output of Northing coordinate. Before output, recalculate NUTM.
+          output_values_1d_target = init_model%origin_y                                            &
+                    - REAL( vmea(l)%i(1:vmea(l)%ns) + 0.5_wp, KIND = wp ) * dx                     &
+                    * SIN( init_model%rotation_angle * pi / 180.0_wp )                             &
+                    + REAL( vmea(l)%j(1:vmea(l)%ns) + 0.5_wp, KIND = wp ) * dy                     &
+                    * COS( init_model%rotation_angle * pi / 180.0_wp )
 
           output_values_1d_pointer => output_values_1d_target
           return_value = dom_write_var( vmea(l)%nc_filename, 'N_UTM',                              &
@@ -2031,34 +1993,21 @@
 !--       Output of longitude and latitude coordinate. Before output, convert it.
           ALLOCATE( dum_lat(1:vmea(l)%ns) )
           ALLOCATE( dum_lon(1:vmea(l)%ns) )
-!
-!--       In case of single-point timeseries output and exact sampling location output, the
-!--       sampling coordinates are already available in the %coords array.
-          IF ( vmea(l)%interpolate  .AND.  SIZE( output_values_1d_target ) == 1 )  THEN
-             DO  n = 1, vmea(l)%ns
-                eutm = vmea_general%origin_x_pd + vmea(l)%coords(1) *                              &
-                                                  COS( init_model%rotation_angle * pi / 180.0_wp ) &
-                                                + vmea(l)%coords(2) *                              &
-                                                  SIN( init_model%rotation_angle * pi / 180.0_wp )
-                nutm = vmea_general%origin_y_pd - vmea(l)%coords(1) *                              &
-                                                  SIN( init_model%rotation_angle * pi / 180.0_wp ) &
-                                                + vmea(l)%coords(2) *                              &
-                                                  COS( init_model%rotation_angle * pi / 180.0_wp )
-                CALL convert_utm_to_geographic( crs_list, eutm, nutm, dum_lon(n), dum_lat(n) )
-             ENDDO
-          ELSE
-             DO  n = 1, vmea(l)%ns
-                eutm = vmea_general%origin_x_pd + REAL( vmea(l)%i(n) + 0.5_wp, KIND = wp ) * dx *  &
-                                                  COS( init_model%rotation_angle * pi / 180.0_wp ) &
-                                                + REAL( vmea(l)%j(n) + 0.5_wp, KIND = wp ) * dy *  &
-                                                  SIN( init_model%rotation_angle * pi / 180.0_wp )
-                nutm = vmea_general%origin_y_pd - REAL( vmea(l)%i(n) + 0.5_wp, KIND = wp ) * dx *  &
-                                                  SIN( init_model%rotation_angle * pi / 180.0_wp ) &
-                                                + REAL( vmea(l)%j(n) + 0.5_wp, KIND = wp ) * dy *  &
-                                                  COS( init_model%rotation_angle * pi / 180.0_wp )
-                CALL convert_utm_to_geographic( crs_list, eutm, nutm, dum_lon(n), dum_lat(n) )
-             ENDDO
-          ENDIF
+
+          DO  n = 1, vmea(l)%ns
+             CALL convert_utm_to_geographic( crs_list,                                             &
+                                             init_model%origin_x                                   &
+                                           + REAL( vmea(l)%i(n) + 0.5_wp, KIND = wp ) * dx         &
+                                           * COS( init_model%rotation_angle * pi / 180.0_wp )      &
+                                           + REAL( vmea(l)%j(n) + 0.5_wp, KIND = wp ) * dy         &
+                                           * SIN( init_model%rotation_angle * pi / 180.0_wp ),     &
+                                             init_model%origin_y                                   &
+                                           - REAL( vmea(l)%i(n) + 0.5_wp, KIND = wp ) * dx         &
+                                           * SIN( init_model%rotation_angle * pi / 180.0_wp )      &
+                                           + REAL( vmea(l)%j(n) + 0.5_wp, KIND = wp ) * dy         &
+                                           * COS( init_model%rotation_angle * pi / 180.0_wp ),     &
+                                             dum_lon(n), dum_lat(n) )
+          ENDDO
 
           output_values_1d_target = dum_lat
           output_values_1d_pointer => output_values_1d_target
@@ -2077,20 +2026,13 @@
           DEALLOCATE( dum_lon )
 !
 !--       Output of relative height coordinate.
-!--       Before this is output, first define the relative orography height and add this to z.
+!--       Before this is output, first define the relative orographie height and add this to z.
           ALLOCATE( oro_rel(1:vmea(l)%ns) )
           DO  n = 1, vmea(l)%ns
              oro_rel(n) = zw(topo_top_ind(vmea(l)%j(n),vmea(l)%i(n),3))
           ENDDO
-!
-!--       In case of single-point timeseries output and exact sampling location output, the
-!--       sampling coordinates are already available in the %coords array.
-          IF ( vmea(l)%interpolate  .AND.  SIZE( output_values_1d_target ) == 1 )  THEN
-             output_values_1d_target = vmea(l)%coords(3)
-          ELSE
-             output_values_1d_target = vmea(l)%zar(1:vmea(l)%ns) + oro_rel(:)
-          ENDIF
 
+          output_values_1d_target = vmea(l)%zar(1:vmea(l)%ns) + oro_rel(:)
           output_values_1d_pointer => output_values_1d_target
           return_value = dom_write_var( vmea(l)%nc_filename, 'z',                                  &
                                         values_real32_1d = output_values_1d_pointer,               &
@@ -2111,7 +2053,7 @@
 !
 !--       Write station name
           ALLOCATE ( station_name(vmea(l)%start_coord_a:vmea(l)%end_coord_a) )
-          ALLOCATE ( output_values_2d_char_target(vmea(l)%start_coord_a:vmea(l)%end_coord_a,       &
+          ALLOCATE ( output_values_2d_char_target(vmea(l)%start_coord_a:vmea(l)%end_coord_a, &
                                                   1:maximum_name_length) )
 
           DO  n = vmea(l)%start_coord_a, vmea(l)%end_coord_a
@@ -2138,11 +2080,11 @@
              ALLOCATE( output_values_1d_target(vmea(l)%start_coord_s:vmea(l)%end_coord_s) )
 !
 !--          Output of Easting coordinate. Before output, recalculate EUTM.
-             output_values_1d_target = vmea_general%origin_x_pd                                    &
-                            + REAL( vmea(l)%i_soil(1:vmea(l)%ns_soil) + 0.5_wp, KIND = wp ) * dx * &
-                              COS( init_model%rotation_angle * pi / 180.0_wp )                     &
-                            + REAL( vmea(l)%j_soil(1:vmea(l)%ns_soil) + 0.5_wp, KIND = wp ) * dy * &
-                              SIN( init_model%rotation_angle * pi / 180.0_wp )
+             output_values_1d_target = init_model%origin_x                                         &
+               + REAL( vmea(l)%i_soil(1:vmea(l)%ns_soil) + 0.5_wp, KIND = wp ) * dx                &
+               * COS( init_model%rotation_angle * pi / 180.0_wp )                                  &
+               + REAL( vmea(l)%j_soil(1:vmea(l)%ns_soil) + 0.5_wp, KIND = wp ) * dy                &
+               * SIN( init_model%rotation_angle * pi / 180.0_wp )
              output_values_1d_pointer => output_values_1d_target
              return_value = dom_write_var( vmea(l)%nc_filename, 'E_UTM_soil',                      &
                                            values_real32_1d = output_values_1d_pointer,            &
@@ -2150,11 +2092,11 @@
                                            bounds_end   = (/vmea(l)%end_coord_s  /) )
 !
 !--          Output of Northing coordinate. Before output, recalculate NUTM.
-             output_values_1d_target = vmea_general%origin_y_pd                                    &
-                            - REAL( vmea(l)%i_soil(1:vmea(l)%ns_soil) + 0.5_wp, KIND = wp ) * dx * &
-                              SIN( init_model%rotation_angle * pi / 180.0_wp )                     &
-                            + REAL( vmea(l)%j_soil(1:vmea(l)%ns_soil) + 0.5_wp, KIND = wp ) * dy * &
-                              COS( init_model%rotation_angle * pi / 180.0_wp )
+             output_values_1d_target = init_model%origin_y                                         &
+               - REAL( vmea(l)%i_soil(1:vmea(l)%ns_soil) + 0.5_wp, KIND = wp ) * dx                &
+               * SIN( init_model%rotation_angle * pi / 180.0_wp )                                  &
+               + REAL( vmea(l)%j_soil(1:vmea(l)%ns_soil) + 0.5_wp, KIND = wp ) * dy                &
+               * COS( init_model%rotation_angle * pi / 180.0_wp )
 
              output_values_1d_pointer => output_values_1d_target
              return_value = dom_write_var( vmea(l)%nc_filename, 'N_UTM_soil',                      &
@@ -2167,17 +2109,18 @@
              ALLOCATE( dum_lon(1:vmea(l)%ns_soil) )
 
              DO  n = 1, vmea(l)%ns_soil
-                eutm = vmea_general%origin_x_pd                           &
-                                            + REAL( vmea(l)%i_soil(n) + 0.5_wp, KIND = wp ) * dx * &
-                                              COS( init_model%rotation_angle * pi / 180.0_wp )     &
-                                            + REAL( vmea(l)%j_soil(n) + 0.5_wp, KIND = wp ) * dy * &
-                                              SIN( init_model%rotation_angle * pi / 180.0_wp )
-                nutm = vmea_general%origin_y_pd                           &
-                                            - REAL( vmea(l)%i_soil(n) + 0.5_wp, KIND = wp ) * dx * &
-                                              SIN( init_model%rotation_angle * pi / 180.0_wp )     &
-                                            + REAL( vmea(l)%j_soil(n) + 0.5_wp, KIND = wp ) * dy * &
-                                              COS( init_model%rotation_angle * pi / 180.0_wp )
-                CALL convert_utm_to_geographic( crs_list, eutm, nutm, dum_lon(n), dum_lat(n) )
+                CALL convert_utm_to_geographic( crs_list,                                          &
+                                                init_model%origin_x                                &
+                                              + REAL( vmea(l)%i_soil(n) + 0.5_wp, KIND = wp ) * dx &
+                                              * COS( init_model%rotation_angle * pi / 180.0_wp )   &
+                                              + REAL( vmea(l)%j_soil(n) + 0.5_wp, KIND = wp ) * dy &
+                                              * SIN( init_model%rotation_angle * pi / 180.0_wp ),  &
+                                                init_model%origin_y                                &
+                                              - REAL( vmea(l)%i_soil(n) + 0.5_wp, KIND = wp ) * dx &
+                                              * SIN( init_model%rotation_angle * pi / 180.0_wp )   &
+                                              + REAL( vmea(l)%j_soil(n) + 0.5_wp, KIND = wp ) * dy &
+                                              * COS( init_model%rotation_angle * pi / 180.0_wp ),  &
+                                                dum_lon(n), dum_lat(n) )
              ENDDO
 
              output_values_1d_target = dum_lat
@@ -2244,35 +2187,16 @@
 
              DEALLOCATE( station_name )
              DEALLOCATE( output_values_2d_char_target )
-!
-!--          At the beginning, check if also time coordinate for soil variables need to be written.
-!--          This is required when the input flag soil_sampling is .T. and also a soil-related
-!--          variable has been sampled. The latter is not necessarily true if the driver input
-!--          does not indicate any soil variable. Store the result in a dedicated variable.
-             DO  n = 1, vmea(l)%nmeas
-                IF ( ANY( TRIM( vmea(l)%var_atts(n)%name ) == soil_vars )  .AND.                   &
-                     vmea(l)%var_atts(n)%sampled )  vmea(l)%soil_var_out = .TRUE.
-             ENDDO
+
           ENDIF
 
        ENDDO  ! loop over sites
 
        initial_write_coordinates = .TRUE.
-
     ENDIF
 !
 !-- Loop over all sites.
     DO  l = 1, vmea_general%nvm
-!
-!--    Skip the measurement if its feature type does not match with the type requested to output.
-       IF ( ( vmea(l)%timeseries          .AND.  output_ts )  .OR.                                 &
-            ( vmea(l)%timeseries_profile  .AND.  output_pr )  .OR.                                 &
-            ( vmea(l)%trajectory          .AND.  output_tr ) )                                     &
-       THEN
-          CONTINUE
-       ELSE
-          CYCLE
-       ENDIF
 !
 !--    Skip if no observations were taken.
        IF ( vmea(l)%ns_tot == 0  .AND.  vmea(l)%ns_soil_tot == 0 )  CYCLE
@@ -2280,63 +2204,45 @@
 !--    Determine time index in file.
        t_ind = vmea(l)%file_time_index + 1
 !
-!--    Write time coordinate to file.
-       variable_name = 'time'
-
-       ALLOCATE( output_values_2d_target(t_ind:t_ind,vmea(l)%start_coord_a:vmea(l)%end_coord_a) )
-       output_values_2d_target(t_ind,:) = time_since_reference_point
-       output_values_2d_pointer => output_values_2d_target
-
-       return_value = dom_write_var( vmea(l)%nc_filename, variable_name,                           &
-                                     values_real32_2d = output_values_2d_pointer,                  &
-                                     bounds_start = (/vmea(l)%start_coord_a, t_ind/),              &
-                                     bounds_end   = (/vmea(l)%end_coord_a, t_ind/) )
-
-       DEALLOCATE( output_values_2d_target )
-!
-!--    Check if also time coordinate for soil variables need to be written.
-       IF( vmea(l)%soil_var_out )  THEN
-          variable_name = 'time_soil'
-
-          ALLOCATE( output_values_2d_target(t_ind:t_ind,vmea(l)%start_coord_s:vmea(l)%end_coord_s) )
-          output_values_2d_target(t_ind,:) = time_since_reference_point
-          output_values_2d_pointer => output_values_2d_target
-
-          return_value = dom_write_var( vmea(l)%nc_filename, variable_name,                        &
-                                        values_real32_2d = output_values_2d_pointer,               &
-                                        bounds_start = (/vmea(l)%start_coord_s, t_ind/),           &
-                                        bounds_end   = (/vmea(l)%end_coord_s, t_ind /) )
-
-          DEALLOCATE( output_values_2d_target )
-       ENDIF
-!
 !--    Write output variables. Distinguish between atmosphere and soil variables.
        DO  n = 1, vmea(l)%nmeas
-!
-!--       Skip writing if the variable was not sampled.
-          IF ( .NOT. vmea(l)%var_atts(n)%sampled )  CYCLE
-!
-!--       Output soil quantities.
           IF ( vmea(l)%soil_sampling  .AND.                                                        &
-               ANY( TRIM( vmea(l)%var_atts(n)%name ) == soil_vars ) )  THEN
+            ANY( TRIM( vmea(l)%var_atts(n)%name) == soil_vars ) )  THEN
+!
+!--          Write time coordinate to file
+             variable_name = 'time_soil'
+             ALLOCATE( output_values_2d_target(t_ind:t_ind,vmea(l)%start_coord_s:vmea(l)%end_coord_s) )
+             output_values_2d_target(t_ind,:) = time_since_reference_point
+             output_values_2d_pointer => output_values_2d_target
+
+             return_value = dom_write_var( vmea(l)%nc_filename, variable_name,                     &
+                                           values_real32_2d = output_values_2d_pointer,            &
+                                           bounds_start = (/vmea(l)%start_coord_s, t_ind/),        &
+                                           bounds_end   = (/vmea(l)%end_coord_s, t_ind /) )
 
              variable_name = TRIM( vmea(l)%var_atts(n)%name )
-
-             ALLOCATE( output_values_2d_target(t_ind:t_ind,vmea(l)%start_coord_s:vmea(l)%end_coord_s) )
              output_values_2d_target(t_ind,:) = vmea(l)%measured_vars_soil(:,n)
              output_values_2d_pointer => output_values_2d_target
              return_value = dom_write_var( vmea(l)%nc_filename, variable_name,                     &
                                            values_real32_2d = output_values_2d_pointer,            &
                                            bounds_start = (/vmea(l)%start_coord_s, t_ind/),        &
                                            bounds_end   = (/vmea(l)%end_coord_s, t_ind  /) )
-
              DEALLOCATE( output_values_2d_target )
-!
-!--       Output atmosphere quantities.
           ELSE
+!
+!--          Write time coordinate to file
+             variable_name = 'time'
+             ALLOCATE( output_values_2d_target(t_ind:t_ind,vmea(l)%start_coord_a:vmea(l)%end_coord_a) )
+             output_values_2d_target(t_ind,:) = time_since_reference_point
+             output_values_2d_pointer => output_values_2d_target
+
+             return_value = dom_write_var( vmea(l)%nc_filename, variable_name,                     &
+                                           values_real32_2d = output_values_2d_pointer,            &
+                                           bounds_start = (/vmea(l)%start_coord_a, t_ind/),        &
+                                           bounds_end   = (/vmea(l)%end_coord_a, t_ind/) )
 
              variable_name = TRIM( vmea(l)%var_atts(n)%name )
-             ALLOCATE( output_values_2d_target(t_ind:t_ind,vmea(l)%start_coord_a:vmea(l)%end_coord_a) )
+
              output_values_2d_target(t_ind,:) = vmea(l)%measured_vars(:,n)
              output_values_2d_pointer => output_values_2d_target
              return_value = dom_write_var( vmea(l)%nc_filename, variable_name,                     &
@@ -2345,7 +2251,6 @@
                                            bounds_end   = (/ vmea(l)%end_coord_a, t_ind /) )
 
              DEALLOCATE( output_values_2d_target )
-
           ENDIF
        ENDDO
 !
@@ -2354,26 +2259,25 @@
 
     ENDDO  ! loop over sites
 
-!
-!-- Check if DOM reported any error
-    dom_error_message = dom_get_error_message()
-    IF ( TRIM( dom_error_message ) /= '' )  THEN
-       message_string = 'error while writing output: "' // TRIM( dom_error_message ) // '"'
-       CALL message( 'vm_data_output', 'VME0009', 0, 1, 0, 6, 0 )
-    ENDIF
-
     CALL cpu_log( log_point_s(26), 'VM output', 'stop' )
 
- END SUBROUTINE vm_data_output
 
+ END SUBROUTINE vm_data_output
 
 !--------------------------------------------------------------------------------------------------!
 ! Description:
 ! ------------
 !> Sampling of the actual quantities along the observation coordinates
 !--------------------------------------------------------------------------------------------------!
- SUBROUTINE vm_sampling( sample_pr, sample_ts, sample_tr )
+ SUBROUTINE vm_sampling
 
+    USE radiation_model_mod,                                                                       &
+        ONLY:  radiation
+
+    USE surface_mod,                                                                               &
+        ONLY:  surf_def_h,                                                                         &
+               surf_lsm_h,                                                                         &
+               surf_usm_h
 
      INTEGER(iwp) ::  i         !< grid index in x-direction
      INTEGER(iwp) ::  j         !< grid index in y-direction
@@ -2385,63 +2289,35 @@
      INTEGER(iwp) ::  n         !< running index over all measured variables at a station
      INTEGER(iwp) ::  nn        !< running index over the number of chemcal species
 
-     LOGICAL ::  sample_pr  !< flag indicating profile data to be sampled
-     LOGICAL ::  sample_ts  !< flag indicating timeseries data to be sampled
-     LOGICAL ::  sample_tr  !< flag indicating trajectory data to be sampled
+     LOGICAL ::  match_lsm  !< flag indicating natural-type surface
+     LOGICAL ::  match_usm  !< flag indicating urban-type surface
 
      REAL(wp) ::  e_s   !< saturation water vapor pressure
      REAL(wp) ::  q_s   !< saturation mixing ratio
      REAL(wp) ::  q_wv  !< mixing ratio
-
 
      CALL cpu_log( log_point_s(27), 'VM sampling', 'start' )
 !
 !--  Loop over all sites.
      DO  l = 1, vmea_general%nvm
 !
-!--     Skip the measurement if its feature type does not match with the type requested to sample.
-        IF ( ( vmea(l)%timeseries          .AND.  sample_ts )  .OR.                                &
-             ( vmea(l)%timeseries_profile  .AND.  sample_pr )  .OR.                                &
-             ( vmea(l)%trajectory          .AND.  sample_tr ) )                                    &
-        THEN
-           CONTINUE
-        ELSE
-           CYCLE
-        ENDIF
-!
 !--     At the beginning, set _FillValues
-        IF ( ALLOCATED( vmea(l)%measured_vars      ) ) vmea(l)%measured_vars      = vmea(l)%fillout
+        IF ( ALLOCATED( vmea(l)%measured_vars ) ) vmea(l)%measured_vars = vmea(l)%fillout
         IF ( ALLOCATED( vmea(l)%measured_vars_soil ) ) vmea(l)%measured_vars_soil = vmea(l)%fillout
 !
 !--     Loop over all variables measured at this site.
         DO  n = 1, vmea(l)%nmeas
-!
-!--        Set sampling flag. Only variables that have been actually sampled are output.
-!--        Variables that are not treated by the model are skipped.
-           vmea(l)%var_atts(n)%sampled = .FALSE.
 
            SELECT CASE ( TRIM( vmea(l)%var_atts(n)%name ) )
 
               CASE ( 'theta' ) ! potential temperature
                  IF ( .NOT. neutral )  THEN
-                    IF ( vmea(l)%interpolate )  THEN
-                       DO  m = 1, vmea(l)%ns
-                          k = vmea(l)%k(m)
-                          j = vmea(l)%j(m)
-                          i = vmea(l)%i(m)
-                          vmea(l)%measured_vars(m,n) =                                             &
-                                    interpolate_to_sampling_location( pt, k, j, i, 0.5_wp, 0.5_wp, &
-                                                                      zu, vmea(l)%coords(:) )
-                       ENDDO
-                    ELSE
-                       DO  m = 1, vmea(l)%ns
-                          k = vmea(l)%k(m)
-                          j = vmea(l)%j(m)
-                          i = vmea(l)%i(m)
-                          vmea(l)%measured_vars(m,n) = pt(k,j,i)
-                       ENDDO
-                    ENDIF
-                    vmea(l)%var_atts(n)%sampled = .TRUE.
+                    DO  m = 1, vmea(l)%ns
+                       k = vmea(l)%k(m)
+                       j = vmea(l)%j(m)
+                       i = vmea(l)%i(m)
+                       vmea(l)%measured_vars(m,n) = pt(k,j,i)
+                    ENDDO
                  ENDIF
 
               CASE ( 'ta' ) ! absolute temperature
@@ -2452,29 +2328,16 @@
                        i = vmea(l)%i(m)
                        vmea(l)%measured_vars(m,n) = pt(k,j,i) * exner( k ) - degc_to_k
                     ENDDO
-                    vmea(l)%var_atts(n)%sampled = .TRUE.
                  ENDIF
 
               CASE ( 'hus' ) ! mixing ratio
                  IF ( humidity )  THEN
-                    IF ( vmea(l)%interpolate )  THEN
-                       DO  m = 1, vmea(l)%ns
-                          k = vmea(l)%k(m)
-                          j = vmea(l)%j(m)
-                          i = vmea(l)%i(m)
-                          vmea(l)%measured_vars(m,n) =                                             &
-                                    interpolate_to_sampling_location( q, k, j, i, 0.5_wp, 0.5_wp,  &
-                                                                      zu, vmea(l)%coords(:) )
-                       ENDDO
-                    ELSE
-                       DO  m = 1, vmea(l)%ns
-                          k = vmea(l)%k(m)
-                          j = vmea(l)%j(m)
-                          i = vmea(l)%i(m)
-                          vmea(l)%measured_vars(m,n) = q(k,j,i)
-                       ENDDO
-                    ENDIF
-                    vmea(l)%var_atts(n)%sampled = .TRUE.
+                    DO  m = 1, vmea(l)%ns
+                       k = vmea(l)%k(m)
+                       j = vmea(l)%j(m)
+                       i = vmea(l)%i(m)
+                       vmea(l)%measured_vars(m,n) = q(k,j,i)
+                    ENDDO
                  ENDIF
 
               CASE ( 'haa' ) ! absolute humidity
@@ -2483,10 +2346,8 @@
                        k = vmea(l)%k(m)
                        j = vmea(l)%j(m)
                        i = vmea(l)%i(m)
-                       vmea(l)%measured_vars(m,n) = ( q(k,j,i) / ( 1.0_wp - q(k,j,i) ) ) *         &
-                                                    rho_air(k)
+                       vmea(l)%measured_vars(m,n) = ( q(k,j,i) / ( 1.0_wp - q(k,j,i) ) ) * rho_air(k)
                     ENDDO
-                    vmea(l)%var_atts(n)%sampled = .TRUE.
                  ENDIF
 
               CASE ( 'pwv' ) ! water vapor partial pressure
@@ -2515,68 +2376,31 @@
 
                        vmea(l)%measured_vars(m,n) = q_wv / ( q_s + 1E-10_wp )
                     ENDDO
-                    vmea(l)%var_atts(n)%sampled = .TRUE.
                  ENDIF
 
               CASE ( 'u', 'ua' ) ! u-component
-                 IF ( vmea(l)%interpolate )  THEN
-                    DO  m = 1, vmea(l)%ns
-                       k = vmea(l)%k(m)
-                       j = vmea(l)%j(m)
-                       i = vmea(l)%i(m)
-                       vmea(l)%measured_vars(m,n) =                                                &
-                                    interpolate_to_sampling_location( u, k, j, i, 0.5_wp, 0.0_wp,  &
-                                                                      zu, vmea(l)%coords(:) )
-                    ENDDO
-                 ELSE
-                    DO  m = 1, vmea(l)%ns
-                       k = vmea(l)%k(m)
-                       j = vmea(l)%j(m)
-                       i = vmea(l)%i(m)
-                       vmea(l)%measured_vars(m,n) = 0.5_wp * ( u(k,j,i) + u(k,j,i+1) )
-                    ENDDO
-                 ENDIF
-                 vmea(l)%var_atts(n)%sampled = .TRUE.
+                 DO  m = 1, vmea(l)%ns
+                    k = vmea(l)%k(m)
+                    j = vmea(l)%j(m)
+                    i = vmea(l)%i(m)
+                    vmea(l)%measured_vars(m,n) = 0.5_wp * ( u(k,j,i) + u(k,j,i+1) )
+                 ENDDO
 
               CASE ( 'v', 'va' ) ! v-component
-                 IF ( vmea(l)%interpolate )  THEN
-                    DO  m = 1, vmea(l)%ns
-                       k = vmea(l)%k(m)
-                       j = vmea(l)%j(m)
-                       i = vmea(l)%i(m)
-                       vmea(l)%measured_vars(m,n) =                                                &
-                                    interpolate_to_sampling_location( v, k, j, i, 0.0_wp, 0.5_wp,  &
-                                                                      zu, vmea(l)%coords(:) )
-                    ENDDO
-                 ELSE
-                    DO  m = 1, vmea(l)%ns
-                       k = vmea(l)%k(m)
-                       j = vmea(l)%j(m)
-                       i = vmea(l)%i(m)
-                       vmea(l)%measured_vars(m,n) = 0.5_wp * ( v(k,j,i) + v(k,j+1,i) )
-                    ENDDO
-                 ENDIF
-                 vmea(l)%var_atts(n)%sampled = .TRUE.
+                 DO  m = 1, vmea(l)%ns
+                    k = vmea(l)%k(m)
+                    j = vmea(l)%j(m)
+                    i = vmea(l)%i(m)
+                    vmea(l)%measured_vars(m,n) = 0.5_wp * ( v(k,j,i) + v(k,j+1,i) )
+                 ENDDO
 
               CASE ( 'w' ) ! w-component
-                 IF ( vmea(l)%interpolate )  THEN
-                    DO  m = 1, vmea(l)%ns
-                       k = vmea(l)%k(m)
-                       j = vmea(l)%j(m)
-                       i = vmea(l)%i(m)
-                       vmea(l)%measured_vars(m,n) =                                                &
-                                    interpolate_to_sampling_location( w, k, j, i, 0.5_wp, 0.5_wp,  &
-                                                                      zw, vmea(l)%coords(:) )
-                    ENDDO
-                 ELSE
-                    DO  m = 1, vmea(l)%ns
-                       k = MAX ( 1, vmea(l)%k(m) )
-                       j = vmea(l)%j(m)
-                       i = vmea(l)%i(m)
-                       vmea(l)%measured_vars(m,n) = 0.5_wp * ( w(k,j,i) + w(k-1,j,i) )
-                    ENDDO
-                 ENDIF
-                 vmea(l)%var_atts(n)%sampled = .TRUE.
+                 DO  m = 1, vmea(l)%ns
+                    k = MAX ( 1, vmea(l)%k(m) )
+                    j = vmea(l)%j(m)
+                    i = vmea(l)%i(m)
+                    vmea(l)%measured_vars(m,n) = 0.5_wp * ( w(k,j,i) + w(k-1,j,i) )
+                 ENDDO
 
               CASE ( 'wspeed' ) ! horizontal wind speed
                  DO  m = 1, vmea(l)%ns
@@ -2587,52 +2411,42 @@
                                                        + ( 0.5_wp * ( v(k,j,i) + v(k,j+1,i) ) )**2 &
                                                      )
                  ENDDO
-                 vmea(l)%var_atts(n)%sampled = .TRUE.
 
               CASE ( 'wdir' ) ! wind direction
                  DO  m = 1, vmea(l)%ns
                     k = vmea(l)%k(m)
                     j = vmea(l)%j(m)
                     i = vmea(l)%i(m)
+
                     vmea(l)%measured_vars(m,n) = 180.0_wp + 180.0_wp / pi * ATAN2(                 &
                                                                0.5_wp * ( v(k,j,i) + v(k,j+1,i) ), &
                                                                0.5_wp * ( u(k,j,i) + u(k,j,i+1) )  &
                                                                                  )
                  ENDDO
-                 vmea(l)%var_atts(n)%sampled = .TRUE.
 
               CASE ( 'utheta' )
-                 IF ( .NOT. neutral )  THEN
-                    DO  m = 1, vmea(l)%ns
-                       k = vmea(l)%k(m)
-                       j = vmea(l)%j(m)
-                       i = vmea(l)%i(m)
-                       vmea(l)%measured_vars(m,n) = 0.5_wp * ( u(k,j,i) + u(k,j,i+1) ) * pt(k,j,i)
-                    ENDDO
-                    vmea(l)%var_atts(n)%sampled = .TRUE.
-                 ENDIF
+                 DO  m = 1, vmea(l)%ns
+                    k = vmea(l)%k(m)
+                    j = vmea(l)%j(m)
+                    i = vmea(l)%i(m)
+                    vmea(l)%measured_vars(m,n) = 0.5_wp * ( u(k,j,i) + u(k,j,i+1) ) * pt(k,j,i)
+                 ENDDO
 
               CASE ( 'vtheta' )
-                 IF ( .NOT. neutral )  THEN
-                    DO  m = 1, vmea(l)%ns
-                       k = vmea(l)%k(m)
-                       j = vmea(l)%j(m)
-                       i = vmea(l)%i(m)
-                       vmea(l)%measured_vars(m,n) = 0.5_wp * ( v(k,j,i) + v(k,j+1,i) ) * pt(k,j,i)
-                    ENDDO
-                    vmea(l)%var_atts(n)%sampled = .TRUE.
-                 ENDIF
+                 DO  m = 1, vmea(l)%ns
+                    k = vmea(l)%k(m)
+                    j = vmea(l)%j(m)
+                    i = vmea(l)%i(m)
+                    vmea(l)%measured_vars(m,n) = 0.5_wp * ( v(k,j,i) + v(k,j+1,i) ) * pt(k,j,i)
+                 ENDDO
 
               CASE ( 'wtheta' )
-                 IF ( .NOT. neutral )  THEN
-                    DO  m = 1, vmea(l)%ns
-                       k = MAX ( 1, vmea(l)%k(m) )
-                       j = vmea(l)%j(m)
-                       i = vmea(l)%i(m)
-                       vmea(l)%measured_vars(m,n) = 0.5_wp * ( w(k-1,j,i) + w(k,j,i) ) * pt(k,j,i)
-                    ENDDO
-                    vmea(l)%var_atts(n)%sampled = .TRUE.
-                 ENDIF
+                 DO  m = 1, vmea(l)%ns
+                    k = MAX ( 1, vmea(l)%k(m) )
+                    j = vmea(l)%j(m)
+                    i = vmea(l)%i(m)
+                    vmea(l)%measured_vars(m,n) = 0.5_wp * ( w(k-1,j,i) + w(k,j,i) ) * pt(k,j,i)
+                 ENDDO
 
               CASE ( 'uqv' )
                  IF ( humidity )  THEN
@@ -2642,7 +2456,6 @@
                        i = vmea(l)%i(m)
                        vmea(l)%measured_vars(m,n) = 0.5_wp * ( u(k,j,i) + u(k,j,i+1) ) * q(k,j,i)
                     ENDDO
-                    vmea(l)%var_atts(n)%sampled = .TRUE.
                  ENDIF
 
               CASE ( 'vqv' )
@@ -2653,7 +2466,6 @@
                        i = vmea(l)%i(m)
                        vmea(l)%measured_vars(m,n) = 0.5_wp * ( v(k,j,i) + v(k,j+1,i) ) * q(k,j,i)
                     ENDDO
-                    vmea(l)%var_atts(n)%sampled = .TRUE.
                  ENDIF
 
               CASE ( 'wqv' )
@@ -2664,7 +2476,6 @@
                        i = vmea(l)%i(m)
                        vmea(l)%measured_vars(m,n) = 0.5_wp * ( w(k-1,j,i) + w(k,j,i) ) * q(k,j,i)
                     ENDDO
-                    vmea(l)%var_atts(n)%sampled = .TRUE.
                  ENDIF
 
               CASE ( 'uw' )
@@ -2675,7 +2486,6 @@
                     vmea(l)%measured_vars(m,n) = 0.25_wp * ( w(k-1,j,i) + w(k,j,i) ) *             &
                                                            ( u(k,j,i)   + u(k,j,i+1) )
                  ENDDO
-                 vmea(l)%var_atts(n)%sampled = .TRUE.
 
               CASE ( 'vw' )
                  DO  m = 1, vmea(l)%ns
@@ -2685,7 +2495,6 @@
                     vmea(l)%measured_vars(m,n) = 0.25_wp * ( w(k-1,j,i) + w(k,j,i) ) *             &
                                                            ( v(k,j,i)   + v(k,j+1,i) )
                  ENDDO
-                 vmea(l)%var_atts(n)%sampled = .TRUE.
 
               CASE ( 'uv' )
                  DO  m = 1, vmea(l)%ns
@@ -2695,7 +2504,33 @@
                     vmea(l)%measured_vars(m,n) = 0.25_wp * ( u(k,j,i)   + u(k,j,i+1) ) *           &
                                                            ( v(k,j,i)   + v(k,j+1,i) )
                  ENDDO
-                 vmea(l)%var_atts(n)%sampled = .TRUE.
+!
+!--           Chemistry variables. List of variables that may need extension. Note, gas species in
+!--           PALM are in ppm and no distinction is made between mole-fraction and concentration
+!--           quantities (all are output in ppm so far).
+              CASE ( 'mcpm1', 'mcpm2p5', 'mcpm10', 'mfno', 'mfno2', 'mcno', 'mcno2', 'tro3', 'ncaa' )
+                 IF ( air_chemistry )  THEN
+!
+!--                 First, search for the measured variable in the chem_vars
+!--                 list, in order to get the internal name of the variable.
+                    DO  nn = 1, UBOUND( chem_vars, 2 )
+                       IF ( TRIM( vmea(l)%var_atts(n)%name ) ==                                    &
+                            TRIM( chem_vars(0,nn) ) )  ind_chem = nn
+                    ENDDO
+!
+!--                 Run loop over all chemical species, if the measured variable matches the interal
+!--                 name, sample the variable. Note, nvar as a chemistry-module variable.
+                    DO  nn = 1, nvar
+                       IF ( TRIM( chem_vars(1,ind_chem) ) == TRIM( chem_species(nn)%name ) )  THEN
+                          DO  m = 1, vmea(l)%ns
+                             k = vmea(l)%k(m)
+                             j = vmea(l)%j(m)
+                             i = vmea(l)%i(m)
+                             vmea(l)%measured_vars(m,n) = chem_species(nn)%conc(k,j,i)
+                          ENDDO
+                       ENDIF
+                    ENDDO
+                 ENDIF
 
               CASE ( 'us' ) ! friction velocity
                  DO  m = 1, vmea(l)%ns
@@ -2706,94 +2541,98 @@
                     j = MERGE( j           , nyn, j            < nyn )
                     i = MERGE( vmea(l)%i(m), nxl, vmea(l)%i(m) > nxl )
                     i = MERGE( i           , nxr, i            < nxr )
-!
-!--                 Take only values from horizontally-upward facing surfaces.
-                    DO  mm = surf_def%start_index(j,i), surf_def%end_index(j,i)
-                       vmea(l)%measured_vars(m,n) = MERGE( surf_def%us(mm),                        &
-                                                           vmea(l)%measured_vars(m,n),             &
-                                                           surf_def%upward(mm) )
+
+                    DO  mm = surf_def_h(0)%start_index(j,i), surf_def_h(0)%end_index(j,i)
+                       vmea(l)%measured_vars(m,n) = surf_def_h(0)%us(mm)
                     ENDDO
-                    DO  mm = surf_lsm%start_index(j,i), surf_lsm%end_index(j,i)
-                       vmea(l)%measured_vars(m,n) = MERGE( surf_lsm%us(mm),                        &
-                                                           vmea(l)%measured_vars(m,n),             &
-                                                           surf_lsm%upward(mm) )
+                    DO  mm = surf_lsm_h(0)%start_index(j,i), surf_lsm_h(0)%end_index(j,i)
+                       vmea(l)%measured_vars(m,n) = surf_lsm_h(0)%us(mm)
                     ENDDO
-                    DO  mm = surf_usm%start_index(j,i), surf_usm%end_index(j,i)
-                       vmea(l)%measured_vars(m,n) = MERGE( surf_usm%us(mm),                        &
-                                                           vmea(l)%measured_vars(m,n),             &
-                                                           surf_usm%upward(mm) )
+                    DO  mm = surf_usm_h(0)%start_index(j,i), surf_usm_h(0)%end_index(j,i)
+                       vmea(l)%measured_vars(m,n) = surf_usm_h(0)%us(mm)
                     ENDDO
                  ENDDO
-                 vmea(l)%var_atts(n)%sampled = .TRUE.
 
               CASE ( 'thetas' ) ! scaling parameter temperature
-                 IF ( .NOT. neutral )  THEN
-                    DO  m = 1, vmea(l)%ns
+                 DO  m = 1, vmea(l)%ns
 !
-!--                    Surface data is only available on inner subdomains, not on ghost points.
-!-                     Hence, limit the indices.
-                       j = MERGE( vmea(l)%j(m), nys, vmea(l)%j(m) > nys )
-                       j = MERGE( j           , nyn, j            < nyn )
-                       i = MERGE( vmea(l)%i(m), nxl, vmea(l)%i(m) > nxl )
-                       i = MERGE( i           , nxr, i            < nxr )
-!
-!--                    Take only values from horizontally-upward facing surfaces.
-                       DO  mm = surf_def%start_index(j,i), surf_def%end_index(j,i)
-                          vmea(l)%measured_vars(m,n) = MERGE( surf_def%ts(mm),                     &
-                                                              vmea(l)%measured_vars(m,n),          &
-                                                              surf_def%upward(mm) )
-                       ENDDO
-                       DO  mm = surf_lsm%start_index(j,i), surf_lsm%end_index(j,i)
-                          vmea(l)%measured_vars(m,n) = MERGE( surf_lsm%ts(mm),                     &
-                                                              vmea(l)%measured_vars(m,n),          &
-                                                              surf_lsm%upward(mm) )
-                       ENDDO
-                       DO  mm = surf_usm%start_index(j,i), surf_usm%end_index(j,i)
-                          vmea(l)%measured_vars(m,n) = MERGE( surf_usm%ts(mm),                     &
-                                                              vmea(l)%measured_vars(m,n),          &
-                                                              surf_usm%upward(mm) )
-                       ENDDO
+!--                 Surface data is only available on inner subdomains, not on ghost points. Hence,
+!-                  limit the indices.
+                    j = MERGE( vmea(l)%j(m), nys, vmea(l)%j(m) > nys )
+                    j = MERGE( j           , nyn, j            < nyn )
+                    i = MERGE( vmea(l)%i(m), nxl, vmea(l)%i(m) > nxl )
+                    i = MERGE( i           , nxr, i            < nxr )
+
+                    DO  mm = surf_def_h(0)%start_index(j,i), surf_def_h(0)%end_index(j,i)
+                       vmea(l)%measured_vars(m,n) = surf_def_h(0)%ts(mm)
                     ENDDO
-                    vmea(l)%var_atts(n)%sampled = .TRUE.
-                 ENDIF
+                    DO  mm = surf_lsm_h(0)%start_index(j,i), surf_lsm_h(0)%end_index(j,i)
+                       vmea(l)%measured_vars(m,n) = surf_lsm_h(0)%ts(mm)
+                    ENDDO
+                    DO  mm = surf_usm_h(0)%start_index(j,i), surf_usm_h(0)%end_index(j,i)
+                       vmea(l)%measured_vars(m,n) = surf_usm_h(0)%ts(mm)
+                    ENDDO
+                 ENDDO
 
               CASE ( 'hfls' ) ! surface latent heat flux
-                 IF ( humidity )  THEN
-                    DO  m = 1, vmea(l)%ns
+                 DO  m = 1, vmea(l)%ns
 !
-!--                    Surface data is only available on inner subdomains, not on ghost points.
-!--                    Hence, limit the indices.
-                       j = MERGE( vmea(l)%j(m), nys, vmea(l)%j(m) > nys )
-                       j = MERGE( j           , nyn, j            < nyn )
-                       i = MERGE( vmea(l)%i(m), nxl, vmea(l)%i(m) > nxl )
-                       i = MERGE( i           , nxr, i            < nxr )
-                       k = vmea(l)%k(m)
-!
-!--                    Take only values from horizontally-upward facing surfaces.
-                       DO  mm = surf_def%start_index(j,i), surf_def%end_index(j,i)
-                          vmea(l)%measured_vars(m,n) = MERGE( surf_def%qsws(mm) *                  &
-                                                              waterflux_output_conversion(k),      &
-                                                              vmea(l)%measured_vars(m,n),          &
-                                                              surf_def%upward(mm) )
-                       ENDDO
-                       DO  mm = surf_lsm%start_index(j,i), surf_lsm%end_index(j,i)
-                          vmea(l)%measured_vars(m,n) = MERGE( surf_lsm%qsws(mm) *                  &
-                                                              waterflux_output_conversion(k),      &
-                                                              vmea(l)%measured_vars(m,n),          &
-                                                              surf_lsm%upward(mm) )
-                       ENDDO
-                       DO  mm = surf_usm%start_index(j,i), surf_usm%end_index(j,i)
-                          vmea(l)%measured_vars(m,n) = MERGE( surf_usm%qsws(mm) *                  &
-                                                              waterflux_output_conversion(k),      &
-                                                              vmea(l)%measured_vars(m,n),          &
-                                                              surf_usm%upward(mm) )
-                       ENDDO
+!--                 Surface data is only available on inner subdomains, not on ghost points. Hence,
+!--                 limit the indices.
+                    j = MERGE( vmea(l)%j(m), nys, vmea(l)%j(m) > nys )
+                    j = MERGE( j           , nyn, j            < nyn )
+                    i = MERGE( vmea(l)%i(m), nxl, vmea(l)%i(m) > nxl )
+                    i = MERGE( i           , nxr, i            < nxr )
+
+                    DO  mm = surf_def_h(0)%start_index(j,i), surf_def_h(0)%end_index(j,i)
+                       vmea(l)%measured_vars(m,n) = surf_def_h(0)%qsws(mm)
                     ENDDO
-                    vmea(l)%var_atts(n)%sampled = .TRUE.
-                 ENDIF
+                    DO  mm = surf_lsm_h(0)%start_index(j,i), surf_lsm_h(0)%end_index(j,i)
+                       vmea(l)%measured_vars(m,n) = surf_lsm_h(0)%qsws(mm)
+                    ENDDO
+                    DO  mm = surf_usm_h(0)%start_index(j,i), surf_usm_h(0)%end_index(j,i)
+                       vmea(l)%measured_vars(m,n) = surf_usm_h(0)%qsws(mm)
+                    ENDDO
+                 ENDDO
 
               CASE ( 'hfss' ) ! surface sensible heat flux
-                 IF ( .NOT. neutral )  THEN
+                 DO  m = 1, vmea(l)%ns
+!
+!--                 Surface data is only available on inner subdomains, not on ghost points. Hence,
+!--                 limit the indices.
+                    j = MERGE( vmea(l)%j(m), nys, vmea(l)%j(m) > nys )
+                    j = MERGE( j           , nyn, j            < nyn )
+                    i = MERGE( vmea(l)%i(m), nxl, vmea(l)%i(m) > nxl )
+                    i = MERGE( i           , nxr, i            < nxr )
+
+                    DO  mm = surf_def_h(0)%start_index(j,i), surf_def_h(0)%end_index(j,i)
+                       vmea(l)%measured_vars(m,n) = surf_def_h(0)%shf(mm)
+                    ENDDO
+                    DO  mm = surf_lsm_h(0)%start_index(j,i), surf_lsm_h(0)%end_index(j,i)
+                       vmea(l)%measured_vars(m,n) = surf_lsm_h(0)%shf(mm)
+                    ENDDO
+                    DO  mm = surf_usm_h(0)%start_index(j,i), surf_usm_h(0)%end_index(j,i)
+                       vmea(l)%measured_vars(m,n) = surf_usm_h(0)%shf(mm)
+                    ENDDO
+                 ENDDO
+
+              CASE ( 'hfdg' ) ! ground heat flux
+                 DO  m = 1, vmea(l)%ns
+!
+!--                 Surface data is only available on inner subdomains, not on ghost points. Hence,
+!--                 limit the indices.
+                    j = MERGE( vmea(l)%j(m), nys, vmea(l)%j(m) > nys )
+                    j = MERGE( j           , nyn, j            < nyn )
+                    i = MERGE( vmea(l)%i(m), nxl, vmea(l)%i(m) > nxl )
+                    i = MERGE( i           , nxr, i            < nxr )
+
+                    DO  mm = surf_lsm_h(0)%start_index(j,i), surf_lsm_h(0)%end_index(j,i)
+                       vmea(l)%measured_vars(m,n) = surf_lsm_h(0)%ghf(mm)
+                    ENDDO
+                 ENDDO
+
+              CASE ( 'rnds' ) ! surface net radiation
+                 IF ( radiation )  THEN
                     DO  m = 1, vmea(l)%ns
 !
 !--                    Surface data is only available on inner subdomains, not on ghost points.
@@ -2802,158 +2641,226 @@
                        j = MERGE( j           , nyn, j            < nyn )
                        i = MERGE( vmea(l)%i(m), nxl, vmea(l)%i(m) > nxl )
                        i = MERGE( i           , nxr, i            < nxr )
-                       k = vmea(l)%k(m)
-!
-!--                    Take only values from horizontally-upward facing surfaces.
-                       DO  mm = surf_def%start_index(j,i), surf_def%end_index(j,i)
-                          vmea(l)%measured_vars(m,n) = MERGE( surf_def%shf(mm) *                   &
-                                                              heatflux_output_conversion(k),       &
-                                                              vmea(l)%measured_vars(m,n),          &
-                                                              surf_def%upward(mm) )
+
+                       DO  mm = surf_lsm_h(0)%start_index(j,i), surf_lsm_h(0)%end_index(j,i)
+                          vmea(l)%measured_vars(m,n) = surf_lsm_h(0)%rad_net(mm)
                        ENDDO
-                       DO  mm = surf_lsm%start_index(j,i), surf_lsm%end_index(j,i)
-                          vmea(l)%measured_vars(m,n) = MERGE( surf_lsm%shf(mm) *                   &
-                                                              heatflux_output_conversion(k),       &
-                                                              vmea(l)%measured_vars(m,n),          &
-                                                              surf_lsm%upward(mm) )
-                       ENDDO
-                       DO  mm = surf_usm%start_index(j,i), surf_usm%end_index(j,i)
-                          vmea(l)%measured_vars(m,n) = MERGE( surf_usm%shf(mm) *                   &
-                                                              heatflux_output_conversion(k),       &
-                                                              vmea(l)%measured_vars(m,n),          &
-                                                              surf_usm%upward(mm) )
+                       DO  mm = surf_usm_h(0)%start_index(j,i), surf_usm_h(0)%end_index(j,i)
+                          vmea(l)%measured_vars(m,n) = surf_usm_h(0)%rad_net(mm)
                        ENDDO
                     ENDDO
-                    vmea(l)%var_atts(n)%sampled = .TRUE.
                  ENDIF
 
-              CASE ( 'rnds' ) ! surface net radiation
-                 DO  m = 1, vmea(l)%ns
+              CASE ( 'rsus' ) ! surface shortwave out
+                 IF ( radiation )  THEN
+                    DO  m = 1, vmea(l)%ns
 !
-!--                 Surface data is only available on inner subdomains, not on ghost points.
-!--                 Hence, limit the indices.
-                    j = MERGE( vmea(l)%j(m), nys, vmea(l)%j(m) > nys )
-                    j = MERGE( j           , nyn, j            < nyn )
-                    i = MERGE( vmea(l)%i(m), nxl, vmea(l)%i(m) > nxl )
-                    i = MERGE( i           , nxr, i            < nxr )
+!--                    Surface data is only available on inner subdomains, not on ghost points.
+!--                    Hence, limit the indices.
+                       j = MERGE( vmea(l)%j(m), nys, vmea(l)%j(m) > nys )
+                       j = MERGE( j           , nyn, j            < nyn )
+                       i = MERGE( vmea(l)%i(m), nxl, vmea(l)%i(m) > nxl )
+                       i = MERGE( i           , nxr, i            < nxr )
+
+                       DO  mm = surf_lsm_h(0)%start_index(j,i), surf_lsm_h(0)%end_index(j,i)
+                          vmea(l)%measured_vars(m,n) = surf_lsm_h(0)%rad_sw_out(mm)
+                       ENDDO
+                       DO  mm = surf_usm_h(0)%start_index(j,i), surf_usm_h(0)%end_index(j,i)
+                          vmea(l)%measured_vars(m,n) = surf_usm_h(0)%rad_sw_out(mm)
+                       ENDDO
+                    ENDDO
+                 ENDIF
+
+              CASE ( 'rsds' ) ! surface shortwave in
+                 IF ( radiation )  THEN
+                    DO  m = 1, vmea(l)%ns
 !
-!--                 Take only values from horizontally-upward facing surfaces.
-                    DO  mm = surf_lsm%start_index(j,i), surf_lsm%end_index(j,i)
-                       vmea(l)%measured_vars(m,n) = MERGE( surf_lsm%rad_net(mm),                   &
-                                                           vmea(l)%measured_vars(m,n),             &
-                                                           surf_lsm%upward(mm) )
+!--                    Surface data is only available on inner subdomains, not on ghost points.
+!--                    Hence, limit the indices.
+                       j = MERGE( vmea(l)%j(m), nys, vmea(l)%j(m) > nys )
+                       j = MERGE( j           , nyn, j            < nyn )
+                       i = MERGE( vmea(l)%i(m), nxl, vmea(l)%i(m) > nxl )
+                       i = MERGE( i           , nxr, i            < nxr )
+
+                       DO  mm = surf_lsm_h(0)%start_index(j,i), surf_lsm_h(0)%end_index(j,i)
+                          vmea(l)%measured_vars(m,n) = surf_lsm_h(0)%rad_sw_in(mm)
+                       ENDDO
+                       DO  mm = surf_usm_h(0)%start_index(j,i), surf_usm_h(0)%end_index(j,i)
+                          vmea(l)%measured_vars(m,n) = surf_usm_h(0)%rad_sw_in(mm)
+                       ENDDO
                     ENDDO
-                    DO  mm = surf_usm%start_index(j,i), surf_usm%end_index(j,i)
-                       vmea(l)%measured_vars(m,n) = MERGE( surf_usm%rad_net(mm),                   &
-                                                           vmea(l)%measured_vars(m,n),             &
-                                                           surf_usm%upward(mm) )
+                 ENDIF
+
+              CASE ( 'rlus' ) ! surface longwave out
+                 IF ( radiation )  THEN
+                    DO  m = 1, vmea(l)%ns
+!
+!--                    Surface data is only available on inner subdomains, not on ghost points.
+!--                    Hence, limit the indices.
+                       j = MERGE( vmea(l)%j(m), nys, vmea(l)%j(m) > nys )
+                       j = MERGE( j           , nyn, j            < nyn )
+                       i = MERGE( vmea(l)%i(m), nxl, vmea(l)%i(m) > nxl )
+                       i = MERGE( i           , nxr, i            < nxr )
+
+                       DO  mm = surf_lsm_h(0)%start_index(j,i), surf_lsm_h(0)%end_index(j,i)
+                          vmea(l)%measured_vars(m,n) = surf_lsm_h(0)%rad_lw_out(mm)
+                       ENDDO
+                       DO  mm = surf_usm_h(0)%start_index(j,i), surf_usm_h(0)%end_index(j,i)
+                          vmea(l)%measured_vars(m,n) = surf_usm_h(0)%rad_lw_out(mm)
+                       ENDDO
                     ENDDO
+                 ENDIF
+
+              CASE ( 'rlds' ) ! surface longwave in
+                 IF ( radiation )  THEN
+                    DO  m = 1, vmea(l)%ns
+!
+!--                    Surface data is only available on inner subdomains, not on ghost points.
+!--                    Hence, limit the indices.
+                       j = MERGE( vmea(l)%j(m), nys, vmea(l)%j(m) > nys )
+                       j = MERGE( j           , nyn, j            < nyn )
+                       i = MERGE( vmea(l)%i(m), nxl, vmea(l)%i(m) > nxl )
+                       i = MERGE( i           , nxr, i            < nxr )
+
+                       DO  mm = surf_lsm_h(0)%start_index(j,i), surf_lsm_h(0)%end_index(j,i)
+                          vmea(l)%measured_vars(m,n) = surf_lsm_h(0)%rad_lw_in(mm)
+                       ENDDO
+                       DO  mm = surf_usm_h(0)%start_index(j,i), surf_usm_h(0)%end_index(j,i)
+                          vmea(l)%measured_vars(m,n) = surf_usm_h(0)%rad_lw_in(mm)
+                       ENDDO
+                    ENDDO
+                 ENDIF
+
+              CASE ( 'rsd' ) ! shortwave in
+                 IF ( radiation )  THEN
+                    IF ( radiation_scheme /= 'rrtmg' )  THEN
+                       DO  m = 1, vmea(l)%ns
+                          k = 0
+                          j = vmea(l)%j(m)
+                          i = vmea(l)%i(m)
+                          vmea(l)%measured_vars(m,n) = rad_sw_in(k,j,i)
+                       ENDDO
+                    ELSE
+                       DO  m = 1, vmea(l)%ns
+                          k = vmea(l)%k(m)
+                          j = vmea(l)%j(m)
+                          i = vmea(l)%i(m)
+                          vmea(l)%measured_vars(m,n) = rad_sw_in(k,j,i)
+                       ENDDO
+                    ENDIF
+                 ENDIF
+
+              CASE ( 'rsu' ) ! shortwave out
+                 IF ( radiation )  THEN
+                    IF ( radiation_scheme /= 'rrtmg' )  THEN
+                       DO  m = 1, vmea(l)%ns
+                          k = 0
+                          j = vmea(l)%j(m)
+                          i = vmea(l)%i(m)
+                          vmea(l)%measured_vars(m,n) = rad_sw_out(k,j,i)
+                       ENDDO
+                    ELSE
+                       DO  m = 1, vmea(l)%ns
+                          k = vmea(l)%k(m)
+                          j = vmea(l)%j(m)
+                          i = vmea(l)%i(m)
+                          vmea(l)%measured_vars(m,n) = rad_sw_out(k,j,i)
+                       ENDDO
+                    ENDIF
+                 ENDIF
+
+              CASE ( 'rlu' ) ! longwave out
+                 IF ( radiation )  THEN
+                    IF ( radiation_scheme /= 'rrtmg' )  THEN
+                       DO  m = 1, vmea(l)%ns
+                          k = 0
+                          j = vmea(l)%j(m)
+                          i = vmea(l)%i(m)
+                          vmea(l)%measured_vars(m,n) = rad_lw_out(k,j,i)
+                       ENDDO
+                    ELSE
+                       DO  m = 1, vmea(l)%ns
+                          k = vmea(l)%k(m)
+                          j = vmea(l)%j(m)
+                          i = vmea(l)%i(m)
+                          vmea(l)%measured_vars(m,n) = rad_lw_out(k,j,i)
+                       ENDDO
+                    ENDIF
+                 ENDIF
+
+              CASE ( 'rld' ) ! longwave in
+                 IF ( radiation )  THEN
+                    IF ( radiation_scheme /= 'rrtmg' )  THEN
+                       DO  m = 1, vmea(l)%ns
+                          k = 0
+!
+!--                       Surface data is only available on inner subdomains, not on ghost points.
+!--                       Hence, limit the indices.
+                          j = MERGE( vmea(l)%j(m), nys, vmea(l)%j(m) > nys )
+                          j = MERGE( j           , nyn, j            < nyn )
+                          i = MERGE( vmea(l)%i(m), nxl, vmea(l)%i(m) > nxl )
+                          i = MERGE( i           , nxr, i            < nxr )
+
+                          vmea(l)%measured_vars(m,n) = rad_lw_in(k,j,i)
+                       ENDDO
+                    ELSE
+                       DO  m = 1, vmea(l)%ns
+                          k = vmea(l)%k(m)
+                          j = vmea(l)%j(m)
+                          i = vmea(l)%i(m)
+                          vmea(l)%measured_vars(m,n) = rad_lw_in(k,j,i)
+                       ENDDO
+                    ENDIF
+                 ENDIF
+
+              CASE ( 'rsddif' ) ! shortwave in, diffuse part
+                 IF ( radiation )  THEN
+                    DO  m = 1, vmea(l)%ns
+                       j = vmea(l)%j(m)
+                       i = vmea(l)%i(m)
+
+                       vmea(l)%measured_vars(m,n) = rad_sw_in_diff(j,i)
+                    ENDDO
+                 ENDIF
+
+              CASE ( 't_soil' ) ! soil and wall temperature
+                 DO  m = 1, vmea(l)%ns_soil
+                    j = MERGE( vmea(l)%j_soil(m), nys, vmea(l)%j_soil(m) > nys )
+                    j = MERGE( j                , nyn, j                 < nyn )
+                    i = MERGE( vmea(l)%i_soil(m), nxl, vmea(l)%i_soil(m) > nxl )
+                    i = MERGE( i                , nxr, i                 < nxr )
+                    k = vmea(l)%k_soil(m)
+
+                    match_lsm = surf_lsm_h(0)%start_index(j,i) <= surf_lsm_h(0)%end_index(j,i)
+                    match_usm = surf_usm_h(0)%start_index(j,i) <= surf_usm_h(0)%end_index(j,i)
+
+                    IF ( match_lsm )  THEN
+                       mm = surf_lsm_h(0)%start_index(j,i)
+                       vmea(l)%measured_vars_soil(m,n) = t_soil_h(0)%var_2d(k,mm)
+                    ENDIF
+
+                    IF ( match_usm )  THEN
+                       mm = surf_usm_h(0)%start_index(j,i)
+                       vmea(l)%measured_vars_soil(m,n) = t_wall_h(0)%val(k,mm)
+                    ENDIF
                  ENDDO
-                 vmea(l)%var_atts(n)%sampled = .TRUE.
-!
-!--           Surface shortwave out. Note surface flux and flux in the air are considered the same
-!--           at the moment. The air flux is not available from the RTM.
-              CASE ( 'rsus', 'rsu' )
-                 DO  m = 1, vmea(l)%ns
-!
-!--                 Surface data is only available on inner subdomains, not on ghost points.
-!--                 Hence, limit the indices.
-                    j = MERGE( vmea(l)%j(m), nys, vmea(l)%j(m) > nys )
-                    j = MERGE( j           , nyn, j            < nyn )
-                    i = MERGE( vmea(l)%i(m), nxl, vmea(l)%i(m) > nxl )
-                    i = MERGE( i           , nxr, i            < nxr )
-!
-!--                 Take only values from horizontally-upward facing surfaces.
-                    DO  mm = surf_lsm%start_index(j,i), surf_lsm%end_index(j,i)
-                       vmea(l)%measured_vars(m,n) = MERGE( surf_lsm%rad_sw_out(mm),                &
-                                                           vmea(l)%measured_vars(m,n),             &
-                                                           surf_lsm%upward(mm) )
-                    ENDDO
-                    DO  mm = surf_usm%start_index(j,i), surf_usm%end_index(j,i)
-                       vmea(l)%measured_vars(m,n) = MERGE( surf_usm%rad_sw_out(mm),                &
-                                                           vmea(l)%measured_vars(m,n),             &
-                                                           surf_usm%upward(mm) )
-                    ENDDO
+
+              CASE ( 'm_soil', 'lwcs' ) ! soil moisture
+                 DO  m = 1, vmea(l)%ns_soil
+                    j = MERGE( vmea(l)%j_soil(m), nys, vmea(l)%j_soil(m) > nys )
+                    j = MERGE( j                , nyn, j                 < nyn )
+                    i = MERGE( vmea(l)%i_soil(m), nxl, vmea(l)%i_soil(m) > nxl )
+                    i = MERGE( i                , nxr, i                 < nxr )
+                    k = vmea(l)%k_soil(m)
+
+                    match_lsm = surf_lsm_h(0)%start_index(j,i) <= surf_lsm_h(0)%end_index(j,i)
+
+                    IF ( match_lsm )  THEN
+                       mm = surf_lsm_h(0)%start_index(j,i)
+                       vmea(l)%measured_vars_soil(m,n) = m_soil_h(0)%var_2d(k,mm)
+                    ENDIF
+
                  ENDDO
-                 vmea(l)%var_atts(n)%sampled = .TRUE.
-!
-!--           Surface shortwave in. Note surface flux and flux in the air are considered the same
-!--           at the moment. The air flux is not available from the RTM.
-              CASE ( 'rsds', 'rsd' )
-                 DO  m = 1, vmea(l)%ns
-!
-!--                 Surface data is only available on inner subdomains, not on ghost points.
-!--                 Hence, limit the indices.
-                    j = MERGE( vmea(l)%j(m), nys, vmea(l)%j(m) > nys )
-                    j = MERGE( j           , nyn, j            < nyn )
-                    i = MERGE( vmea(l)%i(m), nxl, vmea(l)%i(m) > nxl )
-                    i = MERGE( i           , nxr, i            < nxr )
-!
-!--                 Take only values from horizontally-upward facing surfaces.
-                    DO  mm = surf_lsm%start_index(j,i), surf_lsm%end_index(j,i)
-                       vmea(l)%measured_vars(m,n) = MERGE( surf_lsm%rad_sw_in(mm),                 &
-                                                           vmea(l)%measured_vars(m,n),             &
-                                                           surf_lsm%upward(mm) )
-                    ENDDO
-                    DO  mm = surf_usm%start_index(j,i), surf_usm%end_index(j,i)
-                       vmea(l)%measured_vars(m,n) = MERGE( surf_usm%rad_sw_in(mm),                 &
-                                                           vmea(l)%measured_vars(m,n),             &
-                                                           surf_usm%upward(mm) )
-                    ENDDO
-                 ENDDO
-                 vmea(l)%var_atts(n)%sampled = .TRUE.
-!
-!--           Surface longwave out. Note surface flux and flux in the air are considered the same
-!--           at the moment. The air flux is not available from the RTM.
-              CASE ( 'rlus', 'rlu' )
-                 DO  m = 1, vmea(l)%ns
-!
-!--                 Surface data is only available on inner subdomains, not on ghost points.
-!--                 Hence, limit the indices.
-                    j = MERGE( vmea(l)%j(m), nys, vmea(l)%j(m) > nys )
-                    j = MERGE( j           , nyn, j            < nyn )
-                    i = MERGE( vmea(l)%i(m), nxl, vmea(l)%i(m) > nxl )
-                    i = MERGE( i           , nxr, i            < nxr )
-!
-!--                 Take only values from horizontally-upward facing surfaces.
-                    DO  mm = surf_lsm%start_index(j,i), surf_lsm%end_index(j,i)
-                       vmea(l)%measured_vars(m,n) = MERGE( surf_lsm%rad_lw_out(mm),                &
-                                                           vmea(l)%measured_vars(m,n),             &
-                                                           surf_lsm%upward(mm) )
-                    ENDDO
-                    DO  mm = surf_usm%start_index(j,i), surf_usm%end_index(j,i)
-                       vmea(l)%measured_vars(m,n) = MERGE( surf_usm%rad_lw_out(mm),                &
-                                                           vmea(l)%measured_vars(m,n),             &
-                                                           surf_usm%upward(mm) )
-                    ENDDO
-                 ENDDO
-                 vmea(l)%var_atts(n)%sampled = .TRUE.
-!
-!--           Surface longwave in. Note surface flux and flux in the air are considered the same
-!--           at the moment. The air flux is not available from the RTM.
-              CASE ( 'rlds', 'rld' )
-                 DO  m = 1, vmea(l)%ns
-!
-!--                 Surface data is only available on inner subdomains, not on ghost points.
-!--                 Hence, limit the indices.
-                    j = MERGE( vmea(l)%j(m), nys, vmea(l)%j(m) > nys )
-                    j = MERGE( j           , nyn, j            < nyn )
-                    i = MERGE( vmea(l)%i(m), nxl, vmea(l)%i(m) > nxl )
-                    i = MERGE( i           , nxr, i            < nxr )
-!
-!--                 Take only values from horizontally-upward facing surfaces.
-                    DO  mm = surf_lsm%start_index(j,i), surf_lsm%end_index(j,i)
-                       vmea(l)%measured_vars(m,n) = MERGE( surf_lsm%rad_lw_in(mm),                 &
-                                                           vmea(l)%measured_vars(m,n),             &
-                                                           surf_lsm%upward(mm) )
-                    ENDDO
-                    DO  mm = surf_usm%start_index(j,i), surf_usm%end_index(j,i)
-                       vmea(l)%measured_vars(m,n) = MERGE( surf_usm%rad_lw_in(mm),                 &
-                                                           vmea(l)%measured_vars(m,n),             &
-                                                           surf_usm%upward(mm) )
-                    ENDDO
-                 ENDDO
-                 vmea(l)%var_atts(n)%sampled = .TRUE.
 
               CASE ( 'ts', 'tb' ) ! surface temperature and brighness temperature
                  DO  m = 1, vmea(l)%ns
@@ -2964,25 +2871,17 @@
                     j = MERGE( j           , nyn, j            < nyn )
                     i = MERGE( vmea(l)%i(m), nxl, vmea(l)%i(m) > nxl )
                     i = MERGE( i           , nxr, i            < nxr )
-!
-!--                 Take only values from horizontally-upward facing surfaces.
-                    DO  mm = surf_def%start_index(j,i), surf_def%end_index(j,i)
-                       vmea(l)%measured_vars(m,n) = MERGE( surf_def%pt_surface(mm),                &
-                                                           vmea(l)%measured_vars(m,n),             &
-                                                           surf_def%upward(mm) )
+
+                    DO  mm = surf_def_h(0)%start_index(j,i), surf_def_h(0)%end_index(j,i)
+                       vmea(l)%measured_vars(m,n) = surf_def_h(0)%pt_surface(mm)
                     ENDDO
-                    DO  mm = surf_lsm%start_index(j,i), surf_lsm%end_index(j,i)
-                       vmea(l)%measured_vars(m,n) = MERGE( surf_lsm%pt_surface(mm),                &
-                                                           vmea(l)%measured_vars(m,n),             &
-                                                           surf_lsm%upward(mm) )
+                    DO  mm = surf_lsm_h(0)%start_index(j,i), surf_lsm_h(0)%end_index(j,i)
+                       vmea(l)%measured_vars(m,n) = surf_lsm_h(0)%pt_surface(mm)
                     ENDDO
-                    DO  mm = surf_usm%start_index(j,i), surf_usm%end_index(j,i)
-                       vmea(l)%measured_vars(m,n) = MERGE( surf_usm%pt_surface(mm),                &
-                                                           vmea(l)%measured_vars(m,n),             &
-                                                           surf_usm%upward(mm) )
+                    DO  mm = surf_usm_h(0)%start_index(j,i), surf_usm_h(0)%end_index(j,i)
+                       vmea(l)%measured_vars(m,n) = surf_usm_h(0)%pt_surface(mm)
                     ENDDO
                  ENDDO
-                 vmea(l)%var_atts(n)%sampled = .TRUE.
 
               CASE ( 'lwp' ) ! liquid water path
                  IF ( ASSOCIATED( ql ) )  THEN
@@ -2993,90 +2892,31 @@
                        vmea(l)%measured_vars(m,n) = SUM( ql(nzb:nzt,j,i) * dzw(1:nzt+1) )          &
                                                     * rho_surface
                     ENDDO
-                    vmea(l)%var_atts(n)%sampled = .TRUE.
                  ENDIF
 
               CASE ( 'ps' ) ! surface pressure
                  vmea(l)%measured_vars(:,n) = surface_pressure
-                 vmea(l)%var_atts(n)%sampled = .TRUE.
 
-              CASE DEFAULT
+              CASE ( 't_lw' ) ! water temperature
+                 DO  m = 1, vmea(l)%ns
 !
-!--              Check for chemistry variables. Since the list of possible chemistry variables
-!--              depends on the chosen mechanism, no fixed pre-defined list of samplable variables
-!--              can be defined, so it cannot be well considered within the CASE statements.
-                 IF ( air_chemistry )  THEN
-!
-!--                 First, search for the measured variable in the chem_vars list, in order to
-!--                 obtain the internal name of the variable.
-                    ind_chem = -999
-                    DO  nn = 1, UBOUND( chem_vars, 2 )
-                       IF ( TRIM( vmea(l)%var_atts(n)%name ) == TRIM( chem_vars(0,nn) ) )          &
-                          ind_chem = nn
+!--                 Surface data is only available on inner subdomains, not
+!--                 on ghost points. Hence, limit the indices.
+                    j = MERGE( vmea(l)%j(m), nys, vmea(l)%j(m) > nys )
+                    j = MERGE( j           , nyn, j            < nyn )
+                    i = MERGE( vmea(l)%i(m), nxl, vmea(l)%i(m) > nxl )
+                    i = MERGE( i           , nxr, i            < nxr )
+
+                    DO  mm = surf_lsm_h(0)%start_index(j,i), surf_lsm_h(0)%end_index(j,i)
+                       IF ( surf_lsm_h(0)%water_surface(m) )                                          &
+                            vmea(l)%measured_vars(m,n) = t_soil_h(0)%var_2d(nzt,m)
                     ENDDO
+
+                 ENDDO
 !
-!--                 Run loop over all chemical species, if the measured variable matches the interal
-!--                 name, sample the variable. Note, nvar as a chemistry-module variable. Also
-!--                 check if ind_chem lies in an allowed range.
-                    IF ( ind_chem >= LBOUND( chem_vars(0,:), DIM = 1 )  .AND.                      &
-                         ind_chem <= UBOUND( chem_vars(0,:), DIM = 1 ) )  THEN
-                       DO  nn = 1, nvar
-                          IF ( TRIM( chem_vars(1,ind_chem) ) == TRIM( chem_species(nn)%name ) )    &
-                          THEN
-                             DO  m = 1, vmea(l)%ns
-                                k = vmea(l)%k(m)
-                                j = vmea(l)%j(m)
-                                i = vmea(l)%i(m)
-                                vmea(l)%measured_vars(m,n) = chem_species(nn)%conc(k,j,i)
-                             ENDDO
-                             vmea(l)%var_atts(n)%sampled = .TRUE.
-                          ENDIF
-                       ENDDO
-                    ENDIF
-                 ENDIF
-!
-!--              Check modules for matching variables.
-!--              This is needs to be done outside of the module-interface framework.
-!--              Since virtual_measurements_mod is already embedded into the module-interface and
-!--              thus module_interface_mod already depends on virtual_measurements_mod, a call to
-!--              a wrapper routine located in module_interface_mod is not possible here because
-!--              this would create a circular dependency.
-                 IF ( biometeorology )  CALL bio_vm_sampling( TRIM( vmea(l)%var_atts(n)%name ),    &
-                                                              vmea(l)%measured_vars(:,n),          &
-                                                              vmea(l)%i, vmea(l)%j, vmea(l)%k,     &
-                                                              vmea(l)%ns,                          &
-                                                              vmea(l)%measured_vars_soil(:,n),     &
-                                                              vmea(l)%i_soil, vmea(l)%j_soil,      &
-                                                              vmea(l)%k_soil, vmea(l)%ns_soil,     &
-                                                              vmea(l)%var_atts(n)%sampled )
-
-                 IF ( land_surface  )  CALL lsm_vm_sampling( TRIM( vmea(l)%var_atts(n)%name ),     &
-                                                             vmea(l)%measured_vars(:,n),           &
-                                                             vmea(l)%i, vmea(l)%j, vmea(l)%k,      &
-                                                             vmea(l)%ns,                           &
-                                                             vmea(l)%measured_vars_soil(:,n),      &
-                                                             vmea(l)%i_soil, vmea(l)%j_soil,       &
-                                                             vmea(l)%k_soil, vmea(l)%ns_soil,      &
-                                                             vmea(l)%var_atts(n)%sampled )
-
-                 IF ( radiation )  CALL radiation_vm_sampling( TRIM( vmea(l)%var_atts(n)%name ),   &
-                                                               vmea(l)%measured_vars(:,n),         &
-                                                               vmea(l)%i, vmea(l)%j, vmea(l)%k,    &
-                                                               vmea(l)%ns,                         &
-                                                               vmea(l)%measured_vars_soil(:,n),    &
-                                                               vmea(l)%i_soil, vmea(l)%j_soil,     &
-                                                               vmea(l)%k_soil, vmea(l)%ns_soil,    &
-                                                               vmea(l)%var_atts(n)%sampled )
-
-                 IF ( urban_surface )  CALL usm_vm_sampling( TRIM( vmea(l)%var_atts(n)%name ),     &
-                                                             vmea(l)%measured_vars(:,n),           &
-                                                             vmea(l)%i, vmea(l)%j, vmea(l)%k,      &
-                                                             vmea(l)%ns,                           &
-                                                             vmea(l)%measured_vars_soil(:,n),      &
-                                                             vmea(l)%i_soil, vmea(l)%j_soil,       &
-                                                             vmea(l)%k_soil, vmea(l)%ns_soil,      &
-                                                             vmea(l)%var_atts(n)%sampled )
-
+!--           No match found - just set a fill value
+              CASE DEFAULT
+                 vmea(l)%measured_vars(:,n) = vmea(l)%fillout
            END SELECT
 
         ENDDO
@@ -3086,90 +2926,6 @@
      CALL cpu_log( log_point_s(27), 'VM sampling', 'stop' )
 
  END SUBROUTINE vm_sampling
-
-!--------------------------------------------------------------------------------------------------!
-! Description:
-! ------------
-!> Bi-linear interpolation onto sampling location.
-!--------------------------------------------------------------------------------------------------!
- FUNCTION interpolate_to_sampling_location( var, k, j, i, off_y, off_x, z, coords )                &
-          RESULT( var_int )
-
-    INTEGER(iwp) ::  i   !< nearest grid index of sampling location in x
-    INTEGER(iwp) ::  ii  !< interpolation grid index along x-dimension
-    INTEGER(iwp) ::  j   !< nearest grid index of sampling location in y
-    INTEGER(iwp) ::  jj  !< interpolation grid index along y-dimension
-    INTEGER(iwp) ::  k   !< nearest grid index of sampling location in z
-    INTEGER(iwp) ::  kk  !< lower interpolation grid index along z-dimension
-    INTEGER(iwp) ::  kkp !< upper interpolation grid index along z-dimension
-
-    REAL(wp) ::  off_x    !< offset value in x to indicate variable position on staggered grid
-    REAL(wp) ::  off_y    !< offset value in y to indicate variable position on staggered grid
-    REAL(wp) ::  var_int  !< interpolated value
-    REAL(wp) ::  vl       !< interpolated value at kk-level
-    REAL(wp) ::  vly1     !< interpolated value along x at kk and jj
-    REAL(wp) ::  vly2     !< interpolated value along x at kk and jj+1
-    REAL(wp) ::  vu       !< interpolated value at kkp-level
-    REAL(wp) ::  vuy1     !< interpolated value along x at kkp and jj
-    REAL(wp) ::  vuy2     !< interpolated value along x at kkp and jj+1
-
-    REAL(wp), DIMENSION(3) ::  coords     !< sampling coordinates
-
-    REAL(wp), DIMENSION(nzb:nzt+1) ::  z  !< z-dimension of passed variable
-
-    REAL(wp), DIMENSION(nzb:nzt+1,nysg:nyng,nxlg:nxrg) ::  var !< passed variable
-
-!
-!-- Depending on the sampling point, determine the interpolation grid-point indices.
-!-- In 2D, for instance, if the sampling point is located in the south-left corner of grid
-!-- point (j,i), the interpolated variable is obtained from grid point (j-1,j,i-1,i).
-!-- If it is in the north-right corner, it will be obtained from (j,j+1,i,i+1).
-    IF ( ( i + off_x ) * dx - coords(1) >= 0.0_wp  )  THEN
-       ii = i - 1
-    ELSE
-       ii = i
-    ENDIF
-
-    IF ( ( j + off_y ) * dy - coords(2) >= 0.0_wp )  THEN
-       jj = j - 1
-    ELSE
-       jj = j
-    ENDIF
-!
-!-- Determine the vertical interpolation indices and limit them to values between nzb and nzt+1.
-    IF ( z(k) - coords(3) >= 0.0_wp )  THEN
-       kk = MAX( nzb, k - 1 )
-    ELSE
-       kk = k
-    ENDIF
-
-    IF ( z(k) - coords(3) >= 0.0_wp )  THEN
-       kkp = k
-    ELSE
-       kkp = MIN( k + 1, nzt + 1 )
-    ENDIF
-
-!
-!-- Bi-linearly interpolate the required variable onto x-y sampling location at discrete
-!-- height levels kk and kkp (which is kk+1). Therefore, first interpolate the variable along
-!-- x at its discrete y-locations jj and (jj+1). In a second step interpolate onto the x-y
-!-- sampling location along y.
-    vly1 = var(kk,jj,ii)   + ( var(kk,jj,ii+1)   - var(kk,jj,ii)   ) * ddx                         &
-                           * ( coords(1) - ( ii + off_x ) * dx )
-    vly2 = var(kk,jj+1,ii) + ( var(kk,jj+1,ii+1) - var(kk,jj+1,ii) ) * ddx                         &
-                           * ( coords(1) - ( ii + off_x ) * dx )
-    vl   = vly1 + ( vly2 - vly1 ) * ddy * ( coords(2) - ( jj + off_y ) * dy )
-
-    vuy1 = var(kkp,jj,ii)   + ( var(kkp,jj,ii+1)   - var(kkp,jj,ii)   ) * ddx                      &
-                           * ( coords(1) - ( ii + off_x ) * dx )
-    vuy2 = var(kkp,jj+1,ii) + ( var(kkp,jj+1,ii+1) - var(kkp,jj+1,ii) ) * ddx                      &
-                           * ( coords(1) - ( ii + off_x ) * dx )
-    vu   = vuy1 + ( vuy2 - vuy1 ) * ddy * ( coords(2) - ( jj + off_y ) * dy )
-!
-!-- Now interpolate linearly onto the z-position.
-    var_int = vl + ( vu - vl ) / ( z(kkp+1) - z(kk) ) * ( coords(3) - z(kk) )
-
- END FUNCTION interpolate_to_sampling_location
 
 
  END MODULE virtual_measurement_mod

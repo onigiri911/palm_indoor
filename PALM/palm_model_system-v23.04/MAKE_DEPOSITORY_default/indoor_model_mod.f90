@@ -13,9 +13,149 @@
 ! You should have received a copy of the GNU General Public License along with PALM. If not, see
 ! <http://www.gnu.org/licenses/>.
 !
-! Copyright 2018-2021 Leibniz Universitaet Hannover
-! Copyright 2018-2021 Hochschule Offenburg
+! Copyright 2018-2020 Leibniz Universitaet Hannover
+! Copyright 2018-2020 Hochschule Offenburg
 !--------------------------------------------------------------------------------------------------!
+!
+! Current revisions:
+! -----------------
+!
+!
+! Former revisions:
+! -----------------
+! $Id: indoor_model_mod.f90 4783 2020-11-13 13:58:45Z raasch $
+! Change parameters for summer_pars and winter_pars (responsible: S. Rissmann)
+!
+! 4780 2020-11-10 11:17:10Z suehring
+! Enable 3D data output also with 64-bit precision
+!
+! 4750 2020-10-16 14:27:48Z suehring
+! - Namelist parameter added to switch-off/on the indoor model during wall/soil spinup
+! - Bugfix in window-wall treatment during spinup - in the urban-surface model the window fraction
+!   is set to zero during spinup, so it is done here also
+! - Bugfix in wall treatment - inner wall temperature was too low due to wrong weighting of
+!   wall/green/window fractions
+!
+! 4730 2020-10-07 10:48:51Z suehring
+! Bugfix - avoid divisions by zero
+! 
+! 4709 2020-09-28 19:20:00Z maronga
+! Bugfix: avoid division by zero in case of zero window fraction (now also for vertical walls).
+! Reactivated waste heat.
+!
+! 4704 2020-09-28 10:13:03Z maronga
+! Bugfix: avoid division by zero in case of zero window fraction
+!
+! 4702 2020-09-27 18:39:00Z maronga
+! Removed unused variable indoor_wall_window_temperature
+!
+! 4701 2020-09-27 11:02:15Z maronga
+! Heat transfer for wall and windows back to USM separated into q_wall and q_win (instead q_wall_win).
+! Heat flow direction revised (heat flow positive from outside to inside).
+! New variable indoor_wall_temperature (for q_wall).
+! Removed unused quantity q_trans.
+!
+! 4698 2020-09-25 08:37:55Z maronga
+! Fixed faulty characters
+!
+! 4687 2020-09-21 19:40:16Z maronga
+! Bugfix: values of theta_m_t_prev were not stored for individual surfaces and thus re-used by all
+! surfaces and buildings, which led to excessive indoor temperatures
+!
+! 4681 2020-09-16 10:23:06Z pavelkrc
+! Bugfix for implementation of downward surfaces
+!
+! 4671 2020-09-09 20:27:58Z pavelkrc
+! Implementation of downward facing USM and LSM surfaces
+!
+! 4646 2020-08-24 16:02:40Z raasch
+! file re-formatted to follow the PALM coding standard
+!
+! 4481 2020-03-31 18:55:54Z maronga
+! Change order of dimension in surface array %frac to allow for better vectorization.
+!
+! 4441 2020-03-04 19:20:35Z suehring
+! Major bugfix in calculation of energy demand - floor-area-per-facade was wrongly calculated
+! leading to unrealistically high energy demands and thus to unreallistically high waste-heat
+! fluxes.
+!
+! 4346 2019-12-18 11:55:56Z motisi
+! Introduction of wall_flags_total_0, which currently sets bits based on static topography
+! information used in wall_flags_static_0
+!
+! 4329 2019-12-10 15:46:36Z motisi
+! Renamed wall_flags_0 to wall_flags_static_0
+!
+! 4310 2019-11-26 19:01:28Z suehring
+! Remove dt_indoor from namelist input. The indoor model is an hourly-based model, calling it
+! more/less often lead to inaccurate results.
+!
+! 4299 2019-11-22 10:13:38Z suehring
+! Output of indoor temperature revised (to avoid non-defined values within buildings)
+!
+! 4267 2019-10-16 18:58:49Z suehring
+! Bugfix in initialization, some indices to access building_pars where wrong.
+! Introduction of seasonal parameters.
+!
+! 4246 2019-09-30 09:27:52Z pavelkrc
+!
+!
+! 4242 2019-09-27 12:59:10Z suehring
+! Bugfix in array index
+!
+! 4238 2019-09-25 16:06:01Z suehring
+! - Bugfix in determination of minimum facade height and in location message
+! - Bugfix, avoid division by zero
+! - Some optimization
+!
+! 4227 2019-09-10 18:04:34Z gronemeier
+! implement new palm_date_time_mod
+!
+! 4217 2019-09-04 09:47:05Z scharf
+! Corrected "Former revisions" section
+!
+! 4209 2019-09-02 12:00:03Z suehring
+! - Bugfix in initialization of indoor temperature
+! - Prescibe default indoor temperature in case it is not given in the namelist input
+!
+! 4182 2019-08-21 14:37:54Z scharf
+! Corrected "Former revisions" section
+!
+! 4148 2019-08-08 11:26:00Z suehring
+! Bugfix in case of non grid-resolved buildings. Further, vertical grid spacing is now considered at
+! the correct level.
+! - change calculation of a_m and c_m
+! - change calculation of u-values (use h_es in building array)
+! - rename h_tr_... to  h_t_...
+!          h_tr_em  to  h_t_wm
+!          h_tr_op  to  h_t_wall
+!          h_tr_w   to  h_t_es
+! - rename h_ve     to  h_v
+! - rename h_is     to  h_ms
+! - inserted net_floor_area
+! - inserted params_waste_heat_h, params_waste_heat_c from building database
+!   in building array
+! - change calculation of q_waste_heat
+! - bugfix in averaging mean indoor temperature
+!
+! 3759 2019-02-21 15:53:45Z suehring
+! - Calculation of total building volume
+! - Several bugfixes
+! - Calculation of building height revised
+!
+! 3745 2019-02-15 18:57:56Z suehring
+! - remove building_type from module
+! - initialize parameters for each building individually instead of a bulk initializaion with
+!   identical building type for all
+! - output revised
+! - add missing _wp
+! - some restructuring of variables in building data structure
+!
+! 3744 2019-02-15 18:38:58Z suehring
+! Some interface calls moved to module_interface + cleanup
+!
+! 3469 2018-10-30 20:05:07Z kanani
+! Initial revision (tlang, suehring, kanani, srissman)!
 !
 ! Authors:
 ! --------
@@ -47,62 +187,25 @@
 !--------------------------------------------------------------------------------------------------!
  MODULE indoor_model_mod
 
-#if defined( __parallel )
-    USE MPI
-#endif
-
     USE arrays_3d,                                                                                 &
-        ONLY:  dzw,                                                                                &
+        ONLY:  ddzw,                                                                               &
+               dzw,                                                                                &
                pt
 
-    USE basic_constants_and_equations_mod,                                                         &
-        ONLY:  kappa
-
     USE control_parameters,                                                                        &
-        ONLY:  initializing_actions,                                                               &
-               restart_data_format_output
-
-    USE grid_variables,                                                                            &
-        ONLY:  dx,                                                                                 &
-               dy
-
-    USE indices,                                                                                   &
-        ONLY:  nxl,                                                                                &
-               nxr,                                                                                &
-               nyn,                                                                                &
-               nys
+        ONLY:  initializing_actions
 
     USE kinds
 
     USE netcdf_data_input_mod,                                                                     &
-        ONLY:  building_id_f,                                                                      &
-               building_type_f
+        ONLY:  building_id_f, building_type_f
 
     USE palm_date_time_mod,                                                                        &
-        ONLY:  get_date_time,                                                                      &
-               northward_equinox,                                                                  &
-               seconds_per_hour,                                                                   &
-               southward_equinox
-
-    USE pegrid
-
-    USE restart_data_mpi_io_mod,                                                                   &
-        ONLY:  rd_mpi_io_check_array,                                                              &
-               rd_mpi_io_surface_filetypes,                                                        &
-               rrd_mpi_io,                                                                         &
-               rrd_mpi_io_surface,                                                                 &
-               wrd_mpi_io,                                                                         &
-               wrd_mpi_io_surface
-
-    USE surface_layer_fluxes_mod,                                                                  &
-        ONLY:  psi_h
+        ONLY:  get_date_time, northward_equinox, seconds_per_hour, southward_equinox
 
     USE surface_mod,                                                                               &
-        ONLY:  ind_pav_green,                                                                      &
-               ind_veg_wall,                                                                       &
-               ind_wat_win,                                                                        &
-               surf_usm,                                                                           &
-               surface_restore_elements
+        ONLY:  surf_usm_h, surf_usm_v
+
 
     IMPLICIT NONE
 
@@ -113,13 +216,20 @@
        INTEGER(iwp) ::  id                                !< building ID
        INTEGER(iwp) ::  kb_max                            !< highest vertical index of a building
        INTEGER(iwp) ::  kb_min                            !< lowest vertical index of a building
-       INTEGER(iwp) ::  num_facades_per_building = 0      !< total number of horizontal and vertical facade elements
        INTEGER(iwp) ::  num_facades_per_building_h = 0    !< total number of horizontal facades elements
-       INTEGER(iwp) ::  num_facades_per_building_l = 0    !< number of horizontal and vertical facade elements on local subdomain
+       INTEGER(iwp) ::  num_facades_per_building_h_l = 0  !< number of horizontal facade elements on local subdomain
        INTEGER(iwp) ::  num_facades_per_building_v = 0    !< total number of vertical facades elements
+       INTEGER(iwp) ::  num_facades_per_building_v_l = 0  !< number of vertical facade elements on local subdomain
        INTEGER(iwp) ::  ventilation_int_loads             !< [-] allocation of activity in the building
 
-       INTEGER(iwp), DIMENSION(:), ALLOCATABLE ::  m              !< index array linking surface-element index with building
+       INTEGER(iwp), DIMENSION(:), ALLOCATABLE ::  l_h            !< index array linking surface-element orientation index
+                                                                  !< for horizontal surfaces with building
+       INTEGER(iwp), DIMENSION(:), ALLOCATABLE ::  l_v            !< index array linking surface-element orientation index
+                                                                  !< for vertical surfaces with building
+       INTEGER(iwp), DIMENSION(:), ALLOCATABLE ::  m_h            !< index array linking surface-element index for
+                                                                  !< horizontal surfaces with building
+       INTEGER(iwp), DIMENSION(:), ALLOCATABLE ::  m_v            !< index array linking surface-element index for
+                                                                  !< vertical surfaces with building
        INTEGER(iwp), DIMENSION(:), ALLOCATABLE ::  num_facade_h   !< number of horizontal facade elements per buidling
                                                                   !< and height level
        INTEGER(iwp), DIMENSION(:), ALLOCATABLE ::  num_facade_v   !< number of vertical facades elements per buidling
@@ -161,12 +271,13 @@
        REAL(wp) ::  u_value_win           !< [W/(m2*K)] transmittance
        REAL(wp) ::  vol_tot               !< [m3] total building volume
 
-       REAL(wp), DIMENSION(:), ALLOCATABLE ::  t_in           !< mean building indoor temperature, height dependent
-       REAL(wp), DIMENSION(:), ALLOCATABLE ::  t_in_l         !< mean building indoor temperature on local subdomain, height dependent
-       REAL(wp), DIMENSION(:), ALLOCATABLE ::  theta_m_t_prev !< [degree_C] value of theta_m_t from previous time step
-       REAL(wp), DIMENSION(:), ALLOCATABLE ::  volume         !< total building volume, height dependent
-       REAL(wp), DIMENSION(:), ALLOCATABLE ::  vol_frac       !< fraction of local on total building volume, height dependent
-       REAL(wp), DIMENSION(:), ALLOCATABLE ::  vpf            !< building volume volume per facade element, height dependent
+       REAL(wp), DIMENSION(:), ALLOCATABLE ::  t_in       !< mean building indoor temperature, height dependent
+       REAL(wp), DIMENSION(:), ALLOCATABLE ::  t_in_l     !< mean building indoor temperature on local subdomain, height dependent
+       REAL(wp), DIMENSION(:), ALLOCATABLE ::  theta_m_t_prev_h !< [degree_C] value of theta_m_t from previous time step (horizontal)
+       REAL(wp), DIMENSION(:), ALLOCATABLE ::  theta_m_t_prev_v !< [degree_C] value of theta_m_t from previous time step (vertical)
+       REAL(wp), DIMENSION(:), ALLOCATABLE ::  volume     !< total building volume, height dependent
+       REAL(wp), DIMENSION(:), ALLOCATABLE ::  vol_frac   !< fraction of local on total building volume, height dependent
+       REAL(wp), DIMENSION(:), ALLOCATABLE ::  vpf        !< building volume volume per facade element, height dependent
 
     END TYPE build
 
@@ -304,10 +415,6 @@
                                           0.8_wp                              & ! additional airflow depend of occupancy of the room
                                                            /), (/ 2, 7 /) )
 
-    TYPE surf_type_1d_im
-       REAL(wp), DIMENSION(:), ALLOCATABLE ::  val  !<
-    END TYPE surf_type_1d_im
-
     SAVE
 
 
@@ -315,17 +422,8 @@
 
 !
 !-- Add INTERFACES that must be available to other modules
-    PUBLIC im_define_netcdf_grid,                                                                  &
-           im_check_data_output,                                                                   &
-           im_check_parameters,                                                                    &
-           im_data_output_3d,                                                                      &
-           im_init,                                                                                &
-           im_init_arrays,                                                                         &
-           im_main_heatcool,                                                                       &
-           im_parin,                                                                               &
-           im_rrd_local,                                                                           &
-           im_wrd_local
-
+    PUBLIC im_init, im_main_heatcool, im_parin, im_define_netcdf_grid, im_check_data_output,       &
+           im_data_output_3d, im_check_parameters
 
 
 !
@@ -364,15 +462,15 @@
 !        MODULE PROCEDURE im_header
 !     END INTERFACE im_header
 !
+!-- Calculations for indoor temperatures
+    INTERFACE im_calc_temperatures
+       MODULE PROCEDURE im_calc_temperatures
+    END INTERFACE im_calc_temperatures
+!
 !-- Initialization actions
     INTERFACE im_init
        MODULE PROCEDURE im_init
     END INTERFACE im_init
-!
-!-- Array allocation
-    INTERFACE im_init_arrays
-       MODULE PROCEDURE im_init_arrays
-    END INTERFACE im_init_arrays
 !
 !-- Main part of indoor model
     INTERFACE im_main_heatcool
@@ -384,15 +482,6 @@
        MODULE PROCEDURE im_parin
     END INTERFACE im_parin
 
-    INTERFACE im_rrd_local
-       MODULE PROCEDURE im_rrd_local_ftn
-       MODULE PROCEDURE im_rrd_local_mpi
-    END INTERFACE im_rrd_local
-
-    INTERFACE im_wrd_local
-       MODULE PROCEDURE im_wrd_local
-    END INTERFACE im_wrd_local
-
  CONTAINS
 
 !--------------------------------------------------------------------------------------------------!
@@ -402,7 +491,7 @@
 !< This is basis for the operative temperature.
 !< Based on a Crank-Nicholson scheme with a timestep of a hour.
 !--------------------------------------------------------------------------------------------------!
- SUBROUTINE im_calc_temperatures ( i, j, k, indoor_wall_temperature,                               &
+ SUBROUTINE im_calc_temperatures ( i, j, k, indoor_wall_temperature,  &
                                    near_facade_temperature, phi_hc_nd_dummy, theta_m_t_prev )
 
     INTEGER(iwp) ::  i
@@ -414,34 +503,42 @@
     REAL(wp) ::  phi_hc_nd_dummy
     REAL(wp), INTENT(IN) :: theta_m_t_prev
 !
-!-- Calculation of total mass specific thermal load (internal and external)   [degree_C] Eq. (C.5)
-    phi_mtot = phi_m + h_t_wm * indoor_wall_temperature                                          &
-                     + h_t_3  * ( phi_st + h_t_es * pt(k,j,i)                                    &
-                                + h_t_1 * ( ( ( phi_ia + phi_hc_nd_dummy ) / h_v )               &
-                                            + near_facade_temperature                            &
-                                          )                                                      &
-                                ) / h_t_2
+!-- Calculation of total mass specific thermal load (internal and external)
+    phi_mtot = ( phi_m + h_t_wm * indoor_wall_temperature                                   &
+                       + h_t_3  * ( phi_st + h_t_es * pt(k,j,i)                                    &
+                                            + h_t_1 *                                              &
+                                    ( ( ( phi_ia + phi_hc_nd_dummy ) / h_v )                       &
+                                                 + near_facade_temperature )                       &
+                                  ) / h_t_2                                                        &
+               )                                                                !< [degree_C] Eq. (C.5)
 !
-!-- Calculation of component temperature at current timestep     [degree_C] Eq. (C.4)
-    theta_m_t = ( theta_m_t_prev  * ( ( c_m / 3600.0_wp ) - 0.5_wp * ( h_t_3 + h_t_wm ) )          &
-                  + phi_mtot                                                                       &
-                ) / ( ( c_m / 3600.0_wp ) + 0.5_wp * ( h_t_3 + h_t_wm ) )
+!-- Calculation of component temperature at current timestep
+    theta_m_t = ( ( theta_m_t_prev                                                                 &
+                    * ( ( c_m / 3600.0_wp ) - 0.5_wp * ( h_t_3 + h_t_wm ) )                        &
+                     + phi_mtot                                                                    &
+                  )                                                                                &
+                  /   ( ( c_m / 3600.0_wp ) + 0.5_wp * ( h_t_3 + h_t_wm ) )                        &
+                )                                                               !< [degree_C] Eq. (C.4)
+!
+!-- Calculation of mean inner temperature for the RC-node in current timestep
+    theta_m = ( theta_m_t + theta_m_t_prev ) * 0.5_wp                           !< [degree_C] Eq. (C.9)
 
 !
-!-- Calculation of mean inner temperature for the RC-node in current timestep   [degree_C] Eq. (C.9)
-    theta_m = ( theta_m_t + theta_m_t_prev ) * 0.5_wp
+!-- Calculation of mean surface temperature of the RC-node in current timestep
+    theta_s = ( (   h_t_ms * theta_m + phi_st + h_t_es * pt(k,j,i)                                 &
+                  + h_t_1  * ( near_facade_temperature                                             &
+                           + ( phi_ia + phi_hc_nd_dummy ) / h_v )                                  &
+                )                                                                                  &
+                / ( h_t_ms + h_t_es + h_t_1 )                                                      &
+              )                                                                 !< [degree_C] Eq. (C.10)
 
 !
-!-- Calculation of mean surface temperature of the RC-node in current timestep [degree_C] Eq. (C.10)
-    theta_s = ( h_t_ms * theta_m + phi_st + h_t_es * pt(k,j,i)                                     &
-                + h_t_1  * ( near_facade_temperature + ( phi_ia + phi_hc_nd_dummy ) / h_v )        &
-              ) / ( h_t_ms + h_t_es + h_t_1 )
+!-- Calculation of the air temperature of the RC-node
 
 
-!
-!-- Calculation of the air temperature of the RC-node     [degree_C] Eq. (C.11)
     theta_air = ( h_t_is * theta_s + h_v * near_facade_temperature + phi_ia + phi_hc_nd_dummy ) /  &
-                ( h_t_is + h_v )
+                ( h_t_is + h_v )                                                !< [degree_C] Eq. (C.11)
+
 
  END SUBROUTINE im_calc_temperatures
 
@@ -457,37 +554,37 @@
 !-- Input datas from Palm, M4
 !     i_global             -->  net_sw_in                         !< global radiation [W/m2]
 !     theta_e              -->  pt(k,j,i)                         !< undisturbed outside temperature, 1. PALM volume, for windows
-!     theta_sup = theta_f  -->  surf_usm%pt_10cm(m)
-!                               surf_usm%pt_10cm(m)               !< Air temperature, facade near (10cm) air temperature from
+!     theta_sup = theta_f  -->  surf_usm_h%pt_10cm(m)
+!                               surf_usm_v(l)%pt_10cm(m)          !< Air temperature, facade near (10cm) air temperature from
                                                                   !< 1. Palm volume
-!     theta_node           -->  t_wall(nzt_wall,m)
-!                               t_wall%t(nzt_wall,m)              !< Temperature of innermost wall layer, for opaque wall
+!     theta_node           -->  t_wall_h(nzt_wall,m)
+!                               t_wall_v(l)%t(nzt_wall,m)         !< Temperature of innermost wall layer, for opaque wall
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE im_init
 
     USE control_parameters,                                                                        &
-        ONLY:  message_string,                                                                     &
-               time_since_reference_point
+        ONLY:  message_string, time_since_reference_point
 
     USE indices,                                                                                   &
-        ONLY:  nxl,                                                                                &
-               nxr,                                                                                &
-               nyn,                                                                                &
-               nys,                                                                                &
-               nzb,                                                                                &
-               nzt,                                                                                &
-               topo_flags
+        ONLY:  nxl, nxr, nyn, nys, nzb, nzt, wall_flags_total_0
+
+    USE grid_variables,                                                                            &
+        ONLY:  dx, dy
+
+    USE pegrid
+
+    USE surface_mod,                                                                               &
+        ONLY:  surf_usm_h, surf_usm_v
 
     USE urban_surface_mod,                                                                         &
-        ONLY:  building_pars,                                                                      &
-               building_type
+        ONLY:  building_pars, building_type
 
     INTEGER(iwp) ::  bt          !< local building type
     INTEGER(iwp) ::  day_of_year !< day of the year
-    INTEGER(iwp) ::  fa          !< running index for facade elements of each building
     INTEGER(iwp) ::  i           !< running index along x-direction
     INTEGER(iwp) ::  j           !< running index along y-direction
     INTEGER(iwp) ::  k           !< running index along z-direction
+    INTEGER(iwp) ::  l           !< running index for surface-element orientation
     INTEGER(iwp) ::  m           !< running index surface elements
     INTEGER(iwp) ::  n           !< building index
     INTEGER(iwp) ::  nb          !< building index
@@ -525,8 +622,8 @@
 !
 !-- Initializing of indoor model is only possible if buildings can be distinguished by their IDs.
     IF ( .NOT. building_id_f%from_file )  THEN
-       message_string = 'indoor model requires information about building_id'
-       CALL message( 'im_init', 'IDM0001', 1, 2, 0, 6, 0  )
+       message_string = 'Indoor model requires information about building_id'
+       CALL message( 'im_init', 'PA0999', 1, 2, 0, 6, 0  )
     ENDIF
 !
 !-- Determine number of different building IDs on local subdomain.
@@ -651,7 +748,7 @@
              DO  k = nzb, nzt+1
 !
 !--             Check if grid point belongs to a building.
-                IF ( BTEST( topo_flags(k,j,i), 6 ) )  THEN
+                IF ( BTEST( wall_flags_total_0(k,j,i), 6 ) )  THEN
                    k_min_l(nb) = MIN( k_min_l(nb), k )
                    k_max_l(nb) = MAX( k_max_l(nb), k )
                 ENDIF
@@ -662,11 +759,14 @@
     ENDDO
 
 #if defined( __parallel )
-    CALL MPI_ALLREDUCE( MPI_IN_PLACE, k_min_l, num_build, MPI_INTEGER, MPI_MIN, comm2d, ierr )
-    CALL MPI_ALLREDUCE( MPI_IN_PLACE, k_max_l, num_build, MPI_INTEGER, MPI_MAX, comm2d, ierr )
-#endif
+    CALL MPI_ALLREDUCE( k_min_l(:), buildings(:)%kb_min, num_build, MPI_INTEGER, MPI_MIN, comm2d,  &
+                        ierr )
+    CALL MPI_ALLREDUCE( k_max_l(:), buildings(:)%kb_max, num_build, MPI_INTEGER, MPI_MAX, comm2d,  &
+                        ierr )
+#else
     buildings(:)%kb_min = k_min_l(:)
     buildings(:)%kb_max = k_max_l(:)
+#endif
 
     DEALLOCATE( k_min_l )
     DEALLOCATE( k_max_l )
@@ -752,37 +852,56 @@
     ENDDO
 !
 !-- Determine number of facade elements per building on local subdomain.
-    buildings(:)%num_facades_per_building_l = 0
-    DO  m = 1, surf_usm%ns
+!-- Distinguish between horizontal and vertical facade elements.
 !
-!--    For the current facade element determine corresponding building index.
-!--    First, obtain j,j,k indices of the building. Please note the offset between facade/surface
-!--    element and building location (for horizontal surface elements the horizontal offsets are
-!--    zero).
-       i = surf_usm%i(m) + surf_usm%ioff(m)
-       j = surf_usm%j(m) + surf_usm%joff(m)
-       k = surf_usm%k(m) + surf_usm%koff(m)
+!-- Horizontal facades
+    buildings(:)%num_facades_per_building_h_l = 0
+    DO  l = 0, 1
+       DO  m = 1, surf_usm_h(l)%ns
 !
-!--    Determine building index and check whether building is on PE.
-       nb = MINLOC( ABS( buildings(:)%id - building_id_f%var(j,i) ), DIM=1 )
+!--       For the current facade element determine corresponding building index.
+!--       First, obtain j,j,k indices of the building. Please note the offset between facade/surface
+!--       element and building location (for horizontal surface elements the horizontal offsets are
+!--       zero).
+          i = surf_usm_h(l)%i(m) + surf_usm_h(l)%ioff
+          j = surf_usm_h(l)%j(m) + surf_usm_h(l)%joff
+          k = surf_usm_h(l)%k(m) + surf_usm_h(l)%koff
+!
+!--       Determine building index and check whether building is on PE.
+          nb = MINLOC( ABS( buildings(:)%id - building_id_f%var(j,i) ), DIM=1 )
 
-       IF ( buildings(nb)%on_pe )  THEN
-!
-!--       Horizontal facade elements (roofs, etc.)
-          IF ( surf_usm%upward(m)  .OR.  surf_usm%downward(m) )  THEN
+          IF ( buildings(nb)%on_pe )  THEN
 !
 !--          Count number of facade elements at each height level.
              buildings(nb)%num_facade_h(k) = buildings(nb)%num_facade_h(k) + 1
 !
 !--          Moreover, sum up number of local facade elements per building.
-             buildings(nb)%num_facades_per_building_l = buildings(nb)%num_facades_per_building_l + 1
-!
-!--       Vertical facades
-          ELSE
-             buildings(nb)%num_facade_v(k) = buildings(nb)%num_facade_v(k) + 1
-             buildings(nb)%num_facades_per_building_l = buildings(nb)%num_facades_per_building_l + 1
+             buildings(nb)%num_facades_per_building_h_l =                                             &
+                                                      buildings(nb)%num_facades_per_building_h_l + 1
           ENDIF
-       ENDIF
+       ENDDO
+    ENDDO
+!
+!-- Vertical facades
+    buildings(:)%num_facades_per_building_v_l = 0
+    DO  l = 0, 3
+       DO  m = 1, surf_usm_v(l)%ns
+!
+!--       For the current facade element determine corresponding building index.
+!--       First, obtain j,j,k indices of the building. Please note the offset between facade/surface
+!--       element and building location (for vertical surface elements the vertical offsets are
+!--       zero).
+          i = surf_usm_v(l)%i(m) + surf_usm_v(l)%ioff
+          j = surf_usm_v(l)%j(m) + surf_usm_v(l)%joff
+          k = surf_usm_v(l)%k(m) + surf_usm_v(l)%koff
+
+          nb = MINLOC( ABS( buildings(:)%id - building_id_f%var(j,i) ), DIM=1 )
+          IF ( buildings(nb)%on_pe )  THEN
+             buildings(nb)%num_facade_v(k) = buildings(nb)%num_facade_v(k) + 1
+             buildings(nb)%num_facades_per_building_v_l =                                          &
+                                                      buildings(nb)%num_facades_per_building_v_l + 1
+          ENDIF
+       ENDDO
     ENDDO
 !
 !-- Determine total number of facade elements per building and assign number to building data type.
@@ -843,16 +962,19 @@
 !--       Determine number of facade elements per building.
           buildings(nb)%num_facades_per_building_h = SUM( buildings(nb)%num_facade_h )
           buildings(nb)%num_facades_per_building_v = SUM( buildings(nb)%num_facade_v )
-          buildings(nb)%num_facades_per_building   = buildings(nb)%num_facades_per_building_h +    &
-                                                     buildings(nb)%num_facades_per_building_v
 !
-!--       Allocate array that links the building with the urban-type surfaces.
-!--       Please note, the linking array is allocated over all facade elements, which is
+!--       Allocate arrays which link the building with the horizontal and vertical urban-type
+!--       surfaces. Please note, linking arrays are allocated over all facade elements, which is
 !--       required in case a building is located at the subdomain boundaries, where the building and
 !--       the corresponding surface elements are located on different subdomains.
-          ALLOCATE( buildings(nb)%m(1:buildings(nb)%num_facades_per_building_l) )
+          ALLOCATE( buildings(nb)%l_h(1:buildings(nb)%num_facades_per_building_h_l) )
+          ALLOCATE( buildings(nb)%m_h(1:buildings(nb)%num_facades_per_building_h_l) )
 
-          ALLOCATE( buildings(nb)%theta_m_t_prev(1:buildings(nb)%num_facades_per_building_l) )
+          ALLOCATE( buildings(nb)%l_v(1:buildings(nb)%num_facades_per_building_v_l) )
+          ALLOCATE( buildings(nb)%m_v(1:buildings(nb)%num_facades_per_building_v_l) )
+
+          ALLOCATE( buildings(nb)%theta_m_t_prev_h(1:buildings(nb)%num_facades_per_building_h_l) )
+          ALLOCATE( buildings(nb)%theta_m_t_prev_v(1:buildings(nb)%num_facades_per_building_v_l) )
        ENDIF
 
        IF ( buildings(nb)%on_pe )  THEN
@@ -883,18 +1005,36 @@
     ALLOCATE( n_fa(1:num_build) )
     n_fa = 1
 
-    DO  m = 1, surf_usm%ns
-       i = surf_usm%i(m) + surf_usm%ioff(m)
-       j = surf_usm%j(m) + surf_usm%joff(m)
+    DO  l = 0, 1
+       DO  m = 1, surf_usm_h(l)%ns
+          i = surf_usm_h(l)%i(m) + surf_usm_h(l)%ioff
+          j = surf_usm_h(l)%j(m) + surf_usm_h(l)%joff
 
-       nb = MINLOC( ABS( buildings(:)%id - building_id_f%var(j,i) ), DIM=1 )
+          nb = MINLOC( ABS( buildings(:)%id - building_id_f%var(j,i) ), DIM=1 )
 
-       IF ( buildings(nb)%on_pe )  THEN
-          buildings(nb)%m(n_fa(nb)) = m
-          n_fa(nb) = n_fa(nb) + 1
-       ENDIF
+          IF ( buildings(nb)%on_pe )  THEN
+             buildings(nb)%l_h(n_fa(nb)) = l
+             buildings(nb)%m_h(n_fa(nb)) = m
+             n_fa(nb) = n_fa(nb) + 1
+          ENDIF
+       ENDDO
     ENDDO
 
+    n_fa = 1
+    DO  l = 0, 3
+       DO  m = 1, surf_usm_v(l)%ns
+          i = surf_usm_v(l)%i(m) + surf_usm_v(l)%ioff
+          j = surf_usm_v(l)%j(m) + surf_usm_v(l)%joff
+
+          nb = MINLOC( ABS( buildings(:)%id - building_id_f%var(j,i) ), DIM=1 )
+
+          IF ( buildings(nb)%on_pe )  THEN
+             buildings(nb)%l_v(n_fa(nb)) = l
+             buildings(nb)%m_v(n_fa(nb)) = m
+             n_fa(nb) = n_fa(nb) + 1
+          ENDIF
+       ENDDO
+    ENDDO
     DEALLOCATE( n_fa )
 !
 !-- Initialize building parameters, first by mean building type. Note, in this case all buildings
@@ -1036,83 +1176,58 @@
     ENDDO
 !
 !-- Initialize indoor temperature. Actually only for output at initial state.
-    IF ( TRIM( initializing_actions ) /= 'read_restart_data' )  THEN
-       DO  nb = 1, num_build
-          IF ( buildings(nb)%on_pe )  THEN
-             buildings(nb)%t_in(:) = initial_indoor_temperature
+    DO  nb = 1, num_build
+       IF ( buildings(nb)%on_pe )  THEN
+          buildings(nb)%t_in(:) = initial_indoor_temperature
 
 !
-!--          (after first loop, use theta_m_t as theta_m_t_prev)
-             buildings(nb)%theta_m_t_prev(:) = initial_indoor_temperature
+!--       (after first loop, use theta_m_t as theta_m_t_prev)
+          buildings(nb)%theta_m_t_prev_h(:) = initial_indoor_temperature
+          buildings(nb)%theta_m_t_prev_v(:) = initial_indoor_temperature
 
-          ENDIF
-       ENDDO
-!
-!-- Initialize indoor temperature at previous timestep.
-    ELSE
-       DO  nb = 1, num_build
-          IF ( buildings(nb)%on_pe )  THEN
-!
-!--          Mean indoor temperature can be initialized with initial value. This is just
-!--          used for output.
-             buildings(nb)%t_in(:) = initial_indoor_temperature
-!
-!--          Initialize theta_m_t_prev arrays. The respective data during the restart mechanism
-!--          is stored on the surface-data array.
-             DO  fa = 1, buildings(nb)%num_facades_per_building_l
-!
-!--             Determine indices where corresponding surface-type information is stored.
-                m = buildings(nb)%m(fa)
-                buildings(nb)%theta_m_t_prev(fa) = surf_usm%t_prev(m)
-             ENDDO
-          ENDIF
-       ENDDO
-    ENDIF
-!
-!-- Initially, compute 10-cm temperature.
-    CALL calc_pt_10cm
+       ENDIF
+    ENDDO
 
     CALL location_message( 'initializing indoor model', 'finished' )
 
  END SUBROUTINE im_init
-
-!--------------------------------------------------------------------------------------------------!
-! Description:
-! ------------
-!> Initialization of arrays related to the indoor model.
-!--------------------------------------------------------------------------------------------------!
- SUBROUTINE im_init_arrays
-
-!
-!-- Allocate memory for 10-cm temperature, waste heat and indoor temperature.
-    ALLOCATE ( surf_usm%pt_10cm(1:surf_usm%ns) )
-    ALLOCATE ( surf_usm%t_prev(1:surf_usm%ns) )
-    ALLOCATE ( surf_usm%waste_heat(1:surf_usm%ns) )
-
-    surf_usm%pt_10cm    = 0.0_wp
-    surf_usm%t_prev     = 0.0_wp
-    surf_usm%waste_heat = 0.0_wp
-
- END SUBROUTINE im_init_arrays
 
 
 !--------------------------------------------------------------------------------------------------!
 ! Description:
 ! ------------
 !> Main part of the indoor model.
-!> Computation of energy demand of the building volumes, waste heat, mean indoor temperature and
-!> inner wall temperature.
+!> Calculation of .... (kanani: Please describe)
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE im_main_heatcool
+
+!     USE basic_constants_and_equations_mod,                                     &
+!         ONLY:  c_p
 
     USE control_parameters,                                                                        &
         ONLY:  time_since_reference_point
 
+    USE grid_variables,                                                                            &
+        ONLY:  dx, dy
+
+    USE pegrid
+
+    USE surface_mod,                                                                               &
+        ONLY:  ind_pav_green,                                                                      &
+               ind_veg_wall,                                                                       &
+               ind_wat_win,                                                                        &
+               surf_usm_h,                                                                         &
+               surf_usm_v
+
     USE urban_surface_mod,                                                                         &
-        ONLY:  nzt_wall,                                                                           &
-               t_green,                                                                            &
-               t_wall,                                                                             &
-               t_window
+        ONLY:  building_type,                                                                      &
+               nzt_wall,                                                                           &
+               t_green_h,                                                                          &
+               t_green_v,                                                                          &
+               t_wall_h,                                                                           &
+               t_wall_v,                                                                           &
+               t_window_h,                                                                         &
+               t_window_v
 
 
     INTEGER(iwp) ::  fa   !< running index for facade elements of each building
@@ -1120,6 +1235,7 @@
     INTEGER(iwp) ::  j    !< index of facade-adjacent atmosphere grid point in y-direction
     INTEGER(iwp) ::  k    !< index of facade-adjacent atmosphere grid point in z-direction
     INTEGER(iwp) ::  kk   !< vertical index of indoor grid point adjacent to facade
+    INTEGER(iwp) ::  l    !< running index for surface-element orientation
     INTEGER(iwp) ::  m    !< running index surface elements
     INTEGER(iwp) ::  nb   !< running index for buildings
 
@@ -1143,9 +1259,6 @@
 !
 !-- Check if the simulation is still in wall/soil spinup mode
     during_spinup = MERGE( .TRUE., .FALSE., time_since_reference_point < 0.0_wp )
-!
-!-- Update 10-cm temperature.
-    CALL calc_pt_10cm
 !
 !-- Following calculations must be done for each facade element.
     DO  nb = 1, num_build
@@ -1181,45 +1294,39 @@
              ENDIF
           ENDIF
 !
-!--       Initialize/reset indoor temperature - note, this is only for output
+!--       Initialize/reset indoor temperature
           buildings(nb)%t_in_l = 0.0_wp
 !
 !--       Horizontal surfaces
-          DO  fa = 1, buildings(nb)%num_facades_per_building_l
+          DO  fa = 1, buildings(nb)%num_facades_per_building_h_l
 !
 !--          Determine indices where corresponding surface-type information is stored.
-             m = buildings(nb)%m(fa)
+             l = buildings(nb)%l_h(fa)
+             m = buildings(nb)%m_h(fa)
 !
 !--          During spinup set window fraction to zero and add these to wall fraction.
-             frac_win   = MERGE( surf_usm%frac(m,ind_wat_win), 0.0_wp, .NOT. during_spinup )
-             frac_wall  = MERGE( surf_usm%frac(m,ind_veg_wall),                                    &
-                                 surf_usm%frac(m,ind_veg_wall) +                                   &
-                                 surf_usm%frac(m,ind_wat_win),                                     &
+             frac_win   = MERGE( surf_usm_h(l)%frac(m,ind_wat_win), 0.0_wp, .NOT. during_spinup )
+             frac_wall  = MERGE( surf_usm_h(l)%frac(m,ind_veg_wall),                               &
+                                 surf_usm_h(l)%frac(m,ind_veg_wall) +                              &
+                                 surf_usm_h(l)%frac(m,ind_wat_win),                                &
                                  .NOT. during_spinup )
-             frac_green = surf_usm%frac(m,ind_pav_green)
+             frac_green = surf_usm_h(l)%frac(m,ind_pav_green)
 !
 !--          Determine building height level index.
-             kk = surf_usm%k(m) + surf_usm%koff(m)
+             kk = surf_usm_h(l)%k(m) + surf_usm_h(l)%koff
 !
 !--          Building geometries --> not time-dependent
-             IF ( surf_usm%upward(m)  .OR.  surf_usm%downward(m) )  THEN
-                facade_element_area = dx * dy                                     !< [m2] surface area per facade element
-             ELSEIF( surf_usm%northward(m)  .OR.  surf_usm%southward(m) )  THEN
-                facade_element_area = dx * dzw(kk+1)                              !< [m2] surface area per facade element
-             ELSEIF( surf_usm%eastward(m)  .OR.  surf_usm%westward(m) )  THEN
-                facade_element_area = dy * dzw(kk+1)                              !< [m2] surface area per facade element
-             ENDIF
-
+             facade_element_area          = dx * dy                               !< [m2] surface area per facade element
              floor_area_per_facade        = buildings(nb)%fapf                    !< [m2/m2] floor area per facade area
              indoor_volume_per_facade     = buildings(nb)%vpf(kk)                 !< [m3/m2] indoor air volume per facade area
              buildings(nb)%area_facade    = facade_element_area *                                  &
                                             ( buildings(nb)%num_facades_per_building_h +           &
                                               buildings(nb)%num_facades_per_building_v ) !< [m2] area of total facade
-             window_area_per_facade       = frac_win  * facade_element_area       !< [m2] window area per facade element
+             window_area_per_facade       = frac_win  * facade_element_area              !< [m2] window area per facade element
 
-             buildings(nb)%net_floor_area = buildings(nb)%vol_tot / buildings(nb)%height_storey
-             total_area                   = buildings(nb)%net_floor_area          !< [m2] area of all surfaces
-                                                                                  !< pointing to zone  Eq. (9) according to section 7.2.2.2
+             buildings(nb)%net_floor_area = buildings(nb)%vol_tot / ( buildings(nb)%height_storey )
+             total_area                   = buildings(nb)%net_floor_area                            !< [m2] area of all surfaces
+                                                                                                    !< pointing to zone  Eq. (9) according to section 7.2.2.2
              a_m                          = buildings(nb)%factor_a * total_area *                  &
                                             ( facade_element_area / buildings(nb)%area_facade ) *  &
                                             buildings(nb)%lambda_at                                 !< [m2] standard values
@@ -1236,28 +1343,20 @@
              h_t_ms  = a_m * h_ms                                                                     !< [W/K] with h_ms = 9.10 W /
                                                                                                       !< (m2 K) between component and surface, Eq. (64)
              h_t_wall  = 1.0_wp / ( 1.0_wp / ( ( facade_element_area - window_area_per_facade )    &  !< [W/K]
-                                    * buildings(nb)%lambda_layer3 / buildings(nb)%s_layer3 * 0.5_wp&
+                                    * buildings(nb)%lambda_layer3 / buildings(nb)%s_layer3 * 0.5_wp &
                                              ) + 1.0_wp / h_t_ms )                                    !< [W/K] opaque components
              h_t_wm  = 1.0_wp / ( 1.0_wp / h_t_wall - 1.0_wp / h_t_ms )                               !< [W/K] emmision Eq. (63),
                                                                                                       !< Section 12.2.2
 !
 !--          Internal air loads dependent on the occupacy of the room.
-!--          Basical internal heat gains (qint_low) with additional internal heat gains by occupancy
-!--          (qint_high) (0.5*phi_int).
+!--          Basical internal heat gains (qint_low) with additional internal heat gains by occupancy (qint_high) (0,5*phi_int).
              phi_ia = 0.5_wp * ( ( buildings(nb)%qint_high * schedule_d + buildings(nb)%qint_low ) &
                               * floor_area_per_facade )
-
-             IF ( surf_usm%upward(m)  .OR.  surf_usm%downward(m) )  THEN
-                q_int = phi_ia / total_area
-             ELSE
-                q_int = phi_ia
-             ENDIF
+             q_int = phi_ia / total_area
 !
 !--          Airflow dependent on the occupacy of the room.
-!--          Basical airflow (air_change_low) with additional airflow gains by occupancy
-!--          (air_change_high)
-             air_change = ( buildings(nb)%air_change_high * schedule_d +                           &
-                            buildings(nb)%air_change_low )  !< [1/h]?
+!--          Basical airflow (air_change_low) with additional airflow gains by occupancy (air_change_high)
+             air_change = ( buildings(nb)%air_change_high * schedule_d + buildings(nb)%air_change_low )  !< [1/h]?
 !
 !--          Heat transfer of ventilation.
 !--          Not less than 0.01 W/K to avoid division by 0 in further calculations with heat
@@ -1271,17 +1370,19 @@
              h_t_3 = 1.0_wp / ( ( 1.0_wp / h_t_2 ) + ( 1.0_wp / h_t_ms ) )  !< [W/K] Eq. (C.8)
 !
 !--          Net short-wave radiation through window area (was i_global)
-             net_sw_in = surf_usm%rad_sw_in(m) - surf_usm%rad_sw_out(m)
+             net_sw_in = surf_usm_h(l)%rad_sw_in(m) - surf_usm_h(l)%rad_sw_out(m)
 !
 !--          Quantities needed for im_calc_temperatures
-             i = surf_usm%i(m)
-             j = surf_usm%j(m)
-             k = surf_usm%k(m)
-             near_facade_temperature = surf_usm%pt_10cm(m)
-
-             indoor_wall_temperature = frac_wall  * t_wall%val(nzt_wall,m)                         &
-                                     + frac_win   * t_window%val(nzt_wall,m)                       &
-                                     + frac_green * t_green%val(nzt_wall,m)
+             i = surf_usm_h(l)%i(m)
+             j = surf_usm_h(l)%j(m)
+             k = surf_usm_h(l)%k(m)
+             near_facade_temperature = surf_usm_h(l)%pt_10cm(m)
+!              indoor_wall_window_temperature = frac_wall  * t_wall_h(l)%val(nzt_wall,m)             &
+!                                             + frac_win   * t_window_h(l)%val(nzt_wall,m)           &
+!                                             + frac_green * t_green_h(l)%val(nzt_wall,m)
+             indoor_wall_temperature = frac_wall  * t_wall_h(l)%val(nzt_wall,m)                    &
+                                     + frac_win   * t_window_h(l)%val(nzt_wall,m)                  &
+                                     + frac_green * t_green_h(l)%val(nzt_wall,m)
 !
 !--          Solar thermal gains. If net_sw_in larger than sun-protection threshold parameter
 !--          (params_solar_protection), sun protection will be activated.
@@ -1319,9 +1420,8 @@
 !--          section C.4.1 Picture C.2 zone 3)
              phi_hc_nd = 0.0_wp
 
-             CALL  im_calc_temperatures ( i, j, k, indoor_wall_temperature,                        &
-                                          near_facade_temperature, phi_hc_nd,                      &
-                                          buildings(nb)%theta_m_t_prev(fa) )
+             CALL  im_calc_temperatures ( i, j, k, indoor_wall_temperature, &
+                                          near_facade_temperature, phi_hc_nd, buildings(nb)%theta_m_t_prev_h(fa) )
 !
 !--          If air temperature between border temperatures of heating and cooling, assign output
 !--          variable, then ready.
@@ -1336,7 +1436,7 @@
              ELSE
 !
 !--             Temperature not correct, calculation method according to section C4.2
-                theta_air_0 = theta_air       !< temperature without heating/cooling
+                theta_air_0 = theta_air                                                  !< temperature without heating/cooling
 !
 !--             Heating or cooling?
                 IF ( theta_air_0 > buildings(nb)%theta_int_c_set )  THEN
@@ -1349,9 +1449,8 @@
                 phi_hc_nd_10 = 10.0_wp * floor_area_per_facade
                 phi_hc_nd    = phi_hc_nd_10
 
-                CALL  im_calc_temperatures ( i, j, k, indoor_wall_temperature,                     &
-                                             near_facade_temperature, phi_hc_nd,                   &
-                                             buildings(nb)%theta_m_t_prev(fa) )
+                CALL  im_calc_temperatures ( i, j, k, indoor_wall_temperature, &
+                                             near_facade_temperature, phi_hc_nd, buildings(nb)%theta_m_t_prev_h(fa) )
                 theta_air_10 = theta_air                                                !< temperature with 10 W/m2 of heating
 !
 !--             Avoid division by zero at first timestep where the denominator can become zero.
@@ -1359,7 +1458,7 @@
                    phi_hc_nd_un = phi_hc_nd_10
                 ELSE
                    phi_hc_nd_un = phi_hc_nd_10 * ( theta_air_set - theta_air_0 )                   &
-                                               / ( theta_air_10  - theta_air_0 )        !< Eq. (C.13)
+                                               / ( theta_air_10  - theta_air_0 )             !< Eq. (C.13)
                 ENDIF
 !
 !--             Step 3: with temperature ratio to determine the heating or cooling capacity.
@@ -1385,14 +1484,13 @@
                 phi_hc_nd = phi_hc_nd_ac
 !
 !--             Calculate the temperature with phi_hc_nd_ac (new)
-                CALL  im_calc_temperatures ( i, j, k, indoor_wall_temperature,                     &
-                                             near_facade_temperature, phi_hc_nd,                   &
-                                             buildings(nb)%theta_m_t_prev(fa) )
+                CALL  im_calc_temperatures ( i, j, k, indoor_wall_temperature, &
+                                             near_facade_temperature, phi_hc_nd, buildings(nb)%theta_m_t_prev_h(fa) )
                 theta_air_ac = theta_air
              ENDIF
 !
 !--          Update theta_m_t_prev
-             buildings(nb)%theta_m_t_prev(fa) = theta_m_t
+             buildings(nb)%theta_m_t_prev_h(fa) = theta_m_t
 
 
              q_vent = h_v * ( theta_air - near_facade_temperature )
@@ -1402,14 +1500,14 @@
 !--          Will be used for thermal comfort calculations.
              theta_op     = 0.3_wp * theta_air_ac + 0.7_wp * theta_s          !< [degree_C] operative Temperature Eq. (C.12)
 
-!              surf_usm%t_indoor(m) = theta_op                               !< not integrated now
+!              surf_usm_h(l)%t_indoor(m) = theta_op                               !< not integrated now
 !
 !--          Heat flux into the wall. Value needed in urban_surface_mod to
 !--          calculate heat transfer through wall layers towards the facade
 !--          (use c_p * rho_surface to convert [W/m2] into [K m/s])
              IF ( (facade_element_area - window_area_per_facade) > 0.0_wp )  THEN
-                q_wall = h_t_wm * ( indoor_wall_temperature - theta_m )                            &
-                                / ( facade_element_area - window_area_per_facade )
+                q_wall = h_t_wm * ( indoor_wall_temperature - theta_m )                 &
+                                    / ( facade_element_area - window_area_per_facade )
              ELSE
                 q_wall = 0.0_wp
              ENDIF
@@ -1421,8 +1519,8 @@
              ENDIF
 !
 !--          Transfer q_wall & q_win back to USM (innermost wall/window layer)
-             surf_usm%iwghf_eb(m)        = -q_wall
-             surf_usm%iwghf_eb_window(m) = -q_win
+             surf_usm_h(l)%iwghf_eb(m)        = - q_wall
+             surf_usm_h(l)%iwghf_eb_window(m) = - q_win
 !
 !--          Sum up operational indoor temperature per kk-level. Further below, this temperature is
 !--          reduced by MPI to one temperature per kk-level and building (processor overlapping).
@@ -1441,13 +1539,267 @@
              q_waste_heat = ( phi_hc_nd * (                                                        &
                               buildings(nb)%params_waste_heat_h * heating_on +                     &
                               buildings(nb)%params_waste_heat_c * cooling_on )                     &
-                            ) / facade_element_area  !< [W/m2] , observe the directional convention in PALM!
+                            ) / facade_element_area                                             !< [W/m2] , observe the directional
+                                                                                                !< convention in PALM!
+             surf_usm_h(l)%waste_heat(m) = q_waste_heat
+          ENDDO !< Horizontal surfaces loop
 !
-!--          Store waste heat and previous previous indoor temperature on surface-data type.
-!--          These will be used in the urban-surface model.
-             surf_usm%t_prev(m) = buildings(nb)%theta_m_t_prev(fa)
-             surf_usm%waste_heat(m) = q_waste_heat
-          ENDDO
+!--       Vertical surfaces
+          DO  fa = 1, buildings(nb)%num_facades_per_building_v_l
+!
+!--          Determine indices where corresponding surface-type information is stored.
+             l = buildings(nb)%l_v(fa)
+             m = buildings(nb)%m_v(fa)
+!
+!--          During spinup set window fraction to zero and add these to wall fraction.
+             frac_win   = MERGE( surf_usm_v(l)%frac(m,ind_wat_win), 0.0_wp, .NOT. during_spinup )
+             frac_wall  = MERGE( surf_usm_v(l)%frac(m,ind_veg_wall),                               &
+                                 surf_usm_v(l)%frac(m,ind_veg_wall) +                              &
+                                 surf_usm_v(l)%frac(m,ind_wat_win),                                &
+                                 .NOT. during_spinup )
+             frac_green = surf_usm_v(l)%frac(m,ind_pav_green)
+!
+!--          Determine building height level index.
+             kk = surf_usm_v(l)%k(m) + surf_usm_v(l)%koff
+!
+!--          (SOME OF THE FOLLOWING (not time-dependent) COULD PROBABLY GO INTO A FUNCTION
+!--          EXCEPT facade_element_area, EVERYTHING IS CALCULATED EQUALLY)
+!--          Building geometries  --> not time-dependent
+             IF ( l == 0  .OR. l == 1 ) facade_element_area = dx * dzw(kk+1)    !< [m2] surface area per facade element
+             IF ( l == 2  .OR. l == 3 ) facade_element_area = dy * dzw(kk+1)    !< [m2] surface area per facade element
+
+             floor_area_per_facade        = buildings(nb)%fapf                  !< [m2/m2] floor area per facade area
+             indoor_volume_per_facade     = buildings(nb)%vpf(kk)               !< [m3/m2] indoor air volume per facade area
+             buildings(nb)%area_facade    = facade_element_area *                                  &
+                                            ( buildings(nb)%num_facades_per_building_h +           &
+                                              buildings(nb)%num_facades_per_building_v )  !< [m2] area of total facade
+             window_area_per_facade       = frac_win * facade_element_area                !< [m2] window area per facade element
+
+             buildings(nb)%net_floor_area = buildings(nb)%vol_tot / ( buildings(nb)%height_storey )
+             total_area                   = buildings(nb)%net_floor_area                              !< [m2] area of all surfaces
+                                                                                                      !< pointing to zone  Eq. (9) according to section 7.2.2.2
+             a_m                          = buildings(nb)%factor_a * total_area *                  &
+                                            ( facade_element_area / buildings(nb)%area_facade ) *  &
+                                              buildings(nb)%lambda_at                                 !< [m2] standard values
+                                                                                                      !< according to Table 12 section 12.3.1.2  (calculate over Eq. (65) according to section 12.3.1.2)
+             c_m                          = buildings(nb)%factor_c * total_area *                   &
+                                            ( facade_element_area / buildings(nb)%area_facade )       !< [J/K] standard values
+                                                                                                      !< according to table 12 section 12.3.1.2 (calculate over Eq. (66) according to section 12.3.1.2)
+!
+!--          Calculation of heat transfer coefficient for transmission --> not time-dependent
+             h_t_es   = window_area_per_facade * buildings(nb)%h_es                                   !< [W/K] only for windows
+
+             h_t_is  = buildings(nb)%area_facade  * h_is                                              !< [W/K] with h_is = 3.45 W /
+                                                                                                      !< (m2 K) between surface and air, Eq. (9)
+             h_t_ms  = a_m * h_ms                                                                     !< [W/K] with h_ms = 9.10 W /
+                                                                                                      !< (m2 K) between component and surface, Eq. (64)
+             h_t_wall  = 1.0_wp / ( 1.0_wp / ( ( facade_element_area - window_area_per_facade )    &  !< [W/K]
+                                    * buildings(nb)%lambda_layer3 / buildings(nb)%s_layer3 * 0.5_wp &
+                                             ) + 1.0_wp / h_t_ms )                                    !< [W/K] opaque components
+             h_t_wm  = 1.0_wp / ( 1.0_wp / h_t_wall - 1.0_wp / h_t_ms )                               !< [W/K] emmision Eq. (63), Section 12.2.2
+!
+!--          Internal air loads dependent on the occupacy of the room.
+!--          Basical internal heat gains (qint_low) with additional internal heat gains by occupancy
+!--          (qint_high) (0,5*phi_int)
+             phi_ia = 0.5_wp * ( ( buildings(nb)%qint_high * schedule_d + buildings(nb)%qint_low ) &
+                             * floor_area_per_facade )
+             q_int = phi_ia
+
+!
+!--          Airflow dependent on the occupacy of the room.
+!--          Basical airflow (air_change_low) with additional airflow gains by occupancy
+!--          (air_change_high)
+             air_change = ( buildings(nb)%air_change_high * schedule_d +                           &
+                            buildings(nb)%air_change_low )
+!
+!--          Heat transfer of ventilation.
+!--          Not less than 0.01 W/K to avoid division by 0 in further calculations with heat
+!--          capacity of air 0.33 Wh/m2K
+             h_v   = MAX( 0.01_wp , ( air_change * indoor_volume_per_facade *                      &
+                                    0.33_wp * (1.0_wp - buildings(nb)%eta_ve ) ) )                    !< [W/K] from ISO 13789
+                                                                                                      !< Eq.(10)
+
+!--          Heat transfer coefficient auxiliary variables
+             h_t_1 = 1.0_wp / ( ( 1.0_wp / h_v )   + ( 1.0_wp / h_t_is ) )                            !< [W/K] Eq. (C.6)
+             h_t_2 = h_t_1 + h_t_es                                                                   !< [W/K] Eq. (C.7)
+             h_t_3 = 1.0_wp / ( ( 1.0_wp / h_t_2 ) + ( 1.0_wp / h_t_ms ) )                            !< [W/K] Eq. (C.8)
+!
+!--          Net short-wave radiation through window area (was i_global)
+             net_sw_in = surf_usm_v(l)%rad_sw_in(m) - surf_usm_v(l)%rad_sw_out(m)
+!
+!--          Quantities needed for im_calc_temperatures
+             i = surf_usm_v(l)%i(m)
+             j = surf_usm_v(l)%j(m)
+             k = surf_usm_v(l)%k(m)
+             near_facade_temperature = surf_usm_v(l)%pt_10cm(m)
+
+!              indoor_wall_window_temperature = frac_wall  * t_wall_v(l)%val(nzt_wall,m)             &
+!                                             + frac_win   * t_window_v(l)%val(nzt_wall,m)           &
+!                                             + frac_green * t_green_v(l)%val(nzt_wall,m)
+
+             indoor_wall_temperature = frac_wall  * t_wall_v(l)%val(nzt_wall,m)                    &
+                                     + frac_win   * t_window_v(l)%val(nzt_wall,m)                  &
+                                     + frac_green * t_green_v(l)%val(nzt_wall,m)
+
+!
+!--          Solar thermal gains. If net_sw_in larger than sun-protection
+!--          threshold parameter (params_solar_protection), sun protection will
+!--          be activated
+             IF ( net_sw_in <= params_solar_protection )  THEN
+                solar_protection_off = 1
+                solar_protection_on  = 0
+             ELSE
+                solar_protection_off = 0
+                solar_protection_on  = 1
+             ENDIF
+!
+!--          Calculation of total heat gains from net_sw_in through windows [W] in respect on
+!--          automatic sun protection.
+!--          DIN 4108 - 2 chap.8
+             phi_sol = (   window_area_per_facade * net_sw_in * solar_protection_off               &
+                         + window_area_per_facade * net_sw_in * buildings(nb)%f_c_win *            &
+                           solar_protection_on )                                                   &
+                       * buildings(nb)%g_value_win * ( 1.0_wp - params_f_f ) * params_f_w
+             q_sol = phi_sol
+!
+!--          Calculation of the mass specific thermal load for internal and external heatsources.
+             phi_m   = (a_m / total_area) * ( phi_ia + phi_sol )          !< [W] Eq. (C.2) with phi_ia=0,5*phi_int
+             q_c_m = phi_m
+!
+!--          Calculation mass specific thermal load implied non thermal mass.
+             phi_st  =   ( 1.0_wp - ( a_m / total_area ) - ( h_t_es / ( 9.1_wp * total_area ) ) )  &
+                       * ( phi_ia + phi_sol )                                                       !< [W] Eq. (C.3) with
+                                                                                                    !< phi_ia=0,5*phi_int
+             q_c_st = phi_st
+!
+!--          Calculations for deriving indoor temperature and heat flux into the wall.
+!--          Step 1: indoor temperature without heating and cooling.
+!--          section C.4.1 Picture C.2 zone 3)
+             phi_hc_nd = 0.0_wp
+             CALL im_calc_temperatures ( i, j, k, indoor_wall_temperature, &
+                                         near_facade_temperature, phi_hc_nd, buildings(nb)%theta_m_t_prev_v(fa) )
+!
+!--          If air temperature between border temperatures of heating and cooling, assign output
+!--          variable, then ready.
+             IF ( buildings(nb)%theta_int_h_set <= theta_air  .AND.                                &
+                  theta_air <= buildings(nb)%theta_int_c_set )  THEN
+                phi_hc_nd_ac = 0.0_wp
+                phi_hc_nd    = phi_hc_nd_ac
+                theta_air_ac = theta_air
+!
+!--          Step 2: Else, apply 10 W/m2 heating/cooling power and calculate indoor temperature
+!--          again.
+             ELSE
+!
+!--             Temperature not correct, calculation method according to section C4.2
+                theta_air_0 = theta_air !< Note temperature without heating/cooling
+!
+!--             Heating or cooling?
+                IF ( theta_air_0 > buildings(nb)%theta_int_c_set )  THEN
+                   theta_air_set = buildings(nb)%theta_int_c_set
+                ELSE
+                   theta_air_set = buildings(nb)%theta_int_h_set
+                ENDIF
+
+!--             Calculate the temperature with phi_hc_nd_10
+                phi_hc_nd_10 = 10.0_wp * floor_area_per_facade
+                phi_hc_nd    = phi_hc_nd_10
+
+                CALL  im_calc_temperatures ( i, j, k, indoor_wall_temperature, &
+                                             near_facade_temperature, phi_hc_nd, buildings(nb)%theta_m_t_prev_v(fa) )
+
+                theta_air_10 = theta_air !< Note the temperature with 10 W/m2 of heating
+!
+!--             Avoid division by zero at first timestep where the denominator can become zero.
+                IF ( ABS( theta_air_10  - theta_air_0 ) < 1E-10_wp )  THEN
+                   phi_hc_nd_un = phi_hc_nd_10
+                ELSE
+                   phi_hc_nd_un = phi_hc_nd_10 * ( theta_air_set - theta_air_0 )                   &
+                                               / ( theta_air_10  - theta_air_0 )             !< Eq. (C.13)
+                ENDIF
+!
+!--             Step 3: with temperature ratio to determine the heating or cooling capacity
+!--             If necessary, limit the power to maximum power.
+!--             section C.4.1 Picture C.2 zone 2) and 4)
+                buildings(nb)%phi_c_max = buildings(nb)%q_c_max * floor_area_per_facade
+                buildings(nb)%phi_h_max = buildings(nb)%q_h_max * floor_area_per_facade
+                IF ( buildings(nb)%phi_c_max < phi_hc_nd_un  .AND.                                 &
+                     phi_hc_nd_un < buildings(nb)%phi_h_max )  THEN
+                   phi_hc_nd_ac = phi_hc_nd_un
+                   phi_hc_nd = phi_hc_nd_un
+                ELSE
+!
+!--             Step 4: inner temperature with maximum heating (phi_hc_nd_un positive) or cooling
+!--                     (phi_hc_nd_un negative)
+!--             section C.4.1 Picture C.2 zone 1) and 5)
+                   IF ( phi_hc_nd_un > 0.0_wp )  THEN
+                      phi_hc_nd_ac = buildings(nb)%phi_h_max                                         !< Limit heating
+                   ELSE
+                      phi_hc_nd_ac = buildings(nb)%phi_c_max                                         !< Limit cooling
+                   ENDIF
+                ENDIF
+                phi_hc_nd = phi_hc_nd_ac
+!
+!--             Calculate the temperature with phi_hc_nd_ac (new)
+                CALL  im_calc_temperatures ( i, j, k, indoor_wall_temperature, &
+                                             near_facade_temperature, phi_hc_nd, buildings(nb)%theta_m_t_prev_v(fa) )
+                theta_air_ac = theta_air
+             ENDIF
+!
+!--          Update theta_m_t_prev
+             buildings(nb)%theta_m_t_prev_v(fa) = theta_m_t
+
+
+             q_vent = h_v * ( theta_air - near_facade_temperature )
+!
+!--          Calculate the operating temperature with weighted mean of temperature of air and mean.
+!--          Will be used for thermal comfort calculations.
+             theta_op     = 0.3_wp * theta_air_ac + 0.7_wp * theta_s
+
+!              surf_usm_v(l)%t_indoor(m) = theta_op                  !< not integrated yet
+!
+!--          Heat flux into the wall. Value needed in urban_surface_mod to
+!--          calculate heat transfer through wall layers towards the facade
+             IF ( (facade_element_area - window_area_per_facade) > 0.0_wp )  THEN
+                q_wall = h_t_wm * ( indoor_wall_temperature - theta_m )                 &
+                                    / ( facade_element_area - window_area_per_facade )
+             ELSE
+                q_wall = 0.0_wp
+             ENDIF
+
+             IF ( window_area_per_facade > 0.0_wp )  THEN
+                q_win = h_t_es * ( pt(k,j,i) - theta_s ) / ( window_area_per_facade )
+             ELSE
+                q_win = 0.0_wp
+             ENDIF
+
+!
+!--          Transfer q_wall & q_win back to USM (innermost wall/window layer)
+             surf_usm_v(l)%iwghf_eb(m)        = - q_wall
+             surf_usm_v(l)%iwghf_eb_window(m) = - q_win
+
+!              print*, "wwfjg", surf_usm_v(l)%iwghf_eb(m), surf_usm_v(l)%iwghf_eb_window(m)
+!
+!--          Sum up operational indoor temperature per kk-level. Further below, this temperature is
+!--          reduced by MPI to one temperature per kk-level and building (processor overlapping).
+             buildings(nb)%t_in_l(kk) = buildings(nb)%t_in_l(kk) + theta_op
+!
+!--          Calculation of waste heat.
+!--          Anthropogenic heat output.
+             IF ( phi_hc_nd_ac > 0.0_wp )  THEN
+                heating_on = 1
+                cooling_on = 0
+             ELSE
+                heating_on = 0
+                cooling_on = -1
+             ENDIF
+
+             q_waste_heat = ( phi_hc_nd * ( buildings(nb)%params_waste_heat_h * heating_on +       &
+                                            buildings(nb)%params_waste_heat_c * cooling_on )       &
+                                                    ) / facade_element_area  !< [W/m2] , observe the directional convention in
+                                                                             !< PALM!
+             surf_usm_v(l)%waste_heat(m) = q_waste_heat
+          ENDDO !< Vertical surfaces loop
        ENDIF !< buildings(nb)%on_pe
     ENDDO !< buildings loop
 
@@ -1542,9 +1894,6 @@
         CASE ( 'im_hf_roof_waste' )
            unit = 'W m-2'
 
-        CASE ( 'im_theta_10cm_roof', 'im_theta_10cm_wall' )
-           unit = 'K'
-
         CASE ( 'im_t_indoor_mean' )
            unit = 'K'
 
@@ -1553,7 +1902,7 @@
 
         CASE ( 'im_t_indoor_wall_win' )
            unit = 'K'
-
+           
         CASE ( 'im_t_indoor_wall' )
            unit = 'K'
 
@@ -1610,8 +1959,7 @@
           grid_y = 'y'
           grid_z = 'zu'
 
-       CASE ( 'im_t_indoor_mean', 'im_t_indoor_roof', 'im_t_indoor_wall_win', 'im_t_indoor_wall', &
-              'im_theta_10cm_roof', 'im_theta_10cm_wall' )
+       CASE ( 'im_t_indoor_mean', 'im_t_indoor_roof', 'im_t_indoor_wall_win', 'indoor_wall' )
           grid_x = 'x'
           grid_y = 'y'
           grid_z = 'zw'
@@ -1631,7 +1979,7 @@
 ! ------------
 !> Subroutine defining 3D output variables
 !--------------------------------------------------------------------------------------------------!
- SUBROUTINE im_data_output_3d( av, variable, found, local_pf, nzb_do, nzt_do )
+ SUBROUTINE im_data_output_3d( av, variable, found, local_pf, fill_value, nzb_do, nzt_do )
 
     USE indices
 
@@ -1643,6 +1991,7 @@
     INTEGER(iwp) ::  i     !<
     INTEGER(iwp) ::  j     !<
     INTEGER(iwp) ::  k     !<
+    INTEGER(iwp) ::  l     !<
     INTEGER(iwp) ::  m     !<
     INTEGER(iwp) ::  nb    !< index of the building in the building data structure
     INTEGER(iwp) ::  nzb_do !< lower limit of the data output (usually 0)
@@ -1650,7 +1999,11 @@
 
     LOGICAL      ::  found !<
 
+    REAL(wp), INTENT(IN) ::  fill_value !< value for the _FillValue attribute
+
     REAL(wp), DIMENSION(nxl:nxr,nys:nyn,nzb_do:nzt_do) ::  local_pf !<
+
+    local_pf = fill_value
 
     found = .TRUE.
 
@@ -1683,81 +2036,45 @@
 
         CASE ( 'im_hf_roof' )
            IF ( av == 0 )  THEN
-              DO  m = 1, surf_usm%ns
-                 i = surf_usm%i(m)
-                 j = surf_usm%j(m)
-                 k = surf_usm%k(m)
-!
-!--              Only values at upward-facing surfaces are taken.
-                 local_pf(i,j,k) = MERGE( surf_usm%iwghf_eb(m), local_pf(i,j,k),                   &
-                                          surf_usm%upward(m) )
+              DO  m = 1, surf_usm_h(0)%ns
+                 i = surf_usm_h(0)%i(m) !+ surf_usm_h%ioff
+                 j = surf_usm_h(0)%j(m) !+ surf_usm_h%joff
+                 k = surf_usm_h(0)%k(m) !+ surf_usm_h%koff
+                 local_pf(i,j,k) = surf_usm_h(0)%iwghf_eb(m)
               ENDDO
            ENDIF
 
         CASE ( 'im_hf_roof_waste' )
            IF ( av == 0 )  THEN
-              DO m = 1, surf_usm%ns
-                 i = surf_usm%i(m)
-                 j = surf_usm%j(m)
-                 k = surf_usm%k(m)
-!
-!--              Only values at upward-facing surfaces are taken.
-                 local_pf(i,j,k) = MERGE( surf_usm%waste_heat(m), local_pf(i,j,k),                 &
-                                          surf_usm%upward(m) )
+              DO m = 1, surf_usm_h(0)%ns
+                 i = surf_usm_h(0)%i(m) !+ surf_usm_h%ioff
+                 j = surf_usm_h(0)%j(m) !+ surf_usm_h%joff
+                 k = surf_usm_h(0)%k(m) !+ surf_usm_h%koff
+                 local_pf(i,j,k) = surf_usm_h(0)%waste_heat(m)
               ENDDO
            ENDIF
 
        CASE ( 'im_hf_wall_win' )
            IF ( av == 0 )  THEN
-              DO m = 1, surf_usm%ns
-                 i = surf_usm%i(m)
-                 j = surf_usm%j(m)
-                 k = surf_usm%k(m)
-!
-!--              Only values at vertical surfaces are taken.
-                 local_pf(i,j,k) = MERGE( surf_usm%iwghf_eb(m), local_pf(i,j,k),                   &
-                                          surf_usm%northward(m)  .OR.  surf_usm%southward(m)  .OR. &
-                                          surf_usm%eastward(m)   .OR.  surf_usm%westward(m) )
+              DO l = 0, 3
+                 DO m = 1, surf_usm_v(l)%ns
+                    i = surf_usm_v(l)%i(m) !+ surf_usm_v(l)%ioff
+                    j = surf_usm_v(l)%j(m) !+ surf_usm_v(l)%joff
+                    k = surf_usm_v(l)%k(m) !+ surf_usm_v(l)%koff
+                    local_pf(i,j,k) = surf_usm_v(l)%iwghf_eb(m)
+                 ENDDO
               ENDDO
            ENDIF
 
         CASE ( 'im_hf_wall_win_waste' )
            IF ( av == 0 )  THEN
-              DO m = 1, surf_usm%ns
-                 i = surf_usm%i(m)
-                 j = surf_usm%j(m)
-                 k = surf_usm%k(m)
-!
-!--              Only values at vertical surfaces are taken.
-                 local_pf(i,j,k) = MERGE( surf_usm%waste_heat(m), local_pf(i,j,k),                 &
-                                          surf_usm%northward(m)  .OR.  surf_usm%southward(m)  .OR. &
-                                          surf_usm%eastward(m)   .OR.  surf_usm%westward(m) )
-              ENDDO
-           ENDIF
-
-        CASE ( 'im_theta_10cm_wall' )
-           IF ( av == 0 )  THEN
-              DO m = 1, surf_usm%ns
-                 i = surf_usm%i(m)
-                 j = surf_usm%j(m)
-                 k = surf_usm%k(m)
-!
-!--              Only values at vertical surfaces are taken.
-                 local_pf(i,j,k) = MERGE( surf_usm%pt_10cm(m), local_pf(i,j,k),                    &
-                                          surf_usm%northward(m)  .OR.  surf_usm%southward(m)  .OR. &
-                                          surf_usm%eastward(m)   .OR.  surf_usm%westward(m) )
-              ENDDO
-           ENDIF
-
-        CASE ( 'im_theta_10cm_roof' )
-           IF ( av == 0 )  THEN
-              DO m = 1, surf_usm%ns
-                 i = surf_usm%i(m)
-                 j = surf_usm%j(m)
-                 k = surf_usm%k(m)
-!
-!--              Only values at vertical surfaces are taken.
-                 local_pf(i,j,k) = MERGE( surf_usm%pt_10cm(m), local_pf(i,j,k), surf_usm%upward(m) )
+              DO l = 0, 3
+                 DO m = 1, surf_usm_v(l)%ns
+                    i = surf_usm_v(l)%i(m) !+ surf_usm_v(l)%ioff
+                    j = surf_usm_v(l)%j(m) !+ surf_usm_v(l)%joff
+                    k = surf_usm_v(l)%k(m) !+ surf_usm_v(l)%koff
+                    local_pf(i,j,k) =  surf_usm_v(l)%waste_heat(m)
+                 ENDDO
               ENDDO
            ENDIF
 
@@ -1767,9 +2084,9 @@
 !         CASE ( 'im_t_indoor_roof' )
 !            IF ( av == 0 )  THEN
 !               DO  m = 1, surf_usm_h%ns
-!                   i = surf_usm_h%i(m) !+ surf_usm_h%ioff(m)
-!                   j = surf_usm_h%j(m) !+ surf_usm_h%joff(m)
-!                   k = surf_usm_h%k(m) !+ surf_usm_h%koff(m)
+!                   i = surf_usm_h%i(m) !+ surf_usm_h%ioff
+!                   j = surf_usm_h%j(m) !+ surf_usm_h%joff
+!                   k = surf_usm_h%k(m) !+ surf_usm_h%koff
 !                   local_pf(i,j,k) = surf_usm_h%t_indoor(m)
 !               ENDDO
 !            ENDIF
@@ -1778,9 +2095,9 @@
 !            IF ( av == 0 )  THEN
 !               DO l = 0, 3
 !                  DO m = 1, surf_usm_v(l)%ns
-!                     i = surf_usm_v(l)%i(m) !+ surf_usm_v(l)%ioff(m)
-!                     j = surf_usm_v(l)%j(m) !+ surf_usm_v(l)%joff(m)
-!                     k = surf_usm_v(l)%k(m) !+ surf_usm_v(l)%koff(m)
+!                     i = surf_usm_v(l)%i(m) !+ surf_usm_v(l)%ioff
+!                     j = surf_usm_v(l)%j(m) !+ surf_usm_v(l)%joff
+!                     k = surf_usm_v(l)%k(m) !+ surf_usm_v(l)%koff
 !                     local_pf(i,j,k) = surf_usm_v(l)%t_indoor(m)
 !                  ENDDO
 !               ENDDO
@@ -1805,40 +2122,27 @@
         ONLY:  indoor_model
 
 
-    CHARACTER(LEN=100) ::  line  !< string containing current line of file PARIN
-
-    INTEGER(iwp)  ::  io_status  !< status after reading the namelist file
-
-    LOGICAL ::  switch_off_module = .FALSE.  !< local namelist parameter to switch off the module
-                                             !< although the respective module namelist appears in
-                                             !< the namelist file
+    CHARACTER (LEN=80) ::  line  !< string containing current line of file PARIN
 
     NAMELIST /indoor_parameters/  indoor_during_spinup,                                            &
-                                  initial_indoor_temperature,                                      &
-                                  switch_off_module
+                                  initial_indoor_temperature
+
 
 !
-!-- Move to the beginning of the namelist file and try to find and read the namelist.
-    REWIND( 11 )
-    READ( 11, indoor_parameters, IOSTAT=io_status )
+!-- Try to find indoor model package
+    REWIND ( 11 )
+    line = ' '
+    DO  WHILE ( INDEX( line, '&indoor_parameters' ) == 0 )
+       READ ( 11, '(A)', END=10 )  line
+    ENDDO
+    BACKSPACE ( 11 )
 
 !
-!-- Action depending on the READ status
-    IF ( io_status == 0 )  THEN
+!-- Read user-defined namelist
+    READ ( 11, indoor_parameters )
 !
-!--    indoor_parameters namelist was found and read correctly. Set flag that indicates that the
-!--    indoor model is switched on.
-       IF ( .NOT. switch_off_module )  indoor_model = .TRUE.
-
-    ELSEIF ( io_status > 0 )  THEN
-!
-!--    indoor_parameters namelist was found, but contained errors. Print an error message including
-!--    the line that caused the problem.
-       BACKSPACE( 11 )
-       READ( 11 , '(A)' ) line
-       CALL parin_fail_message( 'indoor_parameters', line )
-
-    ENDIF
+!-- Set flag that indicates that the indoor model is switched on
+    indoor_model = .TRUE.
 
 !
 !--    Activate spinup (maybe later
@@ -1851,234 +2155,9 @@
 !           spinup = .TRUE.
 !        ENDIF
 
+ 10 CONTINUE
+
  END SUBROUTINE im_parin
-
-
-!--------------------------------------------------------------------------------------------------!
-! Description:
-! ------------
-!> Read module-specific local restart data arrays (Fortran binary format).
-!> Soubroutine reads t_surf and t_wall.
-!--------------------------------------------------------------------------------------------------!
- SUBROUTINE im_rrd_local_ftn( k, nxlf, nxlc, nxl_on_file, nxrf, nxr_on_file, nynf, nyn_on_file,    &
-                              nysf, nysc, nys_on_file, found )
-
-
-    USE control_parameters,                                                                        &
-        ONLY: length,                                                                              &
-              restart_string
-
-    IMPLICIT NONE
-
-    INTEGER(iwp) ::  k                 !< running index over previous input files covering current local domain
-    INTEGER(iwp) ::  nxlc              !< index of left boundary on current subdomain
-    INTEGER(iwp) ::  nxlf              !< index of left boundary on former subdomain
-    INTEGER(iwp) ::  nxl_on_file       !< index of left boundary on former local domain
-    INTEGER(iwp) ::  nxrf              !< index of right boundary on former subdomain
-    INTEGER(iwp) ::  nxr_on_file       !< index of right boundary on former local domain
-    INTEGER(iwp) ::  nynf              !< index of north boundary on former subdomain
-    INTEGER(iwp) ::  nyn_on_file       !< index of north boundary on former local domain
-    INTEGER(iwp) ::  nysc              !< index of south boundary on current subdomain
-    INTEGER(iwp) ::  nysf              !< index of south boundary on former subdomain
-    INTEGER(iwp) ::  nys_on_file       !< index of south boundary on former local domain
-    INTEGER(iwp) ::  ns_on_file_usm_im !< number of surface elements (urban type) on file
-!
-!-- Note, the save attribute in the following array declaration is necessary, in order to keep the
-!-- number of urban surface elements on file during rrd_local calls.
-    INTEGER(iwp), DIMENSION(:,:), ALLOCATABLE, SAVE ::  end_index_on_file    !<
-    INTEGER(iwp), DIMENSION(:,:), ALLOCATABLE, SAVE ::  start_index_on_file  !<
-
-    LOGICAL, INTENT(OUT)  ::  found  !<
-
-    TYPE( surf_type_1d_im ), SAVE ::  tmp_surf   !< temporary variable to read surface data
-
-    found = .TRUE.
-
-    SELECT CASE ( restart_string(1:length) )
-
-       CASE ( 'ns_on_file_usm_im')
-          IF ( k == 1 )  THEN
-             READ ( 13 ) ns_on_file_usm_im
-!
-!--          In case of changing mpi topology, this routine could be called more than once.
-!--          Hence, arrays need to be deallocated before allocated again.
-             IF ( ALLOCATED( tmp_surf%val ) )  DEALLOCATE( tmp_surf%val )
-!
-!--          Allocate temporary arrays for reading data on file. Note, the size of allocated surface
-!--          elements do not necessarily need to match the size of present surface elements on
-!--          current processor, as the number of processors between restarts can change.
-             ALLOCATE( tmp_surf%val(1:ns_on_file_usm_im) )
-          ENDIF
-
-       CASE ( 'im_start_index' )
-          IF ( k == 1 )  THEN
-
-             IF ( ALLOCATED( start_index_on_file ) )  DEALLOCATE( start_index_on_file )
-
-             ALLOCATE ( start_index_on_file(nys_on_file:nyn_on_file,nxl_on_file:nxr_on_file) )
-
-             READ ( 13 )  start_index_on_file
-
-          ENDIF
-
-       CASE ( 'im_end_index' )
-          IF ( k == 1 )  THEN
-
-             IF ( ALLOCATED( end_index_on_file ) )  DEALLOCATE( end_index_on_file )
-
-             ALLOCATE ( end_index_on_file(nys_on_file:nyn_on_file,nxl_on_file:nxr_on_file) )
-
-             READ ( 13 )  end_index_on_file
-
-          ENDIF
-
-       CASE ( 'waste_heat' )
-          IF ( k == 1 )  THEN
-             IF ( .NOT.  ALLOCATED( surf_usm%waste_heat ) )                                        &
-                ALLOCATE( surf_usm%waste_heat(1:surf_usm%ns) )
-             READ ( 13 )  tmp_surf%val
-          ENDIF
-          CALL surface_restore_elements( surf_usm%waste_heat, tmp_surf%val,                        &
-                                         surf_usm%start_index, start_index_on_file,                &
-                                         end_index_on_file, nxlc, nysc, nxlf, nxrf, nysf, nynf,    &
-                                         nys_on_file, nyn_on_file, nxl_on_file,nxr_on_file )
-
-       CASE ( 't_prev' )
-          IF ( k == 1 )  THEN
-             IF ( .NOT.  ALLOCATED( surf_usm%t_prev ) )  ALLOCATE( surf_usm%t_prev(1:surf_usm%ns) )
-             READ ( 13 )  tmp_surf%val
-          ENDIF
-          CALL surface_restore_elements( surf_usm%t_prev, tmp_surf%val,                            &
-                                         surf_usm%start_index, start_index_on_file,                &
-                                         end_index_on_file, nxlc, nysc, nxlf, nxrf, nysf, nynf,    &
-                                         nys_on_file, nyn_on_file, nxl_on_file,nxr_on_file )
-
-       CASE DEFAULT
-
-          found = .FALSE.
-
-    END SELECT
-
- END SUBROUTINE im_rrd_local_ftn
-
-
-!--------------------------------------------------------------------------------------------------!
-! Description:
-! ------------
-!> Read module-specific local restart data arrays (MPI-IO).
-!> Soubroutine reads t_surf and t_wall.
-!--------------------------------------------------------------------------------------------------!
- SUBROUTINE im_rrd_local_mpi
-
-    INTEGER(idp), DIMENSION(nys:nyn,nxl:nxr) ::  global_end_index
-    INTEGER(idp), DIMENSION(nys:nyn,nxl:nxr) ::  global_start_index
-
-    LOGICAL ::  array_found  !<
-    LOGICAL ::  data_to_read !< dummy variable
-
-
-    CALL rd_mpi_io_check_array( 'usm_global_start', found = array_found )
-    IF ( array_found )  CALL rrd_mpi_io( 'usm_global_start', global_start_index )
-
-    CALL rd_mpi_io_check_array( 'usm_global_end', found = array_found )
-    IF ( array_found )  CALL rrd_mpi_io( 'usm_global_end', global_end_index )
-!
-!-- Check if data input for surface-type variables is required. Note, only invoke routine if USM
-!-- surface restart data is on file. In case of cyclic fill initialization this is not necessarily
-!-- guaranteed. To check this use the array_found control flag.
-    IF ( array_found )  THEN
-       CALL rd_mpi_io_surface_filetypes( surf_usm%start_index, surf_usm%end_index,                 &
-                                         data_to_read, global_start_index, global_end_index )
-    ELSE
-       data_to_read = .FALSE.
-    ENDIF
-
-    IF ( data_to_read )  THEN
-       CALL rd_mpi_io_check_array( 'waste_heat', found = array_found )
-       IF ( array_found )  THEN
-          IF ( .NOT. ALLOCATED( surf_usm%waste_heat ) )                                            &
-             ALLOCATE( surf_usm%waste_heat(1:surf_usm%ns) )
-          CALL rrd_mpi_io_surface( 'waste_heat', surf_usm%waste_heat )
-       ENDIF
-
-       CALL rd_mpi_io_check_array( 't_prev', found = array_found )
-       IF ( array_found )  THEN
-          IF ( .NOT. ALLOCATED( surf_usm%t_prev ) )  ALLOCATE( surf_usm%t_prev(1:surf_usm%ns) )
-          CALL rrd_mpi_io_surface( 't_prev', surf_usm%t_prev )
-       ENDIF
-    ENDIF
-
- END SUBROUTINE im_rrd_local_mpi
-
-!--------------------------------------------------------------------------------------------------!
-! Description:
-! ------------
-!> Subroutine to writes restart data.
-!--------------------------------------------------------------------------------------------------!
- SUBROUTINE im_wrd_local
-
-    IMPLICIT NONE
-
-    INTEGER(idp), DIMENSION(nys:nyn,nxl:nxr) ::  global_end_index    !< end index for surface data (MPI-IO)
-    INTEGER(idp), DIMENSION(nys:nyn,nxl:nxr) ::  global_start_index  !< start index for surface data (MPI-IO)
-
-    LOGICAL  ::  surface_data_to_write  !< switch for MPI-I/O if PE has surface data to write
-
-
-    IF ( TRIM( restart_data_format_output ) == 'fortran_binary' )  THEN
-
-       CALL wrd_write_string( 'ns_on_file_usm_im' )
-       WRITE ( 14 )  surf_usm%ns
-
-       CALL wrd_write_string( 'waste_heat' )
-       WRITE ( 14 )  surf_usm%waste_heat
-
-       CALL wrd_write_string( 't_prev' )
-       WRITE ( 14 )  surf_usm%t_prev
-
-    ELSEIF ( restart_data_format_output(1:3) == 'mpi' )  THEN
-!
-!--    There is no information about the PE-grid necessary because the restart files consists of the
-!--    whole domain. Therefore, ns_on_file_usm are not used with MPI-IO.
-       CALL rd_mpi_io_surface_filetypes( surf_usm%start_index, surf_usm%end_index,                 &
-                                         surface_data_to_write, global_start_index,                &
-                                         global_end_index )
-
-       CALL wrd_mpi_io( 'im_global_start', global_start_index )
-       CALL wrd_mpi_io( 'im_global_end', global_end_index )
-
-       IF ( surface_data_to_write )  THEN
-          CALL wrd_mpi_io_surface( 'waste_heat', surf_usm%waste_heat )
-          CALL wrd_mpi_io_surface( 't_prev',     surf_usm%t_prev     )
-       ENDIF
-
-    ENDIF
-
- END SUBROUTINE im_wrd_local
-
-!--------------------------------------------------------------------------------------------------!
-! Description:
-! ------------
-!> Calculates temperature near surface (10 cm) for indoor model.
-!--------------------------------------------------------------------------------------------------!
- SUBROUTINE calc_pt_10cm
-
-    INTEGER(iwp) ::  m  !< running index for surface elements
-
-    DO  m = 1, surf_usm%ns
-!
-!--    For horizontal upward-facing surfaces 10-cm temperature can be calculated
-!--    using MOST. At vertical surfaces 10-cm temperature is not calculated via MOST
-!--    but set to the grid-cell temperature.
-       surf_usm%pt_10cm(m) = MERGE(                                                                &
-                             surf_usm%pt_surface(m) + surf_usm%ts(m) / kappa                       &
-                          * ( LOG( 0.1_wp /  surf_usm%z0h(m) ) - psi_h( 0.1_wp / surf_usm%ol(m) )  &
-                              + psi_h( surf_usm%z0h(m) / surf_usm%ol(m) ) ),                       &
-                              pt(surf_usm%k(m),surf_usm%j(m),surf_usm%i(m)),                       &
-                              surf_usm%upward(m) )
-    ENDDO
-
- END SUBROUTINE calc_pt_10cm
 
 
 END MODULE indoor_model_mod

@@ -13,8 +13,40 @@
 ! You should have received a copy of the GNU General Public License along with PALM. If not, see
 ! <http://www.gnu.org/licenses/>.
 !
-! Copyright 1997-2021 Leibniz Universitaet Hannover
+! Copyright 1997-2020 Leibniz Universitaet Hannover
 !--------------------------------------------------------------------------------------------------!
+!
+! Current revisions:
+! ------------------
+! 
+! 
+! Former revisions:
+! -----------------
+! $Id: disturb_field.f90 4583 2020-06-29 12:36:47Z raasch $
+! file re-formatted to follow the PALM coding standard
+!
+! 4457 2020-03-11 14:20:43Z raasch
+! use statement for exchange horiz added
+!
+! 4360 2020-01-07 11:25:50Z suehring
+! Introduction of wall_flags_total_0, which currently sets bits based on static topography
+! information used in wall_flags_static_0
+!
+! 4329 2019-12-10 15:46:36Z motisi
+! Renamed wall_flags_0 to wall_flags_static_0
+!
+! 4237 2019-09-25 11:33:42Z knoop
+! Added missing OpenMP directives
+!
+! 4182 2019-08-22 15:20:23Z scharf
+! Corrected "Former revisions" section
+!
+! 3849 2019-04-01 16:35:16Z knoop
+! Corrected "Former revisions" section
+!
+! Revision 1.1  1998/02/04 15:40:45  raasch
+! Initial revision
+!
 !
 ! Description:
 ! ------------
@@ -25,41 +57,21 @@
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE disturb_field( var_char, dist1, field )
 
+
     USE control_parameters,                                                                        &
-        ONLY:  dist_nxl,                                                                           &
-               dist_nxr,                                                                           &
-               dist_nyn,                                                                           &
-               dist_nys,                                                                           &
-               dist_range,                                                                         &
-               disturbance_amplitude,                                                              &
-               disturbance_created,                                                                &
-               disturbance_level_ind_b,                                                            &
-               disturbance_level_ind_t,                                                            &
-               iran,                                                                               &
-               random_generator,                                                                   &
-               topography
+        ONLY:  dist_nxl, dist_nxr, dist_nyn, dist_nys, dist_range, disturbance_amplitude,          &
+               disturbance_created, disturbance_level_ind_b, disturbance_level_ind_t, iran,        &
+               random_generator, topography
 
     USE cpulog,                                                                                    &
-        ONLY:  cpu_log,                                                                            &
-               log_point
+        ONLY:  cpu_log, log_point
 
     USE exchange_horiz_mod,                                                                        &
         ONLY:  exchange_horiz
 
     USE indices,                                                                                   &
-        ONLY:  nbgp,                                                                               &
-               nxl,                                                                                &
-               nxlg,                                                                               &
-               nxr,                                                                                &
-               nxrg,                                                                               &
-               nyn,                                                                                &
-               nyng,                                                                               &
-               nys,                                                                                &
-               nysg,                                                                               &
-               nzb,                                                                                &
-               nzb_max,                                                                            &
-               nzt,                                                                                &
-               topo_flags
+        ONLY:  nbgp, nxl, nxlg, nxr, nxrg, nyn, nyng, nys, nysg, nzb, nzb_max, nzt,                &
+               wall_flags_total_0
 
     USE kinds
 
@@ -67,10 +79,7 @@
         ONLY: random_function
 
     USE random_generator_parallel,                                                                 &
-        ONLY:  random_dummy,                                                                       &
-               random_number_parallel,                                                             &
-               random_seed_parallel,                                                               &
-               seq_random_array
+        ONLY:  random_number_parallel, random_seed_parallel, random_dummy, seq_random_array
 
     IMPLICIT NONE
 
@@ -203,7 +212,9 @@
        DO  i = nxlg, nxrg
           DO  j = nysg, nyng
              DO  k = nzb, nzb_max
-                dist1(k,j,i) = MERGE( dist1(k,j,i), 0.0_wp, BTEST( topo_flags(k,j,i), flag_nr ) )
+                dist1(k,j,i) = MERGE( dist1(k,j,i), 0.0_wp,                                        &
+                                  BTEST( wall_flags_total_0(k,j,i), flag_nr )                      &
+                                    )
              ENDDO
           ENDDO
        ENDDO

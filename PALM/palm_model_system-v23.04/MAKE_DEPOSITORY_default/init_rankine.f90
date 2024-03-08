@@ -13,8 +13,30 @@
 ! You should have received a copy of the GNU General Public License along with PALM. If not, see
 ! <http://www.gnu.org/licenses/>.
 !
-! Copyright 1997-2021 Leibniz Universitaet Hannover
+! Copyright 1997-2020 Leibniz Universitaet Hannover
 !--------------------------------------------------------------------------------------------------!
+!
+! Current revisions:
+! -----------------
+!
+!
+! Former revisions:
+! -----------------
+! $Id: init_rankine.f90 4648 2020-08-25 07:52:08Z raasch $
+! file re-formatted to follow the PALM coding standard
+!
+! 4457 2020-03-11 14:20:43Z raasch
+! use statement for exchange horiz added
+!
+! 4360 2020-01-07 11:25:50Z suehring
+! Corrected "Former revisions" section
+!
+! 3655 2019-01-07 16:51:22Z knoop
+! Modularization of all bulk cloud physics code components
+!
+! Revision 1.1  1997/08/11 06:18:43  raasch
+! Initial revision
+!
 !
 ! Description:
 ! ------------
@@ -23,19 +45,12 @@
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE init_rankine
 
+
     USE arrays_3d,                                                                                 &
-        ONLY:  pt,                                                                                 &
-               pt_init,                                                                            &
-               u,                                                                                  &
-               u_init,                                                                             &
-               v,                                                                                  &
-               v_init
+        ONLY:  pt, pt_init, u, u_init, v, v_init
 
     USE control_parameters,                                                                        &
-        ONLY:  initializing_actions,                                                               &
-               n_sor,                                                                              &
-               nsor,                                                                               &
-               nsor_ini
+        ONLY:  initializing_actions, n_sor, nsor, nsor_ini
 
     USE basic_constants_and_equations_mod,                                                         &
         ONLY:  pi
@@ -44,22 +59,10 @@
         ONLY:  exchange_horiz
 
     USE grid_variables,                                                                            &
-        ONLY:  dx,                                                                                 &
-               dy
+        ONLY:  dx, dy
 
     USE indices,                                                                                   &
-        ONLY:  nbgp,                                                                               &
-               nx,                                                                                 &
-               nxl,                                                                                &
-               nxlg,                                                                               &
-               nxr,                                                                                &
-               nxrg,                                                                               &
-               nyn,                                                                                &
-               nyng,                                                                               &
-               nys,                                                                                &
-               nysg,                                                                               &
-               nzb,                                                                                &
-               nzt
+        ONLY:  nbgp, nx, nxl, nxlg, nxr, nxrg, nyn, nyng, nys, nysg, nzb, nzt
 
     USE kinds
 

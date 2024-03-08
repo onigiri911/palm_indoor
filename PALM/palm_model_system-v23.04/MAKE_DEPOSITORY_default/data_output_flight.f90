@@ -13,8 +13,27 @@
 ! You should have received a copy of the GNU General Public License along with PALM. If not, see
 ! <http://www.gnu.org/licenses/>.
 !
-! Copyright 1997-2021 Leibniz Universitaet Hannover
+! Copyright 1997-2020 Leibniz Universitaet Hannover
 !--------------------------------------------------------------------------------------------------!
+!
+! Current revisions:
+! ------------------
+! 
+! 
+! Former revisions:
+! -----------------
+! $Id: data_output_flight.f90 4559 2020-06-11 08:51:48Z raasch $
+! file re-formatted to follow the PALM coding standard
+!
+! 4360 2020-01-07 11:25:50Z suehring
+! Corrected "Former revisions" section
+!
+! 3655 2019-01-07 16:51:22Z knoop
+! unused variables removed
+!
+! 1957 2016-07-07 10:43:48Z suehring
+! Initial revision
+!
 !
 ! Description:
 ! ------------
@@ -24,35 +43,21 @@
 
 #if defined( __netcdf )
     USE control_parameters,                                                                        &
-        ONLY:  num_leg,                                                                            &
-               num_var_fl,                                                                         &
-               time_since_reference_point,                                                         &
-               virtual_flight
+        ONLY:  num_leg, num_var_fl, time_since_reference_point, virtual_flight
 
     USE cpulog,                                                                                    &
-        ONLY:  cpu_log,                                                                            &
-               log_point
+        ONLY:  cpu_log, log_point
 
     USE flight_mod,                                                                                &
-        ONLY:  sensor,                                                                             &
-               x_pos,                                                                              &
-               y_pos,                                                                              &
-               z_pos
+        ONLY:  sensor, x_pos, y_pos, z_pos
 
     USE kinds
 
     USE NETCDF
 
     USE netcdf_interface,                                                                          &
-        ONLY:  dofl_time_count,                                                                    &
-               id_set_fl,                                                                          &
-               id_var_dofl,                                                                        &
-               id_var_time_fl,                                                                     &
-               id_var_x_fl,                                                                        &
-               id_var_y_fl,                                                                        &
-               id_var_z_fl,                                                                        &
-               nc_stat,                                                                            &
-               netcdf_handle_error
+        ONLY:  dofl_time_count, id_set_fl, id_var_dofl, id_var_time_fl, id_var_x_fl, id_var_y_fl,  &
+               id_var_z_fl, nc_stat, netcdf_handle_error
 
     USE pegrid
 

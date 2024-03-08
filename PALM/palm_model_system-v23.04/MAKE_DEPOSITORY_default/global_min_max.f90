@@ -12,8 +12,36 @@
 ! You should have received a copy of the GNU General Public License along with PALM. If not, see
 ! <http://www.gnu.org/licenses/>.
 !
-! Copyright 1997-2021 Leibniz Universitaet Hannover
+! Copyright 1997-2020 Leibniz Universitaet Hannover
 !--------------------------------------------------------------------------------------------------!
+!
+! Current revisions:
+! ------------------
+!
+!
+! Former revisions:
+! -----------------
+! $Id: global_min_max.f90 4651 2020-08-27 07:17:45Z raasch $
+! preprocessor branch for ibm removed
+!
+! 4646 2020-08-24 16:02:40Z raasch
+! file re-formatted to follow the PALM coding standard
+!
+! 4429 2020-02-27 15:24:30Z raasch
+! bugfix: cpp-directives added for serial mode
+!
+! 4360 2020-01-07 11:25:50Z suehring
+! OpenACC support added
+!
+! 4182 2019-08-22 15:20:23Z scharf
+! Corrected "Former revisions" section
+!
+! 3655 2019-01-07 16:51:22Z knoop
+! Corrected "Former revisions" section
+!
+! Revision 1.1  1997/07/24 11:14:03  raasch
+! Initial revision
+!
 !
 ! Description:
 ! ------------
@@ -23,18 +51,8 @@
                             value1_ijk )
 
 
-#if defined( __parallel )
-    USE MPI
-#endif
-
-    USE control_parameters,                                                                        &
-        ONLY:  bc_lr,                                                                              &
-               bc_ns
-
     USE indices,                                                                                   &
-        ONLY:  nbgp,                                                                               &
-               ny,                                                                                 &
-               nx
+        ONLY:  nbgp, ny, nx
 
     USE kinds
 
@@ -356,28 +374,19 @@
 
           value     = fmax(1)
           value_ijk = fmax_ijk
-          IF ( fmax_ijk(1) <= -10 )  THEN
-!
-!--          Index needs to be corrected because it has been modified above to indicate negative
-!--          values
-             value_ijk(1) = -value_ijk(1) - 10
-!
-!--          For this reason also change the sign of the quantity
+          IF ( fmax_ijk(1) < 0 )  THEN
              value        = -value
+             value_ijk(1) = -value_ijk(1) - 10         !???
           ENDIF
 
     END SELECT
 
 !
-!-- Limit index values to the range 0..nx, 0..ny. Non-cyclic setups may have extrema at the
-!-- outer borders, which should be correctly identified.
-    IF ( bc_lr == 'cyclic' )  THEN
-       IF ( value_ijk(3) < 0  ) value_ijk(3) = nx +1 + value_ijk(3)
-       IF ( value_ijk(3) > nx ) value_ijk(3) = value_ijk(3) - (nx+1)
-    ENDIF
-    IF ( bc_ns == 'cyclic' )  THEN
-       IF ( value_ijk(2) < 0  ) value_ijk(2) = ny +1 + value_ijk(2)
-       IF ( value_ijk(2) > ny ) value_ijk(2) = value_ijk(2) - (ny+1)
-    ENDIF
+!-- Limit index values to the range 0..nx, 0..ny
+    IF ( value_ijk(3) < 0  ) value_ijk(3) = nx +1 + value_ijk(3)
+    IF ( value_ijk(3) > nx ) value_ijk(3) = value_ijk(3) - (nx+1)
+    IF ( value_ijk(2) < 0  ) value_ijk(2) = ny +1 + value_ijk(2)
+    IF ( value_ijk(2) > ny ) value_ijk(2) = value_ijk(2) - (ny+1)
+
 
  END SUBROUTINE global_min_max

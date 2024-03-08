@@ -13,8 +13,36 @@
 ! You should have received a copy of the GNU General Public License along with PALM. If not, see
 ! <http://www.gnu.org/licenses/>.
 !
-! Copyright 1997-2021 Leibniz Universitaet Hannover
+! Copyright 1997-2020 Leibniz Universitaet Hannover
 !--------------------------------------------------------------------------------------------------!
+!
+! Current revisions:
+! -----------------
+!
+!
+! Former revisions:
+! -----------------
+! $Id: compute_vpt.f90 4742 2020-10-14 15:11:02Z schwenkel $
+! Implement snow and graupel (bulk microphysics)
+! 
+! 4559 2020-06-11 08:51:48Z raasch
+! file re-formatted to follow the PALM coding standard
+! 
+! 4521 2020-05-06 11:39:49Z schwenkel
+! Rename variable
+! 
+! 4502 2020-04-17 16:14:16Z schwenkel
+! Implementation of ice microphysics
+! 
+! 4360 2020-01-07 11:25:50Z suehring
+! Corrected "Former revisions" section
+! 
+! 3655 2019-01-07 16:51:22Z knoop
+! Modularization of all bulk cloud physics code components
+!
+! Revision 1.1  2000/04/13 14:40:53  schroeter
+! Initial revision
+!
 !
 ! Description:
 ! -------------
@@ -22,30 +50,23 @@
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE compute_vpt
  
+
     USE arrays_3d,                                                                                 &
-        ONLY:  d_exner,                                                                            &
-               pt,                                                                                 &
-               q,                                                                                  &
-               qf,                                                                                 &
-               ql,                                                                                 &
-               vpt
+        ONLY:  d_exner, pt, q, qf, ql, vpt
 
     USE basic_constants_and_equations_mod,                                                         &
-        ONLY:  ls_d_cp,                                                                            &
-               lv_d_cp
-
-    USE bulk_cloud_model_mod,                                                                      &
-        ONLY:  bulk_cloud_model,                                                                   &
-               microphysics_ice_phase
+        ONLY:  ls_d_cp, lv_d_cp
 
     USE control_parameters,                                                                        &
         ONLY:  cloud_droplets
 
     USE indices,                                                                                   &
-        ONLY:  nzb,                                                                                &
-               nzt
+        ONLY:  nzb, nzt
 
     USE kinds
+
+    USE bulk_cloud_model_mod,                                                                      &
+        ONLY:  bulk_cloud_model, microphysics_ice_phase
 
     IMPLICIT NONE
 

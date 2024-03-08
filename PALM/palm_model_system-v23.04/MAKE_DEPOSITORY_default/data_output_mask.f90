@@ -14,9 +14,65 @@
 ! <http://www.gnu.org/licenses/>.
 
 !
-! Copyright 1997-2021 Leibniz Universitaet Hannover
-! Copyright 2022-2022 pecanode GmbH
+! Copyright 1997-2020 Leibniz Universitaet Hannover
 !--------------------------------------------------------------------------------------------------!
+!
+! Current revisions:
+! -----------------
+! 
+! 
+! Former revisions:
+! -----------------
+! $Id: data_output_mask.f90 4559 2020-06-11 08:51:48Z raasch $
+! file re-formatted to follow the PALM coding standard
+!
+! 4457 2020-03-11 14:20:43Z raasch
+! use statement for exchange horiz added
+!
+! 4444 2020-03-05 15:59:50Z raasch
+! bugfix: cpp-directives for serial mode added
+!
+! 4377 2020-01-15 11:10:51Z gronemeier
+! bugfix: set fill value for output according to wall_flags_total_0 for non-terrain following output
+!
+! 4360 2020-01-07 11:25:50Z suehring
+! Introduction of wall_flags_total_0, which currently sets bits based on static topography
+! information used in wall_flags_static_0
+!
+! 4331 2019-12-10 18:25:02Z suehring
+! Formatting adjustment
+!
+! 4329 2019-12-10 15:46:36Z motisi
+! Renamed wall_flags_0 to wall_flags_static_0
+!
+! 4246 2019-09-30 09:27:52Z pavelkrc
+! Corrected "Former revisions" section
+!
+! 4168 2019-08-16 13:50:17Z suehring
+! Remove variable grid
+!
+! 4167 2019-08-16 11:01:48Z suehring
+! Changed behaviour of masked output over surface to follow terrain and ignore buildings
+! (J.Resler, T.Gronemeier)
+!
+! 4069 2019-07-01 14:05:51Z Giersch
+! Masked output running index mid has been introduced as a local variable to avoid runtime error
+! (Loop variable has been modified) in time_integration
+!
+! 4039 2019-06-18 10:32:41Z suehring
+! Modularize diagnostic output
+!
+! 3994 2019-05-22 18:08:09Z suehring
+! output of turbulence intensity added
+!
+! 3665 2019-01-10 08:28:24Z raasch
+! unused variables removed
+!
+! 3655 2019-01-07 16:51:22Z knoop
+! Fix output time levels (use time_since_reference_point)
+!
+! 410 2009-12-04 17:05:40Z letzel
+! Initial version
 !
 ! Description:
 ! ------------
@@ -24,87 +80,35 @@
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE data_output_mask( av, mid )
 
-#if defined( __parallel )
-    USE MPI
-#endif
+
 
 #if defined( __netcdf )
     USE arrays_3d,                                                                                 &
-        ONLY:  d_exner,                                                                            &
-               e,                                                                                  &
-               p,                                                                                  &
-               pt,                                                                                 &
-               q,                                                                                  &
-               ql,                                                                                 &
-               ql_c,                                                                               &
-               ql_v,                                                                               &
-               rho_ocean,                                                                          &
-               s,                                                                                  &
-               sa,                                                                                 &
-               tend,                                                                               &
-               u,                                                                                  &
-               v,                                                                                  &
-               vpt,                                                                                &
-               w
+        ONLY:  d_exner, e, nc, nr, p, pt, q, qc, ql, ql_c, ql_v, qr, rho_ocean, s, sa, tend, u, v, &
+               vpt, w
 
     USE averaging,                                                                                 &
-        ONLY:  e_av,                                                                               &
-               lpt_av,                                                                             &
-               p_av,                                                                               &
-               pc_av,                                                                              &
-               pr_av,                                                                              &
-               pt_av,                                                                              &
-               q_av,                                                                               &
-               ql_av,                                                                              &
-               ql_c_av,                                                                            &
-               ql_v_av,                                                                            &
-               ql_vp_av,                                                                           &
-               qv_av,                                                                              &
-               rho_ocean_av,                                                                       &
-               s_av,                                                                               &
-               sa_av,                                                                              &
-               u_av,                                                                               &
-               v_av,                                                                               &
-               vpt_av,                                                                             &
-               w_av
+        ONLY:  e_av, lpt_av, nc_av, nr_av, p_av, pc_av, pr_av, pt_av, q_av, qc_av, ql_av, ql_c_av, &
+               ql_v_av, ql_vp_av, qv_av, qr_av, rho_ocean_av, s_av, sa_av, u_av, v_av, vpt_av, w_av
 
     USE basic_constants_and_equations_mod,                                                         &
         ONLY:  lv_d_cp
-
-    USE bulk_cloud_model_mod,                                                                      &
-        ONLY: bcm_data_output_mask,                                                                &
-              bulk_cloud_model
 
     USE chemistry_model_mod,                                                                       &
         ONLY:  chem_data_output_mask
 
     USE control_parameters,                                                                        &
-        ONLY:  air_chemistry,                                                                      &
-               domask,                                                                             &
-               domask_no,                                                                          &
-               domask_time_count,                                                                  &
-               interpolate_to_grid_center,                                                         &
-               mask_i,                                                                             &
-               mask_j,                                                                             &
-               mask_k,                                                                             &
-               mask_size_l,                                                                        &
-               mask_surface,                                                                       &
-               max_masks,                                                                          &
-               message_string,                                                                     &
-               nz_do3d,                                                                            &
-               output_fill_value,                                                                  &
-               salsa,                                                                              &
+        ONLY:  air_chemistry, domask, domask_no, domask_time_count, mask_i, mask_j, mask_k,        &
+               mask_size_l, mask_surface, max_masks, message_string, nz_do3d, salsa,               &
                time_since_reference_point
 
 #if defined( __parallel )
     USE control_parameters,                                                                        &
-        ONLY:  mask_size,                                                                          &
-               mask_start_l
+        ONLY:  mask_size, mask_start_l
 #endif
 
     USE cpulog,                                                                                    &
-        ONLY:  cpu_log,                                                                            &
-               log_point
+        ONLY:  cpu_log, log_point
 
     USE diagnostic_output_quantities_mod,                                                          &
         ONLY:  doq_output_mask
@@ -113,40 +117,26 @@
         ONLY:  exchange_horiz
 
     USE indices,                                                                                   &
-        ONLY:  nbgp,                                                                               &
-               nxl,                                                                                &
-               nxr,                                                                                &
-               nyn,                                                                                &
-               nys,                                                                                &
-               nzb,                                                                                &
-               nzt,                                                                                &
-               topo_top_ind,                                                                       &
-               topo_flags
+        ONLY:  nbgp, nxl, nxr, nyn, nys, nzb, nzt, wall_flags_total_0
 
     USE kinds
+
+    USE bulk_cloud_model_mod,                                                                      &
+        ONLY:  bulk_cloud_model
 
     USE NETCDF
 
     USE netcdf_interface,                                                                          &
-        ONLY:  id_set_mask,                                                                        &
-               id_var_domask,                                                                      &
-               id_var_time_mask,                                                                   &
-               nc_stat,                                                                            &
-               netcdf_data_format,                                                                 &
-               netcdf_handle_error
+        ONLY:  fill_value, id_set_mask, id_var_domask, id_var_time_mask, nc_stat,                  &
+               netcdf_data_format, netcdf_handle_error
 
     USE particle_attributes,                                                                       &
-        ONLY:  grid_particles,                                                                     &
-               number_of_particles,                                                                &
-               particles,                                                                          &
-               particle_advection_start,                                                           &
-               prt_count
+        ONLY:  grid_particles, number_of_particles, particles, particle_advection_start, prt_count
 
     USE pegrid
 
     USE radiation_model_mod,                                                                       &
-        ONLY:  radiation,                                                                          &
-               radiation_data_output_mask
+        ONLY:  radiation, radiation_data_output_mask
 
     USE salsa_mod,                                                                                 &
         ONLY:  salsa_data_output_mask
@@ -163,8 +153,7 @@
     INTEGER(iwp) ::  jm                      !< loop index for masked variables
     INTEGER(iwp) ::  k                       !< loop index
     INTEGER(iwp) ::  kk                      !< vertical index
-    INTEGER(iwp) ::  kl                      !< vertical index used to limit lower interpolation index
-    INTEGER(iwp) ::  ku                      !< vertical index´
+    INTEGER(iwp) ::  ktt                     !< k index of highest terrain surface
     INTEGER(iwp) ::  mid                     !< masked output running index
     INTEGER(iwp) ::  n                       !< loop index
     INTEGER(iwp) ::  netcdf_data_format_save !< value of netcdf_data_format
@@ -239,10 +228,7 @@
           ALLOCATE( local_pf( mask_size_l(mid,1),mask_size_l(mid,2), mask_size_l(mid,3) ) )
        ENDIF
 !
-!--    Before each output, set array local_pf to fill value..
-       local_pf = output_fill_value
-!
-!--    Set masking flag for topography for not resorted arrays.
+!--    Set masking flag for topography for not resorted arrays
        flag_nr = 0
 !
 !--    Store the variable chosen.
@@ -263,6 +249,20 @@
                 to_be_resorted => lpt_av
              ENDIF
 
+          CASE ( 'nc' )
+             IF ( av == 0 )  THEN
+                to_be_resorted => nc
+             ELSE
+                to_be_resorted => nc_av
+             ENDIF
+
+          CASE ( 'nr' )
+             IF ( av == 0 )  THEN
+                to_be_resorted => nr
+             ELSE
+                to_be_resorted => nr_av
+             ENDIF
+
           CASE ( 'p' )
              IF ( av == 0 )  THEN
                 to_be_resorted => p
@@ -278,25 +278,26 @@
                    DO  i = 1, mask_size_l(mid,1)
                       DO  j = 1, mask_size_l(mid,2)
                          DO  k = 1, mask_size_l(mid,3)
-                            local_pf(i,j,k) =  tend(mask_k(mid,k),mask_j(mid,j),mask_i(mid,i) )
+                            local_pf(i,j,k) =  tend( mask_k(mid,k), mask_j(mid,j), mask_i(mid,i) )
                          ENDDO
                       ENDDO
                    ENDDO
                 ELSE
 !
-!--                Terrain-following masked output.
+!--                Terrain-following masked output
                    DO  i = 1, mask_size_l(mid,1)
                       DO  j = 1, mask_size_l(mid,2)
-
+!--                      Get k index of the highest terraing surface
                          im = mask_i(mid,i)
                          jm = mask_j(mid,j)
-
+                         ktt = MINLOC( MERGE( 1, 0, BTEST( wall_flags_total_0(:,jm,im), 5 ) ),     &
+                                       DIM = 1 ) - 1
                          DO  k = 1, mask_size_l(mid,3)
-
-                            kk = MIN( topo_top_ind(jm,im,6) + mask_k(mid,k) - 1, nzt+1 )
-!
-!--                         Set value if not in building.
-                            IF ( .NOT. BTEST( topo_flags(kk,jm,im), 6 ) )  THEN
+                            kk = MIN( ktt+mask_k(mid,k), nzt+1 )
+!--                         Set value if not in building
+                            IF ( BTEST( wall_flags_total_0(kk,jm,im), 6 ) )  THEN
+                               local_pf(i,j,k) = fill_value
+                            ELSE
                                local_pf(i,j,k) =  tend(kk,jm,im)
                             ENDIF
                          ENDDO
@@ -345,25 +346,26 @@
                    DO  i = 1, mask_size_l(mid,1)
                       DO  j = 1, mask_size_l(mid,2)
                          DO  k = 1, mask_size_l(mid,3)
-                            local_pf(i,j,k) =  tend(mask_k(mid,k),mask_j(mid,j),mask_i(mid,i) )
+                            local_pf(i,j,k) =  tend( mask_k(mid,k), mask_j(mid,j), mask_i(mid,i) )
                          ENDDO
                       ENDDO
                    ENDDO
                 ELSE
 !
-!--                Terrain-following masked output.
+!--                Terrain-following masked output
                    DO  i = 1, mask_size_l(mid,1)
                       DO  j = 1, mask_size_l(mid,2)
-
+!--                      Get k index of the highest terraing surface
                          im = mask_i(mid,i)
                          jm = mask_j(mid,j)
-
+                         ktt = MINLOC( MERGE( 1, 0, BTEST( wall_flags_total_0(:,jm,im), 5 )),      &
+                                       DIM = 1 ) - 1
                          DO  k = 1, mask_size_l(mid,3)
-
-                            kk = MIN( topo_top_ind(jm,im,6) + mask_k(mid,k) - 1, nzt+1 )
-!
-!--                         Set value if not in building.
-                            IF ( .NOT. BTEST( topo_flags(kk,jm,im), 6 ) )  THEN
+                            kk = MIN( ktt+mask_k(mid,k), nzt+1 )
+!--                         Set value if not in building
+                            IF ( BTEST( wall_flags_total_0(kk,jm,im), 6 ) )  THEN
+                               local_pf(i,j,k) = fill_value
+                            ELSE
                                local_pf(i,j,k) =  tend(kk,jm,im)
                             ENDIF
                          ENDDO
@@ -385,27 +387,28 @@
                       DO  i = 1, mask_size_l(mid,1)
                          DO  j = 1, mask_size_l(mid,2)
                             DO  k = 1, mask_size_l(mid,3)
-                               local_pf(i,j,k) = pt(mask_k(mid,k),mask_j(mid,j),mask_i(mid,i)) +   &
-                                                 lv_d_cp * d_exner( mask_k(mid,k) ) *              &
-                                                 ql(mask_k(mid,k),mask_j(mid,j),mask_i(mid,i))
+                               local_pf(i,j,k) = pt( mask_k(mid,k), mask_j(mid,j), mask_i(mid,i) ) &
+                                                 + lv_d_cp * d_exner( mask_k(mid,k) ) *            &
+                                                   ql(mask_k(mid,k),mask_j(mid,j),mask_i(mid,i) )
                             ENDDO
                          ENDDO
                       ENDDO
                    ELSE
 !
-!--                   Terrain-following masked output.
+!--                   Terrain-following masked output
                       DO  i = 1, mask_size_l(mid,1)
                          DO  j = 1, mask_size_l(mid,2)
-
+!--                         Get k index of the highest terraing surface
                             im = mask_i(mid,i)
                             jm = mask_j(mid,j)
-
+                            ktt = MINLOC( MERGE( 1, 0, BTEST( wall_flags_total_0(:,jm,im), 5 )),   &
+                                          DIM = 1 ) - 1
                             DO  k = 1, mask_size_l(mid,3)
-
-                               kk = MIN( topo_top_ind(jm,im,6) + mask_k(mid,k) - 1, nzt+1 )
-!
-!--                            Set value if not in building.
-                               IF ( .NOT. BTEST( topo_flags(kk,jm,im), 6 ) )  THEN
+                               kk = MIN( ktt+mask_k(mid,k), nzt+1 )
+!--                            Set value if not in building
+                               IF ( BTEST( wall_flags_total_0(kk,jm,im), 6 ) )  THEN
+                                  local_pf(i,j,k) = fill_value
+                               ELSE
                                   local_pf(i,j,k) = pt(kk,jm,im) +                                 &
                                                     lv_d_cp * d_exner(kk) * ql(kk,jm,im)
                                ENDIF
@@ -424,6 +427,13 @@
                 to_be_resorted => q
              ELSE
                 to_be_resorted => q_av
+             ENDIF
+
+          CASE ( 'qc' )
+             IF ( av == 0 )  THEN
+                to_be_resorted => qc
+             ELSE
+                to_be_resorted => qc_av
              ENDIF
 
           CASE ( 'ql' )
@@ -473,25 +483,26 @@
                    DO  i = 1, mask_size_l(mid,1)
                       DO  j = 1, mask_size_l(mid,2)
                          DO  k = 1, mask_size_l(mid,3)
-                            local_pf(i,j,k) =  tend(mask_k(mid,k),mask_j(mid,j),mask_i(mid,i) )
+                            local_pf(i,j,k) =  tend( mask_k(mid,k), mask_j(mid,j), mask_i(mid,i) )
                          ENDDO
                       ENDDO
                    ENDDO
                 ELSE
 !
-!--                Terrain-following masked output.
+!--                Terrain-following masked output
                    DO  i = 1, mask_size_l(mid,1)
                       DO  j = 1, mask_size_l(mid,2)
-
+!--                      Get k index of the highest terraing surface
                          im = mask_i(mid,i)
                          jm = mask_j(mid,j)
-
+                         ktt = MINLOC( MERGE( 1, 0, BTEST( wall_flags_total_0(:,jm,im), 5 )),      &
+                                       DIM = 1 ) - 1
                          DO  k = 1, mask_size_l(mid,3)
-
-                            kk = MIN( topo_top_ind(jm,im,6) + mask_k(mid,k) - 1, nzt+1 )
-!
-!--                         Set value if not in building.
-                            IF ( .NOT. BTEST( topo_flags(kk,jm,im), 6 ) )  THEN
+                            kk = MIN( ktt+mask_k(mid,k), nzt+1 )
+!--                         Set value if not in building
+                            IF ( BTEST( wall_flags_total_0(kk,jm,im), 6 ) )  THEN
+                               local_pf(i,j,k) = fill_value
+                            ELSE
                                local_pf(i,j,k) = tend(kk,jm,im)
                             ENDIF
                          ENDDO
@@ -510,26 +521,27 @@
                    DO  i = 1, mask_size_l(mid,1)
                       DO  j = 1, mask_size_l(mid,2)
                          DO  k = 1, mask_size_l(mid,3)
-                            local_pf(i,j,k) = q(mask_k(mid,k),mask_j(mid,j),mask_i(mid,i)) -       &
-                                              ql(mask_k(mid,k),mask_j(mid,j),mask_i(mid,i))
+                            local_pf(i,j,k) = q(  mask_k(mid,k), mask_j(mid,j), mask_i(mid,i) ) -  &
+                                              ql( mask_k(mid,k), mask_j(mid,j), mask_i(mid,i) )
                          ENDDO
                       ENDDO
                    ENDDO
                 ELSE
 !
-!--                Terrain-following masked output.
+!--                Terrain-following masked output
                    DO  i = 1, mask_size_l(mid,1)
                       DO  j = 1, mask_size_l(mid,2)
-
+!--                      Get k index of the highest terraing surface
                          im = mask_i(mid,i)
                          jm = mask_j(mid,j)
-
+                         ktt = MINLOC( MERGE( 1, 0, BTEST( wall_flags_total_0(:,jm,im), 5 )),      &
+                                       DIM = 1 ) - 1
                          DO  k = 1, mask_size_l(mid,3)
-
-                            kk = MIN( topo_top_ind(jm,im,6) + mask_k(mid,k) - 1, nzt+1 )
-!
-!--                         Set value if not in building.
-                            IF ( .NOT. BTEST( topo_flags(kk,jm,im), 6 ) )  THEN
+                            kk = MIN( ktt+mask_k(mid,k), nzt+1 )
+!--                         Set value if not in building
+                            IF ( BTEST( wall_flags_total_0(kk,jm,im), 6 ) )  THEN
+                               local_pf(i,j,k) = fill_value
+                            ELSE
                                local_pf(i,j,k) = q(kk,jm,im) - ql(kk,jm,im)
                             ENDIF
                          ENDDO
@@ -539,6 +551,13 @@
                 resorted = .TRUE.
              ELSE
                 to_be_resorted => qv_av
+             ENDIF
+
+          CASE ( 'qr' )
+             IF ( av == 0 )  THEN
+                to_be_resorted => qr
+             ELSE
+                to_be_resorted => qr_av
              ENDIF
 
           CASE ( 'rho_sea_water' )
@@ -565,185 +584,17 @@
           CASE ( 'u' )
              flag_nr = 1
              IF ( av == 0 )  THEN
-                IF ( interpolate_to_grid_center )  THEN
-                   IF ( .NOT. mask_surface(mid) )  THEN
-                      DO  i = 1, mask_size_l(mid,1)
-                         DO  j = 1, mask_size_l(mid,2)
-                            DO  k = 1, mask_size_l(mid,3)
-                               IF ( BTEST( topo_flags(mask_k(mid,k),mask_j(mid,j),mask_i(mid,i)),  &
-                                           0 ) )                                                   &
-                               THEN
-                                  local_pf(i,j,k) = 0.5_wp *                                       &
-                                                  ( u(mask_k(mid,k),mask_j(mid,j),mask_i(mid,i))   &
-                                                  + u(mask_k(mid,k),mask_j(mid,j),mask_i(mid,i)+1) )
-                               ENDIF
-                            ENDDO
-                         ENDDO
-                      ENDDO
-                   ELSE
-!
-!--                   Terrain-following masked output.
-                      DO  i = 1, mask_size_l(mid,1)
-                         DO  j = 1, mask_size_l(mid,2)
-
-                            im = mask_i(mid,i)
-                            jm = mask_j(mid,j)
-
-                            DO  k = 1, mask_size_l(mid,3)
-
-                               kk = MIN( topo_top_ind(jm,im,6) + mask_k(mid,k) - 1, nzt+1 )
-!
-!--                            Set value if not in building.
-                               IF ( .NOT. BTEST( topo_flags(kk,jm,im), 6 ) )  THEN
-                                  local_pf(i,j,k) = 0.5_wp * ( u(kk,jm,im) + u(kk,jm,im+1) )
-                               ENDIF
-                            ENDDO
-                         ENDDO
-                      ENDDO
-                   ENDIF
-                   resorted = .TRUE.
-                ELSE
-                   to_be_resorted => u
-                ENDIF
+                to_be_resorted => u
              ELSE
-                IF ( interpolate_to_grid_center )  THEN
-!
-!--                In case of grid-center interpolation, ghost points are accessed. However,
-!--                averaged data is not available in this case on the ghost points, which makes
-!--                an exchange necessary.
-                   CALL exchange_horiz( u_av, nbgp )
-
-                   IF ( .NOT. mask_surface(mid) )  THEN
-                      DO  i = 1, mask_size_l(mid,1)
-                         DO  j = 1, mask_size_l(mid,2)
-                            DO  k = 1, mask_size_l(mid,3)
-                               IF ( BTEST( topo_flags(mask_k(mid,k),mask_j(mid,j),mask_i(mid,i)),  &
-                                           0 ) )                                                   &
-                               THEN
-                                  local_pf(i,j,k) = 0.5_wp *                                       &
-                                               ( u_av(mask_k(mid,k),mask_j(mid,j),mask_i(mid,i))   &
-                                               + u_av(mask_k(mid,k),mask_j(mid,j),mask_i(mid,i)+1) )
-                               ENDIF
-                            ENDDO
-                         ENDDO
-                      ENDDO
-                   ELSE
-!
-!--                   Terrain-following masked output.
-                      DO  i = 1, mask_size_l(mid,1)
-                         DO  j = 1, mask_size_l(mid,2)
-
-                            im = mask_i(mid,i)
-                            jm = mask_j(mid,j)
-
-                            DO  k = 1, mask_size_l(mid,3)
-
-                               kk = MIN( topo_top_ind(jm,im,6) + mask_k(mid,k) - 1, nzt+1 )
-!
-!--                            Set value if not in building.
-                               IF ( .NOT. BTEST( topo_flags(kk,jm,im), 6 ) )  THEN
-                                  local_pf(i,j,k) = 0.5_wp * ( u_av(kk,jm,im) + u_av(kk,jm,im+1) )
-                               ENDIF
-                            ENDDO
-                         ENDDO
-                      ENDDO
-                   ENDIF
-                   resorted = .TRUE.
-                ELSE
-                   to_be_resorted => u_av
-                ENDIF
+                to_be_resorted => u_av
              ENDIF
 
           CASE ( 'v' )
              flag_nr = 2
              IF ( av == 0 )  THEN
-                IF ( interpolate_to_grid_center )  THEN
-                   IF ( .NOT. mask_surface(mid) )  THEN
-                      DO  i = 1, mask_size_l(mid,1)
-                         DO  j = 1, mask_size_l(mid,2)
-                            DO  k = 1, mask_size_l(mid,3)
-                               IF ( BTEST( topo_flags(mask_k(mid,k),mask_j(mid,j),mask_i(mid,i)),  &
-                                           0 ) )                                                   &
-                               THEN
-                                  local_pf(i,j,k) = 0.5_wp *                                       &
-                                                  ( v(mask_k(mid,k),mask_j(mid,j),mask_i(mid,i))   &
-                                                  + v(mask_k(mid,k),mask_j(mid,j)+1,mask_i(mid,i)) )
-                               ENDIF
-                            ENDDO
-                         ENDDO
-                      ENDDO
-                   ELSE
-!
-!--                   Terrain-following masked output.
-                      DO  i = 1, mask_size_l(mid,1)
-                         DO  j = 1, mask_size_l(mid,2)
-
-                            im = mask_i(mid,i)
-                            jm = mask_j(mid,j)
-
-                            DO  k = 1, mask_size_l(mid,3)
-
-                               kk = MIN( topo_top_ind(jm,im,6) + mask_k(mid,k) - 1, nzt+1 )
-!
-!--                            Set value if not in building.
-                               IF ( .NOT. BTEST( topo_flags(kk,jm,im), 6 ) )  THEN
-                                  local_pf(i,j,k) = 0.5_wp * ( v(kk,jm,im) + v(kk,jm+1,im) )
-                               ENDIF
-                            ENDDO
-                         ENDDO
-                      ENDDO
-                   ENDIF
-                   resorted = .TRUE.
-                ELSE
-                   to_be_resorted => v
-                ENDIF
+                to_be_resorted => v
              ELSE
-                IF ( interpolate_to_grid_center )  THEN
-!
-!--                In case of grid-center interpolation, ghost points are accessed. However,
-!--                averaged data is not available in this case on the ghost points, which makes
-!--                an exchange necessary.
-                   CALL exchange_horiz( v_av, nbgp )
-
-                   IF ( .NOT. mask_surface(mid) )  THEN
-                      DO  i = 1, mask_size_l(mid,1)
-                         DO  j = 1, mask_size_l(mid,2)
-                            DO  k = 1, mask_size_l(mid,3)
-                               IF ( BTEST( topo_flags(mask_k(mid,k),mask_j(mid,j),mask_i(mid,i)),  &
-                                           0 ) )                                                   &
-                               THEN
-                                  local_pf(i,j,k) = 0.5_wp *                                       &
-                                               ( v_av(mask_k(mid,k),mask_j(mid,j),mask_i(mid,i))   &
-                                               + v_av(mask_k(mid,k),mask_j(mid,j)+1,mask_i(mid,i)) )
-                               ENDIF
-                            ENDDO
-                         ENDDO
-                      ENDDO
-                   ELSE
-!
-!--                   Terrain-following masked output.
-                      DO  i = 1, mask_size_l(mid,1)
-                         DO  j = 1, mask_size_l(mid,2)
-
-                            im = mask_i(mid,i)
-                            jm = mask_j(mid,j)
-
-                            DO  k = 1, mask_size_l(mid,3)
-
-                               kk = MIN( topo_top_ind(jm,im,6) + mask_k(mid,k) - 1, nzt+1 )
-!
-!--                            Set value if not in building.
-                               IF ( .NOT. BTEST( topo_flags(kk,jm,im), 6 ) )  THEN
-                                  local_pf(i,j,k) = 0.5_wp * ( v_av(kk,jm,im) + v_av(kk,jm+1,im) )
-                               ENDIF
-                            ENDDO
-                         ENDDO
-                      ENDDO
-                   ENDIF
-                   resorted = .TRUE.
-                ELSE
-                   to_be_resorted => v_av
-                ENDIF
+                to_be_resorted => v_av
              ENDIF
 
           CASE ( 'thetav' )
@@ -756,131 +607,36 @@
           CASE ( 'w' )
              flag_nr = 3
              IF ( av == 0 )  THEN
-                IF ( interpolate_to_grid_center )  THEN
-                   IF ( .NOT. mask_surface(mid) )  THEN
-                      DO  i = 1, mask_size_l(mid,1)
-                         DO  j = 1, mask_size_l(mid,2)
-                            DO  k = 1, mask_size_l(mid,3)
-!
-!--                            Limit lower k index used to interpolate to grid center.
-                               ku = mask_k(mid,k)
-                               kl = MAX( mask_k(mid,k)-1, 0 )
-                               IF ( BTEST( topo_flags(mask_k(mid,k),mask_j(mid,j),mask_i(mid,i)),  &
-                                           0 ) )                                                   &
-                               THEN
-                                  local_pf(i,j,k) = 0.5_wp * ( w(ku,mask_j(mid,j),mask_i(mid,i)) + &
-                                                               w(kl,mask_j(mid,j),mask_i(mid,i)) )
-                               ENDIF
-                            ENDDO
-                         ENDDO
-                      ENDDO
-                   ELSE
-!
-!--                   Terrain-following masked output.
-                      DO  i = 1, mask_size_l(mid,1)
-                         DO  j = 1, mask_size_l(mid,2)
-
-                            im = mask_i(mid,i)
-                            jm = mask_j(mid,j)
-
-                            DO  k = 1, mask_size_l(mid,3)
-!
-!--                            Limit lower k index used to interpolate to grid center.
-                               kl = MAX( MIN( topo_top_ind(jm,im,6) + mask_k(mid,k) - 1, nzt+1 ), 0 )
-                               ku = MIN( topo_top_ind(jm,im,6) + mask_k(mid,k), nzt+1 )
-!
-!--                            Set value if not in building.
-                               IF ( .NOT. BTEST( topo_flags(ku,jm,im), 6 ) )  THEN
-                                  local_pf(i,j,k) = 0.5_wp * ( w(ku,jm,im) + w(kl,jm,im) )
-                               ENDIF
-                            ENDDO
-                         ENDDO
-                      ENDDO
-                   ENDIF
-                   resorted = .TRUE.
-                ELSE
-                   to_be_resorted => w
-                ENDIF
+                to_be_resorted => w
              ELSE
-                IF ( interpolate_to_grid_center )  THEN
-                   IF ( .NOT. mask_surface(mid) )  THEN
-                      DO  i = 1, mask_size_l(mid,1)
-                         DO  j = 1, mask_size_l(mid,2)
-                            DO  k = 1, mask_size_l(mid,3)
-!
-!--                            Limit lower k index used to interpolate to grid center.
-                               ku = mask_k(mid,k)
-                               kl = MAX( mask_k(mid,k)-1, 0 )
-                               IF ( BTEST( topo_flags(mask_k(mid,k),mask_j(mid,j),mask_i(mid,i)),  &
-                                           0 ) )                                                   &
-                               THEN
-                                  local_pf(i,j,k) = 0.5_wp *                                       &
-                                                          ( w_av(ku,mask_j(mid,j),mask_i(mid,i)) + &
-                                                            w_av(kl,mask_j(mid,j),mask_i(mid,i)) )
-                               ENDIF
-                            ENDDO
-                         ENDDO
-                      ENDDO
-                   ELSE
-!
-!--                   Terrain-following masked output.
-                      DO  i = 1, mask_size_l(mid,1)
-                         DO  j = 1, mask_size_l(mid,2)
-
-                            im = mask_i(mid,i)
-                            jm = mask_j(mid,j)
-
-                            DO  k = 1, mask_size_l(mid,3)
-!
-!--                            Limit lower k index used to interpolate to grid center.
-                               kl = MAX( MIN( topo_top_ind(jm,im,6) + mask_k(mid,k) - 1, nzt+1 ), 0 )
-                               ku = MIN( topo_top_ind(jm,im,6) + mask_k(mid,k), nzt+1 )
-!
-!--                            Set value if not in building.
-                               IF ( .NOT. BTEST( topo_flags(ku,jm,im), 6 ) )  THEN
-                                  local_pf(i,j,k) = 0.5_wp * ( w_av(ku,jm,im) + w_av(kl,jm,im) )
-                               ENDIF
-                            ENDDO
-                         ENDDO
-                      ENDDO
-                   ENDIF
-                   resorted = .TRUE.
-                ELSE
-                   to_be_resorted => w_av
-                ENDIF
+                to_be_resorted => w_av
              ENDIF
 
           CASE DEFAULT
 !
-!--          Set flag to steer output of radiation, land-surface, or user-defined quantities.
+!--          Set flag to steer output of radiation, land-surface, or user-defined quantities
              found = .FALSE.
-
 !
-!--          Bulk cloud physics quantities.
-             IF ( .NOT. found  .AND.  bulk_cloud_model )  THEN
-                CALL bcm_data_output_mask( av, domask(mid,av,ivar), found, local_pf, mid )
-             ENDIF
-!
-!--          Radiation quantities.
-             IF ( .NOT. found  .AND.  radiation )  THEN
+!--          Radiation quantity
+             IF ( .NOT. found  .AND. radiation )  THEN
                 CALL radiation_data_output_mask( av, domask(mid,av,ivar), found, local_pf, mid )
              ENDIF
 
-             IF ( .NOT. found  .AND.  air_chemistry )  THEN
+             IF ( .NOT. found  .AND. air_chemistry )  THEN
                 CALL chem_data_output_mask( av, domask(mid,av,ivar), found, local_pf, mid )
              ENDIF
 !
-!--          Check for diagnostic quantities.
+!--          Check for diagnostic quantities
              IF ( .NOT. found )  THEN
                 CALL doq_output_mask( av, domask(mid,av,ivar), found, local_pf, mid )
              ENDIF
 !
-!--          SALSA quantities.
+!--          SALSA quantities
              IF ( .NOT. found  .AND.  salsa )  THEN
                 CALL salsa_data_output_mask( av, domask(mid,av,ivar), found, local_pf, mid )
              ENDIF
 !
-!--          User defined quantities.
+!--          User defined quantity
              IF ( .NOT. found )  THEN
                 CALL user_data_output_mask( av, domask(mid,av,ivar), found, local_pf, mid )
              ENDIF
@@ -888,15 +644,15 @@
              resorted = .TRUE.
 
              IF ( .NOT. found )  THEN
-                WRITE ( message_string, * ) 'no masked output available for: "',                   &
-                                            TRIM( domask(mid,av,ivar) ), '"'
-                CALL message( 'data_output_mask', 'PAC0189', 0, 0, 0, 6, 0 )
+                WRITE ( message_string, * ) 'no masked output available for: ',                    &
+                                            TRIM( domask(mid,av,ivar) )
+                CALL message( 'data_output_mask', 'PA0327', 0, 0, 0, 6, 0 )
              ENDIF
 
        END SELECT
 
 !
-!--    Resort the array to be output, if not done above.
+!--    Resort the array to be output, if not done above
        IF ( .NOT. resorted )  THEN
           IF ( .NOT. mask_surface(mid) )  THEN
 !
@@ -904,30 +660,35 @@
              DO  i = 1, mask_size_l(mid,1)
                 DO  j = 1, mask_size_l(mid,2)
                    DO  k = 1, mask_size_l(mid,3)
-                      IF ( BTEST( topo_flags(mask_k(mid,k),mask_j(mid,j),mask_i(mid,i)),           &
-                                  flag_nr ) )                                                      &
-                      THEN
-                         local_pf(i,j,k) = to_be_resorted(mask_k(mid,k),mask_j(mid,j),mask_i(mid,i))
-                      ENDIF
+                      local_pf(i,j,k) = MERGE( to_be_resorted( mask_k(mid,k),                      &
+                                                               mask_j(mid,j),                      &
+                                                               mask_i(mid,i)),                     &
+                                               REAL( fill_value, KIND = wp ),                      &
+                                               BTEST( wall_flags_total_0( mask_k(mid,k),           &
+                                                                          mask_j(mid,j),           &
+                                                                          mask_i(mid,i) ),         &
+                                                      flag_nr )                                    &
+                                             )
                    ENDDO
                 ENDDO
              ENDDO
 
           ELSE
 !
-!--          Terrain-following masked output.
+!--          Terrain-following masked output
              DO  i = 1, mask_size_l(mid,1)
                 DO  j = 1, mask_size_l(mid,2)
-
+!--                Get k index of the highest terraing surface
                    im = mask_i(mid,i)
                    jm = mask_j(mid,j)
-
+                   ktt = MINLOC( MERGE( 1, 0, BTEST( wall_flags_total_0(:,jm,im), 5 ) ),           &
+                                 DIM = 1 ) - 1
                    DO  k = 1, mask_size_l(mid,3)
-
-                      kk = MIN( topo_top_ind(jm,im,6) + mask_k(mid,k) - 1, nzt+1 )
-!
-!--                   Set value if not in building.
-                      IF ( .NOT. BTEST( topo_flags(kk,jm,im), 6 ) )  THEN
+                      kk = MIN( ktt+mask_k(mid,k), nzt+1 )
+!--                   Set value if not in building
+                      IF ( BTEST( wall_flags_total_0(kk,jm,im), 6 ) )  THEN
+                         local_pf(i,j,k) = fill_value
+                      ELSE
                          local_pf(i,j,k) = to_be_resorted(kk,jm,im)
                       ENDIF
                    ENDDO

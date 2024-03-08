@@ -13,8 +13,39 @@
 ! You should have received a copy of the GNU General Public License along with PALM. If not, see
 ! <http://www.gnu.org/licenses/>.
 !
-! Copyright 1997-2021 Leibniz Universitaet Hannover
+! Copyright 1997-2020 Leibniz Universitaet Hannover
 !--------------------------------------------------------------------------------------------------!
+!
+! Current revisions:
+! ------------------
+!
+!
+! Former revisions:
+! -----------------
+! $Id: large_scale_forcing_nudging_mod.f90 4700 2020-09-25 13:08:49Z raasch $
+! file re-formatted to follow the PALM coding standard
+!
+! 4671 2020-09-09 20:27:58Z pavelkrc
+! Implementation of downward facing USM and LSM surfaces
+!
+! 4360 2020-01-07 11:25:50Z suehring
+! Introduction of wall_flags_total_0, which currently sets bits based on static topography
+! information used in wall_flags_static_0
+!
+! 4329 2019-12-10 15:46:36Z motisi
+! Renamed wall_flags_0 to wall_flags_static_0
+!
+! 4182 2019-08-22 15:20:23Z scharf
+! Corrected "Former revisions" section
+!
+! 3719 2019-02-06 13:10:18Z kanani
+! Removed USE cpulog (unused)
+!
+! 3655 2019-01-07 16:51:22Z knoop
+! unused variables removed
+!
+! 2320 2017-07-21 12:47:43Z suehring
+! initial revision
 !
 ! Description:
 ! ------------
@@ -32,98 +63,33 @@
  MODULE lsf_nudging_mod
 
     USE arrays_3d,                                                                                 &
-        ONLY:  dzw,                                                                                &
-               diss,                                                                               &
-               e,                                                                                  &
-               heatflux_input_conversion,                                                          &
-               pt,                                                                                 &
-               pt_init,                                                                            &
-               q,                                                                                  &
-               q_init,                                                                             &
-               s,                                                                                  &
-               tend,                                                                               &
-               u,                                                                                  &
-               u_init,                                                                             &
-               ug,                                                                                 &
-               v,                                                                                  &
-               v_init,                                                                             &
-               vg,                                                                                 &
-               w,                                                                                  &
-               w_subs,                                                                             &
-               waterflux_input_conversion,                                                         &
-               zu,                                                                                 &
-               zw
+        ONLY:  dzw, diss, e, heatflux_input_conversion, pt, pt_init, q, q_init, s, tend, u, u_init,&
+               ug, v, v_init, vg, w, w_subs, waterflux_input_conversion, zu, zw
 
     USE control_parameters,                                                                        &
-        ONLY:  bc_lr,                                                                              &
-               bc_ns,                                                                              &
-               bc_pt_b,                                                                            &
-               bc_q_b,                                                                             &
-               constant_diffusion,                                                                 &
-               constant_heatflux,                                                                  &
-               constant_waterflux,                                                                 &
-               data_output_pr,                                                                     &
-               dt_3d,                                                                              &
-               end_time,                                                                           &
-               humidity,                                                                           &
-               initializing_actions,                                                               &
-               intermediate_timestep_count,                                                        &
-               ibc_pt_b,                                                                           &
-               ibc_q_b,                                                                            &
-               large_scale_forcing,                                                                &
-               large_scale_subsidence,                                                             &
-               lsf_surf,                                                                           &
-               lsf_vert,                                                                           &
-               lsf_exception,                                                                      &
-               message_string,                                                                     &
-               neutral,                                                                            &
-               nudging,                                                                            &
-               passive_scalar,                                                                     &
-               pt_surface,                                                                         &
-               ocean_mode,                                                                         &
-               q_surface,                                                                          &
-               surface_heatflux,                                                                   &
-               surface_pressure,                                                                   &
-               surface_waterflux,                                                                  &
-               topography,                                                                         &
+        ONLY:  bc_lr, bc_ns, bc_pt_b, bc_q_b, constant_diffusion, constant_heatflux,               &
+               constant_waterflux, data_output_pr, dt_3d, end_time, humidity, initializing_actions,&
+               intermediate_timestep_count, ibc_pt_b, ibc_q_b,                                     &
+               large_scale_forcing, large_scale_subsidence, lsf_surf, lsf_vert, lsf_exception,     &
+               message_string, neutral, nudging, passive_scalar, pt_surface, ocean_mode, q_surface,&
+               surface_heatflux, surface_pressure, surface_waterflux, topography,                  &
                use_subsidence_tendencies
 
     USE grid_variables
 
     USE indices,                                                                                   &
-        ONLY:  nbgp,                                                                               &
-               ngp_sums_ls,                                                                        &
-               nx,                                                                                 &
-               nxl,                                                                                &
-               nxlg,                                                                               &
-               nxlu,                                                                               &
-               nxr,                                                                                &
-               nxrg,                                                                               &
-               ny,                                                                                 &
-               nys,                                                                                &
-               nysv,                                                                               &
-               nysg,                                                                               &
-               nyn,                                                                                &
-               nyng,                                                                               &
-               nzb,                                                                                &
-               nz,                                                                                 &
-               nzt,                                                                                &
-               topo_flags
+        ONLY:  nbgp, ngp_sums_ls, nx, nxl, nxlg, nxlu, nxr, nxrg, ny, nys, nysv, nysg, nyn, nyng,  &
+               nzb, nz, nzt, wall_flags_total_0
 
     USE kinds
 
     USE pegrid
 
     USE surface_mod,                                                                               &
-        ONLY:  surf_def,                                                                           &
-               surf_lsm,                                                                           &
-               surf_usm
+        ONLY:  surf_def_h, surf_lsm_h, surf_usm_h
 
     USE statistics,                                                                                &
-        ONLY:  hom,                                                                                &
-               statistic_regions,                                                                  &
-               sums_ls_l,                                                                          &
-               weight_substep
+        ONLY:  hom, statistic_regions, sums_ls_l, weight_substep
 
     INTEGER(iwp) ::  nlsf = 1000                       !< maximum number of profiles in LSF_DATA (large scale forcing)
     INTEGER(iwp) ::  ntnudge = 1000                    !< maximum number of profiles in NUDGING_DATA (nudging)
@@ -203,38 +169,40 @@
 !
 !--    Check nudging and large scale forcing from external file
        IF ( nudging  .AND.  (  .NOT.  large_scale_forcing ) )  THEN
-          message_string = 'nudging requires large_scale_forcing = .T.'
-          CALL message( 'check_parameters', 'LSF0001', 1, 2, 0, 6, 0 )
+          message_string = 'Nudging requires large_scale_forcing = .T.. &'//                       &
+                           'Surface fluxes and geostrophic wind should be &'//                     &
+                           'prescribed in file LSF_DATA'
+          CALL message( 'check_parameters', 'PA0374', 1, 2, 0, 6, 0 )
        ENDIF
 
        IF ( large_scale_forcing  .AND.  ( bc_lr /= 'cyclic' .OR. bc_ns /= 'cyclic' ) )  THEN
-          message_string = 'non-cyclic lateral boundaries do not allow '//                         &
-                           'the usage of large scale forcing from external file'
-          CALL message( 'check_parameters', 'LSF0002', 1, 2, 0, 6, 0 )
+          message_string = 'Non-cyclic lateral boundaries do not allow for &'//                    &
+                           'the usage of large scale forcing from external file.'
+          CALL message( 'check_parameters', 'PA0375', 1, 2, 0, 6, 0 )
        ENDIF
 
        IF ( large_scale_forcing  .AND.  ( .NOT. humidity ) )  THEN
-          message_string = 'large scale forcing from external '//                                  &
-                           'file LSF_DATA requires humidity = .T.'
-          CALL message( 'check_parameters', 'LSF0003', 1, 2, 0, 6, 0 )
+          message_string = 'The usage of large scale forcing from external &'//                    &
+                           'file LSF_DATA requires humidity = .T..'
+          CALL message( 'check_parameters', 'PA0376', 1, 2, 0, 6, 0 )
        ENDIF
 
        IF ( large_scale_forcing  .AND.  passive_scalar )  THEN
-          message_string = 'large scale forcing from external '//                                  &
+          message_string = 'The usage of large scale forcing from external &'//                    &
                            'file LSF_DATA is not implemented for passive scalars'
-          CALL message( 'check_parameters', 'LSF0004', 1, 2, 0, 6, 0 )
+          CALL message( 'check_parameters', 'PA0440', 1, 2, 0, 6, 0 )
        ENDIF
 
        IF ( large_scale_forcing  .AND.  topography /= 'flat'  .AND. .NOT. lsf_exception )  THEN
-          message_string = 'large scale forcing from external '//                                  &
+          message_string = 'The usage of large scale forcing from external &'//                    &
                            'file LSF_DATA is not implemented for non-flat topography'
-          CALL message( 'check_parameters', 'LSF0005', 1, 2, 0, 6, 0 )
+          CALL message( 'check_parameters', 'PA0377', 1, 2, 0, 6, 0 )
        ENDIF
 
        IF ( large_scale_forcing  .AND.  ocean_mode )  THEN
-          message_string = 'large scale forcing from external '//                                  &
+          message_string = 'The usage of large scale forcing from external &'//                    &
                            'file LSF_DATA is not implemented for ocean mode'
-          CALL message( 'check_parameters', 'LSF0006', 1, 2, 0, 6, 0 )
+          CALL message( 'check_parameters', 'PA0378', 1, 2, 0, 6, 0 )
        ENDIF
 
     END SUBROUTINE lsf_nudging_check_parameters
@@ -265,7 +233,7 @@
                                  TRIM( data_output_pr(var_count) ) //                              &
                                  ' is not implemented for ' //                                     &
                                  'large_scale_forcing = .FALSE.'
-                CALL message( 'lsf_nudging_check_data_output_pr', 'LSF0007', 1, 2, 0, 6, 0 )
+                CALL message( 'lsf_nudging_check_data_output_pr', 'PA0393', 1, 2, 0, 6, 0 )
              ELSE
                 dopr_index(var_count) = 81
                 dopr_unit             = 'K/s'
@@ -275,9 +243,11 @@
 
           CASE ( 'td_lsa_q' )
              IF ( .NOT. large_scale_forcing )  THEN
-                message_string = 'data_output_pr = "' // TRIM( data_output_pr(var_count) ) //      &
-                                 '" is not implemented for large_scale_forcing = .FALSE.'
-                CALL message( 'lsf_nudging_check_data_output_pr', 'LSF0007', 1, 2, 0, 6, 0 )
+                message_string = 'data_output_pr = ' //                                            &
+                                 TRIM( data_output_pr(var_count) ) //                              &
+                                 ' is not implemented for ' //                                     &
+                                 'large_scale_forcing = .FALSE.'
+                CALL message( 'lsf_nudging_check_data_output_pr', 'PA0393', 1, 2, 0, 6, 0 )
              ELSE
                 dopr_index(var_count) = 82
                 dopr_unit             = 'kg/kgs'
@@ -286,9 +256,11 @@
              ENDIF
           CASE ( 'td_sub_thetal' )
              IF ( .NOT. large_scale_forcing )  THEN
-                message_string = 'data_output_pr = "' // TRIM( data_output_pr(var_count) ) //      &
-                                 '" is not implemented for large_scale_forcing = .FALSE.'
-                CALL message( 'lsf_nudging_check_data_output_pr', 'LSF0007', 1, 2, 0, 6, 0 )
+                message_string = 'data_output_pr = ' //                                            &
+                                 TRIM( data_output_pr(var_count) ) //                              &
+                                 ' is not implemented for ' //                                     &
+                                 'large_scale_forcing = .FALSE.'
+                CALL message( 'lsf_nudging_check_data_output_pr', 'PA0393', 1, 2, 0, 6, 0 )
              ELSE
                 dopr_index(var_count) = 83
                 dopr_unit             = 'K/s'
@@ -298,9 +270,11 @@
 
           CASE ( 'td_sub_q' )
              IF ( .NOT. large_scale_forcing )  THEN
-                message_string = 'data_output_pr = "' // TRIM( data_output_pr(var_count) ) //      &
-                                 '" is not implemented for large_scale_forcing = .FALSE.'
-                CALL message( 'lsf_nudging_check_data_output_pr', 'LSF0007', 1, 2, 0, 6, 0 )
+                message_string = 'data_output_pr = ' //                                            &
+                                 TRIM( data_output_pr(var_count) ) //                              &
+                                 ' is not implemented for ' //                                     &
+                                 'large_scale_forcing = .FALSE.'
+                CALL message( 'lsf_nudging_check_data_output_pr', 'PA0393', 1, 2, 0, 6, 0 )
              ELSE
                 dopr_index(var_count) = 84
                 dopr_unit             = 'kg/kgs'
@@ -310,9 +284,11 @@
 
           CASE ( 'td_nud_thetal' )
              IF ( .NOT. nudging )  THEN
-                message_string = 'data_output_pr = "' // TRIM( data_output_pr(var_count) ) //      &
-                                 '" is not implemented for nudging = .FALSE.'
-                CALL message( 'lsf_nudging_check_data_output_pr', 'LSF0008', 1, 2, 0, 6, 0 )
+                message_string = 'data_output_pr = ' //                                            &
+                                 TRIM( data_output_pr(var_count) ) //                              &
+                                 ' is not implemented for ' //                                     &
+                                 'nudging = .FALSE.'
+                CALL message( 'lsf_nudging_check_data_output_pr', 'PA0394', 1, 2, 0, 6, 0 )
              ELSE
                 dopr_index(var_count) = 85
                 dopr_unit             = 'K/s'
@@ -322,9 +298,11 @@
 
           CASE ( 'td_nud_q' )
              IF ( .NOT. nudging )  THEN
-                message_string = 'data_output_pr = "' // TRIM( data_output_pr(var_count) ) //      &
-                                 '" is not implemented for nudging = .FALSE.'
-                CALL message( 'lsf_nudging_check_data_output_pr', 'LSF0008', 1, 2, 0, 6, 0 )
+                message_string = 'data_output_pr = ' //                                            &
+                                 TRIM( data_output_pr(var_count) ) //                              &
+                                 ' is not implemented for ' //                                     &
+                                 'nudging = .FALSE.'
+                CALL message( 'lsf_nudging_check_data_output_pr', 'PA0394', 1, 2, 0, 6, 0 )
              ELSE
                 dopr_index(var_count) = 86
                 dopr_unit             = 'kg/kgs'
@@ -334,9 +312,11 @@
 
           CASE ( 'td_nud_u' )
              IF ( .NOT. nudging )  THEN
-                message_string = 'data_output_pr = "' // TRIM( data_output_pr(var_count) ) //      &
-                                 '" is not implemented for nudging = .FALSE.'
-                CALL message( 'lsf_nudging_check_data_output_pr', 'LSF0008', 1, 2, 0, 6, 0 )
+                message_string = 'data_output_pr = ' //                                            &
+                                 TRIM( data_output_pr(var_count) ) //                              &
+                                 ' is not implemented for ' //                                     &
+                                 'nudging = .FALSE.'
+                CALL message( 'lsf_nudging_check_data_output_pr', 'PA0394', 1, 2, 0, 6, 0 )
              ELSE
                 dopr_index(var_count) = 87
                 dopr_unit             = 'm/s2'
@@ -346,9 +326,11 @@
 
           CASE ( 'td_nud_v' )
              IF ( .NOT. nudging )  THEN
-                message_string = 'data_output_pr = "' // TRIM( data_output_pr(var_count) ) //      &
-                                 '" is not implemented for nudging = .FALSE.'
-                CALL message( 'lsf_nudging_check_data_output_pr', 'LSF0008', 1, 2, 0, 6, 0 )
+                message_string = 'data_output_pr = ' //                                            &
+                                 TRIM( data_output_pr(var_count) ) //                              &
+                                 ' is not implemented for ' //                                     &
+                                 'nudging = .FALSE.'
+                CALL message( 'lsf_nudging_check_data_output_pr', 'PA0394', 1, 2, 0, 6, 0 )
              ELSE
                 dopr_index(var_count) = 88
                 dopr_unit             = 'm/s2'
@@ -495,7 +477,7 @@
 
        IF ( ierrn /= 0 )  THEN
           message_string = 'file LSF_DATA does not exist'
-          CALL message( 'ls_forcing', 'LSF0009', 1, 2, 0, 6, 0 )
+          CALL message( 'ls_forcing', 'PA0368', 1, 2, 0, 6, 0 )
        ENDIF
 
        ierrn = 0
@@ -507,7 +489,7 @@
 
        IF ( ierrn /= 0 )  THEN
           message_string = 'errors in file LSF_DATA'
-          CALL message( 'ls_forcing', 'LSF0010', 1, 2, 0, 6, 0 )
+          CALL message( 'ls_forcing', 'PA0369', 1, 2, 0, 6, 0 )
        ENDIF
 
 !
@@ -521,18 +503,18 @@
                                              pt_surf(nt), q_surf(nt), p_surf(nt)
 
           IF ( ierrn /= 0 )  THEN
-            WRITE ( message_string, * ) 'no time dependent surface ' //                            &
+            WRITE ( message_string, * ) 'No time dependent surface ' //                            &
                                         'variables in & LSF_DATA for end of run found'
 
-             CALL message( 'ls_forcing', 'LSF0011', 1, 2, 0, 6, 0 )
+             CALL message( 'ls_forcing', 'PA0363', 1, 2, 0, 6, 0 )
           ENDIF
        ENDDO
 
        IF ( time_surf(1) > end_time )  THEN
-          WRITE ( message_string, * ) 'time dependent surface variables in ' //                    &
+          WRITE ( message_string, * ) 'Time dependent surface variables in ' //                    &
                                       '&LSF_DATA set in after end of ' ,                           &
                                       'simulation - lsf_surf is set to FALSE'
-          CALL message( 'ls_forcing', 'LSF0012', 0, 1, 0, 6, 0 )
+          CALL message( 'ls_forcing', 'PA0371', 0, 0, 0, 6, 0 )
           lsf_surf = .FALSE.
        ENDIF
 
@@ -556,9 +538,9 @@
           DO WHILE ( .NOT. ( hash == "#" .AND. ierrn == 0 ) )
              READ ( finput, *, IOSTAT=ierrn ) hash, time_vert(nt)
              IF ( ierrn < 0 )  THEN
-                WRITE( message_string, * ) 'no time dependent vertical profiles',                  &
-                                           ' in LSF_DATA for end of run found'
-                CALL message( 'ls_forcing', 'LSF0013', 1, 2, 0, 6, 0 )
+                WRITE( message_string, * ) 'No time dependent vertical profiles',                  &
+                                           ' in & LSF_DATA for end of run found'
+                CALL message( 'ls_forcing', 'PA0372', 1, 2, 0, 6, 0 )
              ENDIF
           ENDDO
 
@@ -569,7 +551,7 @@
                                            low_td_sub_q
           IF ( ierrn /= 0 )  THEN
              message_string = 'errors in file LSF_DATA'
-             CALL message( 'ls_forcing', 'LSF0014', 1, 2, 0, 6, 0 )
+             CALL message( 'ls_forcing', 'PA0369', 1, 2, 0, 6, 0 )
           ENDIF
 
           READ ( finput, *, IOSTAT=ierrn ) highheight, highug_vert, highvg_vert, highwsubs_vert,   &
@@ -578,7 +560,7 @@
 
           IF ( ierrn /= 0 )  THEN
              message_string = 'errors in file LSF_DATA'
-             CALL message( 'ls_forcing', 'LSF0014', 1, 2, 0, 6, 0 )
+             CALL message( 'ls_forcing', 'PA0369', 1, 2, 0, 6, 0 )
           ENDIF
 
 
@@ -603,7 +585,7 @@
                                               'is higher than the maximum height in LSF_DATA ',    &
                                               'which is ', lowheight, 'm. Interpolation on PALM ', &
                                               'grid is not possible.'
-                   CALL message( 'ls_forcing', 'LSF0015', 1, 2, 0, 6, 0 )
+                   CALL message( 'ls_forcing', 'PA0395', 1, 2, 0, 6, 0 )
                 ENDIF
 
              ENDIF
@@ -633,7 +615,7 @@
           WRITE ( message_string, * ) 'Time dependent large scale profile ',                       &
                                       'forcing from&LSF_DATA sets in after end of ' ,              &
                                       'simulation - lsf_vert is set to FALSE'
-          CALL message( 'ls_forcing', 'LSF0016', 0, 0, 0, 6, 0 )
+          CALL message( 'ls_forcing', 'PA0373', 0, 0, 0, 6, 0 )
           lsf_vert = .FALSE.
        ENDIF
 
@@ -650,7 +632,6 @@
 
        IMPLICIT NONE
 
-       INTEGER(iwp) ::  m                      !< running index for surfaces
        INTEGER(iwp) ::  nt                     !<
 
        REAL(wp)             :: dum_surf_flux  !<
@@ -682,16 +663,10 @@
           dum_surf_flux = ( shf_surf(nt) + fac * ( shf_surf(nt+1) - shf_surf(nt) )                 &
                           ) * heatflux_input_conversion(nzb)
 !
-!--       Save surface sensible heat flux on upward-facing default, natural and urban surfaces.
-          DO  m = 1, surf_def%ns
-             surf_def%shf(m) = MERGE( dum_surf_flux, surf_def%shf(m), surf_def%upward(m) )
-          ENDDO
-          DO  m = 1, surf_lsm%ns
-             surf_lsm%shf(m) = MERGE( dum_surf_flux, surf_lsm%shf(m), surf_lsm%upward(m) )
-          ENDDO
-          DO  m = 1, surf_usm%ns
-             surf_usm%shf(m) = MERGE( dum_surf_flux, surf_usm%shf(m), surf_usm%upward(m) )
-          ENDDO
+!--       Save surface sensible heat flux on default, natural and urban surface type, if required.
+          IF ( surf_def_h(0)%ns >= 1 )  surf_def_h(0)%shf(:) = dum_surf_flux
+          IF ( surf_lsm_h(0)%ns >= 1 )  surf_lsm_h(0)%shf(:) = dum_surf_flux
+          IF ( surf_usm_h(0)%ns >= 1 )  surf_usm_h(0)%shf(:) = dum_surf_flux
 
           pt_surface    = pt_surf(nt) + fac * ( pt_surf(nt+1) - pt_surf(nt) )
 
@@ -707,16 +682,10 @@
           dum_surf_flux = ( qsws_surf(nt) + fac * ( qsws_surf(nt+1) - qsws_surf(nt) )              &
                           ) * waterflux_input_conversion(nzb)
 !
-!--       Save surface latent heat flux on upward-facing default, natural and urban surfaces.
-          DO  m = 1, surf_def%ns
-             surf_def%qsws(m) = MERGE( dum_surf_flux, surf_def%qsws(m), surf_def%upward(m) )
-          ENDDO
-          DO  m = 1, surf_lsm%ns
-             surf_lsm%qsws(m) = MERGE( dum_surf_flux, surf_lsm%qsws(m), surf_lsm%upward(m) )
-          ENDDO
-          DO  m = 1, surf_usm%ns
-             surf_usm%qsws(m) = MERGE( dum_surf_flux, surf_usm%qsws(m), surf_usm%upward(m) )
-          ENDDO
+!--       Save surface sensible heat flux on default, natural and urban surface type, if required
+          IF ( surf_def_h(0)%ns >= 1 )  surf_def_h(0)%qsws(:) = dum_surf_flux
+          IF ( surf_lsm_h(0)%ns >= 1 )  surf_lsm_h(0)%qsws(:) = dum_surf_flux
+          IF ( surf_usm_h(0)%ns >= 1 )  surf_usm_h(0)%qsws(:) = dum_surf_flux
 
        ENDIF
 !
@@ -817,7 +786,8 @@
                    DO  k = nzb+1, nzt
                       tend(k,j,i) = tend(k,j,i) + td_lsa_lpt(k,nt) + fac *                         &
                                        ( td_lsa_lpt(k,nt+1) - td_lsa_lpt(k,nt) ) *                 &
-                                       MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                                       MERGE( 1.0_wp, 0.0_wp,                                     &
+                                              BTEST( wall_flags_total_0(k,j,i), 0 ) )
                    ENDDO
                 ENDDO
              ENDDO
@@ -829,7 +799,8 @@
                    DO  k = nzb+1, nzt
                       tend(k,j,i) = tend(k,j,i) + td_lsa_q(k,nt) + fac *                           &
                                        ( td_lsa_q(k,nt+1) - td_lsa_q(k,nt) ) *                     &
-                                       MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                                       MERGE( 1.0_wp, 0.0_wp,                                     &
+                                              BTEST( wall_flags_total_0(k,j,i), 0 ) )
                    ENDDO
                 ENDDO
              ENDDO
@@ -849,7 +820,8 @@
                       DO  k = nzb+1, nzt
                          tend(k,j,i) = tend(k,j,i) + td_sub_lpt(k,nt) + fac *                      &
                                        ( td_sub_lpt(k,nt+1) - td_sub_lpt(k,nt) ) *                 &
-                                       MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                                       MERGE( 1.0_wp, 0.0_wp,                                      &
+                                              BTEST( wall_flags_total_0(k,j,i), 0 ) )
                       ENDDO
                    ENDDO
                 ENDDO
@@ -861,7 +833,8 @@
                       DO  k = nzb+1, nzt
                          tend(k,j,i) = tend(k,j,i) + td_sub_q(k,nt) + fac *                        &
                                           ( td_sub_q(k,nt+1) - td_sub_q(k,nt) ) *                  &
-                                          MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                                          MERGE( 1.0_wp, 0.0_wp,                                   &
+                                                 BTEST( wall_flags_total_0(k,j,i), 0 ) )
                       ENDDO
                    ENDDO
                 ENDDO
@@ -914,7 +887,8 @@
              DO  k = nzb+1, nzt
                 tend(k,j,i) = tend(k,j,i) + td_lsa_lpt(k,nt)                                       &
                              + fac * ( td_lsa_lpt(k,nt+1) - td_lsa_lpt(k,nt) )*                    &
-                                        MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                                        MERGE( 1.0_wp, 0.0_wp,                                     &
+                                               BTEST( wall_flags_total_0(k,j,i), 0 ) )
              ENDDO
 
           CASE ( 'q' )
@@ -922,7 +896,8 @@
              DO  k = nzb+1, nzt
                 tend(k,j,i) = tend(k,j,i) + td_lsa_q(k,nt)                                         &
                               + fac * ( td_lsa_q(k,nt+1) - td_lsa_q(k,nt) ) *                      &
-                                        MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                                        MERGE( 1.0_wp, 0.0_wp,                                     &
+                                               BTEST( wall_flags_total_0(k,j,i), 0 ) )
              ENDDO
 
        END SELECT
@@ -938,7 +913,8 @@
                 DO  k = nzb+1, nzt
                    tend(k,j,i) = tend(k,j,i) + td_sub_lpt(k,nt)                                    &
                                  + fac * ( td_sub_lpt(k,nt+1) - td_sub_lpt(k,nt) ) *               &
-                                   MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                                   MERGE( 1.0_wp, 0.0_wp,                                          &
+                                          BTEST( wall_flags_total_0(k,j,i), 0 ) )
                 ENDDO
 
              CASE ( 'q' )
@@ -946,7 +922,8 @@
                 DO  k = nzb+1, nzt
                    tend(k,j,i) = tend(k,j,i) + td_sub_q(k,nt)                                      &
                                  + fac * ( td_sub_q(k,nt+1) - td_sub_q(k,nt) ) *                   &
-                                   MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                                   MERGE( 1.0_wp, 0.0_wp,                                          &
+                                          BTEST( wall_flags_total_0(k,j,i), 0 ) )
                 ENDDO
 
           END SELECT
@@ -1011,7 +988,7 @@
 
        IF ( ierrn /= 0 )  THEN
           message_string = 'file NUDGING_DATA does not exist'
-          CALL message( 'nudging', 'LSF0017', 1, 2, 0, 6, 0 )
+          CALL message( 'nudging', 'PA0365', 1, 2, 0, 6, 0 )
        ENDIF
 
        ierrn = 0
@@ -1036,7 +1013,7 @@
 
           IF ( ierrn /= 0 )  THEN
              message_string = 'errors in file NUDGING_DATA'
-             CALL message( 'nudging', 'LSF0018', 1, 2, 0, 6, 0 )
+             CALL message( 'nudging', 'PA0366', 1, 2, 0, 6, 0 )
           ENDIF
 
           ierrn = 0
@@ -1045,7 +1022,7 @@
 
           IF ( ierrn /= 0 )  THEN
              message_string = 'errors in file NUDGING_DATA'
-             CALL message( 'nudging', 'LSF0018', 1, 2, 0, 6, 0 )
+             CALL message( 'nudging', 'PA0366', 1, 2, 0, 6, 0 )
           ENDIF
 
           DO  k = nzb, nzt+1
@@ -1066,7 +1043,7 @@
                                             'higher than the maximum height in NUDING_DATA which ',&
                                             'is ', lowheight, 'm. Interpolation on PALM ',         &
                                             'grid is not possible.'
-                   CALL message( 'nudging', 'LSF0019', 1, 2, 0, 6, 0 )
+                   CALL message( 'nudging', 'PA0364', 1, 2, 0, 6, 0 )
                 ENDIF
              ENDDO
 
@@ -1099,7 +1076,7 @@
 
           WRITE( message_string, * ) 'Initial profiles of u, v, pt and q ',                        &
                                      'from NUDGING_DATA are used.'
-          CALL message( 'large_scale_forcing_nudging', 'LSF0020', 0, 0, 0, 6, 0 )
+          CALL message( 'large_scale_forcing_nudging', 'PA0370', 0, 0, 0, 6, 0 )
        ENDIF
 
 
@@ -1185,7 +1162,7 @@
 
                       tend(k,j,i) = tend(k,j,i)                                                    &
                                     + tmp_tend * MERGE( 1.0_wp, 0.0_wp,                            &
-                                                        BTEST( topo_flags(k,j,i), 1 ) )
+                                                        BTEST( wall_flags_total_0(k,j,i), 1 ) )
 
                       sums_ls_l(k,6) = sums_ls_l(k,6)                                              &
                                        + tmp_tend * weight_substep(intermediate_timestep_count)
@@ -1208,7 +1185,7 @@
 
                       tend(k,j,i) = tend(k,j,i)                                                    &
                                     + tmp_tend * MERGE( 1.0_wp, 0.0_wp,                            &
-                                                        BTEST( topo_flags(k,j,i), 2 ) )
+                                                        BTEST( wall_flags_total_0(k,j,i), 2 ) )
 
                       sums_ls_l(k,7) = sums_ls_l(k,7)                                              &
                                        + tmp_tend * weight_substep(intermediate_timestep_count)
@@ -1231,7 +1208,7 @@
 
                       tend(k,j,i) = tend(k,j,i)                                                    &
                                     + tmp_tend * MERGE( 1.0_wp, 0.0_wp,                            &
-                                                        BTEST( topo_flags(k,j,i), 0 ) )
+                                                        BTEST( wall_flags_total_0(k,j,i), 0 ) )
 
                       sums_ls_l(k,4) = sums_ls_l(k,4)                                              &
                                        + tmp_tend * weight_substep(intermediate_timestep_count)
@@ -1254,7 +1231,7 @@
 
                       tend(k,j,i) = tend(k,j,i)                                                    &
                                     + tmp_tend * MERGE( 1.0_wp, 0.0_wp,                            &
-                                                        BTEST( topo_flags(k,j,i), 0 ) )
+                                                        BTEST( wall_flags_total_0(k,j,i), 0 ) )
 
                       sums_ls_l(k,5) = sums_ls_l(k,5)                                              &
                                        + tmp_tend * weight_substep(intermediate_timestep_count)
@@ -1267,7 +1244,7 @@
 
           CASE DEFAULT
              message_string = 'unknown prognostic variable "' // prog_var // '"'
-             CALL message( 'nudge', 'LSF0021', 1, 2, 0, 6, 0 )
+             CALL message( 'nudge', 'PA0367', 1, 2, 0, 6, 0 )
 
        END SELECT
 
@@ -1319,7 +1296,8 @@
                              / tmp_tnudge(k)
 
                 tend(k,j,i) = tend(k,j,i)                                                          &
-                              + tmp_tend * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 1 ) )
+                              + tmp_tend * MERGE( 1.0_wp, 0.0_wp,                                  &
+                                                  BTEST( wall_flags_total_0(k,j,i), 1 ) )
 
                 sums_ls_l(k,6) = sums_ls_l(k,6)                                                    &
                                  + tmp_tend * weight_substep(intermediate_timestep_count)
@@ -1335,7 +1313,8 @@
                              / tmp_tnudge(k)
 
                 tend(k,j,i) = tend(k,j,i)                                                          &
-                              + tmp_tend * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 2 ) )
+                              + tmp_tend * MERGE( 1.0_wp, 0.0_wp,                                  &
+                                                  BTEST( wall_flags_total_0(k,j,i), 2 ) )
 
                 sums_ls_l(k,7) = sums_ls_l(k,7)                                                    &
                                  + tmp_tend * weight_substep(intermediate_timestep_count)
@@ -1351,7 +1330,8 @@
                              / tmp_tnudge(k)
 
                 tend(k,j,i) = tend(k,j,i)                                                          &
-                              + tmp_tend * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                              + tmp_tend * MERGE( 1.0_wp, 0.0_wp,                                  &
+                                                  BTEST( wall_flags_total_0(k,j,i), 0 ) )
 
                 sums_ls_l(k,4) = sums_ls_l(k,4)                                                    &
                                  + tmp_tend * weight_substep(intermediate_timestep_count)
@@ -1368,7 +1348,8 @@
                              / tmp_tnudge(k)
 
                 tend(k,j,i) = tend(k,j,i)                                                          &
-                              + tmp_tend * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                              + tmp_tend * MERGE( 1.0_wp, 0.0_wp,                                  &
+                                                  BTEST( wall_flags_total_0(k,j,i), 0 ) )
 
                 sums_ls_l(k,5) = sums_ls_l(k,5)                                                    &
                                  + tmp_tend * weight_substep(intermediate_timestep_count)
@@ -1378,7 +1359,7 @@
 
           CASE DEFAULT
              message_string = 'unknown prognostic variable "' // prog_var // '"'
-             CALL message( 'nudge', 'LSF0021', 1, 2, 0, 6, 0 )
+             CALL message( 'nudge', 'PA0367', 1, 2, 0, 6, 0 )
 
        END SELECT
 

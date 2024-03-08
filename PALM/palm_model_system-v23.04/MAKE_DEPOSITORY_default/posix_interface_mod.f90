@@ -13,9 +13,31 @@
 ! You should have received a copy of the GNU General Public License along with PALM. If not, see
 ! <http://www.gnu.org/licenses/>.
 !
-! Copyright 1997-2021 Leibniz Universitaet Hannover
+! Copyright 1997-2020 Leibniz Universitaet Hannover
 !--------------------------------------------------------------------------------------------------!
 !
+!
+! Current revisions:
+! -----------------
+!
+!
+! Former revisions:
+! -----------------
+! $Id: posix_interface_mod.f90 4652 2020-08-27 08:51:55Z raasch $
+! Routine fortran_sleep moved from old module posix_calls_from_fortran to here
+!
+! 4649 2020-08-25 12:11:17Z raasch
+! File re-formatted to follow the PALM coding standard
+!
+!
+! 4628 2020-07-29 07:23:03Z raasch
+! Extensions required for MPI-I/O of particle data to restart files
+!
+! 4495 2020-04-13 20:11:20Z raasch
+! Initial version (K. Ketelsen)
+!
+!
+!--------------------------------------------------------------------------------------------------!
 ! Description:
 ! ------------
 !> Interface to some POSIX system calls, mainly used for read/write of restart files in non-parallel
@@ -127,8 +149,7 @@
        MODULE PROCEDURE posix_read
        MODULE PROCEDURE posix_read_char_array
        MODULE PROCEDURE posix_read_int_1d
-       MODULE PROCEDURE posix_read_int_2d_i4
-       MODULE PROCEDURE posix_read_int_2d_i8
+       MODULE PROCEDURE posix_read_int_2d
        MODULE PROCEDURE posix_read_i4_3d
        MODULE PROCEDURE posix_read_i8_3d
        MODULE PROCEDURE posix_read_offset_1d
@@ -141,8 +162,7 @@
        MODULE PROCEDURE posix_write
        MODULE PROCEDURE posix_write_char_array
        MODULE PROCEDURE posix_write_int_1d
-       MODULE PROCEDURE posix_write_int_2d_i4
-       MODULE PROCEDURE posix_write_int_2d_i8
+       MODULE PROCEDURE posix_write_int_2d
        MODULE PROCEDURE posix_write_i4_3d
        MODULE PROCEDURE posix_write_i8_3d
        MODULE PROCEDURE posix_write_offset_1d
@@ -263,43 +283,23 @@
 
 
 
- SUBROUTINE posix_read_int_2d_i4( fid, data, nw )
+ SUBROUTINE posix_read_int_2d( fid, data, nw )
 
     IMPLICIT NONE
 
     INTEGER                                               ::  nr_byte  !<
     INTEGER, INTENT(IN)                                   ::  fid      !<
     INTEGER, INTENT(IN)                                   ::  nw       !<
-    INTEGER(KIND=isp), INTENT(IN), TARGET, DIMENSION(:,:) ::  data     !<
+    INTEGER(KIND=iwp), INTENT(IN), TARGET, DIMENSION(:,:) ::  data     !<
     TYPE(C_PTR)                                           ::  buf      !<
 
 
-    nr_byte = nw * isp
+    nr_byte = nw * iwp
     buf     = C_LOC( data )
 
     CALL posix_read( fid, buf, nr_byte )
 
- END SUBROUTINE posix_read_int_2d_i4
-
-
-
- SUBROUTINE posix_read_int_2d_i8 ( fid, data, nw )
-
-    IMPLICIT NONE
-
-    INTEGER                                               ::  nr_byte  !<
-    INTEGER, INTENT(IN)                                   ::  fid      !<
-    INTEGER, INTENT(IN)                                   ::  nw       !<
-    INTEGER(KIND=idp), INTENT(IN), TARGET, DIMENSION(:,:) ::  data     !<
-    TYPE(C_PTR)                                           ::  buf      !<
-
-
-    nr_byte = nw * idp
-    buf     = C_LOC( data )
-
-    CALL posix_read( fid, buf, nr_byte )
-
- END SUBROUTINE posix_read_int_2d_i8
+ END SUBROUTINE posix_read_int_2d
 
 
 
@@ -516,7 +516,7 @@
 
 
 
- SUBROUTINE posix_write_int_2d_i4( fid, data, nw )
+ SUBROUTINE posix_write_int_2d( fid, data, nw )
 
     IMPLICIT NONE
 
@@ -524,37 +524,18 @@
     INTEGER, INTENT(IN)                                   ::  fid      !<
     INTEGER, INTENT(IN)                                   ::  nw       !<
 
-    INTEGER(KIND=isp), INTENT(IN), TARGET, DIMENSION(:,:) ::  data     !<
+    INTEGER(KIND=iwp), INTENT(IN), TARGET, DIMENSION(:,:) ::  data     !<
 
     TYPE(C_PTR)                                           :: buf       !<
 
 
-    nr_byte = nw * isp
+    nr_byte = nw * iwp
     buf     = C_LOC( data )
 
     CALL posix_write( fid, buf, nr_byte )
 
- END SUBROUTINE posix_write_int_2d_i4
+ END SUBROUTINE posix_write_int_2d
 
- SUBROUTINE posix_write_int_2d_i8( fid, data, nw )
-
-    IMPLICIT NONE
-
-    INTEGER                                               ::  nr_byte  !<
-    INTEGER, INTENT(IN)                                   ::  fid      !<
-    INTEGER, INTENT(IN)                                   ::  nw       !<
-
-    INTEGER(KIND=idp), INTENT(IN), TARGET, DIMENSION(:,:) ::  data     !<
-
-    TYPE(C_PTR)                                           :: buf       !<
-
-
-    nr_byte = nw * idp
-    buf     = C_LOC( data )
-
-    CALL posix_write( fid, buf, nr_byte )
-
- END SUBROUTINE posix_write_int_2d_i8
 
 
  SUBROUTINE posix_write_i4_3d( fid, data, nw )

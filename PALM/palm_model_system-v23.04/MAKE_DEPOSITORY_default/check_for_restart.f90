@@ -13,8 +13,27 @@
 ! You should have received a copy of the GNU General Public License along with PALM. If not, see
 ! <http://www.gnu.org/licenses/>.
 !
-! Copyright 1997-2021 Leibniz Universitaet Hannover
+! Copyright 1997-2020 Leibniz Universitaet Hannover
 !--------------------------------------------------------------------------------------------------!
+!
+! Current revisions:
+! -----------------
+! 
+! 
+! Former revisions:
+! -----------------
+! $Id: check_for_restart.f90 4542 2020-05-19 15:45:12Z raasch $
+! file re-formatted to follow the PALM coding standard
+!
+! 4360 2020-01-07 11:25:50Z suehring
+! Corrected "Former revisions" section
+!
+! 3655 2019-01-07 16:51:22Z knoop
+! Error messages revised
+!
+! Revision 1.1  1998/03/18 20:06:51  raasch
+! Initial revision
+!
 !
 ! Description:
 ! ------------
@@ -22,31 +41,18 @@
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE check_for_restart
 
-#if defined( __parallel )
-    USE MPI
-#endif
 
     USE control_parameters,                                                                        &
-        ONLY:  dt_restart,                                                                         &
-               end_time,                                                                           &
-               message_string,                                                                     &
-               run_description_header,                                                             &
-               simulated_time,                                                                     &
-               terminate_run,                                                                      &
-               termination_time_needed,                                                            &
-               time_restart,                                                                       &
-               time_since_reference_point,                                                         &
-               write_binary
+        ONLY:  coupling_mode, dt_restart, end_time, message_string, run_description_header,        &
+               simulated_time, terminate_coupled, terminate_coupled_remote, terminate_run,         &
+               termination_time_needed, time_restart, time_since_reference_point, write_binary
 
     USE kinds
 
     USE pegrid
 
     USE pmc_interface,                                                                             &
-        ONLY:  atmosphere_ocean_coupled_run,                                                       &
-               comm_world_nesting,                                                                 &
-               cpl_id,                                                                             &
-               nested_run
+        ONLY:  comm_world_nesting, cpl_id, nested_run
 
     IMPLICIT NONE
 
@@ -73,7 +79,7 @@
 
 !
 !-- Set the global communicator to be used (depends on the mode in which PALM is running)
-    IF ( nested_run  .OR.  atmosphere_ocean_coupled_run )  THEN
+    IF ( nested_run )  THEN
        global_communicator = comm_world_nesting
     ELSE
        global_communicator = comm2d
@@ -97,24 +103,47 @@
                                   'running out of job cpu limit & ',                               &
                                   'remaining time:         ', remaining_time, ' s &',              &
                                   'termination time needed:', termination_time_needed, ' s'
-       CALL message( 'check_for_restart', 'PAC0003', 0, 1, 0, 6, 0 )
+       CALL message( 'check_for_restart', 'PA0163', 0, 1, 0, 6, 0 )
     ENDIF
+
+!
+!-- In case of coupled runs inform the remote model of the termination and its reason, provided the
+!-- remote model has not already been informed of another termination reason (terminate_coupled > 0)
+!-- before, or vice versa (terminate_coupled_remote > 0).
+    IF ( terminate_run .AND. TRIM( coupling_mode ) /= 'uncoupled'  .AND.                           &
+         terminate_coupled == 0  .AND.  terminate_coupled_remote == 0 )  THEN
+
+       terminate_coupled = 3
+
+#if defined( __parallel )
+       IF ( myid == 0 ) THEN
+          CALL MPI_SENDRECV( terminate_coupled,        1, MPI_INTEGER,                             &
+                             target_id, 0,                                                         &
+                             terminate_coupled_remote, 1, MPI_INTEGER,                             &
+                             target_id, 0,                                                         &
+                             comm_inter, status, ierr )
+       ENDIF
+       CALL MPI_BCAST( terminate_coupled_remote, 1, MPI_INTEGER, 0, comm2d, ierr )
+#endif
+    ENDIF
+
 
 !
 !-- Check if a flag file exists that forces a termination of the model.
     IF ( myid == 0 )  THEN
-       INQUIRE( FILE="DO_STOP_NOW", EXIST=do_stop_now )
-       INQUIRE( FILE="DO_RESTART_NOW", EXIST=do_restart_now )
+       INQUIRE(FILE="DO_STOP_NOW", EXIST=do_stop_now)
+       INQUIRE(FILE="DO_RESTART_NOW", EXIST=do_restart_now)
 
        IF ( do_stop_now .OR. do_restart_now )  THEN
 
           terminate_run_l = .TRUE.
 
           WRITE( message_string, * ) 'run will be terminated because user ',                       &
-                                     'forced a job termination via flag file:',                    &
+                                     'forced a job finalization using a flag',                     &
+                                     'file:',                                                      &
                                      '&DO_STOP_NOW: ', do_stop_now,                                &
                                      '&DO_RESTART_NOW: ', do_restart_now
-          CALL message( 'check_for_restart', 'PAC0004', 0, 0, 0, 6, 0 )
+          CALL message( 'check_for_restart', 'PA0398', 0, 0, 0, 6, 0 )
 
        ENDIF
     ENDIF
@@ -130,6 +159,27 @@
     terminate_run = terminate_run_l
 #endif
 
+!
+!-- In case of coupled runs inform the remote model of the termination and its reason, provided the
+!-- remote model has not already been informed of another termination reason (terminate_coupled > 0)
+!-- before, or vice versa (terminate_coupled_remote > 0).
+    IF ( terminate_run .AND. coupling_mode /= 'uncoupled' .AND.                                    &
+         terminate_coupled == 0 .AND.  terminate_coupled_remote == 0 )  THEN
+
+       terminate_coupled = 6
+
+#if defined( __parallel )
+       IF ( myid == 0 ) THEN
+          CALL MPI_SENDRECV( terminate_coupled,        1, MPI_INTEGER,                             &
+                             target_id,  0,                                                        &
+                             terminate_coupled_remote, 1, MPI_INTEGER,                             &
+                             target_id,  0,                                                        &
+                             comm_inter, status, ierr )
+       ENDIF
+       CALL MPI_BCAST( terminate_coupled_remote, 1, MPI_INTEGER, 0, comm2d, ierr )
+#endif
+
+    ENDIF
 
 !
 !-- Set the stop flag also, if restart is forced by user settings
@@ -148,10 +198,35 @@
              time_restart = 9999999.9_wp
           ENDIF
 
-          WRITE( message_string, * ) 'run will be terminated due to user settings of ',            &
+          WRITE( message_string, * ) 'run will be terminated due to user ',                        &
+                                     'settings of ',                                               &
                                      'restart_time / dt_restart, ',                                &
                                      'new restart time is: ', time_restart, ' s'
-          CALL message( 'check_for_restart', 'PAC0005', 0, 0, 0, 6, 0 )
+          CALL message( 'check_for_restart', 'PA0164', 0, 0, 0, 6, 0 )
+
+!
+!--       In case of coupled runs inform the remote model of the termination and its reason,
+!--       provided the remote model has not already been informed of another termination reason
+!--       (terminate_coupled > 0) before, or vice versa (terminate_coupled_remote > 0).
+          IF ( coupling_mode /= 'uncoupled' .AND. terminate_coupled == 0                           &
+               .AND.  terminate_coupled_remote == 0 )  THEN
+
+             IF ( dt_restart /= 9999999.9_wp )  THEN
+                terminate_coupled = 4
+             ELSE
+                terminate_coupled = 5
+             ENDIF
+#if defined( __parallel )
+             IF ( myid == 0 ) THEN
+                CALL MPI_SENDRECV( terminate_coupled,        1, MPI_INTEGER,                       &
+                                   target_id,  0,                                                  &
+                                   terminate_coupled_remote, 1, MPI_INTEGER,                       &
+                                   target_id,  0,                                                  &
+                                   comm_inter, status, ierr )
+             ENDIF
+             CALL MPI_BCAST( terminate_coupled_remote, 1, MPI_INTEGER, 0, comm2d, ierr )
+#endif
+          ENDIF
        ELSE
           time_restart = 9999999.9_wp
        ENDIF

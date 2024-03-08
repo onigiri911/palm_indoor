@@ -13,9 +13,155 @@
 ! You should have received a copy of the GNU General Public License along with PALM. If not, see
 ! <http://www.gnu.org/licenses/>.
 !
-! Copyright 1997-2021 Leibniz Universitaet Hannover
+! Copyright 1997-2020 Leibniz Universitaet Hannover
 !--------------------------------------------------------------------------------------------------!
 !
+! Current revisions:
+! ------------------
+!
+!
+! Former revisions:
+! -----------------
+! $Id: modules.f90 4753 2020-10-21 14:55:41Z raasch $
+! file re-formatted to follow the PALM coding standard
+!
+! 4742 2020-10-14 15:11:02Z schwenkel
+! Implement snow and graupel (bulk microphysics)
+!
+! 4721 2020-10-02 10:21:52Z suehring
+! Change default value spinup_pt_amplitude to 0.0 K
+!
+! 4680 2020-09-16 10:20:34Z gronemeier
+! Add option to fix date or time of the simulation
+!
+! 4658 2020-08-28 18:15:50Z suehring
+! Change default value of dt_spinup
+!
+! 4629 2020-07-29 09:37:56Z raasch
+! support for MPI Fortran77 interface (mpif.h) removed
+!
+! 4581 2020-06-29 08:49:58Z suehring
+! +sums_wschs_ws_l
+!
+! 4574 2020-06-24 16:33:32Z pavelkrc
+!
+! 4572 2020-06-24 10:09:41Z gronemeier
+! Revise description of rotation_angle
+!
+! 4565 2020-06-15 08:30:38Z oliver.maas
+! added pt_surface_heating_rate
+!
+! 4536 2020-05-17 17:24:13Z raasch
+! +qsurf_av, ssurf_av
+!
+! 4505 2020-04-20 15:37:15Z schwenkel
+! Add flag for saturation check
+!
+! 4502 2020-04-17 16:14:16Z raasch
+! Implementation of ice microphysics
+!
+! 4495 2020-04-13 20:11:20Z raasch
+! +restart_data_format, restart_data_format_input|output, include_total_domain_boundaries
+!
+! 4476 2020-03-27 12:56:41Z maronga
+! Renamed variables for subgrids-scale model steering
+!
+! 4473 2020-03-25 21:04:07Z gronemeier
+! moved wall_adjustment_factor to turbulence_closure_mod
+!
+! 4472 2020-03-24 12:21:00Z Giersch
+! Additional switch added to activate calculations in flow_statistics for the kolmogorov length
+! scale
+!
+! 4461 2020-03-12 16:51:59Z raasch
+! +virtual_pe_grid, communicator_configurations
+!
+! 4414 2020-02-19 20:16:04Z suehring
+! - nzb_diff_s_inner, nzb_diff_s_outer, nzb_inner,nzb_outer, nzb_s_inner, nzb_s_outer, nzb_u_inner,
+!   nzb_u_outer, nzb_v_inner, nzb_v_outer, nzb_w_inner, nzb_w_outer
+!
+!
+! 4360 2020-01-07 11:25:50Z suehring
+! Introduction of wall_flags_total_0, which currently sets bits based on static topography
+! information used in wall_flags_static_0
+!
+! 4340 2019-12-16 08:17:03Z Giersch
+! Flag for topography closed channel flow with symmetric boundaries introduced
+!
+! 4331 2019-12-10 18:25:02Z suehring
+! - do_output_at_2m, pt_2m_av
+!
+! 4329 2019-12-10 15:46:36Z motisi
+! Renamed wall_flags_0 to wall_flags_static_0
+!
+! 4301 2019-11-22 12:09:09Z oliver.maas
+! removed recycling_yshift
+!
+! 4297 2019-11-21 10:37:50Z oliver.maas
+! changed variable type of recycling_yshift from LOGICAL to INTEGER
+!
+! 4293 2019-11-12 14:44:01Z Giersch
+! Add origin_date_time
+!
+! 4146 2019-08-07 07:47:36Z gronemeier
+! Added rotation_angle
+!
+! 4184 2019-08-23 08:07:40Z oliver.maas
+! changed allocated length of recycling_method_for_thermodynamic_quantities from 20 to 80 characters
+!
+! 4183 2019-08-23 07:33:16Z oliver.maas
+! removed recycle_absolute_quantities and raq
+! added recycling_method_for_thermodynamic_quantities
+!
+! 4182 2019-08-22 15:20:23Z scharf
+! Corrected "Former revisions" section
+!
+! 4173 2019-08-20 12:04:06Z gronemeier
+! add vdi_internal_controls
+!
+! 4172 2019-08-20 11:55:33Z oliver.maas
+! added recycle_absolute_quantities and raq
+!
+! 4168 2019-08-16 13:50:17Z suehring
+! +topo_top_ind
+!
+! 4131 2019-08-02 11:06:18Z monakurppa
+! Add max_pr_salsa to control_parameters. Used in creating profile output for salsa.
+!
+! 4110 2019-07-22 17:05:21Z suehring
+! -advc_flags_1, advc_flags_2
+! +advc_flags_m, advc_flags_s
+!
+! 4109 2019-07-22 17:00:34Z suehring
+! remove old_dt
+!
+! 4079 2019-07-09 18:04:41Z suehring
+! + monotonic_limiter_z
+!
+! 4069 2019-07-01 14:05:51Z Giersch
+! Masked output running index mid has been introduced as a local variable to avoid runtime error
+! (Loop variable has been modified) in time_integration
+!
+! 4017 2019-06-06 12:16:46Z schwenkel
+! increase maximum number of virtual flights
+!
+! 3987 2019-05-22 09:52:13Z kanani
+! Introduce alternative switch for debug output during timestepping
+!
+! 3885 2019-04-11 11:29:34Z kanani
+! Changes related to global restructuring of location messages and introduction of additional debug
+! messages
+!
+! 3871 2019-04-08 14:38:39Z knoop
+! Initialized parameter region
+!
+! 3746 2019-02-16 12:41:27Z gronemeier
+! Removed most_method
+!
+! 3648 2019-01-02 16:35:46Z suehring
+! -surface_data_output +surface_output
+!
+!--------------------------------------------------------------------------------------------------!
 ! Description:
 ! ------------
 !> Definition of global variables
@@ -69,6 +215,18 @@
 
     USE kinds
 
+    REAL(wp), DIMENSION(:), ALLOCATABLE ::  c_u_m                           !< mean phase velocity at outflow for u-component used
+                                                                            !< in radiation boundary condition
+    REAL(wp), DIMENSION(:), ALLOCATABLE ::  c_u_m_l                         !< mean phase velocity at outflow for u-component used
+                                                                            !< in radiation boundary condition (local subdomain value)
+    REAL(wp), DIMENSION(:), ALLOCATABLE ::  c_v_m                           !< mean phase velocity at outflow for v-component used
+                                                                            !< in radiation boundary condition
+    REAL(wp), DIMENSION(:), ALLOCATABLE ::  c_v_m_l                         !< mean phase velocity at outflow for v-component used
+                                                                            !< in radiation boundary condition (local subdomain value)
+    REAL(wp), DIMENSION(:), ALLOCATABLE ::  c_w_m                           !< mean phase velocity at outflow for w-component used
+                                                                            !< in radiation boundary condition
+    REAL(wp), DIMENSION(:), ALLOCATABLE ::  c_w_m_l                         !< mean phase velocity at outflow for w-component used
+                                                                            !< in radiation boundary condition (local subdomain value)
     REAL(wp), DIMENSION(:), ALLOCATABLE ::  d_exner                         !< ratio of potential and actual temperature
     REAL(wp), DIMENSION(:), ALLOCATABLE ::  ddzu                            !< 1/dzu
     REAL(wp), DIMENSION(:), ALLOCATABLE ::  ddzu_pres                       !< modified ddzu for pressure solver
@@ -83,6 +241,8 @@
     REAL(wp), DIMENSION(:), ALLOCATABLE ::  heatflux_output_conversion      !< conversion factor array for heatflux output
     REAL(wp), DIMENSION(:), ALLOCATABLE ::  hyp                             !< hydrostatic pressure
     REAL(wp), DIMENSION(:), ALLOCATABLE ::  hyrho                           !< density of air calculated with hydrostatic pressure
+    REAL(wp), DIMENSION(:), ALLOCATABLE ::  inflow_damping_factor           !< used for turbulent inflow
+                                                                            !< (non-cyclic boundary conditions)
     REAL(wp), DIMENSION(:), ALLOCATABLE ::  momentumflux_input_conversion   !< conversion factor array for momentumflux input
     REAL(wp), DIMENSION(:), ALLOCATABLE ::  momentumflux_output_conversion  !< conversion factor array for momentumflux output
     REAL(wp), DIMENSION(:), ALLOCATABLE ::  ptdf_x                          !< damping factor for potential temperature in
@@ -100,8 +260,6 @@
     REAL(wp), DIMENSION(:), ALLOCATABLE ::  rho_air_zw                      !< air density profile on the w grid
     REAL(wp), DIMENSION(:), ALLOCATABLE ::  s_init                          !< initial profile of passive scalar concentration
     REAL(wp), DIMENSION(:), ALLOCATABLE ::  sa_init                         !< initial profile of salinity (ocean)
-    REAL(wp), DIMENSION(:), ALLOCATABLE ::  scalarflux_input_conversion     !< conversion factor array for scalarflux input
-    REAL(wp), DIMENSION(:), ALLOCATABLE ::  scalarflux_output_conversion    !< conversion factor array for scalarflux output
     REAL(wp), DIMENSION(:), ALLOCATABLE ::  ug                              !< geostrophic wind component in x-direction
     REAL(wp), DIMENSION(:), ALLOCATABLE ::  u_init                          !< initial profile of horizontal velocity component u
     REAL(wp), DIMENSION(:), ALLOCATABLE ::  u_stokes_zu                     !< u-component of Stokes drift velocity at zu levels
@@ -113,11 +271,11 @@
     REAL(wp), DIMENSION(:), ALLOCATABLE ::  waterflux_input_conversion      !< conversion factor array for waterflux input
     REAL(wp), DIMENSION(:), ALLOCATABLE ::  waterflux_output_conversion     !< conversion factor array for waterflux output
     REAL(wp), DIMENSION(:), ALLOCATABLE ::  w_subs                          !< subsidence/ascent velocity
-    REAL(wp), DIMENSION(:), ALLOCATABLE ::  x                               !< horizontal grid coordinate of v- and s-grid (in m)
+    REAL(wp), DIMENSION(:), ALLOCATABLE ::  x                               !< horizontal grid coordinate of v-grid (in m)
     REAL(wp), DIMENSION(:), ALLOCATABLE ::  xu                              !< horizontal grid coordinate of u-grid (in m)
-    REAL(wp), DIMENSION(:), ALLOCATABLE ::  y                               !< horizontal grid coordinate of u- and s-grid (in m)
+    REAL(wp), DIMENSION(:), ALLOCATABLE ::  y                               !< horizontal grid coordinate of u-grid (in m)
     REAL(wp), DIMENSION(:), ALLOCATABLE ::  yv                              !< horizontal grid coordinate of v-grid (in m)
-    REAL(wp), DIMENSION(:), ALLOCATABLE ::  zu                              !< vertical grid coordinate of u-, v-, and s-grid (in m)
+    REAL(wp), DIMENSION(:), ALLOCATABLE ::  zu                              !< vertical grid coordinate of u-grid (in m)
     REAL(wp), DIMENSION(:), ALLOCATABLE ::  zw                              !< vertical grid coordinate of w-grid (in m)
 
 
@@ -289,15 +447,36 @@
     REAL(wp), DIMENSION(:,:,:), ALLOCATABLE ::  flux_l_w    !< 6th-order advective flux at south face of grid box - w-component
     REAL(wp), DIMENSION(:,:,:), ALLOCATABLE, TARGET ::  kh  !< eddy diffusivity for heat
     REAL(wp), DIMENSION(:,:,:), ALLOCATABLE, TARGET ::  km  !< eddy diffusivity for momentum
-    REAL(wp), DIMENSION(:,:,:), ALLOCATABLE ::  prr         !< total precipitation rate (all phases)
-    REAL(wp), DIMENSION(:,:,:), ALLOCATABLE ::  prr_cloud   !< cloud sedimentation rate
-    REAL(wp), DIMENSION(:,:,:), ALLOCATABLE ::  prr_graupel !< graupel precipitation rate
-    REAL(wp), DIMENSION(:,:,:), ALLOCATABLE ::  prr_ice     !< ice precipitation rate
-    REAL(wp), DIMENSION(:,:,:), ALLOCATABLE ::  prr_rain    !< rain precipitation rate
-    REAL(wp), DIMENSION(:,:,:), ALLOCATABLE ::  prr_snow    !< snow precipitation rate
+    REAL(wp), DIMENSION(:,:,:), ALLOCATABLE ::  prr         !< rain rate
     REAL(wp), DIMENSION(:,:,:), ALLOCATABLE ::  p_loc       !< local array in multigrid/sor solver containing the pressure which is
                                                             !< iteratively advanced in each iteration step
     REAL(wp), DIMENSION(:,:,:), ALLOCATABLE ::  tend        !< tendency field (time integration)
+    REAL(wp), DIMENSION(:,:,:), ALLOCATABLE ::  tric        !< coefficients of the tridiagonal matrix for solution of the Poisson
+                                                            !< equation in Fourier space
+    REAL(wp), DIMENSION(:,:,:), ALLOCATABLE ::  u_m_l       !< velocity data (u at left boundary) from time level t-dt required for
+                                                            !< radiation boundary condition
+    REAL(wp), DIMENSION(:,:,:), ALLOCATABLE ::  u_m_n       !< velocity data (u at north boundary) from time level t-dt required for
+                                                            !< radiation boundary condition
+    REAL(wp), DIMENSION(:,:,:), ALLOCATABLE ::  u_m_r       !< velocity data (u at right boundary) from time level t-dt required for
+                                                            !< radiation boundary condition
+    REAL(wp), DIMENSION(:,:,:), ALLOCATABLE ::  u_m_s       !< velocity data (u at south boundary) from time level t-dt required for
+                                                            !< radiation boundary condition
+    REAL(wp), DIMENSION(:,:,:), ALLOCATABLE ::  v_m_l       !< velocity data (v at left boundary) from time level t-dt required for
+                                                            !< radiation boundary condition
+    REAL(wp), DIMENSION(:,:,:), ALLOCATABLE ::  v_m_n       !< velocity data (v at north boundary) from time level t-dt required for
+                                                            !< radiation boundary condition
+    REAL(wp), DIMENSION(:,:,:), ALLOCATABLE ::  v_m_r       !< velocity data (v at right boundary) from time level t-dt required for
+                                                            !< radiation boundary condition
+    REAL(wp), DIMENSION(:,:,:), ALLOCATABLE ::  v_m_s       !< velocity data (v at south boundary) from time level t-dt required for
+                                                            !< radiation boundary condition
+    REAL(wp), DIMENSION(:,:,:), ALLOCATABLE ::  w_m_l       !< velocity data (w at left boundary) from time level t-dt required for
+                                                            !< radiation boundary condition
+    REAL(wp), DIMENSION(:,:,:), ALLOCATABLE ::  w_m_n       !< velocity data (w at north boundary) from time level t-dt required for
+                                                            !< radiation boundary condition
+    REAL(wp), DIMENSION(:,:,:), ALLOCATABLE ::  w_m_r       !< velocity data (w at right boundary) from time level t-dt required for
+                                                            !< radiation boundary condition
+    REAL(wp), DIMENSION(:,:,:), ALLOCATABLE ::  w_m_s       !< velocity data (w at south boundary) from time level t-dt required for
+                                                            !< radiation boundary condition
 
     REAL(wp), DIMENSION(:,:,:), ALLOCATABLE, TARGET ::  diss_1  !< pointer for swapping of timelevels for respective quantity
     REAL(wp), DIMENSION(:,:,:), ALLOCATABLE, TARGET ::  diss_2  !< pointer for swapping of timelevels for respective quantity
@@ -446,6 +625,9 @@
     REAL(wp), DIMENSION(:,:,:), POINTER, CONTIGUOUS ::  w          !< pointer: vertical velocity component w (z-direction)
     REAL(wp), DIMENSION(:,:,:), POINTER, CONTIGUOUS ::  w_p        !< pointer: prognostic value of w
 
+    REAL(wp), DIMENSION(:,:,:,:), ALLOCATABLE ::  tri    !< array to hold the tridiagonal matrix for solution of the Poisson
+                                                         !< equation in Fourier space (4th dimension for threads)
+
     SAVE
 
  END MODULE arrays_3d
@@ -460,23 +642,21 @@
 
     USE kinds
 
-    REAL(wp), DIMENSION(:,:), ALLOCATABLE ::  ghf_av          !< avg. ground heat flux
-    REAL(wp), DIMENSION(:,:), ALLOCATABLE ::  lwp_av          !< avg. liquid water path
-    REAL(wp), DIMENSION(:,:), ALLOCATABLE ::  ol_av           !< avg. Obukhov length
-    REAL(wp), DIMENSION(:,:), ALLOCATABLE ::  pres_drag_x_av  !< avg. pressure drag on yz-surfaces
-    REAL(wp), DIMENSION(:,:), ALLOCATABLE ::  pres_drag_y_av  !< avg. pressure drag on xz-surfaces
-    REAL(wp), DIMENSION(:,:), ALLOCATABLE ::  qsurf_av        !< avg. surface mixing ratio
-    REAL(wp), DIMENSION(:,:), ALLOCATABLE ::  qsws_av         !< avg. surface moisture flux
-    REAL(wp), DIMENSION(:,:), ALLOCATABLE ::  r_a_av          !< avg. resistance
-    REAL(wp), DIMENSION(:,:), ALLOCATABLE ::  ssurf_av        !< avg. surface passive scalar
-    REAL(wp), DIMENSION(:,:), ALLOCATABLE ::  ssws_av         !< avg. surface scalar flux
-    REAL(wp), DIMENSION(:,:), ALLOCATABLE ::  shf_av          !< avg. surface heat flux
-    REAL(wp), DIMENSION(:,:), ALLOCATABLE ::  tsurf_av        !< avg. surface temperature
-    REAL(wp), DIMENSION(:,:), ALLOCATABLE ::  ts_av           !< avg. characteristic temperature scale
-    REAL(wp), DIMENSION(:,:), ALLOCATABLE ::  us_av           !< avg. friction velocity
-    REAL(wp), DIMENSION(:,:), ALLOCATABLE ::  z0_av           !< avg. roughness length for momentum
-    REAL(wp), DIMENSION(:,:), ALLOCATABLE ::  z0h_av          !< avg. roughness length for heat
-    REAL(wp), DIMENSION(:,:), ALLOCATABLE ::  z0q_av          !< avg. roughness length for moisture
+    REAL(wp), DIMENSION(:,:), ALLOCATABLE ::  ghf_av                 !< avg. ground heat flux
+    REAL(wp), DIMENSION(:,:), ALLOCATABLE ::  lwp_av                 !< avg. liquid water path
+    REAL(wp), DIMENSION(:,:), ALLOCATABLE ::  ol_av                  !< avg. Obukhov length
+    REAL(wp), DIMENSION(:,:), ALLOCATABLE ::  qsurf_av               !< avg. surface mixing ratio
+    REAL(wp), DIMENSION(:,:), ALLOCATABLE ::  qsws_av                !< avg. surface moisture flux
+    REAL(wp), DIMENSION(:,:), ALLOCATABLE ::  r_a_av                 !< avg. resistance
+    REAL(wp), DIMENSION(:,:), ALLOCATABLE ::  ssurf_av               !< avg. surface passive scalar
+    REAL(wp), DIMENSION(:,:), ALLOCATABLE ::  ssws_av                !< avg. surface scalar flux
+    REAL(wp), DIMENSION(:,:), ALLOCATABLE ::  shf_av                 !< avg. surface heat flux
+    REAL(wp), DIMENSION(:,:), ALLOCATABLE ::  tsurf_av               !< avg. surface temperature
+    REAL(wp), DIMENSION(:,:), ALLOCATABLE ::  ts_av                  !< avg. characteristic temperature scale
+    REAL(wp), DIMENSION(:,:), ALLOCATABLE ::  us_av                  !< avg. friction velocity
+    REAL(wp), DIMENSION(:,:), ALLOCATABLE ::  z0_av                  !< avg. roughness length for momentum
+    REAL(wp), DIMENSION(:,:), ALLOCATABLE ::  z0h_av                 !< avg. roughness length for heat
+    REAL(wp), DIMENSION(:,:), ALLOCATABLE ::  z0q_av                 !< avg. roughness length for moisture
 
     REAL(wp), DIMENSION(:,:,:), ALLOCATABLE, TARGET ::  diss_av       !< avg. tke dissipation rate
     REAL(wp), DIMENSION(:,:,:), ALLOCATABLE, TARGET ::  e_av          !< avg. subgrid-scale tke
@@ -491,12 +671,7 @@
     REAL(wp), DIMENSION(:,:,:), ALLOCATABLE, TARGET ::  p_av          !< avg. perturbation pressure
     REAL(wp), DIMENSION(:,:,:), ALLOCATABLE, TARGET ::  pc_av         !< avg. particle/droplet concentration
     REAL(wp), DIMENSION(:,:,:), ALLOCATABLE, TARGET ::  pr_av         !< avg. particle/droplet radius
-    REAL(wp), DIMENSION(:,:,:), ALLOCATABLE, TARGET ::  prr_av        !< avg. precipitation rate (all phases)
-    REAL(wp), DIMENSION(:,:,:), ALLOCATABLE, TARGET ::  prr_cloud_av  !< avg. cloud sedimentation rate
-    REAL(wp), DIMENSION(:,:,:), ALLOCATABLE, TARGET ::  prr_graupel_av!< avg. graupel precipitation rate
-    REAL(wp), DIMENSION(:,:,:), ALLOCATABLE, TARGET ::  prr_ice_av    !< avg. ice precipitation rate
-    REAL(wp), DIMENSION(:,:,:), ALLOCATABLE, TARGET ::  prr_rain_av   !< avg. rain precipitation rate
-    REAL(wp), DIMENSION(:,:,:), ALLOCATABLE, TARGET ::  prr_snow_av   !< avg. snow precipitation rate
+    REAL(wp), DIMENSION(:,:,:), ALLOCATABLE, TARGET ::  prr_av        !< avg. precipitation rate
     REAL(wp), DIMENSION(:,:,:), ALLOCATABLE, TARGET ::  pt_av         !< avg. potential temperature
     REAL(wp), DIMENSION(:,:,:), ALLOCATABLE, TARGET ::  q_av          !< avg. mixing ratio
                                                                       !< (or total water content with active cloud physics)
@@ -543,8 +718,6 @@
                                                           !< measurements
     INTEGER(iwp), PARAMETER ::  varnamelength = 30        !< length of output variable names
 
-    REAL(wp), PARAMETER ::  output_fill_value = -999999.0_wp
-
     TYPE(file_status), DIMENSION(200+2*max_masks) ::                &  !< indicates if file is open or if it has been opened before
                              openfile = file_status(.FALSE.,.FALSE.)
 
@@ -560,9 +733,12 @@
     CHARACTER (LEN=9)    ::  simulated_time_chr                           !< simulated time, printed to RUN_CONTROL file
     CHARACTER (LEN=10)   ::  run_date = ' '                               !< date of simulation run
     CHARACTER (LEN=11)   ::  topography_grid_convention = ' '             !< namelist parameter
-    CHARACTER (LEN=26)   ::  version_string = ' '                         !< PALM version
-    CHARACTER (LEN=12)   ::  user_interface_required_revision = '1.0'     !< required user-interface revision number (only major number is checked)
-    CHARACTER (LEN=16)   ::  conserve_volume_flow_mode = 'initial_profiles'  !< namelist parameter
+    CHARACTER (LEN=12)   ::  revision = ' '                               !< PALM revision number
+    CHARACTER (LEN=12)   ::  version = ' '                                !< PALM version number
+    CHARACTER (LEN=12)   ::  user_interface_current_revision = ' '        !< revision number of the currently used user-interface
+                                                                          !< (must match user_interface_required_revision)
+    CHARACTER (LEN=12)   ::  user_interface_required_revision = ' '       !< required user-interface revision number
+    CHARACTER (LEN=16)   ::  conserve_volume_flow_mode = 'default'        !< namelist parameter
     CHARACTER (LEN=16)   ::  loop_optimization = 'cache'                  !< namelist parameter
     CHARACTER (LEN=16)   ::  momentum_advec = 'ws-scheme'                 !< namelist parameter
     CHARACTER (LEN=16)   ::  psolver = 'poisfft'                          !< namelist parameter
@@ -572,7 +748,7 @@
     CHARACTER (LEN=20)   ::  bc_lr = 'cyclic'                             !< namelist parameter
     CHARACTER (LEN=20)   ::  bc_ns = 'cyclic'                             !< namelist parameter
     CHARACTER (LEN=20)   ::  bc_p_b = 'neumann'                           !< namelist parameter
-    CHARACTER (LEN=20)   ::  bc_p_t = 'default'                           !< namelist parameter
+    CHARACTER (LEN=20)   ::  bc_p_t = 'dirichlet'                         !< namelist parameter
     CHARACTER (LEN=20)   ::  bc_pt_b = 'dirichlet'                        !< namelist parameter
     CHARACTER (LEN=20)   ::  bc_pt_t = 'initial_gradient'                 !< namelist parameter
     CHARACTER (LEN=20)   ::  bc_q_b = 'dirichlet'                         !< namelist parameter
@@ -581,23 +757,27 @@
     CHARACTER (LEN=20)   ::  bc_s_t = 'initial_gradient'                  !< namelist parameter
     CHARACTER (LEN=20)   ::  bc_uv_b = 'dirichlet'                        !< namelist parameter
     CHARACTER (LEN=20)   ::  bc_uv_t = 'dirichlet'                        !< namelist parameter
+    CHARACTER (LEN=20)   ::  coupling_mode = 'uncoupled'                  !< coupling mode for atmosphere-ocean coupling
+    CHARACTER (LEN=20)   ::  coupling_mode_remote = 'uncoupled'           !< coupling mode of the remote process in case of coupled
+                                                                          !< atmosphere-ocean runs
     CHARACTER (LEN=20)   ::  dissipation_1d = 'detering'                  !< namelist parameter
     CHARACTER (LEN=20)   ::  fft_method = 'temperton-algorithm'           !< namelist parameter
     CHARACTER (LEN=20)   ::  mixing_length_1d = 'blackadar'               !< namelist parameter
     CHARACTER (LEN=20)   ::  random_generator = 'random-parallel'         !< namelist parameter
     CHARACTER (LEN=20)   ::  reference_state = 'initial_profile'          !< namelist parameter
-    CHARACTER (LEN=20)   ::  restart_data_format = 'mpi_shared_memory'    !< namelist parameter
+    CHARACTER (LEN=20)   ::  restart_data_format = 'fortran_binary'       !< namelist parameter
     CHARACTER (LEN=20)   ::  restart_data_format_input = 'undefined'      !< namelist parameter
     CHARACTER (LEN=20)   ::  restart_data_format_output = 'undefined'     !< namelist parameter
     CHARACTER (LEN=20)   ::  timestep_scheme = 'runge-kutta-3'            !< namelist parameter
     CHARACTER (LEN=20)   ::  turbulence_closure = '1.5-order'             !< namelist parameter
     CHARACTER (LEN=23)   ::  origin_date_time = '2019-06-21 12:00:00 +00' !< date and time to be simulated
-    CHARACTER (LEN=40)   ::  flux_input_mode = 'application-specific'     !< type of flux input: dynamic or kinematic
-    CHARACTER (LEN=40)   ::  flux_output_mode = 'application-specific'    !< type of flux output: dynamic or kinematic
+    CHARACTER (LEN=40)   ::  flux_input_mode = 'approximation-specific'   !< type of flux input: dynamic or kinematic
+    CHARACTER (LEN=40)   ::  flux_output_mode = 'approximation-specific'  !< type of flux output: dynamic or kinematic
     CHARACTER (LEN=40)   ::  topography = 'flat'                          !< namelist parameter
     CHARACTER (LEN=64)   ::  host = '????'                                !< configuration identifier as given by palmrun option -c,
                                                                           !< ENVPAR namelist parameter provided by palmrun
     CHARACTER (LEN=80)   ::  log_message                                  !< user-defined message for debugging (sse data_log.f90)
+    CHARACTER (LEN=80)   ::  recycling_method_for_thermodynamic_quantities = 'turbulent_fluctuation'        !< namelist parameter
     CHARACTER (LEN=80)   ::  run_identifier                               !< run identifier as given by palmrun option -r, ENVPAR
                                                                           !< namelist parameter provided by palmrun
     CHARACTER (LEN=100)  ::  initializing_actions = ' '                   !< namelist parameter
@@ -609,8 +789,8 @@
     CHARACTER (LEN=1000) ::  debug_string = ' '                           !<.....
     CHARACTER (LEN=1000) ::  message_string = ' '                         !< dynamic string for error message output
 
-    CHARACTER (LEN=varnamelength), DIMENSION(300) ::  data_output_pr_user = ' '  !< namelist parameter
-    CHARACTER (LEN=varnamelength), DIMENSION(500) ::  data_output_pr = ' '       !< namelist parameter
+    CHARACTER (LEN=varnamelength), DIMENSION(200) ::  data_output_pr_user = ' '  !< namelist parameter
+    CHARACTER (LEN=varnamelength), DIMENSION(300) ::  data_output_pr = ' '       !< namelist parameter
     CHARACTER (LEN=varnamelength), DIMENSION(500) ::  data_output = ' '          !< namelist parameter
     CHARACTER (LEN=varnamelength), DIMENSION(500) ::  data_output_user = ' '     !< namelist parameter
     CHARACTER (LEN=varnamelength), DIMENSION(500) ::  doav = ' '                 !< label array for multi-dimensional,
@@ -631,6 +811,8 @@
     INTEGER(iwp) ::  average_count_pr = 0              !< number of samples in vertical-profile output
     INTEGER(iwp) ::  average_count_3d = 0              !< number of samples in 3d output
     INTEGER(iwp) ::  current_timestep_number = 0       !< current timestep number, printed to RUN_CONTROL file
+    INTEGER(iwp) ::  coupling_topology = 0             !< switch for atmosphere-ocean-coupling: 0: same number of grid points and
+                                                       !< PEs along x and y in atmosphere and ocean, otherwise 1
     INTEGER(iwp) ::  dist_range = 0                    !< switch for steering the horizontal disturbance range, 1: inflow
                                                        !< disturbances in case of non-cyclic horizontal BC, 0: otherwise
     INTEGER(iwp) ::  disturbance_level_ind_b           !< lowest grid index where flow disturbance is applied
@@ -638,6 +820,7 @@
     INTEGER(iwp) ::  doav_n = 0                        !< number of 2d/3d output quantities subject to time averaging
     INTEGER(iwp) ::  dopr_n = 0                        !< number of profile output quantities subject to time averaging
     INTEGER(iwp) ::  dopr_time_count = 0               !< number of output intervals for profile output
+    INTEGER(iwp) ::  dopts_time_count = 0              !< number of output intervals for particle data timeseries
     INTEGER(iwp) ::  dots_time_count = 0               !< number of output intervals for timeseries output
     INTEGER(iwp) ::  dp_level_ind_b = 0                !< lowest grid index for external pressure gradient forcing
     INTEGER(iwp) ::  ensemble_member_nr = 0            !< namelist parameter
@@ -689,15 +872,18 @@
     INTEGER(iwp) ::  num_var_fl                        !< number of sampling/output variables in virtual flight measurements
     INTEGER(iwp) ::  num_var_fl_user=0                 !< number of user-defined sampling/output variables in virtual flight
                                                        !< measurements
-    INTEGER(iwp) ::  number_dz                         !< number of user-specified dz values
     INTEGER(iwp) ::  number_stretch_level_start        !< number of user-specified start levels for stretching
     INTEGER(iwp) ::  number_stretch_level_end          !< number of user-specified end levels for stretching
     INTEGER(iwp) ::  nz_do3d = -9999                   !< namelist parameter
     INTEGER(iwp) ::  prt_time_count = 0                !< number of output intervals for particle data output
+    INTEGER(iwp) ::  recycling_plane                   !< position of recycling plane along x (in grid points) in case of turbulence
+                                                       !< recycling
     INTEGER(iwp) ::  runnr = 0                         !< number of run in job chain
     INTEGER(iwp) ::  subdomain_size                    !< number of grid points in (3d) subdomain including ghost points
     INTEGER(iwp) ::  symmetry_flag = 0                 !< flag for sterring the symmetric behavior of the bottom and top boundary
     INTEGER(iwp) ::  terminate_coupled = 0             !< switch for steering termination in case of coupled runs
+    INTEGER(iwp) ::  terminate_coupled_remote = 0      !< switch for steering termination in case of coupled runs (condition of the
+                                                       !< remote model)
     INTEGER(iwp) ::  timestep_count = 0                !< number of timesteps carried out since the beginning of the initial run
     INTEGER(iwp) ::  y_shift = 0                       !< namelist parameter
 
@@ -748,12 +934,9 @@
     INTEGER(iwp), DIMENSION(:,:), ALLOCATABLE ::  mask_j_global  !< global grid index of masked output point on y-dimension
     INTEGER(iwp), DIMENSION(:,:), ALLOCATABLE ::  mask_k_global  !< global grid index of masked output point on z-dimension
 
-    LOGICAL ::  advanced_div_correction = .FALSE.                !< namelist parameter
+
     LOGICAL ::  agent_time_unlimited = .FALSE.                   !< namelist parameter
     LOGICAL ::  air_chemistry = .FALSE.                          !< chemistry model switch
-    LOGICAL ::  allow_negative_scalar_values = .FALSE.           !< namelist parameter
-    LOGICAL ::  allow_roughness_limitation = .FALSE.             !< namelist parameter
-    LOGICAL ::  atmosphere_run_coupled_to_ocean = .FALSE.        !< atmosphere part of a coupled atmosphere-ocean run
     LOGICAL ::  bc_dirichlet_l = .FALSE.                         !< flag indicating dirichlet boundary condition on left model
                                                                  !< boundary
     LOGICAL ::  bc_dirichlet_n = .FALSE.                         !< flag indicating dirichlet boundary condition on north model
@@ -781,6 +964,7 @@
     LOGICAL ::  check_realistic_q = .TRUE.                       !< namelist parameter
     LOGICAL ::  child_domain  = .FALSE.                          !< flag indicating that model is nested in a parent domain
     LOGICAL ::  cloud_droplets = .FALSE.                         !< namelist parameter
+    LOGICAL ::  complex_terrain = .FALSE.                        !< namelist parameter
     LOGICAL ::  conserve_volume_flow = .FALSE.                   !< namelist parameter
     LOGICAL ::  constant_diffusion = .FALSE.                     !< diffusion coefficient constant?
     LOGICAL ::  constant_flux_layer = .TRUE.                     !< namelist parameter
@@ -792,10 +976,8 @@
     LOGICAL ::  constant_scalarflux = .TRUE.                     !< passive-scalar flux at surfaces constant?
     LOGICAL ::  constant_waterflux = .TRUE.                      !< water flux at all surfaces constant?
     LOGICAL ::  create_disturbances = .TRUE.                     !< namelist parameter
-    LOGICAL ::  cyclic_fill_initialization = .FALSE.             !< switch for steering cyclic fill actions
     LOGICAL ::  data_output_during_spinup = .FALSE.              !< namelist parameter
     LOGICAL ::  data_output_2d_on_each_pe = .TRUE.               !< namelist parameter
-    LOGICAL ::  dcep = .FALSE.                                   !< switch for activiating the dcep model
     LOGICAL ::  debug_output = .FALSE.                           !< namelist parameter
     LOGICAL ::  debug_output_timestep = .FALSE.                  !< namelist parameter
     LOGICAL ::  disturbance_created = .FALSE.                    !< flow disturbance imposed?
@@ -811,12 +993,11 @@
     LOGICAL ::  first_call_mas = .TRUE.                          !< call mas only once per timestep
     LOGICAL ::  force_print_header = .FALSE.                     !< namelist parameter
     LOGICAL ::  galilei_transformation = .FALSE.                 !< namelist parameter
-    LOGICAL ::  homogenize_surface_temperature = .FALSE.         !< namelist parameter
     LOGICAL ::  humidity = .FALSE.                               !< namelist parameter
     LOGICAL ::  humidity_remote = .FALSE.                        !< switch for receiving near-surface humidity flux
                                                                  !< (atmosphere-ocean coupling)
+    LOGICAL ::  include_total_domain_boundaries = .FALSE.        !< store outer boundaries in restart file (MPI-IO)
     LOGICAL ::  indoor_model = .FALSE.                           !< switch for indoor-climate and energy-demand model
-    LOGICAL ::  interpolate_to_grid_center = .FALSE.             !< namelist parameter
     LOGICAL ::  kolmogorov_length_scale = .FALSE.                !< switch to activate calculations in flow_statistics for the
                                                                  !< kolmogorov length scale
     LOGICAL ::  large_scale_forcing = .FALSE.                    !< namelist parameter
@@ -837,35 +1018,32 @@
     LOGICAL ::  neutral = .FALSE.                                !< namelist parameter
     LOGICAL ::  nudging = .FALSE.                                !< namelist parameter
     LOGICAL ::  ocean_mode = .FALSE.                             !< namelist parameter
-    LOGICAL ::  ocean_run_coupled_to_atmosphere = .FALSE.        !< ocean part of coupled atmosphere-ocean run
-    LOGICAL ::  open_debug_files = .TRUE.                        !< switch for opening the debug files independent of switch debug_output
     LOGICAL ::  passive_scalar = .FALSE.                         !< namelist parameter
-    LOGICAL ::  pe_grid_prescribed = .FALSE.                     !< switch to indicate if PE grid is prescribed by user
     LOGICAL ::  plant_canopy = .FALSE.                           !< switch for use of plant canopy model
     LOGICAL ::  random_heatflux = .FALSE.                        !< namelist parameter
     LOGICAL ::  rans_mode = .FALSE.                              !< switch between RANS and LES mode
     LOGICAL ::  rans_tke_e = .FALSE.                             !< use TKE-e turbulence closure for RANS mode
     LOGICAL ::  rans_tke_l = .FALSE.                             !< use TKE-l turbulence closure for RANS mode
-    LOGICAL ::  read_spinup_data = .FALSE.                       !< flag to control the input of surface spinup data
     LOGICAL ::  read_svf = .FALSE.                               !< ENVPAR namelist parameter to steer input of svf
                                                                  !< (ENVPAR is provided by palmrun)
     LOGICAL ::  run_control_header = .FALSE.                     !< onetime output of RUN_CONTROL header
+    LOGICAL ::  run_coupled = .TRUE.                             !< internal switch telling PALM to run in coupled mode
+                                                                 !< (i.e. to exchange surface data) in case of atmosphere-ocean coupling
     LOGICAL ::  salsa = .FALSE.                                  !< switch for the sectional aerosol module salsa
     LOGICAL ::  scalar_rayleigh_damping = .TRUE.                 !< namelist parameter
-    LOGICAL ::  serial_run = .FALSE.                             !< switch to indicate serial or parallel run
     LOGICAL ::  sloping_surface = .FALSE.                        !< use sloped surface? (namelist parameter alpha_surface)
     LOGICAL ::  spinup = .FALSE.                                 !< perform model spinup without atmosphere code?
     LOGICAL ::  surface_output = .FALSE.                         !< output of surface data
     LOGICAL ::  stop_dt = .FALSE.                                !< internal switch to stop the time stepping
     LOGICAL ::  synchronous_exchange = .FALSE.                   !< namelist parameter
     LOGICAL ::  syn_turb_gen = .FALSE.                           !< flag for synthetic turbulence generator module
-    LOGICAL ::  temperton_fft_vec = .FALSE.                      !< flag for using vectorized version of Temperton FFT
     LOGICAL ::  terminate_run = .FALSE.                          !< terminate run (cpu-time limit, restarts)?
-    LOGICAL ::  terrain_following_mapping = .FALSE.              !< namelist parameter
     LOGICAL ::  topo_no_distinct = .FALSE.                       !< flag controlling classification of topography surfaces
+    LOGICAL ::  transpose_compute_overlap = .FALSE.              !< namelist parameter
     LOGICAL ::  turbulent_inflow = .FALSE.                       !< namelist parameter
     LOGICAL ::  turbulent_outflow = .FALSE.                      !< namelist parameter
     LOGICAL ::  urban_surface = .FALSE.                          !< use urban surface model?
+    LOGICAL ::  use_cmax = .TRUE.                                !< namelist parameter
     LOGICAL ::  use_fixed_date = .FALSE.                         !< date of simulation does not change (namelist parameter)
     LOGICAL ::  use_fixed_time = .FALSE.                         !< time of simulation does not change (namelist parameter)
     LOGICAL ::  use_free_convection_scaling = .FALSE.            !< namelist parameter to switch on free convection velocity scale
@@ -874,7 +1052,6 @@
     LOGICAL ::  use_prescribed_profile_data = .FALSE.            !< use of prescribed wind profiles?
                                                                  !< (namelist parameters u_profile, v_profile)
     LOGICAL ::  use_single_reference_value = .FALSE.             !< use of single value as reference state?
-    LOGICAL ::  use_sm_for_poisfft = .FALSE.                     !< use shared-memory on node for solving the Poisson equation with FFT-method (1d-decomposition)
     LOGICAL ::  use_subsidence_tendencies = .FALSE.              !< namelist parameter
     LOGICAL ::  use_surface_fluxes = .FALSE.                     !< namelist parameter
     LOGICAL ::  use_top_fluxes = .FALSE.                         !< namelist parameter
@@ -886,8 +1063,6 @@
     LOGICAL ::  wall_adjustment = .TRUE.                         !< namelist parameter
     LOGICAL ::  wind_turbine = .FALSE.                           !< flag for use of wind turbine model
     LOGICAL ::  write_binary = .FALSE.                           !< ENVPAR namelist parameter to steer restart I/O
-                                                                 !< (ENVPAR is provided by palmrun)
-    LOGICAL ::  write_spinup_data = .FALSE.                      !< ENVPAR namelist parameter to steer restart I/O
                                                                  !< (ENVPAR is provided by palmrun)
     LOGICAL ::  write_svf = .FALSE.                              !< ENVPAR namelist parameter to steer output of svf
                                                                  !< (ENVPAR is provided by palmrun)
@@ -962,6 +1137,8 @@
     REAL(wp) ::  end_time = 0.0_wp                             !< namelist parameter
     REAL(wp) ::  f = 0.0_wp                                    !< Coriolis parameter
     REAL(wp) ::  fs = 0.0_wp                                   !< Coriolis parameter
+    REAL(wp) ::  inflow_damping_height = 9999999.9_wp          !< namelist parameter
+    REAL(wp) ::  inflow_damping_width = 9999999.9_wp           !< namelist parameter
     REAL(wp) ::  km_constant = -1.0_wp                         !< namelist parameter
     REAL(wp) ::  latitude = 55.0_wp                            !< namelist parameter
     REAL(wp) ::  longitude = 0.0_wp                            !< namelist parameter
@@ -975,7 +1152,6 @@
     REAL(wp) ::  omega = 7.29212E-5_wp                         !< namelist parameter
     REAL(wp) ::  omega_sor = 1.8_wp                            !< namelist parameter
     REAL(wp) ::  outflow_source_plane = -9999999.9_wp          !< namelist parameter
-    REAL(wp) ::  output_3d_file_size = 0.0_wp                  !< file size of 3d NetCDF output file
     REAL(wp) ::  particle_maximum_age = 9999999.9_wp           !< namelist parameter
     REAL(wp) ::  prandtl_number = 1.0_wp                       !< namelist parameter
     REAL(wp) ::  pt_damping_factor = 0.0_wp                    !< namelist parameter
@@ -988,8 +1164,9 @@
     REAL(wp) ::  pt_surface_initial_change = 0.0_wp            !< namelist parameter
     REAL(wp) ::  q_surface = 0.0_wp                            !< namelist parameter
     REAL(wp) ::  q_surface_initial_change = 0.0_wp             !< namelist parameter
-    REAL(wp) ::  rayleigh_damping_factor = 0.0_wp              !< namelist parameter
+    REAL(wp) ::  rayleigh_damping_factor = -1.0_wp             !< namelist parameter
     REAL(wp) ::  rayleigh_damping_height = -1.0_wp             !< namelist parameter
+    REAL(wp) ::  recycling_width = 9999999.9_wp                !< namelist parameter
     REAL(wp) ::  residual_limit = 1.0E-4_wp                    !< namelist parameter
     REAL(wp) ::  restart_file_size                             !< size of restart file in mbyte
     REAL(wp) ::  restart_time = 9999999.9_wp                   !< namelist parameter
@@ -1071,9 +1248,6 @@
     REAL(wp) ::  pt_vertical_gradient_level(10) = -999999.9_wp     !< namelist parameter
     REAL(wp) ::  q_vertical_gradient(10) = 0.0_wp                  !< namelist parameter
     REAL(wp) ::  q_vertical_gradient_level(10) = -999999.9_wp      !< namelist parameter
-    REAL(wp) ::  section_xy_m(100) = -9999999.9_wp                 !< namelist parameter
-    REAL(wp) ::  section_xz_m(100) = -9999999.9_wp                 !< namelist parameter
-    REAL(wp) ::  section_yz_m(100) = -9999999.9_wp                 !< namelist parameter
     REAL(wp) ::  s_vertical_gradient(10) = 0.0_wp                  !< namelist parameter
     REAL(wp) ::  s_vertical_gradient_level(10) = -999999.9_wp      !< namelist parameter
     REAL(wp) ::  skip_time_domask(max_masks) = 9999999.9_wp        !< namelist parameter
@@ -1095,6 +1269,7 @@
                                                                    !< planes
     REAL(wp) ::  wall_heatflux(0:5) = 0.0_wp                       !< namelist parameter
     REAL(wp) ::  wall_humidityflux(0:5) = 0.0_wp                   !< namelist parameter
+    REAL(wp) ::  wall_salinityflux(0:5) = 0.0_wp                   !< namelist parameter
     REAL(wp) ::  wall_scalarflux(0:5) = 0.0_wp                     !< namelist parameter
     REAL(wp) ::  subs_vertical_gradient(10) = 0.0_wp               !< namelist parameter
     REAL(wp) ::  subs_vertical_gradient_level(10) = -9999999.9_wp  !< namelist parameter
@@ -1110,9 +1285,9 @@
     REAL(wp), DIMENSION(max_masks,3) ::  mask_z_loop = -1.0_wp  !< namelist parameter
 
 !
-!-- Internal mask arrays ("mask,dimension,selection")
-    REAL(wp), DIMENSION(:,:,:), ALLOCATABLE ::  mask       !< collective array for mask_x/y/z
-    REAL(wp), DIMENSION(:,:,:), ALLOCATABLE ::  mask_loop  !< collective array for mask_x/y/z_loop
+!--    Internal mask arrays ("mask,dimension,selection")
+       REAL(wp), DIMENSION(:,:,:), ALLOCATABLE ::  mask       !< collective array for mask_x/y/z
+       REAL(wp), DIMENSION(:,:,:), ALLOCATABLE ::  mask_loop  !< collective array for mask_x/y/z_loop
 
     SAVE
 
@@ -1164,6 +1339,8 @@
                                     !< allreduce statements in MPI calls
     INTEGER(iwp) ::  nnx            !< number of subdomain grid points in x-direction
     INTEGER(iwp) ::  nx = 0         !< nx+1 = total number of grid points in x-direction
+    INTEGER(iwp) ::  nx_a           !< in coupled atmosphere-ocean runs: total number of grid points along x (atmosphere)
+    INTEGER(iwp) ::  nx_o           !< in coupled atmosphere-ocean runs: total number of grid points along x (ocean)
     INTEGER(iwp) ::  nxl            !< left-most grid index of subdomain (excluding ghost points)
     INTEGER(iwp) ::  nxlg           !< left-most grid index of subdomain (including ghost points)
     INTEGER(iwp) ::  nxlu           !< =nxl+1 (at left domain boundary with inflow from left), else =nxl
@@ -1173,6 +1350,8 @@
     INTEGER(iwp) ::  nx_on_file     !< nx of previous run in job chain
     INTEGER(iwp) ::  nny            !< number of subdomain grid points in y-direction
     INTEGER(iwp) ::  ny = 0         !< ny+1 = total number of grid points in y-direction
+    INTEGER(iwp) ::  ny_a           !< in coupled atmosphere-ocean runs: total number of grid points along y (atmosphere)
+    INTEGER(iwp) ::  ny_o           !< in coupled atmosphere-ocean runs: total number of grid points along y (ocean)
     INTEGER(iwp) ::  nyn            !< north-most grid index of subdomain (excluding ghost points)
     INTEGER(iwp) ::  nyng           !< north-most grid index of subdomain (including ghost points)
     INTEGER(iwp) ::  nys            !< south-most grid index of subdomain (excluding ghost points)
@@ -1188,17 +1367,8 @@
     INTEGER(iwp) ::  nzt            !< nzt+1 = top grid index of computational domain
     INTEGER(iwp) ::  topo_min_level !< minimum topography-top index (usually equal to nzb)
 
-    INTEGER(iwp), DIMENSION(:), ALLOCATABLE ::  nnx_pe        !< grid points along x-direction for every PE
-    INTEGER(iwp), DIMENSION(:), ALLOCATABLE ::  nny_pe        !< grid points along y-direction for every PE
-    INTEGER(iwp), DIMENSION(:), ALLOCATABLE ::  nxl_pe        !< lower index bound along x-direction for every PE
-    INTEGER(iwp), DIMENSION(:), ALLOCATABLE ::  nxr_pe        !< upper index bound along x-direction for every PE
-    INTEGER(iwp), DIMENSION(:), ALLOCATABLE ::  nyn_pe        !< lower index bound along y-direction for every PE
-    INTEGER(iwp), DIMENSION(:), ALLOCATABLE ::  nys_pe        !< lower index bound along y-direction for every PE
-
     INTEGER(iwp), DIMENSION(:), ALLOCATABLE ::  ngp_2dh       !< number of grid points of a horizontal cross section through the
                                                               !< total domain
-    INTEGER(iwp), DIMENSION(:), ALLOCATABLE ::  ngp_2dh_wgrid !< number of prognostic w-grid points of a horizontal cross section
-                                                              !< through the total domain
     INTEGER(idp), DIMENSION(:), ALLOCATABLE ::  ngp_3d        !< number of grid points of the total domain
     INTEGER(idp), DIMENSION(:), ALLOCATABLE ::  ngp_3d_inner  !< ! need to have 64 bit for grids > 2E9
     INTEGER(iwp), DIMENSION(:), ALLOCATABLE ::  nxl_mg        !< left-most grid index of subdomain on different multigrid level
@@ -1214,27 +1384,28 @@
                                                                     !< non-surface-bounded
     INTEGER(iwp), DIMENSION(:,:), ALLOCATABLE ::  ngp_2dh_s_inner   !< number of horizontal grid points which are non-topography
 
-    INTEGER(iwp), DIMENSION(:,:,:), ALLOCATABLE,  TARGET ::  topo_flags_1   !< topograpyh masking flag on multigrid level 1
-    INTEGER(iwp), DIMENSION(:,:,:), ALLOCATABLE,  TARGET ::  topo_flags_2   !< topograpyh masking flag on multigrid level 2
-    INTEGER(iwp), DIMENSION(:,:,:), ALLOCATABLE,  TARGET ::  topo_flags_3   !< topograpyh masking flag on multigrid level 3
-    INTEGER(iwp), DIMENSION(:,:,:), ALLOCATABLE,  TARGET ::  topo_flags_4   !< topograpyh masking flag on multigrid level 4
-    INTEGER(iwp), DIMENSION(:,:,:), ALLOCATABLE,  TARGET ::  topo_flags_5   !< topograpyh masking flag on multigrid level 5
-    INTEGER(iwp), DIMENSION(:,:,:), ALLOCATABLE,  TARGET ::  topo_flags_6   !< topograpyh masking flag on multigrid level 6
-    INTEGER(iwp), DIMENSION(:,:,:), ALLOCATABLE,  TARGET ::  topo_flags_7   !< topograpyh masking flag on multigrid level 7
-    INTEGER(iwp), DIMENSION(:,:,:), ALLOCATABLE,  TARGET ::  topo_flags_8   !< topograpyh masking flag on multigrid level 8
-    INTEGER(iwp), DIMENSION(:,:,:), ALLOCATABLE,  TARGET ::  topo_flags_9   !< topograpyh masking flag on multigrid level 9
-    INTEGER(iwp), DIMENSION(:,:,:), ALLOCATABLE,  TARGET ::  topo_flags_10  !< topograpyh masking flag on multigrid level 10
+    INTEGER(iwp), DIMENSION(:,:,:), ALLOCATABLE,  TARGET ::  wall_flags_1   !< topograpyh masking flag on multigrid level 1
+    INTEGER(iwp), DIMENSION(:,:,:), ALLOCATABLE,  TARGET ::  wall_flags_2   !< topograpyh masking flag on multigrid level 2
+    INTEGER(iwp), DIMENSION(:,:,:), ALLOCATABLE,  TARGET ::  wall_flags_3   !< topograpyh masking flag on multigrid level 3
+    INTEGER(iwp), DIMENSION(:,:,:), ALLOCATABLE,  TARGET ::  wall_flags_4   !< topograpyh masking flag on multigrid level 4
+    INTEGER(iwp), DIMENSION(:,:,:), ALLOCATABLE,  TARGET ::  wall_flags_5   !< topograpyh masking flag on multigrid level 5
+    INTEGER(iwp), DIMENSION(:,:,:), ALLOCATABLE,  TARGET ::  wall_flags_6   !< topograpyh masking flag on multigrid level 6
+    INTEGER(iwp), DIMENSION(:,:,:), ALLOCATABLE,  TARGET ::  wall_flags_7   !< topograpyh masking flag on multigrid level 7
+    INTEGER(iwp), DIMENSION(:,:,:), ALLOCATABLE,  TARGET ::  wall_flags_8   !< topograpyh masking flag on multigrid level 8
+    INTEGER(iwp), DIMENSION(:,:,:), ALLOCATABLE,  TARGET ::  wall_flags_9   !< topograpyh masking flag on multigrid level 9
+    INTEGER(iwp), DIMENSION(:,:,:), ALLOCATABLE,  TARGET ::  wall_flags_10  !< topograpyh masking flag on multigrid level 10
 
     INTEGER(iwp), DIMENSION(:,:,:), ALLOCATABLE ::  advc_flags_m            !< flags used to degrade order of advection scheme for
                                                                             !< momentum
     INTEGER(iwp), DIMENSION(:,:,:), ALLOCATABLE ::  advc_flags_s            !< flags used to degrade order of advection scheme for
                                                                             !< scalar quantities
     INTEGER(iwp), DIMENSION(:,:,:), ALLOCATABLE ::  topo_top_ind            !< precalculated topography top indices
-
-    INTEGER(iwp), DIMENSION(:,:,:), ALLOCATABLE ::  topo_flags              !< flags to mask topography and surface-bounded grid
+    INTEGER(iwp), DIMENSION(:,:,:), ALLOCATABLE ::  wall_flags_static_0     !< flags to mask topography and surface-bounded grid
                                                                             !< points
+    INTEGER(iwp), DIMENSION(:,:,:), ALLOCATABLE ::  wall_flags_total_0      !< merged array, which contains the static and dynamic
+                                                                            !< flags
 
-    INTEGER(iwp), DIMENSION(:,:,:), POINTER ::  flags  !< pointer to topo_flags_1-10
+    INTEGER(iwp), DIMENSION(:,:,:), POINTER ::  flags  !< pointer to wall_flags_1-10
 
     SAVE
 
@@ -1331,10 +1502,7 @@
     USE kinds
 
 #if defined( __parallel )
-    USE MPI,                                                                                       &
-        ONLY: MPI_STATUS_SIZE
-
-    PRIVATE MPI_STATUS_SIZE
+    USE MPI
 #endif
 
     CHARACTER(LEN=2) ::  send_receive = 'al'     !<
@@ -1344,14 +1512,21 @@
     INTEGER(iwp) ::  comm1dy                     !< communicator for domain decomposition along y
     INTEGER(iwp) ::  comm2d                      !< standard 2d (xy) communicator used in PALM for the process group the PE belongs
                                                  !< to
+    INTEGER(iwp) ::  comm_inter                  !< intercommunicator that connects atmosphere/ocean process groups
     INTEGER(iwp) ::  comm_palm                   !< internal communicator used during the MPI setup at the beginning of a run
+    INTEGER(iwp) ::  id_inflow = 0               !< myidx of procs at inflow (turbulent inflow method)
     INTEGER(iwp) ::  id_outflow = 0              !< myidx of procs at outflow (turbulent outflow method)
     INTEGER(iwp) ::  id_outflow_source = 0       !< myidx of procs including ouflow source plane (turbulent outflow method)
+    INTEGER(iwp) ::  id_recycling = 0            !< myidx of procs containing the recycling plane (turbulence recycling method)
     INTEGER(iwp) ::  ierr                        !< standard error parameter in MPI calls
     INTEGER(iwp) ::  myid = 0                    !< id number of processor element
     INTEGER(iwp) ::  myidx = 0                   !< id number of processor elements with same position along x-direction
     INTEGER(iwp) ::  myidy = 0                   !< id number of processor elements with same position along y-direction
     INTEGER(iwp) ::  ndim = 2                    !< dimension of the virtual PE grid
+    INTEGER(iwp) ::  ngp_a                       !< used in atmosphere/ocean coupling: total number of horizontal grid points
+                                                 !< (atmosphere)
+    INTEGER(iwp) ::  ngp_o                       !< used in atmosphere/ocean coupling: total number of horizontal grid points
+                                                 !< (ocean)
     INTEGER(iwp) ::  ngp_xy                      !< used in atmosphere/ocean coupling: number of grid points of the subdomain
     INTEGER(iwp) ::  ngp_y                       !< number of subdomain grid points along y including ghost points
     INTEGER(iwp) ::  npex = -1                   !< number of processor elements in x-direction
@@ -1378,14 +1553,13 @@
     INTEGER(iwp) ::  type_xy                     !< derived MPI datatype for 2-D ghost-point exchange - north / south
     INTEGER(iwp) ::  type_y                      !< derived MPI datatype for 2-D exchange in atmosphere-ocean coupler
 
+    INTEGER(iwp) ::  pdims(2) = 1  !< number of processors along x-y dimension
     INTEGER(iwp) ::  req(100)      !< MPI return variable indicating if send-receive operation is finished
 
     INTEGER(iwp), DIMENSION(:,:), ALLOCATABLE ::  hor_index_bounds               !< horizontal index bounds
     INTEGER(iwp), DIMENSION(:,:), ALLOCATABLE ::  hor_index_bounds_previous_run  !< horizontal index bounds of previous run
 
-    LOGICAL ::  collective_wait = .FALSE.                 !< switch to set an explicit MPI barrier in front of all collective MPI calls
-    LOGICAL ::  non_uniform_subdomain = .FALSE.           !< subdomains are non-uniform along x and/or y
-    LOGICAL ::  non_uniform_data_for_transpose = .FALSE.  !< data to be transposed is non-uniformly distributed among the cores
+    LOGICAL ::  collective_wait = .FALSE.          !< switch to set an explicit MPI barrier in front of all collective MPI calls
 
     TYPE virtual_pe_grid
        INTEGER(iwp) ::  mpi_communicator         !< MPI communicator id
@@ -1426,7 +1600,7 @@
 
     LOGICAL ::  left_border_pe  = .FALSE.  !< = .TRUE. if PE is on left border of computational domain
     LOGICAL ::  north_border_pe = .FALSE.  !< = .TRUE. if PE is on north border of computational domain
-    LOGICAL ::  reorder = .FALSE.          !< flag to allow MPI the reorder of ranking (e.g. row-major or column-major)
+    LOGICAL ::  reorder = .TRUE.           !< switch to allow MPI the reorder of ranking (e.g. row-major or column-major)
     LOGICAL ::  right_border_pe = .FALSE.  !< = .TRUE. if PE is on right border of computational domain
     LOGICAL ::  south_border_pe = .FALSE.  !< = .TRUE. if PE is on south border of computational domain
 
@@ -1476,8 +1650,8 @@
     INTEGER(iwp) ::  profile_columns = 2  !< number of coordinate systems on a profile plot per column
     INTEGER(iwp) ::  profile_rows = 3     !< number of coordinate systems on a profile plot per row
 
-    INTEGER(iwp) ::  dopr_index(500) = 0                !< index number of respective profile quantity
-    INTEGER(iwp) ::  dopr_initial_index(500) = 0        !< index number of initial profiles to be output
+    INTEGER(iwp) ::  dopr_index(300) = 0                !< index number of respective profile quantity
+    INTEGER(iwp) ::  dopr_initial_index(300) = 0        !< index number of initial profiles to be output
 
     SAVE
 
@@ -1494,12 +1668,12 @@
 
     CHARACTER (LEN=40) ::  region(0:9) = 'total domain                            '  !< label for statistic region
 
-    INTEGER(iwp) ::  pr_max = 1000          !< maximum number of allowed output profiles
-    INTEGER(iwp) ::  pr_palm = 200          !< number of output profiles
+    INTEGER(iwp) ::  pr_palm = 200          !< maximum number of output profiles
     INTEGER(iwp) ::  statistic_regions = 0  !< identifier for statistic regions
-    INTEGER(iwp) ::  u_max_ijk(3) = -1      !< index values (i,j,k) of location where u_max occurs
-    INTEGER(iwp) ::  v_max_ijk(3) = -1      !< index values (i,j,k) of location where v_max occurs
-    INTEGER(iwp) ::  w_max_ijk(3) = -1      !< index values (i,j,k) of location where w_max occurs
+
+    INTEGER(iwp) ::  u_max_ijk(3) = -1  !< index values (i,j,k) of location where u_max occurs
+    INTEGER(iwp) ::  v_max_ijk(3) = -1  !< index values (i,j,k) of location where v_max occurs
+    INTEGER(iwp) ::  w_max_ijk(3) = -1  !< index values (i,j,k) of location where w_max occurs
 
     LOGICAL ::  flow_statistics_called = .FALSE.  !< flag that tells other routines if flow statistics was executed
                                                   !< (after each timestep)
@@ -1572,3 +1746,35 @@
     SAVE
 
  END MODULE statistics
+
+
+
+!--------------------------------------------------------------------------------------------------!
+! Description:
+! ------------
+!> Definition of indices for transposed arrays.
+!--------------------------------------------------------------------------------------------------!
+ MODULE transpose_indices
+
+    USE kinds
+
+    INTEGER(iwp) ::  nxl_y   !< internal index bound for transpositions
+    INTEGER(iwp) ::  nxl_yd  !< internal index bound for transpositions
+    INTEGER(iwp) ::  nxl_z   !< internal index bound for transpositions
+    INTEGER(iwp) ::  nxr_y   !< internal index bound for transpositions
+    INTEGER(iwp) ::  nxr_yd  !< internal index bound for transpositions
+    INTEGER(iwp) ::  nxr_z   !< internal index bound for transpositions
+    INTEGER(iwp) ::  nyn_x   !< internal index bound for transpositions
+    INTEGER(iwp) ::  nyn_z   !< internal index bound for transpositions
+    INTEGER(iwp) ::  nys_x   !< internal index bound for transpositions
+    INTEGER(iwp) ::  nys_z   !< internal index bound for transpositions
+    INTEGER(iwp) ::  nzb_x   !< internal index bound for transpositions
+    INTEGER(iwp) ::  nzb_y   !< internal index bound for transpositions
+    INTEGER(iwp) ::  nzb_yd  !< internal index bound for transpositions
+    INTEGER(iwp) ::  nzt_x   !< internal index bound for transpositions
+    INTEGER(iwp) ::  nzt_y   !< internal index bound for transpositions
+    INTEGER(iwp) ::  nzt_yd  !< internal index bound for transpositions
+
+    SAVE
+
+ END MODULE transpose_indices

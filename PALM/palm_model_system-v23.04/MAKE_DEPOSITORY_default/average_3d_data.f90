@@ -13,8 +13,55 @@
 ! You should have received a copy of the GNU General Public License along with PALM. If not, see
 ! <http://www.gnu.org/licenses/>.
 !
-! Copyright 1997-2021 Leibniz Universitaet Hannover
+! Copyright 1997-2020 Leibniz Universitaet Hannover
 !--------------------------------------------------------------------------------------------------!
+!
+! Current revisions:
+! -----------------
+! 
+! 
+! Former revisions:
+! -----------------
+! $Id: average_3d_data.f90 4558 2020-06-10 16:27:30Z moh.hefny $
+! bugfix: average_count_3d is set to integer 0
+! 
+! 4514 2020-04-30 16:29:59Z suehring
+! Enable output of qsurf and ssurf
+! 
+! 4509 2020-04-26 15:57:55Z raasch
+! file re-formatted to follow the PALM coding standard
+! 
+! 4457 2020-03-11 14:20:43Z raasch
+! use statement for exchange horiz added,
+! bugfix for call of exchange horiz 2d
+!
+! 4360 2020-01-07 11:25:50Z suehring
+! Move 2-m potential temperature output to diagnostic_output_quantities
+! 
+! 4182 2019-08-22 15:20:23Z scharf
+! Corrected "Former revisions" section
+! 
+! 4048 2019-06-21 21:00:21Z knoop
+! Moved tcm_3d_data_averaging to module_interface
+! 
+! 4039 2019-06-18 10:32:41Z suehring
+! Modularize diagnostic output
+! 
+! 3994 2019-05-22 18:08:09Z suehring
+! output of turbulence intensity added
+! 
+! 3933 2019-04-25 12:33:20Z kanani
+! Bugfix in CASE theta_2m*, removal of redundant code
+! 
+! 3773 2019-03-01 08:56:57Z maronga
+! Added output of theta_2m*_xy_av
+! 
+! 3655 2019-01-07 16:51:22Z knoop
+! Implementation of the PALM module interface
+!
+! Revision 1.1  2006/02/23 09:48:58  raasch
+! Initial revision
+!
 !
 ! Description:
 ! ------------
@@ -26,29 +73,16 @@
     USE averaging
 
     USE control_parameters,                                                                        &
-        ONLY:  average_count_3d,                                                                   &
-               doav,                                                                               &
-               doav_n,                                                                             &
-               varnamelength
+        ONLY:  average_count_3d, doav, doav_n, varnamelength
 
     USE cpulog,                                                                                    &
-        ONLY:  cpu_log,                                                                            &
-               log_point
+        ONLY:  cpu_log, log_point
 
     USE exchange_horiz_mod,                                                                        &
         ONLY:  exchange_horiz_2d
 
     USE indices,                                                                                   &
-        ONLY:  nxl,                                                                                &
-               nxlg,                                                                               &
-               nxr,                                                                                &
-               nxrg,                                                                               &
-               nyn,                                                                                &
-               nyng,                                                                               &
-               nys,                                                                                &
-               nysg,                                                                               &
-               nzb,                                                                                &
-               nzt
+        ONLY:  nxl, nxlg, nxr, nxrg, nyn, nyng, nys, nysg, nzb, nzt
 
     USE kinds
 
@@ -174,24 +208,6 @@
                       DO  k = nzb, nzt+1
                          pr_av(k,j,i) = pr_av(k,j,i) / REAL( average_count_3d, KIND=wp )
                       ENDDO
-                   ENDDO
-                ENDDO
-             ENDIF
-
-          CASE ( 'pres_drag_x*' )
-             IF ( ALLOCATED( pres_drag_x_av ) )  THEN
-                DO  i = nxl, nxr
-                   DO  j = nys, nyn
-                      pres_drag_x_av(j,i) = pres_drag_x_av(j,i) / REAL( average_count_3d, KIND=wp )
-                   ENDDO
-                ENDDO
-             ENDIF
-
-          CASE ( 'pres_drag_y*' )
-             IF ( ALLOCATED( pres_drag_y_av ) )  THEN
-                DO  i = nxl, nxr
-                   DO  j = nys, nyn
-                      pres_drag_y_av(j,i) = pres_drag_y_av(j,i) / REAL( average_count_3d, KIND=wp )
                    ENDDO
                 ENDDO
              ENDIF

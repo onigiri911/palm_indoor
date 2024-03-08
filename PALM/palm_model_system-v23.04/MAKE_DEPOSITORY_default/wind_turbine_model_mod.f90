@@ -13,9 +13,120 @@
 ! You should have received a copy of the GNU General Public License along with PALM. If not, see
 ! <http://www.gnu.org/licenses/>.
 !
-! Copyright 2009-2021 Carl von Ossietzky Universitaet Oldenburg
-! Copyright 1997-2021 Leibniz Universitaet Hannover
+! Copyright 2009-2020 Carl von Ossietzky Universitaet Oldenburg
+! Copyright 1997-2020 Leibniz Universitaet Hannover
 !--------------------------------------------------------------------------------------------------!
+!
+!
+! Current revisions:
+! -----------------
+! 
+! 
+! Former revisions:
+! -----------------
+! $Id: wind_turbine_model_mod.f90 4537 2020-05-18 06:31:50Z oliver.maas $
+! reset n_turbines_max to 1E4 (10 000), because it was set to 1 000 in r4497 by mistake
+! 
+! 4535 2020-05-15 12:07:23Z raasch
+! bugfix for restart data format query
+! 
+! 4528 2020-05-11 14:14:09Z oliver.maas
+! added namelist parameter smearing_kernel_size
+! 
+! 4497 2020-04-15 10:20:51Z raasch
+! file re-formatted to follow the PALM coding standard
+!
+!
+! 4495 2020-04-13 20:11:20Z raasch
+! restart data handling with MPI-IO added
+! 
+! 4481 2020-03-31 18:55:54Z maronga
+! ASCII output cleanup
+!
+! 4465 2020-03-20 11:35:48Z maronga
+! Removed old ASCII outputm, some syntax layout adjustments, added output for rotor and tower
+! diameters. Added warning message in case of NetCDF 3 (no WTM output file will be produced).
+!
+! 4460 2020-03-12 16:47:30Z oliver.maas
+! allow for simulating up to 10 000 wind turbines
+!
+! 4459 2020-03-12 09:35:23Z oliver.maas
+! avoid division by zero in tip loss correction factor calculation
+!
+! 4457 2020-03-11 14:20:43Z raasch
+! use statement for exchange horiz added
+!
+! 4447 2020-03-06 11:05:30Z oliver.maas
+! renamed wind_turbine_parameters namelist variables
+!
+! 4438 2020-03-03 20:49:28Z suehring
+! Bugfix: shifted netcdf preprocessor directive to correct position
+!
+! 4436 2020-03-03 12:47:02Z oliver.maas
+! added optional netcdf data input for wtm array input parameters
+!
+! 4426 2020-02-27 10:02:19Z oliver.maas
+! define time as unlimited dimension so that no maximum number of time steps has to be given for
+! wtm_data_output
+!
+! 4423 2020-02-25 07:17:11Z maronga
+! Switched to serial output as data is aggerated before anyway.
+!
+! 4420 2020-02-24 14:13:56Z maronga
+! Added output control for wind turbine model
+!
+! 4412 2020-02-19 14:53:13Z maronga
+! Bugfix: corrected character length in dimension_names
+!
+! 4411 2020-02-18 14:28:02Z maronga
+! Added output in NetCDF format using DOM (only netcdf4-parallel is supported).
+! Old ASCII output is still available at the moment.
+!
+! 4360 2020-01-07 11:25:50Z suehring
+! Introduction of wall_flags_total_0, which currently sets bits based on static topography
+! information used in wall_flags_static_0
+!
+! 4343 2019-12-17 12:26:12Z oliver.maas
+! replaced <= by < in line 1464 to ensure that ialpha will not be greater than dlen
+!
+! 4329 2019-12-10 15:46:36Z motisi
+! Renamed wall_flags_0 to wall_flags_static_0
+!
+! 4326 2019-12-06 14:16:14Z oliver.maas
+! changed format of turbine control output to allow for higher torque and power values
+!
+! 4182 2019-08-22 15:20:23Z scharf
+! Corrected "Former revisions" section
+!
+! 4144 2019-08-06 09:11:47Z raasch
+! relational operators .EQ., .NE., etc. replaced by ==, /=, etc.
+!
+! 4056 2019-06-27 13:53:16Z Giersch
+! CASE DEFAULT action in wtm_actions needs to be CONTINUE. Otherwise an abort will happen for
+! location values that are not implemented as CASE statements but are already realized in the code
+! (e.g. pt-tendency)
+!
+! 3885 2019-04-11 11:29:34Z kanani
+! Changes related to global restructuring of location messages and introduction of additional debug
+! messages
+!
+! 3875 2019-04-08 17:35:12Z knoop
+! Addaped wtm_tendency to fit the module actions interface
+!
+! 3832 2019-03-28 13:16:58Z raasch
+! instrumented with openmp directives
+!
+! 3725 2019-02-07 10:11:02Z raasch
+! unused variables removed
+!
+! 3685 2019-01-21 01:02:11Z knoop
+! Some interface calls moved to module_interface + cleanup
+!
+! 3655 2019-01-07 16:51:22Z knoop
+! Replace degree symbol by 'degrees'
+!
+! 1914 2016-05-26 14:44:07Z witha
+! Initial revision
 !
 !
 ! Description:
@@ -43,17 +154,8 @@
 !--------------------------------------------------------------------------------------------------!
  MODULE wind_turbine_model_mod
 
-#if defined( __parallel )
-    USE MPI
-#endif
-
     USE arrays_3d,                                                                                 &
-        ONLY:  tend,                                                                               &
-               u,                                                                                  &
-               v,                                                                                  &
-               w,                                                                                  &
-               zu,                                                                                 &
-               zw
+        ONLY:  tend, u, v, w, zu, zw
 
     USE basic_constants_and_equations_mod,                                                         &
         ONLY:  pi
@@ -61,44 +163,21 @@
     USE control_parameters,                                                                        &
         ONLY:  coupling_char,                                                                      &
                debug_output,                                                                       &
-               dt_3d,                                                                              &
-               dz,                                                                                 &
-               end_time,                                                                           &
-               initializing_actions,                                                               &
-               message_string,                                                                     &
-               origin_date_time,                                                                   &
-               restart_data_format_output,                                                         &
-               time_since_reference_point,                                                         &
+               dt_3d, dz, end_time, initializing_actions, message_string,                          &
+               origin_date_time, restart_data_format_output, time_since_reference_point,           &
                wind_turbine
 
     USE cpulog,                                                                                    &
-        ONLY:  cpu_log,                                                                            &
-               log_point_s
+        ONLY:  cpu_log, log_point_s
 
     USE data_output_module
 
     USE grid_variables,                                                                            &
-        ONLY:  ddx,                                                                                &
-               dx,                                                                                 &
-               ddy,                                                                                &
-               dy
+        ONLY:  ddx, dx, ddy, dy
 
     USE indices,                                                                                   &
-        ONLY:  nbgp,                                                                               &
-               nx,                                                                                 &
-               nxl,                                                                                &
-               nxlg,                                                                               &
-               nxr,                                                                                &
-               nxrg,                                                                               &
-               ny,                                                                                 &
-               nyn,                                                                                &
-               nyng,                                                                               &
-               nys,                                                                                &
-               nysg,                                                                               &
-               nz,                                                                                 &
-               nzb,                                                                                &
-               nzt,                                                                                &
-               topo_flags
+        ONLY:  nbgp, nx, nxl, nxlg, nxr, nxrg, ny, nyn, nyng, nys, nysg, nz,                       &
+               nzb, nzt, wall_flags_total_0
 
     USE kinds
 
@@ -118,17 +197,15 @@
     USE pegrid
 
     USE restart_data_mpi_io_mod,                                                                   &
-        ONLY:  rrd_mpi_io_global_array,                                                            &
-               wrd_mpi_io_global_array
+        ONLY:  rrd_mpi_io_global_array, wrd_mpi_io_global_array
 
-
+        
     IMPLICIT NONE
 
     PRIVATE
 
-    CHARACTER(LEN=800) ::  dom_error_message  !< error message returned by the data-output module
-    CHARACTER(LEN=100) ::  variable_name      !< name of output variable
-    CHARACTER(LEN=30)  ::  nc_filename        !<
+    CHARACTER(LEN=100) ::  variable_name  !< name of output variable
+    CHARACTER(LEN=30)  ::  nc_filename    !<
 
 
     INTEGER(iwp), PARAMETER ::  n_turbines_max = 1E4  !< maximum number of turbines (for array allocation)
@@ -162,7 +239,7 @@
                                                       !< (in tangential direction, as factor of MIN(dx,dy,dz))
     REAL(wp) ::  segment_width_radial       = 0.5_wp  !< width of the segments, the rotor area is divided into
                                                       !< (in radial direction, as factor of MIN(dx,dy,dz))
-
+    
     REAL(wp) ::  smearing_kernel_size       = 2.0_wp  !< size of the smearing kernel as multiples of dx
 
     REAL(wp) ::  time_turbine_on            = 0.0_wp  !< time at which turbines are started
@@ -172,8 +249,8 @@
     REAL(wp), DIMENSION(1:n_turbines_max) ::  hub_x               = 9999999.9_wp !< position of hub in x-direction
     REAL(wp), DIMENSION(1:n_turbines_max) ::  hub_y               = 9999999.9_wp !< position of hub in y-direction
     REAL(wp), DIMENSION(1:n_turbines_max) ::  hub_z               = 9999999.9_wp !< position of hub in z-direction
-    REAL(wp), DIMENSION(1:n_turbines_max) ::  nacelle_cd          = 0.85_wp      !< drag coefficient for nacelle
-    REAL(wp), DIMENSION(1:n_turbines_max) ::  nacelle_radius      = 0.0_wp       !< nacelle radius [m]
+    REAL(wp), DIMENSION(1:n_turbines_max) ::  nacelle_radius      = 0.0_wp       !< nacelle diameter [m]
+!    REAL(wp), DIMENSION(1:n_turbines_max) ::  nacelle_cd          = 0.85_wp      !< drag coefficient for nacelle
     REAL(wp), DIMENSION(1:n_turbines_max) ::  tower_cd            = 1.2_wp       !< drag coefficient for tower
     REAL(wp), DIMENSION(1:n_turbines_max) ::  pitch_angle         = 0.0_wp       !< constant pitch angle
     REAL(wp), DIMENSION(1:n_turbines_max) ::  rotor_radius        = 63.0_wp      !< rotor radius [m]
@@ -237,7 +314,6 @@
     REAL(wp) ::  eps_min2        !<
     REAL(wp) ::  pol_a           !< parameter for the polynomial smearing fct
     REAL(wp) ::  pol_b           !< parameter for the polynomial smearing fct
-
 !
 !-- Variables for the calculation of lift and drag coefficients:
     REAL(wp), DIMENSION(:), ALLOCATABLE  ::  ard      !<
@@ -250,8 +326,8 @@
     REAL(wp), DIMENSION(:,:), ALLOCATABLE :: turb_cd_tab  !< table of the blade drag coefficient
     REAL(wp), DIMENSION(:,:), ALLOCATABLE :: turb_cl_tab  !< table of the blade lift coefficient
 
-    REAL(wp), DIMENSION(:,:,:), ALLOCATABLE ::  nac_cd_surf  !< 3d field of the nacelle drag coefficient
-    REAL(wp), DIMENSION(:,:,:), ALLOCATABLE ::  tow_cd_surf  !< 3d field of the tower drag coefficient
+    REAL(wp), DIMENSION(:,:,:), ALLOCATABLE ::  nac_cd_surf  !< 3d field of the tower drag coefficient
+    REAL(wp), DIMENSION(:,:,:), ALLOCATABLE ::  tow_cd_surf  !< 3d field of the nacelle drag coefficient
 
 !
 !-- Variables for the calculation of the forces:
@@ -453,78 +529,45 @@
 
     IMPLICIT NONE
 
-    CHARACTER(LEN=100) ::  line  !< dummy string that contains the current line of the parameter file
+    CHARACTER(LEN=80) ::  line  !< dummy string that contains the current line of the parameter file
 
-    INTEGER(iwp) ::  io_status   !< status after reading the namelist file
-
-    LOGICAL ::  switch_off_module = .FALSE.  !< local namelist parameter to switch off the module
-                                             !< although the respective module namelist appears in
-                                             !< the namelist file
-
-    NAMELIST /wind_turbine_parameters/  air_density,                                               &
-                                        dt_data_output_wtm,                                        &
-                                        gear_efficiency,                                           &
-                                        gear_ratio,                                                &
-                                        generator_efficiency,                                      &
-                                        generator_inertia,                                         &
-                                        generator_power_rated,                                     &
-                                        generator_speed_rated,                                     &
-                                        generator_torque_max,                                      &
-                                        generator_torque_rate_max,                                 &
-                                        hub_x,                                                     &
-                                        hub_y,                                                     &
-                                        hub_z,                                                     &
-                                        nacelle_cd,                                                &
-                                        nacelle_radius,                                            &
-                                        n_airfoils,                                                &
-                                        n_turbines,                                                &
-                                        pitch_angle,                                               &
-                                        pitch_control,                                             &
-                                        pitch_rate,                                                &
-                                        region_15_min,                                             &
-                                        region_2_min,                                              &
-                                        region_2_slope,                                            &
-                                        rotor_inertia,                                             &
-                                        rotor_radius,                                              &
-                                        rotor_speed,                                               &
-                                        segment_length_tangential,                                 &
-                                        segment_width_radial,                                      &
-                                        smearing_kernel_size,                                      &
-                                        speed_control,                                             &
-                                        switch_off_module,                                         &
-                                        tilt_angle,                                                &
-                                        time_turbine_on,                                           &
-                                        tip_loss_correction,                                       &
-                                        tower_cd,                                                  &
-                                        tower_diameter,                                            &
-                                        yaw_angle,                                                 &
-                                        yaw_control,                                               &
-                                        yaw_misalignment_max,                                      &
-                                        yaw_misalignment_min,                                      &
-                                        yaw_speed
+    NAMELIST /wind_turbine_parameters/                                                             &
+             air_density, tower_diameter, dt_data_output_wtm,                                      &
+                gear_efficiency, gear_ratio, generator_efficiency,                                 &
+                generator_inertia, rotor_inertia, yaw_misalignment_max,                            &
+                generator_torque_max, generator_torque_rate_max, yaw_misalignment_min,             &
+                region_15_min, region_2_min, n_airfoils, n_turbines,                               &
+                rotor_speed, yaw_angle, pitch_angle, pitch_control,                                &
+                generator_speed_rated, generator_power_rated, hub_x, hub_y, hub_z,                 &
+                nacelle_radius, rotor_radius, segment_length_tangential, segment_width_radial,     &
+                region_2_slope, speed_control, tilt_angle, time_turbine_on,                        &
+                smearing_kernel_size, tower_cd, pitch_rate,                                        &
+                yaw_control, yaw_speed, tip_loss_correction
+!                , nacelle_cd
 
 !
-!-- Move to the beginning of the namelist file and try to find and read the namelist.
-    REWIND( 11 )
-    READ( 11, wind_turbine_parameters, IOSTAT=io_status )
+!-- Try to find wind turbine model package:
+    REWIND ( 11 )
+    line = ' '
+    DO WHILE ( INDEX ( line, '&wind_turbine_parameters' ) == 0 )
+       READ ( 11, '(A)', END = 12 )  line
+    ENDDO
+    BACKSPACE ( 11 )
 
 !
-!-- Action depending on the READ status
-    IF ( io_status == 0 )  THEN
+!-- Read user-defined namelist:
+    READ ( 11, wind_turbine_parameters, ERR = 10, END = 12 )
 !
-!--    wind_turbine_parameters namelist was found and read correctly. Enable the
-!--    wind turbine module.
-       IF ( .NOT. switch_off_module )  wind_turbine = .TRUE.
+!-- Set flag that indicates that the wind turbine model is switched on:
+    wind_turbine = .TRUE.
 
-    ELSEIF ( io_status > 0 )  THEN
-!
-!--    wind_turbine_parameters namelist was found but contained errors. Print an error message
-!--    including the line that caused the problem.
-       BACKSPACE( 11 )
-       READ( 11 , '(A)' ) line
-       CALL parin_fail_message( 'wind_turbine_parameters', line )
+    GOTO 12
 
-    ENDIF
+ 10 BACKSPACE ( 11 )
+    READ ( 11, '(A)' ) line
+    CALL parin_fail_message( 'wind_turbine_parameters', line )
+
+ 12 CONTINUE  ! TBD Change from continue, mit ierrn machen
 
  END SUBROUTINE wtm_parin
 
@@ -599,8 +642,8 @@
 
 
     USE control_parameters,                                                                        &
-        ONLY:  length,                                                                             &
-               restart_string
+        ONLY: length, restart_string
+
 
     IMPLICIT NONE
 
@@ -608,6 +651,7 @@
 
 
     found = .TRUE.
+
 
     SELECT CASE ( restart_string(1:length) )
 
@@ -675,20 +719,21 @@
     IF ( .NOT. input_pids_wtm )  THEN
        IF ( ( .NOT.speed_control ) .AND. pitch_control )  THEN
           message_string = 'pitch_control = .TRUE. requires speed_control = .TRUE.'
-          CALL message( 'wtm_check_parameters', 'WTM0001', 1, 2, 0, 6, 0 )
+          CALL message( 'wtm_check_parameters', 'PA0461', 1, 2, 0, 6, 0 )
        ENDIF
 
        IF ( ANY( rotor_speed(1:n_turbines) < 0.0 ) )  THEN
-          message_string = 'rotor_speed < 0.0'
-          CALL message( 'wtm_check_parameters', 'WTM0002', 1, 2, 0, 6, 0 )
+          message_string = 'rotor_speed < 0.0, Please set rotor_speed to ' //                      &
+                           'a value equal or larger than zero'
+          CALL message( 'wtm_check_parameters', 'PA0462', 1, 2, 0, 6, 0 )
        ENDIF
 
        IF ( ANY( hub_x(1:n_turbines) == 9999999.9_wp ) .OR.                                        &
             ANY( hub_y(1:n_turbines) == 9999999.9_wp ) .OR.                                        &
             ANY( hub_z(1:n_turbines) == 9999999.9_wp ) )  THEN
 
-          message_string = 'hub_x, hub_y, hub_z have to be given for each turbine'
-          CALL message( 'wtm_check_parameters', 'WTM0003', 1, 2, 0, 6, 0 )
+          message_string = 'hub_x, hub_y, hub_z have to be given for each turbine.'
+          CALL message( 'wtm_check_parameters', 'PA0463', 1, 2, 0, 6, 0 )
        ENDIF
     ENDIF
 
@@ -760,10 +805,10 @@
        IF ( check_existence( vars_pids, 'rotor_radius' ) )  THEN
           CALL get_variable( pids_id, 'rotor_radius', rotor_radius(1:n_turbines) )
        ENDIF
-
-       IF ( check_existence( vars_pids, 'nacelle_cd' ) )  THEN
-          CALL get_variable( pids_id, 'nacelle_cd', nacelle_cd(1:n_turbines) )
-       ENDIF
+!
+!        IF ( check_existence( vars_pids, 'nacelle_cd' ) )  THEN
+!           CALL get_variable( pids_id, 'nacelle_cd', nacelle_cd(1:n_turbines) )
+!        ENDIF
 
        IF ( check_existence( vars_pids, 'tower_cd' ) )  THEN
           CALL get_variable( pids_id, 'tower_cd', tower_cd(1:n_turbines) )
@@ -985,6 +1030,7 @@
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE wtm_init
 
+
     USE control_parameters,                                                                        &
         ONLY:  dz_stretch_level_start
 
@@ -993,33 +1039,28 @@
 
     IMPLICIT NONE
 
+
+
     INTEGER(iwp) ::  i  !< running index
     INTEGER(iwp) ::  j  !< running index
     INTEGER(iwp) ::  k  !< running index
 
+
 !
 !-- Help variables for the smearing function:
     REAL(wp) ::  eps_kernel  !<
+
 !
 !-- Help variables for calculation of the tower drag:
     INTEGER(iwp) ::  tower_n  !<
     INTEGER(iwp) ::  tower_s  !<
-!
-!-- Help variables for the calculation of the nacelle drag:
-    INTEGER(iwp) ::  i_ip         !<
-    INTEGER(iwp) ::  i_ipg        !<
-    
-    INTEGER(iwp), DIMENSION(:), ALLOCATABLE ::  index_nacb  !<
-    INTEGER(iwp), DIMENSION(:), ALLOCATABLE ::  index_nacl  !<
-    INTEGER(iwp), DIMENSION(:), ALLOCATABLE ::  index_nacr  !<
-    INTEGER(iwp), DIMENSION(:), ALLOCATABLE ::  index_nact  !<
 
-    REAL(wp) ::  dy_int    !<
-    REAL(wp) ::  dz_int    !<
-    REAL(wp) ::  sqrt_arg  !<
-    REAL(wp) ::  yvalue    !<
+    INTEGER(iwp), DIMENSION(:), ALLOCATABLE :: index_nacb  !<
+    INTEGER(iwp), DIMENSION(:), ALLOCATABLE :: index_nacl  !<
+    INTEGER(iwp), DIMENSION(:), ALLOCATABLE :: index_nacr  !<
+    INTEGER(iwp), DIMENSION(:), ALLOCATABLE :: index_nact  !<
 
-    REAL(wp), DIMENSION(:,:), ALLOCATABLE ::  circle_points  !<
+    REAL(wp), DIMENSION(:,:), ALLOCATABLE :: circle_points  !<
 
 
     IF ( debug_output )  CALL debug_message( 'wtm_init', 'start' )
@@ -1030,45 +1071,50 @@
     ALLOCATE( index_nact(1:n_turbines) )
 
 !
+!--------------------------------------------------------------------------------------------------!
 !-- Calculation of parameters for the regularization kernel (smearing of the forces)
+!--------------------------------------------------------------------------------------------------!
 !
 !-- In the following, some of the required parameters for the smearing will be calculated:
+
 !-- The kernel is set equal to twice the grid spacing which has turned out to be a reasonable
-!-- value (see e.g. Troldborg et al. (2013), Wind Energy, DOI: 10.1002/we.1608).
+!-- value (see e.g. Troldborg et al. (2013), Wind Energy, DOI: 10.1002/we.1608):
     eps_kernel = smearing_kernel_size * dx
 !
 !-- The zero point (eps_min) of the polynomial function must be the following if the integral of
 !-- the polynomial function (for values < eps_min) shall be equal to the integral of the Gaussian
-!-- function used before.
-    eps_min = ( 105.0_wp / 32.0_wp )**( 1.0_wp / 3.0_wp ) * pi**( 1.0_wp / 6.0_wp ) * eps_kernel
+!-- function used before:
+    eps_min = ( 105.0_wp / 32.0_wp )**( 1.0_wp / 3.0_wp ) *                                        &
+              pi**( 1.0_wp / 6.0_wp ) * eps_kernel
 !
 !-- Stretching (non-uniform grid spacing) is not considered in the wind turbine model.
 !-- Therefore, vertical stretching has to be applied above the area where the wtm is active.
 !-- ABS (...) is required because the default value of dz_stretch_level_start is -9999999.9_wp
-!-- (negative).
-    IF ( ABS( dz_stretch_level_start(1) ) <=                                                       &
-         MAXVAL( hub_z(1:n_turbines) ) + MAXVAL( rotor_radius(1:n_turbines) ) + eps_min )          &
-    THEN
-       WRITE( message_string, * ) 'vertical grid stretching only allowed above ',                  &
-                                  MAXVAL( hub_z(1:n_turbines) ) +                                  &
-                                  MAXVAL( rotor_radius(1:n_turbines) ) + eps_min, ' m'
-       CALL message( 'wtm_init', 'WTM0004', 1, 2, 0, 6, 0 )
+!-- (negative):
+    IF ( ABS( dz_stretch_level_start(1) ) <= MAXVAL( hub_z(1:n_turbines) ) +                       &
+                                             MAXVAL( rotor_radius(1:n_turbines) ) +                &
+                                             eps_min)  THEN
+       WRITE( message_string, * ) 'The lowest level where vertical stretching is applied has ' //  &
+                                  'to  be greater than ',MAXVAL( hub_z(1:n_turbines) )             &
+                                   + MAXVAL( rotor_radius(1:n_turbines) ) + eps_min
+       CALL message( 'wtm_init', 'PA0484', 1, 2, 0, 6, 0 )
     ENDIF
-
+!
+!-- Square of eps_min:
     eps_min2 = eps_min**2
 !
-!-- Parameters in the polynomial function.
+!-- Parameters in the polynomial function:
     pol_a = 1.0_wp / eps_min**4
     pol_b = 2.0_wp / eps_min**2
 !
-!-- Normalization factor which is the inverse of the integral of the smearing function.
+!-- Normalization factor which is the inverse of the integral of the smearing function:
     eps_factor = 105.0_wp / ( 32.0_wp * pi * eps_min**3 )
 
-!-- Change tilt angle to rad.
+!-- Change tilt angle to rad:
     tilt_angle = tilt_angle * pi / 180.0_wp
 
 !
-!-- Change yaw angle to rad.
+!-- Change yaw angle to rad:
     IF ( TRIM( initializing_actions ) /= 'read_restart_data' )  THEN
        yaw_angle(:) = yaw_angle(:) * pi / 180.0_wp
     ENDIF
@@ -1076,11 +1122,11 @@
 
     DO  inot = 1, n_turbines
 !
-!--    Rotate the rotor coordinates in case yaw and tilt are defined.
+!--    Rotate the rotor coordinates in case yaw and tilt are defined:
        CALL wtm_rotate_rotor( inot )
 
 !
-!--    Determine the indices of the hub height.
+!--    Determine the indices of the hub height:
        i_hub(inot) = INT(   hub_x(inot)                    / dx )
        j_hub(inot) = INT( ( hub_y(inot) + 0.5_wp * dy )    / dy )
        k_hub(inot) = INT( ( hub_z(inot) + 0.5_wp * dz(1) ) / dz(1) )
@@ -1088,7 +1134,7 @@
 !
 !--    Determining the area to which the smearing of the forces is applied.
 !--    As smearing now is effectively applied only for distances smaller than eps_min, the
-!--    smearing area can be further limited and regarded as a function of eps_min.
+!--    smearing area can be further limited and regarded as a function of eps_min:
        i_smear(inot) = CEILING( ( rotor_radius(inot) + eps_min ) / dx )
        j_smear(inot) = CEILING( ( rotor_radius(inot) + eps_min ) / dy )
        k_smear(inot) = CEILING( ( rotor_radius(inot) + eps_min ) / dz(1) )
@@ -1097,7 +1143,7 @@
 
 !
 !-- Call the wtm_init_speed_control subroutine and calculate the local rotor_speed for the
-!-- respective processor.
+!-- respective processor:
     IF ( speed_control)  THEN
 
        CALL wtm_init_speed_control
@@ -1145,47 +1191,57 @@
     ENDIF
 
 !
+!--------------------------------------------------------------------------------------------------!
 !-- Determine the area within each grid cell that overlaps with the area of the nacelle and the
-!-- tower (needed for calculation of the forces).
+!-- tower (needed for calculation of the forces)
+!--------------------------------------------------------------------------------------------------!
+!
 !-- Note: so far this is only a 2D version, in that the mean flow is perpendicular to the rotor
-!--       area.
+!-- area.
+
 !
 !-- Allocation of the array containing information on the intersection points between rotor disk
-!-- and the numerical grid.
+!-- and the numerical grid:
     upper_end = ( ny + 1 ) * 10000
+
     ALLOCATE( circle_points(1:2,1:upper_end) )
+
     circle_points(:,:) = 0.0_wp
 
-    DO  inot = 1, n_turbines
+
+    DO  inot = 1, n_turbines  ! loop over number of turbines
 !
 !--    Determine the grid index (u-grid) that corresponds to the location of the rotor center
 !--    (reduces the amount of calculations in the case that the mean flow is perpendicular to the
-!--    rotor area).
+!--    rotor area):
        i = i_hub(inot)
+
 !
-!--    Determine the left and the right edge of the nacelle (corresponding grid point indices).
+!--    Determine the left and the right edge of the nacelle (corresponding grid point indices):
        index_nacl(inot) = INT( ( hub_y(inot) - nacelle_radius(inot) + 0.5_wp * dy ) / dy )
        index_nacr(inot) = INT( ( hub_y(inot) + nacelle_radius(inot) + 0.5_wp * dy ) / dy )
 !
 !--    Determine the bottom and the top edge of the nacelle (corresponding grid point indices).
 !--    The grid point index has to be increased by 1, as the first level for the u-component
 !--    (index 0) is situated below the surface. All points between z=0 and z=dz/s would already
-!--    be contained in grid box 1.
+!--    be contained in grid box 1:
        index_nacb(inot) = INT( ( hub_z(inot) - nacelle_radius(inot) ) / dz(1) ) + 1
        index_nact(inot) = INT( ( hub_z(inot) + nacelle_radius(inot) ) / dz(1) ) + 1
+
 !
 !--    Determine the indices of the grid boxes containing the left and the right boundaries of
-!--    the tower.
+!--    the tower:
        tower_n = ( hub_y(inot) + 0.5_wp * tower_diameter(inot) - 0.5_wp * dy ) / dy
        tower_s = ( hub_y(inot) - 0.5_wp * tower_diameter(inot) - 0.5_wp * dy ) / dy
+
 !
 !--    Determine the fraction of the grid box area overlapping with the tower area and multiply
-!--    it with the drag of the tower.
+!--    it with the drag of the tower:
        IF ( ( nxlg <= i )  .AND.  ( nxrg >= i ) )  THEN
 
           DO  j = nys, nyn
 !
-!--          Loop from south to north boundary of tower.
+!--          Loop from south to north boundary of tower:
              IF ( ( j >= tower_s )  .AND.  ( j <= tower_n ) )  THEN
 
                 DO  k = nzb, nzt
@@ -1193,162 +1249,156 @@
                    IF ( k == k_hub(inot) )  THEN
                       IF ( tower_n - tower_s >= 1 )  THEN
 !
-!--                      Leftmost and rightmost grid box.
+!--                   Leftmost and rightmost grid box:
                          IF ( j == tower_s )  THEN
-                            tow_cd_surf(k,j,i) =                                                   &
-                                      ( hub_z(inot) - ( k_hub(inot) * dz(1) - 0.5_wp * dz(1) ) ) * &
-                                      ( ( tower_s + 1.0_wp + 0.5_wp ) * dy    -                    &
-                                        ( hub_y(inot) - 0.5_wp * tower_diameter(inot) )            &
-                                      ) * tower_cd(inot)
+                            tow_cd_surf(k,j,i) = ( hub_z(inot) -                                   &
+                                 ( k_hub(inot) * dz(1) - 0.5_wp * dz(1) ) ) * & ! extension in z-direction
+                                 ( ( tower_s + 1.0_wp + 0.5_wp ) * dy    -                         &
+                                 ( hub_y(inot) - 0.5_wp * tower_diameter(inot) ) ) * & ! extension in y-direction
+                               tower_cd(inot)
 
                          ELSEIF ( j == tower_n )  THEN
-                            tow_cd_surf(k,j,i) =                                                   &
-                                      ( hub_z(inot) - ( k_hub(inot) * dz(1) - 0.5_wp * dz(1) ) ) * &
-                                      ( ( hub_y(inot) + 0.5_wp * tower_diameter(inot) ) -          &
-                                        ( tower_n + 0.5_wp ) * dy                                  &
-                                      ) * tower_cd(inot)
+                            tow_cd_surf(k,j,i) = ( hub_z(inot)            -                        &
+                                 ( k_hub(inot) * dz(1) - 0.5_wp * dz(1) ) ) * & ! extension in z-direction
+                               ( ( hub_y(inot) + 0.5_wp * tower_diameter(inot) )   -               &
+                                 ( tower_n + 0.5_wp ) * dy ) * & ! extension in y-direction
+                               tower_cd(inot)
 !
-!--                      Grid boxes inbetween (where tow_cd_surf = grid box area).
+!--                      Grid boxes inbetween (where tow_cd_surf = grid box area):
                          ELSE
                             tow_cd_surf(k,j,i) = ( hub_z(inot) -                                   &
-                                                   ( k_hub(inot) * dz(1) - 0.5_wp * dz(1) )        &
-                                                 ) * dy * tower_cd(inot)
+                                                 ( k_hub(inot) * dz(1) - 0.5_wp * dz(1) ) ) * dy * &
+                                                 tower_cd(inot)
                          ENDIF
 !
-!--                   Tower lies completely within one grid box.
+!--                   Tower lies completely within one grid box:
                       ELSE
-                         tow_cd_surf(k,j,i) = ( hub_z(inot) -                                      &
-                                                ( k_hub(inot) * dz(1) - 0.5_wp * dz(1) )           &
-                                              ) * tower_diameter(inot) * tower_cd(inot)
+                         tow_cd_surf(k,j,i) = ( hub_z(inot) - ( k_hub(inot) *                      &
+                                              dz(1) - 0.5_wp * dz(1) ) ) *                         &
+                                              tower_diameter(inot) * tower_cd(inot)
                       ENDIF
 !
-!--                In case that k is smaller than k_hub the following actions are carried out.
+!--               In case that k is smaller than k_hub the following actions are carried out:
                    ELSEIF ( k < k_hub(inot) )  THEN
 
                       IF ( ( tower_n - tower_s ) >= 1 )  THEN
 !
-!--                      Leftmost and rightmost grid box.
+!--                      Leftmost and rightmost grid box:
                          IF ( j == tower_s )  THEN
                             tow_cd_surf(k,j,i) = dz(1) * ( ( tower_s + 1 + 0.5_wp ) * dy -         &
-                                                   ( hub_y(inot) - 0.5_wp * tower_diameter(inot) ) &
-                                                         ) * tower_cd(inot)
+                                                ( hub_y(inot) - 0.5_wp * tower_diameter(inot) ) )  &
+                                                * tower_cd(inot)
+
                          ELSEIF ( j == tower_n )  THEN
-                            tow_cd_surf(k,j,i) = dz(1) * (                                         &
-                                                   ( hub_y(inot) + 0.5_wp * tower_diameter(inot) ) &
-                                                           - ( tower_n + 0.5_wp ) * dy             &
-                                                         ) * tower_cd(inot)
+                            tow_cd_surf(k,j,i) = dz(1) * ( ( hub_y(inot) + 0.5_wp *                &
+                                                 tower_diameter(inot) ) - ( tower_n + 0.5_wp )     &
+                                                 * dy ) * tower_cd(inot)
 !
-!--                      Grid boxes inbetween (where tow_cd_surf = grid box area).
+!--                      Grid boxes inbetween (where tow_cd_surf = grid box area):
                          ELSE
                             tow_cd_surf(k,j,i) = dz(1) * dy * tower_cd(inot)
                          ENDIF
 !
-!--                   Tower lies completely within one grid box.
+!--                      Tower lies completely within one grid box:
                       ELSE
-
                          tow_cd_surf(k,j,i) = dz(1) * tower_diameter(inot) * tower_cd(inot)
+                      ENDIF ! end if larger than grid box
 
-                      ENDIF ! larger than grid box
+                   ENDIF    ! end if k == k_hub
 
-                   ENDIF ! k == k_hub
+                ENDDO       ! end loop over k
 
-                ENDDO ! over k
+             ENDIF          ! end if inside north and south boundary of tower
 
-             ENDIF ! inside north and south boundary of tower
+          ENDDO             ! end loop over j
 
-          ENDDO ! over j
-
-       ENDIF ! hub inside domain + ghostpoints
+       ENDIF                ! end if hub inside domain + ghostpoints
 
 
        CALL exchange_horiz( tow_cd_surf, nbgp )
 
 !
-!--    Calculation of the nacelle area.
-!--    Tabulate the points on the circle that are required in the following for the calculation
-!--    of the Riemann integral (node points; they are called circle_points in the following).
-       dy_int = dy / 10000.0_wp
-
-       IF ( ( nacelle_cd(inot) /= 0.0_wp ) .AND. ( nacelle_radius(inot) /= 0.0_wp ) ) THEN
-
-          DO  i_ip = 1, upper_end
-
-             yvalue   = dy_int * ( i_ip - 0.5_wp ) + 0.5_wp * dy
-             sqrt_arg = nacelle_radius(inot)**2 - ( yvalue - hub_y(inot) )**2
-
-             IF ( sqrt_arg >= 0.0_wp )  THEN
+!--    Calculation of the nacelle area
+!--    CAUTION: Currently disabled due to segmentation faults on the FLOW HPC cluster (Oldenburg)
+!!
+!!--    Tabulate the points on the circle that are required in the following for the calculation
+!!--    of the Riemann integral (node points; they are called circle_points in the following):
 !
-!--             Bottom intersection point.
-                circle_points(1,i_ip) = hub_z(inot) - SQRT( sqrt_arg )
+!       dy_int = dy / 10000.0_wp
 !
-!--             Top intersection point.
-                circle_points(2,i_ip) = hub_z(inot) + SQRT( sqrt_arg )
-             ELSE
-                circle_points(:,i_ip) = -111111
-             ENDIF
-
-         ENDDO
-
-         DO  j = nys, nyn
-!        
-!--         In case that the grid box is located completely outside the nacelle (y) it can
-!--         automatically be stated that there is no overlap between the grid box and the nacelle
-!--         and consequently we can set nac_cd_surf(:,j,i) = 0.0.
-            IF ( ( j >= index_nacl(inot) )  .AND.  ( j <= index_nacr(inot) ) )  THEN
-
-               DO  k = nzb+1, nzt
-!        
-!--               In case that the grid box is located completely outside the nacelle (z) it can
-!--               automatically be stated that there is no overlap between the grid box and the
-!--               nacelle and consequently we can set nac_cd_surf(k,j,i) = 0.0.
-                  IF ( ( k >= index_nacb(inot) )  .OR.  ( k <= index_nact(inot) ) )  THEN
-!        
-!--                  For all other cases Riemann integrals are calculated. Here, the points on the
-!--                  circle that have been determined above are used in order to calculate the
-!--                  overlap between the gridbox and the nacelle area (area approached by 10000
-!--                  rectangulars dz_int * dy_int).
-                     DO  i_ipg = 1, 10000
-
-                        dz_int = dz(k)
-                        i_ip = j * 10000 + i_ipg
-!        
-!--                     Determine the vertical extension dz_int of the circle within the current
-!--                     grid box.
-                        IF ( ( circle_points(2,i_ip) < zw(k) )  .AND.                              &
-                             ( circle_points(2,i_ip) >= zw(k-1) ) )                                &
-                        THEN
-                           dz_int = dz_int - ( zw(k) - circle_points(2,i_ip) )
-                        ENDIF
-
-                        IF ( ( circle_points(1,i_ip) <= zw(k) )  .AND.                             &
-                             ( circle_points(1,i_ip) > zw(k-1) ) )                                 &
-                        THEN
-                           dz_int = dz_int - ( circle_points(1,i_ip) - zw(k-1) )
-                        ENDIF
-
-                        IF ( zw(k-1) > circle_points(2,i_ip) )  dz_int = 0.0_wp
-                        IF ( zw(k)   < circle_points(1,i_ip) )  dz_int = 0.0_wp
-
-                        IF ( ( nxlg <= i )  .AND.  ( nxrg >= i ) )  THEN
-                           nac_cd_surf(k,j,i) = nac_cd_surf(k,j,i) +                               &
-                                                dy_int * dz_int * nacelle_cd(inot)
-                        ENDIF
-                     ENDDO
-                  ENDIF
-               ENDDO
-            ENDIF
-
-         ENDDO
-
-         CALL exchange_horiz( nac_cd_surf, nbgp )
-
-       ENDIF  
-
-    ENDDO ! over turbines
+!       DO  i_ip = 1, upper_end
+!          yvalue   = dy_int * ( i_ip - 0.5_wp ) + 0.5_wp * dy  !<--- segmentation fault
+!          sqrt_arg = nacelle_radius(inot)**2 - ( yvalue - hub_y(inot) )**2  !<--- segmentation fault
+!          IF ( sqrt_arg >= 0.0_wp )  THEN
+!!
+!!--          bottom intersection point
+!             circle_points(1,i_ip) = hub_z(inot) - SQRT( sqrt_arg )
+!!
+!!--          top intersection point
+!             circle_points(2,i_ip) = hub_z(inot) + SQRT( sqrt_arg )  !<--- segmentation fault
+!          ELSE
+!             circle_points(:,i_ip) = -111111  !<--- segmentation fault
+!          ENDIF
+!       ENDDO
 !
-!-- Normalize tower and nacelle drag.
-    tow_cd_surf = tow_cd_surf / ( dx * dy * dz(1) )
-    nac_cd_surf = nac_cd_surf / ( dx * dy * dz(1) )
+!
+!       DO  j = nys, nyn
+!!
+!!--       In case that the grid box is located completely outside the nacelle (y) it can
+!!--       automatically be stated that there is no overlap between the grid box and the nacelle
+!!--       and consequently we can set nac_cd_surf(:,j,i) = 0.0:
+!          IF ( ( j >= index_nacl(inot) )  .AND.  ( j <= index_nacr(inot) ) )  THEN
+!             DO  k = nzb+1, nzt
+!!
+!!--             In case that the grid box is located completely outside the nacelle (z) it can
+!!--             automatically be stated that there is no overlap between the grid box and the
+!!--             nacelle and consequently we can set nac_cd_surf(k,j,i) = 0.0:
+!                IF ( ( k >= index_nacb(inot) )  .OR.                           &
+!                     ( k <= index_nact(inot) ) )  THEN
+!!
+!!--                For all other cases Riemann integrals are calculated. Here, the points on the
+!!--                circle that have been determined above are used in order to calculate the
+!!--                overlap between the gridbox and the nacelle area (area approached by 10000
+!!--                rectangulars dz_int * dy_int):
+!                   DO  i_ipg = 1, 10000
+!                      dz_int = dz
+!                      i_ip = j * 10000 + i_ipg
+!!
+!!--                   Determine the vertical extension dz_int of the circle within the current
+!!--                   grid box:
+!                      IF ( ( circle_points(2,i_ip) < zw(k) ) .AND.          &  !<--- segmentation fault
+!                           ( circle_points(2,i_ip) >= zw(k-1) ) ) THEN
+!                         dz_int = dz_int -                                  &  !<--- segmentation fault
+!                                  ( zw(k) - circle_points(2,i_ip) )
+!                      ENDIF
+!                      IF ( ( circle_points(1,i_ip) <= zw(k) ) .AND.         &  !<--- segmentation fault
+!                           ( circle_points(1,i_ip) > zw(k-1) ) ) THEN
+!                         dz_int = dz_int -                                  &
+!                                  ( circle_points(1,i_ip) - zw(k-1) )
+!                      ENDIF
+!                      IF ( zw(k-1) > circle_points(2,i_ip) ) THEN
+!                         dz_int = 0.0_wp
+!                      ENDIF
+!                      IF ( zw(k) < circle_points(1,i_ip) ) THEN
+!                         dz_int = 0.0_wp
+!                      ENDIF
+!                      IF ( ( nxlg <= i ) .AND. ( nxrg >= i ) ) THEN
+!                         nac_cd_surf(k,j,i) = nac_cd_surf(k,j,i) +        &  !<--- segmentation fault
+!                                               dy_int * dz_int * nacelle_cd(inot)
+!                      ENDIF
+!                   ENDDO
+!                ENDIF
+!             ENDDO
+!          ENDIF
+!
+!       ENDDO
+!
+!       CALL exchange_horiz( nac_cd_surf, nbgp )  !<---  segmentation fault
+
+    ENDDO  ! end of loop over turbines
+
+    tow_cd_surf   = tow_cd_surf   / ( dx * dy * dz(1) )  ! Normalize tower drag
+    nac_cd_surf = nac_cd_surf / ( dx * dy * dz(1) )      ! Normalize nacelle drag
 
     CALL wtm_read_blade_tables
 
@@ -1357,7 +1407,8 @@
  END SUBROUTINE wtm_init
 
 
- SUBROUTINE wtm_init_output
+
+SUBROUTINE wtm_init_output
 
 
 !    INTEGER(iwp) ::  ntimesteps              !< number of timesteps defined in NetCDF output file
@@ -1372,12 +1423,12 @@
 !
 !-- Create NetCDF output file:
 #if defined( __netcdf4 )
-    nc_filename = 'DATA_1D_TS_WTM_NETCDF'
+    nc_filename = 'DATA_1D_TS_WTM_NETCDF' // TRIM( coupling_char )
     return_value = dom_def_file( nc_filename, 'netcdf4-serial' )
 #else
-    message_string = 'Wind turbine model output requires netCDF version 4. &' //                   &
+    message_string = 'Wind turbine model output requires NetCDF version 4. ' //                    &
                      'No output file will be created.'
-    CALL message( 'wtm_init_output', 'WTM0005', 0, 1, 0, 6, 0 )
+                   CALL message( 'wtm_init_output', 'PA0672', 0, 1, 0, 6, 0 )
 #endif
     IF ( myid == 0 )  THEN
 !
@@ -1412,13 +1463,6 @@
                                    output_type = 'real32' )
 
        variable_name = 'z'
-       return_value = dom_def_var( nc_filename,                                                    &
-                                   variable_name = variable_name,                                  &
-                                   dimension_names = (/'turbine'/),                                &
-                                   output_type = 'real32' )
-
-
-       variable_name = 'turbine_name'
        return_value = dom_def_var( nc_filename,                                                    &
                                    variable_name = variable_name,                                  &
                                    dimension_names = (/'turbine'/),                                &
@@ -1628,17 +1672,8 @@
                                    attribute_name = 'units',                                       &
                                    value = 'degrees' )
 
-!
-!--    Check if DOM reported any error
-       dom_error_message = dom_get_error_message()
-       IF ( TRIM( dom_error_message ) /= '' )  THEN
-          message_string = 'error while defining output: "' // TRIM( dom_error_message ) // '"'
-          CALL message( 'wtm_init_output', 'WTM0006', 0, 1, 0, 6, 0 )
-       ENDIF
-
-    ENDIF
-
- END SUBROUTINE wtm_init_output
+   ENDIF
+END SUBROUTINE
 
 !--------------------------------------------------------------------------------------------------!
 ! Description:
@@ -1699,7 +1734,7 @@
 
     IF ( ierrn /= 0 )  THEN
        message_string = 'file WTM_DATA does not exist'
-       CALL message( 'wtm_init', 'WTM0007', 1, 2, 0, 6, 0 )
+       CALL message( 'wtm_init', 'PA0464', 1, 2, 0, 6, 0 )
     ENDIF
 !
 !-- Read distribution table:
@@ -2528,7 +2563,7 @@ pit_loop: DO
                       DO  rseg = 1, nsegs(ring,inot)
 !
 !--                      Predetermine flag to mask topography:
-                         flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 1 ) )
+                         flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 1 ) )
 
 !
 !--                      Determine the square of the distance between the current grid point and
@@ -2934,7 +2969,7 @@ pit_loop: DO
                    tend_nac_x  = 0.5_wp * nac_cd_surf(k,j,i) * SIGN( u(k,j,i)**2 , u(k,j,i) )
                    tend_tow_x  = 0.5_wp * tow_cd_surf(k,j,i) * SIGN( u(k,j,i)**2 , u(k,j,i) )
                    tend(k,j,i) = tend(k,j,i) + ( - rot_tend_x(k,j,i) - tend_nac_x - tend_tow_x ) * &
-                                 MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 1 ) )
+                                 MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 1 ) )
                 ENDDO
              ENDDO
           ENDDO
@@ -2950,7 +2985,7 @@ pit_loop: DO
                    tend_nac_y  = 0.5_wp * nac_cd_surf(k,j,i) * SIGN( v(k,j,i)**2 , v(k,j,i) )
                    tend_tow_y  = 0.5_wp * tow_cd_surf(k,j,i) * SIGN( v(k,j,i)**2 , v(k,j,i) )
                    tend(k,j,i) = tend(k,j,i) + ( - rot_tend_y(k,j,i) - tend_nac_y - tend_tow_y ) * &
-                                 MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 2 ) )
+                                 MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 2 ) )
                 ENDDO
              ENDDO
           ENDDO
@@ -2964,7 +2999,7 @@ pit_loop: DO
              DO  j = nysg, nyng
                 DO  k = nzb+1,  MAXVAL(k_hub) + MAXVAL(k_smear)
                    tend(k,j,i) = tend(k,j,i) - rot_tend_z(k,j,i) *                                 &
-                                 MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 3 ) )
+                                 MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 3 ) )
                 ENDDO
              ENDDO
           ENDDO
@@ -3012,7 +3047,7 @@ pit_loop: DO
              tend_nac_x  = 0.5_wp * nac_cd_surf(k,j,i) * SIGN( u(k,j,i)**2 , u(k,j,i) )
              tend_tow_x  = 0.5_wp * tow_cd_surf(k,j,i) * SIGN( u(k,j,i)**2 , u(k,j,i) )
              tend(k,j,i) = tend(k,j,i) + ( - rot_tend_x(k,j,i) - tend_nac_x - tend_tow_x ) *       &
-                           MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 1 ) )
+                           MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 1 ) )
           ENDDO
        ENDIF
 
@@ -3024,7 +3059,7 @@ pit_loop: DO
              tend_nac_y  = 0.5_wp * nac_cd_surf(k,j,i) * SIGN( v(k,j,i)**2 , v(k,j,i) )
              tend_tow_y  = 0.5_wp * tow_cd_surf(k,j,i) * SIGN( v(k,j,i)**2 , v(k,j,i) )
              tend(k,j,i) = tend(k,j,i) + ( - rot_tend_y(k,j,i) - tend_nac_y - tend_tow_y )  *      &
-                           MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 2 ) )
+                           MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 2 ) )
              ENDDO
        ENDIF
 
@@ -3034,7 +3069,7 @@ pit_loop: DO
        IF ( time_since_reference_point >= time_turbine_on )  THEN
           DO  k = nzb+1,  MAXVAL(k_hub) + MAXVAL(k_smear)
              tend(k,j,i) = tend(k,j,i) - rot_tend_z(k,j,i) *                                       &
-                           MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 3 ) )
+                           MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 3 ) )
           ENDDO
        ENDIF
 
@@ -3208,14 +3243,6 @@ pit_loop: DO
                                      bounds_end       = (/t_ind/) )
 
        DEALLOCATE ( output_values_1d_target )
-
-!
-!--    Check if DOM reported any error
-       dom_error_message = dom_get_error_message()
-       IF ( TRIM( dom_error_message ) /= '' )  THEN
-          message_string = 'error while writing output: "' // TRIM( dom_error_message ) // '"'
-          CALL message( 'wtm_data_output', 'WTM0008', 0, 1, 0, 6, 0 )
-       ENDIF
 
     ENDIF
 

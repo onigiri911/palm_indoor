@@ -13,8 +13,27 @@
 ! You should have received a copy of the GNU General Public License along with PALM. If not, see
 ! <http://www.gnu.org/licenses/>.
 !
-! Copyright 1997-2021 Leibniz Universitaet Hannover
+! Copyright 1997-2020 Leibniz Universitaet Hannover
 !--------------------------------------------------------------------------------------------------!
+!
+! Current revisions:
+! -----------------
+! 
+! 
+! Former revisions:
+! -----------------
+! $Id: data_output_profiles.f90 4577 2020-06-25 09:53:58Z raasch $
+! file re-formatted to follow the PALM coding standard
+!
+! 4360 2020-01-07 11:25:50Z suehring
+! Corrected "Former revisions" section
+!
+! 3655 2019-01-07 16:51:22Z knoop
+! add variable description
+!
+! Revision 1.1  1997/09/12 06:28:48  raasch
+! Initial revision
+!
 !
 ! Description:
 ! ------------
@@ -22,22 +41,16 @@
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE data_output_profiles
 
+
     USE control_parameters,                                                                        &
-        ONLY:  average_count_pr,                                                                   &
-               averaging_interval_pr,                                                              &
-               coupling_start_time,                                                                &
-               dopr_n,                                                                             &
-               dopr_time_count,                                                                    &
-               normalizing_region,                                                                 &
-               time_since_reference_point
+        ONLY:  average_count_pr, averaging_interval_pr, coupling_start_time,                       &
+               dopr_n, dopr_time_count, normalizing_region, time_since_reference_point
 
     USE cpulog,                                                                                    &
-        ONLY:  cpu_log,                                                                            &
-               log_point
+        ONLY:  cpu_log, log_point
 
     USE indices,                                                                                   &
-        ONLY:  nzb,                                                                                &
-               nzt
+        ONLY:  nzb, nzt
 
     USE kinds
 
@@ -46,30 +59,21 @@
 #endif
 
     USE netcdf_interface,                                                                          &
-        ONLY:  id_set_pr,                                                                          &
-               id_var_dopr,                                                                        &
-               id_var_norm_dopr,                                                                   &
-               id_var_time_pr,                                                                     &
-               nc_stat,                                                                            &
-               netcdf_handle_error,                                                                &
-               output_for_t0
+        ONLY:  id_set_pr, id_var_dopr, id_var_norm_dopr, id_var_time_pr, nc_stat,                  &
+               netcdf_handle_error, output_for_t0
 
     USE pegrid
 
     USE profil_parameter
 
     USE statistics,                                                                                &
-        ONLY:  flow_statistics_called,                                                             &
-               hom,                                                                                &
-               hom_sum,                                                                            &
-               pr_palm,                                                                            &
-               statistic_regions
+        ONLY:  flow_statistics_called, hom, hom_sum, pr_palm, statistic_regions
 
     IMPLICIT NONE
 
+
     INTEGER(iwp) ::  i  !< loop index
     INTEGER(iwp) ::  sr !< statistic region index
-
 
 !
 !-- If required, compute statistics

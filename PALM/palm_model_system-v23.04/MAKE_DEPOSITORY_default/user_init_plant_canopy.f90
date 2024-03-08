@@ -13,9 +13,37 @@
 ! You should have received a copy of the GNU General Public License along with PALM. If not, see
 ! <http://www.gnu.org/licenses/>.
 !
-! Copyright 1997-2021 Leibniz Universitaet Hannover
+! Copyright 1997-2020 Leibniz Universitaet Hannover
 !--------------------------------------------------------------------------------------------------!
 !
+!
+! Current revisions:
+! -----------------
+! 
+! 
+! Former revisions:
+! -----------------
+! $Id: user_init_plant_canopy.f90 4497 2020-04-15 10:20:51Z raasch $
+! file re-formatted to follow the PALM coding standard
+!
+! Current revisions:
+! -----------------
+!
+!
+! 4360 2020-01-07 11:25:50Z suehring
+! Renamed canopy_mode 'block' to 'homogeneous'
+!
+! 4182 2019-08-22 15:20:23Z scharf
+! Corrected "Former revisions" section
+!
+! 3768 2019-02-27 14:35:58Z raasch
+! unused variables commented out to avoid compiler warnings
+!
+! 3655 2019-01-07 16:51:22Z knoop
+! Corrected "Former revisions" section
+!
+! 211 2008-11-11 04:46:24Z raasch
+! Former file user_interface.f90 split into one file per subroutine
 !
 ! Description:
 ! ------------
@@ -23,6 +51,7 @@
 !> canopy drag coefficient, if the user has not chosen any of the default cases
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE user_init_plant_canopy
+
 
     USE arrays_3d
 
@@ -71,14 +100,14 @@
 !
 !--       After definition, please remove the following three lines!
           message_string = 'canopy_mode "' // canopy_mode //  '" not available yet'
-          CALL message( 'user_init_plant_canopy', 'USR0004', 0, 1, 0, 6, 0 )
+          CALL message( 'user_init_plant_canopy', 'UI0007', 0, 1, 0, 6, 0 )
 
        CASE DEFAULT
 !
 !--       The DEFAULT case is reached if the parameter canopy_mode contains a wrong character string
 !--       that is neither recognized in init_3d_model nor here in user_init_plant_canopy.
           message_string = 'unknown canopy_mode "' // canopy_mode // '"'
-          CALL message( 'user_init_plant_canopy', 'USR0005', 1, 2, 0, 6, 0 )
+          CALL message( 'user_init_plant_canopy', 'UI0008', 1, 2, 0, 6, 0 )
 
     END SELECT
 

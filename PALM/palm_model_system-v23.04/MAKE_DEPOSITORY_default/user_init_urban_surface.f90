@@ -13,8 +13,31 @@
 ! You should have received a copy of the GNU General Public License along with PALM. If not, see
 ! <http://www.gnu.org/licenses/>.
 !
-! Copyright 1997-2021 Leibniz Universitaet Hannover
+! Copyright 1997-2020 Leibniz Universitaet Hannover
 !--------------------------------------------------------------------------------------------------!
+!
+!
+! Current revisions:
+! -----------------
+! 
+! 
+! Former revisions:
+! -----------------
+! $Id: user_init_urban_surface.f90 4497 2020-04-15 10:20:51Z raasch $
+! file re-formatted to follow the PALM coding standard
+!
+!
+! 4481 2020-03-31 18:55:54Z maronga
+! Corrected "Former revisions" section
+!
+! 3768 2019-02-27 14:35:58Z raasch
+! unused variables commented out to avoid compiler warnings
+!
+! 3655 2019-01-07 16:51:22Z knoop
+! Corrected "Former revisions" section
+!
+! 2007 2016-08-24 15:47:17Z kanani
+! Initial revision
 !
 !
 ! Description:
@@ -47,8 +70,8 @@
 !
 !-- Here the user-defined urban surface initialization actions follow.
 !-- Example: set roughness length at urban surface
-!     DO  m = 1, surf_usm%ns
-!        surf_usm%z0(m) = 0.1_wp
+!     DO  m = 1, surf_usm_h%ns
+!        surf_usm_h%z0(m) = 0.1_wp
 !     ENDDO
 
 

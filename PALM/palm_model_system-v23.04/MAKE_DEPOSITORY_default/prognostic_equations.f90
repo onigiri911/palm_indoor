@@ -13,10 +13,119 @@
 ! You should have received a copy of the GNU General Public License along with PALM. If not, see
 ! <http://www.gnu.org/licenses/>.
 !
-! Copyright 1997-2021 Leibniz Universitaet Hannover
+! Copyright 1997-2020 Leibniz Universitaet Hannover
 !--------------------------------------------------------------------------------------------------!
 !
 !
+! Current revisions:
+! -----------------
+!
+!
+! Former revisions:
+! -----------------
+! $Id: prognostic_equations.f90 4731 2020-10-07 13:25:11Z schwenkel $
+! Move exchange_horiz from time_integration to modules
+!
+! 4717 2020-09-30 22:27:40Z pavelkrc
+! Fixes and optimizations of OpenMP parallelization, formatting of OpenMP
+! directives (J. Resler)
+!
+! 4671 2020-09-09 20:27:58Z pavelkrc
+! Implementation of downward facing USM and LSM surfaces
+!
+! 4649 2020-08-25 12:11:17Z raasch
+! File re-formatted to follow the PALM coding standard
+!
+! 4370 2020-01-10 14:00:44Z raasch
+! Vector directives added to force vectorization on Intel19 compiler
+!
+! 4360 2020-01-07 11:25:50Z suehring
+! Introduction of wall_flags_total_0, which currently sets bits based on static topography
+! information used in wall_flags_static_0
+!
+! 4329 2019-12-10 15:46:36Z motisi
+! Renamed wall_flags_0 to wall_flags_static_0
+!
+! 4182 2019-08-22 15:20:23Z scharf
+! Corrected "Former revisions" section
+!
+! 4110 2019-07-22 17:05:21Z suehring
+! Pass integer flag array to WS scalar advection routine which is now necessary as the flags may
+! differ for scalars, e.g. pt can be cyclic while chemical species may be non-cyclic. Further,
+! pass boundary flags.
+!
+! 4109 2019-07-22 17:00:34Z suehring
+! Application of monotonic flux limiter for the vertical scalar advection up to the topography top
+! (only for the cache-optimized version at the moment). Please note, at the moment the limiter is
+! only applied for passive scalars.
+!
+! 4048 2019-06-21 21:00:21Z knoop
+! Moved tcm_prognostic_equations to module_interface
+!
+! 3987 2019-05-22 09:52:13Z kanani
+! Introduce alternative switch for debug output during timestepping
+!
+! 3956 2019-05-07 12:32:52Z monakurppa
+! Removed salsa calls.
+!
+! 3931 2019-04-24 16:34:28Z schwenkel
+! Correct/complete module_interface introduction for chemistry model
+!
+! 3899 2019-04-16 14:05:27Z monakurppa
+! Corrections in the OpenMP version of salsa
+!
+! 3887 2019 -04-12 08:47:41Z schwenkel
+! Implicit Bugfix for chemistry model, loop for non_transport_physics over ghost points is avoided.
+! Instead introducing module_interface_exchange_horiz.
+!
+! 3885 2019-04-11 11:29:34Z kanani
+! Changes related to global restructuring of location messages and introduction of additional debug
+! messages
+!
+! 3881 2019-04-10 09:31:22Z suehring
+! Bugfix in OpenMP directive
+!
+! 3880 2019-04-08 21:43:02Z knoop
+! Moved wtm_tendencies to module_interface_actions
+!
+! 3874 2019-04-08 16:53:48Z knoop
+! Added non_transport_physics module interfaces and moved bcm code into it
+!
+! 3872 2019-04-08 15:03:06Z knoop
+! Moving prognostic equations of bcm into bulk_cloud_model_mod
+!
+! 3864 2019-04-05 09:01:56Z monakurppa
+! Modifications made for salsa:
+! - salsa_prognostic_equations moved to salsa_mod (and the call to module_interface_mod)
+! - Renamed nbins --> nbins_aerosol, ncc_tot --> ncomponents_mass and ngast --> ngases_salsa and
+!   loop indices b, c and sg to ib, ic and ig
+!
+! 3840 2019-03-29 10:35:52Z knoop
+! Added USE chem_gasphase_mod for nspec, nspec and spc_names
+!
+! 3820 2019-03-27 11:53:41Z forkel
+! Renamed do_depo to deposition_dry (ecc)
+!
+! 3797 2019-03-15 11:15:38Z forkel
+! Call chem_integegrate in OpenMP loop (ketelsen)
+!
+!
+! 3771 2019-02-28 12:19:33Z raasch
+! Preprocessor directivs fro rrtmg added
+!
+! 3761 2019-02-25 15:31:42Z raasch
+! Unused variable removed
+!
+! 3719 2019-02-06 13:10:18Z kanani
+! Cleaned up chemistry cpu measurements
+!
+! 3684 2019-01-20 20:20:58Z knoop
+! OpenACC port for SPEC
+!
+! Revision 1.1  2000/04/13 14:56:27  schroeter
+! Initial revision
+!
+!--------------------------------------------------------------------------------------------------!
 ! Description:
 ! ------------
 !> Solving the prognostic equations.
@@ -119,9 +228,7 @@
         ONLY:  buoyancy
 
     USE control_parameters,                                                                        &
-        ONLY:  advanced_div_correction,                                                            &
-               allow_negative_scalar_values,                                                       &
-               bc_dirichlet_l,                                                                     &
+        ONLY:  bc_dirichlet_l,                                                                     &
                bc_dirichlet_n,                                                                     &
                bc_dirichlet_r,                                                                     &
                bc_dirichlet_s,                                                                     &
@@ -130,7 +237,6 @@
                bc_radiation_r,                                                                     &
                bc_radiation_s,                                                                     &
                constant_diffusion,                                                                 &
-               dcep,                                                                               &
                debug_output_timestep,                                                              &
                dp_external,                                                                        &
                dp_level_ind_b,                                                                     &
@@ -165,6 +271,10 @@
                ws_scheme_mom,                                                                      &
                ws_scheme_sca
 
+
+
+
+
     USE coriolis_mod,                                                                              &
         ONLY:  coriolis
 
@@ -173,9 +283,6 @@
                log_point,                                                                          &
                log_point_s
 
-    USE dcep_mod,                                                                                  &
-        ONLY:  dcep_tendency
-    
     USE diffusion_s_mod,                                                                           &
         ONLY:  diffusion_s
 
@@ -203,7 +310,7 @@
                nysv,                                                                               &
                nzb,                                                                                &
                nzt,                                                                                &
-               topo_flags
+               wall_flags_total_0
 
     USE kinds
 
@@ -227,7 +334,7 @@
         ONLY:  cthf,                                                                               &
                pcm_tendency
 
-#if defined( __rrtmg ) || defined ( __tenstream )
+#if defined( __rrtmg )
     USE radiation_model_mod,                                                                       &
         ONLY:  radiation,                                                                          &
                radiation_tendency,                                                                 &
@@ -241,10 +348,12 @@
         ONLY:  subsidence
 
     USE surface_mod,                                                                               &
-        ONLY:  surf_def,                                                                           &
-               surf_lsm,                                                                           &
-               surf_top,                                                                           &
-               surf_usm
+        ONLY :  surf_def_h,                                                                        &
+                surf_def_v,                                                                        &
+                surf_lsm_h,                                                                        &
+                surf_lsm_v,                                                                        &
+                surf_usm_h,                                                                        &
+                surf_usm_v
 
     IMPLICIT NONE
 
@@ -330,7 +439,6 @@
           IF ( i >= nxlu )  THEN
 
              tend(:,j,i) = 0.0_wp
-
              IF ( timestep_scheme(1:5) == 'runge' )  THEN
                 IF ( ws_scheme_mom )  THEN
                    CALL advec_u_ws( i, j, i_omp_start, tn )
@@ -349,10 +457,6 @@
 !
 !--          Drag by plant canopy
              IF ( plant_canopy )  CALL pcm_tendency( i, j, 1 )
-
-!
-!--          DCEP tendency
-             IF ( dcep )  CALL dcep_tendency( i, j, 1 )
 
 !
 !--          External pressure gradient
@@ -377,7 +481,7 @@
 
                 u_p(k,j,i) = u(k,j,i) + ( dt_3d * ( tsc(2) * tend(k,j,i) + tsc(3) * tu_m(k,j,i) )  &
                                           - tsc(5) * rdf(k) * ( u(k,j,i) - u_init(k) ) )           &
-                             * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 1 ) )
+                             * MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 1 ) )
              ENDDO
 
 !
@@ -409,7 +513,6 @@
           IF ( j >= nysv )  THEN
 
              tend(:,j,i) = 0.0_wp
-
              IF ( timestep_scheme(1:5) == 'runge' )  THEN
                 IF ( ws_scheme_mom )  THEN
                     CALL advec_v_ws( i, j, i_omp_start, tn )
@@ -426,10 +529,6 @@
 !--          Drag by plant canopy
              IF ( plant_canopy )  CALL pcm_tendency( i, j, 2 )
 
-!
-!--          DCEP tendency
-             IF ( dcep )  CALL dcep_tendency( i, j, 2 )
-             
 !
 !--          External pressure gradient
              IF ( dp_external )  THEN
@@ -452,7 +551,7 @@
              DO  k = nzb+1, nzt
                 v_p(k,j,i) = v(k,j,i) + ( dt_3d * ( tsc(2) * tend(k,j,i) + tsc(3) * tv_m(k,j,i) )  &
                                           - tsc(5) * rdf(k) * ( v(k,j,i) - v_init(k) ) )           &
-                             * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 2 ) )
+                             * MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 2 ) )
              ENDDO
 
 !
@@ -481,7 +580,6 @@
 !
 !--       Tendency terms for w-velocity component
           tend(:,j,i) = 0.0_wp
-
           IF ( timestep_scheme(1:5) == 'runge' )  THEN
              IF ( ws_scheme_mom )  THEN
                 CALL advec_w_ws( i, j, i_omp_start, tn )
@@ -511,10 +609,6 @@
           IF ( plant_canopy )  CALL pcm_tendency( i, j, 3 )
 
 !
-!--       DCEP tendency (not implemented yet)
-          IF ( dcep )  CALL dcep_tendency( i, j, 3 )
-
-!
 !--       Effect of Stokes drift (in ocean mode only)
           IF ( stokes_force )  CALL stokes_drift_terms( i, j, 3 )
 
@@ -524,7 +618,7 @@
           DO  k = nzb+1, nzt-1
              w_p(k,j,i) = w(k,j,i) + ( dt_3d * ( tsc(2) * tend(k,j,i) + tsc(3) * tw_m(k,j,i) )     &
                                        - tsc(5) * rdf(k) * w(k,j,i) )                              &
-                          * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 3 ) )
+                          * MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 3 ) )
           ENDDO
 
 !
@@ -547,22 +641,29 @@
 !
 !--          Tendency terms for potential temperature
              tend(:,j,i) = 0.0_wp
-
              IF ( timestep_scheme(1:5) == 'runge' )  THEN
-                IF ( ws_scheme_sca )  THEN
-                   CALL advec_s_ws( advc_flags_s, i, j, pt, 'pt', flux_s_pt, diss_s_pt,            &
-                                    flux_l_pt, diss_l_pt, i_omp_start, tn,                         &
-                                    bc_dirichlet_l  .OR.  bc_radiation_l,                          &
-                                    bc_dirichlet_n  .OR.  bc_radiation_n,                          &
-                                    bc_dirichlet_r  .OR.  bc_radiation_r,                          &
-                                    bc_dirichlet_s  .OR.  bc_radiation_s )
-                ELSE
-                   CALL advec_s_pw( i, j, pt )
-                ENDIF
+                   IF ( ws_scheme_sca )  THEN
+                      CALL advec_s_ws( advc_flags_s, i, j, pt, 'pt', flux_s_pt, diss_s_pt,         &
+                                       flux_l_pt, diss_l_pt, i_omp_start, tn,                      &
+                                       bc_dirichlet_l  .OR.  bc_radiation_l,                       &
+                                       bc_dirichlet_n  .OR.  bc_radiation_n,                       &
+                                       bc_dirichlet_r  .OR.  bc_radiation_r,                       &
+                                       bc_dirichlet_s  .OR.  bc_radiation_s )
+                   ELSE
+                      CALL advec_s_pw( i, j, pt )
+                   ENDIF
              ELSE
                 CALL advec_s_up( i, j, pt )
              ENDIF
-             CALL diffusion_s( i, j, pt, surf_top%shf, surf_def%shf, surf_lsm%shf, surf_usm%shf )
+	     
+!-- COVID-19 specific CALL diffusion_s():
+             CALL diffusion_s( 1.0_wp, i, j, pt, surf_def_h(0)%shf, surf_def_h(1)%shf, surf_def_h(2)%shf,  &
+                               surf_lsm_h(0)%shf, surf_lsm_h(1)%shf,                               &
+                               surf_usm_h(0)%shf, surf_usm_h(1)%shf,                               &
+                               surf_def_v(0)%shf, surf_def_v(1)%shf, surf_def_v(2)%shf,            &
+                               surf_def_v(3)%shf, surf_lsm_v(0)%shf, surf_lsm_v(1)%shf,            &
+                               surf_lsm_v(2)%shf, surf_lsm_v(3)%shf, surf_usm_v(0)%shf,            &
+                               surf_usm_v(1)%shf, surf_usm_v(2)%shf, surf_usm_v(3)%shf )
 
 !
 !--          Consideration of heat sources within the plant canopy
@@ -570,10 +671,6 @@
              THEN
                 CALL pcm_tendency( i, j, 4 )
              ENDIF
-
-!
-!--          DCEP tendency
-             IF ( dcep )  CALL dcep_tendency( i, j, 4 )
 
 !
 !--          Large scale advection
@@ -591,7 +688,7 @@
                 CALL subsidence( i, j, tend, pt, pt_init, 2 )
              ENDIF
 
-#if defined( __rrtmg ) || defined ( __tenstream )
+#if defined( __rrtmg )
 !
 !--          If required, add tendency due to radiative heating/cooling
              IF ( radiation  .AND.  simulated_time > skip_time_do_radiation )  THEN
@@ -607,7 +704,7 @@
                               ( dt_3d * ( tsc(2) * tend(k,j,i) + tsc(3) * tpt_m(k,j,i) ) - tsc(5)  &
                                 * ( pt(k,j,i) - pt_init(k) ) * ( rdf_sc(k) + ptdf_x(i)             &
                                                                  + ptdf_y(j) ) )                   &
-                              * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                              * MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
              ENDDO
 
 !
@@ -633,7 +730,6 @@
 !
 !--          Tendency-terms for total water content / scalar
              tend(:,j,i) = 0.0_wp
-
              IF ( timestep_scheme(1:5) == 'runge' )  THEN
                 IF ( ws_scheme_sca )  THEN
                    CALL advec_s_ws( advc_flags_s, i, j, q, 'q', flux_s_q, diss_s_q, flux_l_q,      &
@@ -648,15 +744,17 @@
              ELSE
                 CALL advec_s_up( i, j, q )
              ENDIF
-             CALL diffusion_s( i, j, q, surf_top%qsws, surf_def%qsws, surf_lsm%qsws, surf_usm%qsws )
+             CALL diffusion_s( i, j, q, surf_def_h(0)%qsws, surf_def_h(1)%qsws,                    &
+                               surf_def_h(2)%qsws, surf_lsm_h(0)%qsws, surf_lsm_h(1)%qsws,         &
+                               surf_usm_h(0)%qsws, surf_usm_h(1)%qsws,                             &
+                               surf_def_v(0)%qsws, surf_def_v(1)%qsws, surf_def_v(2)%qsws,         &
+                               surf_def_v(3)%qsws, surf_lsm_v(0)%qsws, surf_lsm_v(1)%qsws,         &
+                               surf_lsm_v(2)%qsws, surf_lsm_v(3)%qsws, surf_usm_v(0)%qsws,         &
+                               surf_usm_v(1)%qsws, surf_usm_v(2)%qsws, surf_usm_v(3)%qsws )
 
 !
 !--          Sink or source of humidity due to canopy elements
              IF ( plant_canopy )  CALL pcm_tendency( i, j, 5 )
-
-!!
-!!--          Sink or source of humidity due to canopy elements (not implemented)
-!             IF ( dcep )  CALL dcep_tendency( i, j, 5 )
 
 !
 !--          Large scale advection
@@ -682,7 +780,7 @@
                 q_p(k,j,i) = q(k,j,i)                                                              &
                              + ( dt_3d * ( tsc(2) * tend(k,j,i) + tsc(3) * tq_m(k,j,i) ) - tsc(5)  &
                                  * rdf_sc(k) * ( q(k,j,i) - q_init(k) ) )                          &
-                             * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                             * MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
                 IF ( q_p(k,j,i) < 0.0_wp )  q_p(k,j,i) = 0.1_wp * q(k,j,i)
              ENDDO
 
@@ -709,7 +807,6 @@
 !
 !--          Tendency-terms for total water content / scalar
              tend(:,j,i) = 0.0_wp
-
              IF ( timestep_scheme(1:5) == 'runge' )  THEN
                 IF ( ws_scheme_sca )  THEN
 !
@@ -727,7 +824,13 @@
              ELSE
                 CALL advec_s_up( i, j, s )
              ENDIF
-             CALL diffusion_s( i, j, s, surf_top%ssws, surf_def%ssws, surf_lsm%ssws, surf_usm%ssws )
+             CALL diffusion_s( i, j, s, surf_def_h(0)%ssws, surf_def_h(1)%ssws,                    &
+                               surf_def_h(2)%ssws, surf_lsm_h(0)%ssws, surf_lsm_h(1)%ssws,         &
+                               surf_usm_h(0)%ssws, surf_usm_h(1)%ssws,                             &
+                               surf_def_v(0)%ssws, surf_def_v(1)%ssws, surf_def_v(2)%ssws,         &
+                               surf_def_v(3)%ssws, surf_lsm_v(0)%ssws, surf_lsm_v(1)%ssws,         &
+                               surf_lsm_v(2)%ssws, surf_lsm_v(3)%ssws, surf_usm_v(0)%ssws,         &
+                               surf_usm_v(1)%ssws, surf_usm_v(2)%ssws, surf_usm_v(3)%ssws )
 
 !
 !--          Sink or source of scalar concentration due to canopy elements
@@ -760,10 +863,8 @@
                 s_p(k,j,i) = s(k,j,i)                                                              &
                              + ( dt_3d * ( tsc(2) * tend(k,j,i) + tsc(3) * ts_m(k,j,i) )           &
                                  - tsc(5) * rdf_sc(k) * ( s(k,j,i) - s_init(k) ) )                 &
-                             * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
-                IF ( s_p(k,j,i) < 0.0_wp  .AND.  .NOT. allow_negative_scalar_values )  THEN
-                   s_p(k,j,i) = 0.1_wp * s(k,j,i)
-                ENDIF
+                             * MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
+                IF ( s_p(k,j,i) < 0.0_wp )  s_p(k,j,i) = 0.1_wp * s(k,j,i)
              ENDDO
 
 !
@@ -848,10 +949,6 @@
     IF ( plant_canopy )  CALL pcm_tendency( 1 )
 
 !
-!-- DCEP tendency
-    IF ( dcep )  CALL dcep_tendency( 1 )
-
-!
 !-- External pressure gradient
     IF ( dp_external )  THEN
        DO  i = nxlu, nxr
@@ -876,7 +973,7 @@
 !
 !-- Prognostic equation for u-velocity component
     !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i, j, k) &
-    !$ACC PRESENT(u, tend, tu_m, u_init, rdf, topo_flags) &
+    !$ACC PRESENT(u, tend, tu_m, u_init, rdf, wall_flags_total_0) &
     !$ACC PRESENT(tsc(2:5)) &
     !$ACC PRESENT(u_p)
     DO  i = nxlu, nxr
@@ -888,7 +985,7 @@
              u_p(k,j,i) = u(k,j,i)                                                                 &
                           + ( dt_3d * ( tsc(2) * tend(k,j,i) + tsc(3) * tu_m(k,j,i) )              &
                               - tsc(5) * rdf(k) * ( u(k,j,i) - u_init(k) ) )                       &
-                          * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 1 ) )
+                          * MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 1 ) )
           ENDDO
        ENDDO
     ENDDO
@@ -951,10 +1048,6 @@
     IF ( plant_canopy )  CALL pcm_tendency( 2 )
 
 !
-!-- DCEP tendency
-    IF ( dcep )  CALL dcep_tendency( 2 )
-
-!
 !-- External pressure gradient
     IF ( dp_external )  THEN
        DO  i = nxl, nxr
@@ -979,7 +1072,7 @@
 !
 !-- Prognostic equation for v-velocity component
     !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i, j, k) &
-    !$ACC PRESENT(v, tend, tv_m, v_init, rdf, topo_flags) &
+    !$ACC PRESENT(v, tend, tv_m, v_init, rdf, wall_flags_total_0) &
     !$ACC PRESENT(tsc(2:5)) &
     !$ACC PRESENT(v_p)
     DO  i = nxl, nxr
@@ -991,7 +1084,7 @@
              v_p(k,j,i) = v(k,j,i)                                                                 &
                           + ( dt_3d * ( tsc(2) * tend(k,j,i) + tsc(3) * tv_m(k,j,i) ) - tsc(5)     &
                               * rdf(k) * ( v(k,j,i) - v_init(k) ) )                                &
-                          * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 2 ) )
+                          * MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 2 ) )
           ENDDO
        ENDDO
     ENDDO
@@ -1066,10 +1159,6 @@
     IF ( plant_canopy )  CALL pcm_tendency( 3 )
 
 !
-!-- DCEP tendency
-    IF ( dcep )  CALL dcep_tendency( 3 )
-
-!
 !-- Effect of Stokes drift (in ocean mode only)
     IF ( stokes_force )  CALL stokes_drift_terms( 3 )
 
@@ -1078,7 +1167,7 @@
 !
 !-- Prognostic equation for w-velocity component
     !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i, j, k) &
-    !$ACC PRESENT(w, tend, tw_m, v_init, rdf, topo_flags) &
+    !$ACC PRESENT(w, tend, tw_m, v_init, rdf, wall_flags_total_0) &
     !$ACC PRESENT(tsc(2:5)) &
     !$ACC PRESENT(w_p)
     DO  i = nxl, nxr
@@ -1090,7 +1179,7 @@
              w_p(k,j,i) = w(k,j,i)                                                                 &
                           + ( dt_3d * ( tsc(2) * tend(k,j,i) + tsc(3) * tw_m(k,j,i) )              &
                               - tsc(5) * rdf(k) * w(k,j,i) )                                       &
-                          * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 3 ) )
+                          * MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 3 ) )
           ENDDO
        ENDDO
     ENDDO
@@ -1153,19 +1242,11 @@
           !$ACC END KERNELS
           IF ( timestep_scheme(1:5) == 'runge' )  THEN
              IF ( ws_scheme_sca )  THEN
-                IF ( .NOT. advanced_div_correction )  THEN
-                   CALL advec_s_ws( advc_flags_s, pt, 'pt',                                        &
-                                    bc_dirichlet_l  .OR.  bc_radiation_l,                          &
-                                    bc_dirichlet_n  .OR.  bc_radiation_n,                          &
-                                    bc_dirichlet_r  .OR.  bc_radiation_r,                          &
-                                    bc_dirichlet_s  .OR.  bc_radiation_s )
-                ELSE
-                   CALL advec_s_ws( advc_flags_s, pt, 'pt',                                        &
-                                    bc_dirichlet_l  .OR.  bc_radiation_l,                          &
-                                    bc_dirichlet_n  .OR.  bc_radiation_n,                          &
-                                    bc_dirichlet_r  .OR.  bc_radiation_r,                          &
-                                    bc_dirichlet_s  .OR.  bc_radiation_s, advanced_div_correction )
-                ENDIF
+                CALL advec_s_ws( advc_flags_s, pt, 'pt',                                           &
+                                 bc_dirichlet_l  .OR.  bc_radiation_l,                             &
+                                 bc_dirichlet_n  .OR.  bc_radiation_n,                             &
+                                 bc_dirichlet_r  .OR.  bc_radiation_r,                             &
+                                 bc_dirichlet_s  .OR.  bc_radiation_s )
              ELSE
                 CALL advec_s_pw( pt )
              ENDIF
@@ -1174,17 +1255,20 @@
           ENDIF
        ENDIF
 
-       CALL diffusion_s( pt, surf_top%shf, surf_def%shf, surf_lsm%shf, surf_usm%shf )
+!--    COVID-19 specific CALL diffusion_s() here:
+       CALL diffusion_s(1.0_wp, pt, surf_def_h(0)%shf, surf_def_h(1)%shf, surf_def_h(2)%shf,              &
+                         surf_lsm_h(0)%shf, surf_lsm_h(1)%shf, surf_usm_h(0)%shf,                  &
+                         surf_usm_h(1)%shf, surf_def_v(0)%shf, surf_def_v(1)%shf,                  &
+                         surf_def_v(2)%shf, surf_def_v(3)%shf, surf_lsm_v(0)%shf,                  &
+                         surf_lsm_v(1)%shf, surf_lsm_v(2)%shf, surf_lsm_v(3)%shf,                  &
+                         surf_usm_v(0)%shf, surf_usm_v(1)%shf, surf_usm_v(2)%shf,                  &
+                         surf_usm_v(3)%shf )
 
 !
 !--    Consideration of heat sources within the plant canopy
        IF ( plant_canopy  .AND.  (cthf /= 0.0_wp  .OR. urban_surface  .OR.  land_surface) )  THEN
           CALL pcm_tendency( 4 )
        ENDIF
-
-!
-!--    DCEP tendency
-       IF ( dcep )  CALL dcep_tendency( 4 )
 
 !
 !--    Large scale advection
@@ -1202,7 +1286,7 @@
           CALL subsidence( tend, pt, pt_init, 2 )
        ENDIF
 
-#if defined( __rrtmg ) || defined ( __tenstream )
+#if defined( __rrtmg )
 !
 !--    If required, add tendency due to radiative heating/cooling
        IF ( radiation  .AND.  simulated_time > skip_time_do_radiation )  THEN
@@ -1215,7 +1299,7 @@
 !
 !--    Prognostic equation for potential temperature
        !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i, j, k) &
-       !$ACC PRESENT(pt, tend, tpt_m, topo_flags) &
+       !$ACC PRESENT(pt, tend, tpt_m, wall_flags_total_0) &
        !$ACC PRESENT(pt_init, rdf_sc, ptdf_x, ptdf_y) &
        !$ACC PRESENT(tsc(3:5)) &
        !$ACC PRESENT(pt_p)
@@ -1229,7 +1313,7 @@
                               + ( dt_3d * ( sbt * tend(k,j,i) + tsc(3) * tpt_m(k,j,i) )            &
                                   - tsc(5) * ( pt(k,j,i) - pt_init(k) )                            &
                                   * ( rdf_sc(k) + ptdf_x(i) + ptdf_y(j) ) )                        &
-                              * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                              * MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
              ENDDO
           ENDDO
        ENDDO
@@ -1290,19 +1374,11 @@
           tend = 0.0_wp
           IF ( timestep_scheme(1:5) == 'runge' )  THEN
              IF ( ws_scheme_sca )  THEN
-                IF ( .NOT. advanced_div_correction )  THEN
-                   CALL advec_s_ws( advc_flags_s, q, 'q',                                          &
-                                    bc_dirichlet_l  .OR.  bc_radiation_l,                          &
-                                    bc_dirichlet_n  .OR.  bc_radiation_n,                          &
-                                    bc_dirichlet_r  .OR.  bc_radiation_r,                          &
-                                    bc_dirichlet_s  .OR.  bc_radiation_s )
-                ELSE
-                   CALL advec_s_ws( advc_flags_s, q, 'q',                                          &
-                                    bc_dirichlet_l  .OR.  bc_radiation_l,                          &
-                                    bc_dirichlet_n  .OR.  bc_radiation_n,                          &
-                                    bc_dirichlet_r  .OR.  bc_radiation_r,                          &
-                                    bc_dirichlet_s  .OR.  bc_radiation_s, advanced_div_correction )
-                ENDIF
+                CALL advec_s_ws( advc_flags_s, q, 'q',                                             &
+                                 bc_dirichlet_l  .OR.  bc_radiation_l,                             &
+                                 bc_dirichlet_n  .OR.  bc_radiation_n,                             &
+                                 bc_dirichlet_r  .OR.  bc_radiation_r,                             &
+                                 bc_dirichlet_s  .OR.  bc_radiation_s )
              ELSE
                 CALL advec_s_pw( q )
              ENDIF
@@ -1311,15 +1387,17 @@
           ENDIF
        ENDIF
 
-       CALL diffusion_s( q, surf_top%qsws, surf_def%qsws, surf_lsm%qsws, surf_usm%qsws )
+       CALL diffusion_s( q, surf_def_h(0)%qsws, surf_def_h(1)%qsws, surf_def_h(2)%qsws,            &
+                         surf_lsm_h(0)%qsws, surf_lsm_h(1)%qsws, surf_usm_h(0)%qsws,               &
+                         surf_usm_h(0)%qsws, surf_def_v(0)%qsws, surf_def_v(1)%qsws,               &
+                         surf_def_v(2)%qsws, surf_def_v(3)%qsws, surf_lsm_v(0)%qsws,               &
+                         surf_lsm_v(1)%qsws, surf_lsm_v(2)%qsws, surf_lsm_v(3)%qsws,               &
+                         surf_usm_v(0)%qsws, surf_usm_v(1)%qsws, surf_usm_v(2)%qsws,               &
+                         surf_usm_v(3)%qsws )
 
 !
 !--    Sink or source of humidity due to canopy elements
        IF ( plant_canopy ) CALL pcm_tendency( 5 )
-
-!
-!--    DCEP tendency
-       IF ( dcep )  CALL dcep_tendency( 5 )
 
 !
 !--    Large scale advection
@@ -1350,7 +1428,7 @@
                 q_p(k,j,i) = q(k,j,i)                                                              &
                              + ( dt_3d * ( sbt * tend(k,j,i) + tsc(3) * tq_m(k,j,i) )              &
                                  - tsc(5) * rdf_sc(k) * ( q(k,j,i) - q_init(k) ) )                 &
-                             * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                             * MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
                 IF ( q_p(k,j,i) < 0.0_wp )  q_p(k,j,i) = 0.1_wp * q(k,j,i)
              ENDDO
           ENDDO
@@ -1408,19 +1486,11 @@
           tend = 0.0_wp
           IF ( timestep_scheme(1:5) == 'runge' )  THEN
              IF ( ws_scheme_sca )  THEN
-                IF ( .NOT. advanced_div_correction )  THEN
-                   CALL advec_s_ws( advc_flags_s, s, 's',                                          &
-                                    bc_dirichlet_l  .OR.  bc_radiation_l,                          &
-                                    bc_dirichlet_n  .OR.  bc_radiation_n,                          &
-                                    bc_dirichlet_r  .OR.  bc_radiation_r,                          &
-                                    bc_dirichlet_s  .OR.  bc_radiation_s )
-                ELSE
-                   CALL advec_s_ws( advc_flags_s, s, 's',                                          &
-                                    bc_dirichlet_l  .OR.  bc_radiation_l,                          &
-                                    bc_dirichlet_n  .OR.  bc_radiation_n,                          &
-                                    bc_dirichlet_r  .OR.  bc_radiation_r,                          &
-                                    bc_dirichlet_s  .OR.  bc_radiation_s, advanced_div_correction )
-                ENDIF
+                CALL advec_s_ws( advc_flags_s, s, 's',                                             &
+                                 bc_dirichlet_l  .OR.  bc_radiation_l,                             &
+                                 bc_dirichlet_n  .OR.  bc_radiation_n,                             &
+                                 bc_dirichlet_r  .OR.  bc_radiation_r,                             &
+                                 bc_dirichlet_s  .OR.  bc_radiation_s )
              ELSE
                 CALL advec_s_pw( s )
              ENDIF
@@ -1429,7 +1499,13 @@
           ENDIF
        ENDIF
 
-       CALL diffusion_s( s, surf_top%ssws, surf_def%ssws, surf_lsm%ssws, surf_usm%ssws )
+       CALL diffusion_s( s, surf_def_h(0)%ssws, surf_def_h(1)%ssws, surf_def_h(2)%ssws,            &
+                         surf_lsm_h(0)%ssws, surf_lsm_h(1)%ssws, surf_usm_h(0)%ssws,               &
+                         surf_usm_h(1)%ssws, surf_def_v(0)%ssws, surf_def_v(1)%ssws,               &
+                         surf_def_v(2)%ssws, surf_def_v(3)%ssws, surf_lsm_v(0)%ssws,               &
+                         surf_lsm_v(1)%ssws, surf_lsm_v(2)%ssws, surf_lsm_v(3)%ssws,               &
+                         surf_usm_v(0)%ssws, surf_usm_v(1)%ssws, surf_usm_v(2)%ssws,               &
+                         surf_usm_v(3)%ssws )
 
 !
 !--    Sink or source of humidity due to canopy elements
@@ -1466,10 +1542,8 @@
                 s_p(k,j,i) = s(k,j,i)                                                              &
                              + ( dt_3d * ( sbt * tend(k,j,i) + tsc(3) * ts_m(k,j,i) )              &
                                  - tsc(5) * rdf_sc(k) * ( s(k,j,i) - s_init(k) ) )                 &
-                             * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
-                IF ( s_p(k,j,i) < 0.0_wp  .AND.  .NOT. allow_negative_scalar_values )  THEN
-                   s_p(k,j,i) = 0.1_wp * s(k,j,i)
-                ENDIF
+                             * MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
+                IF ( s_p(k,j,i) < 0.0_wp )  s_p(k,j,i) = 0.1_wp * s(k,j,i)
              ENDDO
           ENDDO
        ENDDO

@@ -13,15 +13,36 @@
 ! You should have received a copy of the GNU General Public License along with PALM. If not, see
 ! <http://www.gnu.org/licenses/>.
 !
-! Copyright 1997-2021 Leibniz Universitaet Hannover
+! Copyright 1997-2020 Leibniz Universitaet Hannover
 !--------------------------------------------------------------------------------------------------!
 !
 !
+! Current revisions:
+! -----------------
+!
+!
+! Former revisions:
+! -----------------
+! $Id: print_1d.f90 4649 2020-08-25 12:11:17Z raasch $
+! File re-formatted to follow the PALM coding standard
+!
+!
+! 4360 2020-01-07 11:25:50Z suehring
+! Corrected "Former revisions" section
+!
+! 3655 2019-01-07 16:51:22Z knoop
+! Renamed output variables
+!
+! Revision 1.1  1997/09/19 07:45:22  raasch
+! Initial revision
+!
+!--------------------------------------------------------------------------------------------------!
 ! Description:
 ! ------------
 !> List output of 1D-profiles.
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE print_1d
+
 
     USE arrays_3d,                                                                                 &
         ONLY:  zu,                                                                                 &

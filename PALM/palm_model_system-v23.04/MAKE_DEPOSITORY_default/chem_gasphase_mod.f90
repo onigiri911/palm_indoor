@@ -40,9 +40,7 @@ MODULE chem_gasphase_mod
 ! You should have received a copy of the GNU General Public License along with
 ! PALM. If not,see <http://www.gnu.org/licenses/>.
 !
-! Copyright 2017-2023 Leibniz Universitaet Hannover
-! Copyright 2016-2023 Klaus Ketelsen
-! Copyright 2017-2023 Karlsruhe Institute of Technology
+! Copyright 1997-2020 Leibniz Universitaet Hannover
 !--------------------------------------------------------------------------------!
 !
 !
@@ -118,6 +116,8 @@ MODULE chem_gasphase_mod
 !        R. Sander,Max-Planck Institute for Chemistry,Mainz,Germany
 ! 
 ! File                 : chem_gasphase_mod_Parameters.f90
+! Time                 : Thu Mar 28 15:59:30 2019
+! Working directory    : /home/forkel-r/palmstuff/work/trunk20190327/UTIL/chemistry/gasphase_preproc/tmp_kpp4palm
 ! Equation file        : chem_gasphase_mod.kpp
 ! Output root filename : chem_gasphase_mod
 ! 
@@ -193,6 +193,8 @@ MODULE chem_gasphase_mod
 !        R. Sander,Max-Planck Institute for Chemistry,Mainz,Germany
 ! 
 ! File                 : chem_gasphase_mod_Global.f90
+! Time                 : Thu Mar 28 15:59:30 2019
+! Working directory    : /home/forkel-r/palmstuff/work/trunk20190327/UTIL/chemistry/gasphase_preproc/tmp_kpp4palm
 ! Equation file        : chem_gasphase_mod.kpp
 ! Output root filename : chem_gasphase_mod
 ! 
@@ -256,6 +258,8 @@ MODULE chem_gasphase_mod
 !        R. Sander,Max-Planck Institute for Chemistry,Mainz,Germany
 ! 
 ! File                 : chem_gasphase_mod_JacobianSP.f90
+! Time                 : Thu Mar 28 15:59:30 2019
+! Working directory    : /home/forkel-r/palmstuff/work/trunk20190327/UTIL/chemistry/gasphase_preproc/tmp_kpp4palm
 ! Equation file        : chem_gasphase_mod.kpp
 ! Output root filename : chem_gasphase_mod
 ! 
@@ -298,6 +302,8 @@ MODULE chem_gasphase_mod
 !        R. Sander,Max-Planck Institute for Chemistry,Mainz,Germany
 ! 
 ! File                 : chem_gasphase_mod_Monitor.f90
+! Time                 : Thu Mar 28 15:59:30 2019
+! Working directory    : /home/forkel-r/palmstuff/work/trunk20190327/UTIL/chemistry/gasphase_preproc/tmp_kpp4palm
 ! Equation file        : chem_gasphase_mod.kpp
 ! Output root filename : chem_gasphase_mod
 ! 
@@ -358,6 +364,8 @@ MODULE chem_gasphase_mod
 !        R. Sander,Max-Planck Institute for Chemistry,Mainz,Germany
 ! 
 ! File                 : chem_gasphase_mod_Initialize.f90
+! Time                 : Thu Mar 28 15:59:30 2019
+! Working directory    : /home/forkel-r/palmstuff/work/trunk20190327/UTIL/chemistry/gasphase_preproc/tmp_kpp4palm
 ! Equation file        : chem_gasphase_mod.kpp
 ! Output root filename : chem_gasphase_mod
 ! 
@@ -382,6 +390,8 @@ MODULE chem_gasphase_mod
 !        R. Sander,Max-Planck Institute for Chemistry,Mainz,Germany
 ! 
 ! File                 : chem_gasphase_mod_Integrator.f90
+! Time                 : Thu Mar 28 15:59:30 2019
+! Working directory    : /home/forkel-r/palmstuff/work/trunk20190327/UTIL/chemistry/gasphase_preproc/tmp_kpp4palm
 ! Equation file        : chem_gasphase_mod.kpp
 ! Output root filename : chem_gasphase_mod
 ! 
@@ -438,6 +448,8 @@ MODULE chem_gasphase_mod
 !        R. Sander,Max-Planck Institute for Chemistry,Mainz,Germany
 ! 
 ! File                 : chem_gasphase_mod_LinearAlgebra.f90
+! Time                 : Thu Mar 28 15:59:30 2019
+! Working directory    : /home/forkel-r/palmstuff/work/trunk20190327/UTIL/chemistry/gasphase_preproc/tmp_kpp4palm
 ! Equation file        : chem_gasphase_mod.kpp
 ! Output root filename : chem_gasphase_mod
 ! 
@@ -463,6 +475,8 @@ MODULE chem_gasphase_mod
 !        R. Sander,Max-Planck Institute for Chemistry,Mainz,Germany
 ! 
 ! File                 : chem_gasphase_mod_Jacobian.f90
+! Time                 : Thu Mar 28 15:59:30 2019
+! Working directory    : /home/forkel-r/palmstuff/work/trunk20190327/UTIL/chemistry/gasphase_preproc/tmp_kpp4palm
 ! Equation file        : chem_gasphase_mod.kpp
 ! Output root filename : chem_gasphase_mod
 ! 
@@ -488,6 +502,8 @@ MODULE chem_gasphase_mod
 !        R. Sander,Max-Planck Institute for Chemistry,Mainz,Germany
 ! 
 ! File                 : chem_gasphase_mod_Function.f90
+! Time                 : Thu Mar 28 15:59:30 2019
+! Working directory    : /home/forkel-r/palmstuff/work/trunk20190327/UTIL/chemistry/gasphase_preproc/tmp_kpp4palm
 ! Equation file        : chem_gasphase_mod.kpp
 ! Output root filename : chem_gasphase_mod
 ! 
@@ -515,6 +531,8 @@ MODULE chem_gasphase_mod
 !        R. Sander,Max-Planck Institute for Chemistry,Mainz,Germany
 ! 
 ! File                 : chem_gasphase_mod_Rates.f90
+! Time                 : Thu Mar 28 15:59:30 2019
+! Working directory    : /home/forkel-r/palmstuff/work/trunk20190327/UTIL/chemistry/gasphase_preproc/tmp_kpp4palm
 ! Equation file        : chem_gasphase_mod.kpp
 ! Output root filename : chem_gasphase_mod
 ! 
@@ -539,6 +557,8 @@ MODULE chem_gasphase_mod
 !        R. Sander,Max-Planck Institute for Chemistry,Mainz,Germany
 ! 
 ! File                 : chem_gasphase_mod_Util.f90
+! Time                 : Thu Mar 28 15:59:30 2019
+! Working directory    : /home/forkel-r/palmstuff/work/trunk20190327/UTIL/chemistry/gasphase_preproc/tmp_kpp4palm
 ! Equation file        : chem_gasphase_mod.kpp
 ! Output root filename : chem_gasphase_mod
 ! 
@@ -602,9 +622,17 @@ MODULE chem_gasphase_mod
     MODULE PROCEDURE   jac_sp
   END INTERFACE        jac_sp
  
+  INTERFACE            k_arr
+    MODULE PROCEDURE   k_arr
+  END INTERFACE        k_arr
+ 
   INTERFACE            update_rconst
     MODULE PROCEDURE   update_rconst
   END INTERFACE        update_rconst
+ 
+  INTERFACE            arr2
+    MODULE PROCEDURE   arr2
+  END INTERFACE        arr2
  
   INTERFACE            initialize_kpp_ctrl
     MODULE PROCEDURE   initialize_kpp_ctrl
@@ -614,17 +642,13 @@ MODULE chem_gasphase_mod
     MODULE PROCEDURE   error_output
   END INTERFACE        error_output
  
-  INTERFACE            arr2
-    MODULE PROCEDURE   arr2
-  END INTERFACE        arr2
+  INTERFACE            wscal
+    MODULE PROCEDURE   wscal
+  END INTERFACE        wscal
  
 !INTERFACE not working  INTERFACE            waxpy
 !INTERFACE not working    MODULE PROCEDURE   waxpy
 !INTERFACE not working  END INTERFACE        waxpy
- 
-  INTERFACE            wscal
-    MODULE PROCEDURE   wscal
-  END INTERFACE        wscal
  
   INTERFACE            rosenbrock
     MODULE PROCEDURE   rosenbrock
@@ -669,8 +693,7 @@ SUBROUTINE initialize()
   k = is
   cfactor = 1.000000e+00_dp
 !  
-! Following lines are just to avoid compiler message about unused variables
-   IF ( time >= -1.0_dp )  CONTINUE
+! Following line is just to avoid compiler message about unused variables
    IF ( lu_crow(1) == 1  .OR.  lu_icol(1) == 1  .OR.  lu_irow(1) == 1 )  CONTINUE 
 !  
 
@@ -721,10 +744,10 @@ SUBROUTINE integrate( tin, tout, &
 
    ! IF OPTIONAL PARAMETERs are given, and IF they are >0, 
    ! THEN they overwrite default settings. 
-   IF ( PRESENT(icntrl_u) ) THEN
+   IF (PRESENT(icntrl_u))THEN
      WHERE(icntrl_u(:)> 0)icntrl(:) = icntrl_u(:)
    ENDIF
-   IF ( PRESENT(rcntrl_u) ) THEN
+   IF (PRESENT(rcntrl_u))THEN
      WHERE(rcntrl_u(:)> 0)rcntrl(:) = rcntrl_u(:)
    ENDIF
 
@@ -740,9 +763,9 @@ SUBROUTINE integrate( tin, tout, &
    stepmin = rstatus(nhexit)
    ! IF OPTIONAL PARAMETERs are given for output they 
    ! are updated with the RETURN information
-   IF ( PRESENT(istatus_u))istatus_u(:) = istatus(:)
-   IF ( PRESENT(rstatus_u))rstatus_u(:) = rstatus(:)
-   IF ( PRESENT(ierr_u))  ierr_u       = ierr
+   IF (PRESENT(istatus_u))istatus_u(:) = istatus(:)
+   IF (PRESENT(rstatus_u))rstatus_u(:) = rstatus(:)
+   IF (PRESENT(ierr_u))  ierr_u       = ierr
 
 END SUBROUTINE integrate
  
@@ -758,11 +781,8 @@ SUBROUTINE fun(v, f, rct, vdot)
   REAL(kind=dp):: vdot(nvar)
 
 
-! The following lines are just to avoid compiler message about unused variables
-! (some of the are only required if there only passive tracers)
-   IF ( f(nfix) >= 0.0_dp )  CONTINUE
-   IF ( v(nvar) >= 0.0_dp )  CONTINUE
-   IF ( rct(nreact) >= 0.0_dp )  CONTINUE
+! Following line is just to avoid compiler message about unused variables
+   IF ( f(nfix) > 0.0_dp )  CONTINUE
 !  
 ! Computation of equation rates
   a(1) = rct(1) * v(3)
@@ -808,9 +828,8 @@ SUBROUTINE jac_sp(v, f, rct, jvs)
 ! B - Temporary array
   REAL(kind=dp):: b(4)
 !
-! The following lines are just to avoid compiler message about unused variables
-   IF ( f(nfix) >= 0.0_dp )  CONTINUE
-   IF ( v(nvar) >= 0.0_dp )  CONTINUE
+! Following line is just to avoid compiler message about unused variables
+   IF ( f(nfix) > 0.0_dp )  CONTINUE
 
 ! B(1) = dA(1)/dV(3)
   b(1) = rct(1)
@@ -845,6 +864,19 @@ SUBROUTINE jac_sp(v, f, rct, jvs)
       
 END SUBROUTINE jac_sp
  
+  elemental REAL(kind=dp)FUNCTION k_arr (k_298, tdep, temp)
+    ! arrhenius FUNCTION
+
+    REAL,    INTENT(IN):: k_298 ! k at t = 298.15k
+    REAL,    INTENT(IN):: tdep  ! temperature dependence
+    REAL(kind=dp), INTENT(IN):: temp  ! temperature
+
+    intrinsic exp
+
+    k_arr = k_298 * exp(tdep* (1._dp/temp- 3.3540e-3_dp))! 1/298.15=3.3540e-3
+
+  END FUNCTION k_arr
+ 
 SUBROUTINE update_rconst()
  INTEGER         :: k
 
@@ -861,6 +893,13 @@ SUBROUTINE update_rconst()
       
 END SUBROUTINE update_rconst
  
+!  END FUNCTION ARR2
+REAL(kind=dp)FUNCTION arr2( a0, b0, temp)
+    REAL(kind=dp):: temp
+    REAL(kind=dp):: a0, b0
+    arr2 = a0 * exp( - b0 / temp)
+END FUNCTION arr2
+ 
 SUBROUTINE initialize_kpp_ctrl(status)
 
 
@@ -874,7 +913,7 @@ SUBROUTINE initialize_kpp_ctrl(status)
   ! check fixed time steps
   tsum = 0.0_dp
   DO i=1, nmaxfixsteps
-     IF ( t_steps(i)< tiny(0.0_dp))exit
+     IF (t_steps(i)< tiny(0.0_dp))exit
      tsum = tsum + t_steps(i)
   ENDDO
 
@@ -882,7 +921,7 @@ SUBROUTINE initialize_kpp_ctrl(status)
 
   l_fixed_step = (nfsteps > 0).and.((tsum - 1.0)< tiny(0.0_dp))
 
-  IF ( l_vector ) THEN
+  IF (l_vector)THEN
      WRITE(*,*) ' MODE             : VECTOR (LENGTH=',VL_DIM,')'
   ELSE
      WRITE(*,*) ' MODE             : SCALAR'
@@ -894,8 +933,8 @@ SUBROUTINE initialize_kpp_ctrl(status)
   WRITE(*,*) ' RCNTRL           : ',rcntrl
   !
   ! note: this is ONLY meaningful for vectorized (kp4)rosenbrock- methods
-  IF ( l_vector ) THEN
-     IF ( l_fixed_step ) THEN
+  IF (l_vector)THEN
+     IF (l_fixed_step)THEN
         WRITE(*,*) ' TIME STEPS       : FIXED (',t_steps(1:nfsteps),')'
      ELSE
         WRITE(*,*) ' TIME STEPS       : AUTOMATIC'
@@ -923,48 +962,6 @@ SUBROUTINE error_output(c, ierr, pe)
 
 END SUBROUTINE error_output
  
-REAL(kind=dp)FUNCTION arr2( a0, b0, temp)
-    REAL(kind=dp):: temp
-    REAL(kind=dp):: a0, b0
-    arr2 = a0 * exp( - b0 / temp)
-END FUNCTION arr2
- 
-      SUBROUTINE waxpy(n, alpha, x, incx, y, incy)
-!- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
-!     constant times a vector plus a vector: y <- y + Alpha*x
-!     only for incX=incY=1
-!     after BLAS
-!     replace this by the function from the optimized BLAS implementation:
-!         CALL SAXPY(N,Alpha,X,1,Y,1) or  CALL DAXPY(N,Alpha,X,1,Y,1)
-!- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
-
-      INTEGER  :: i, incx, incy, m, mp1, n
-      REAL(kind=dp):: x(n), y(n), alpha
-      REAL(kind=dp), PARAMETER :: zero = 0.0_dp
-
-!  
-! Following line is just to avoid compiler message about unused variables
-      IF ( incx == 0  .OR.  incy == 0 )  CONTINUE
-      IF ( alpha .eq. zero ) RETURN
-      IF ( n .le. 0 ) RETURN
-
-      m = mod(n, 4)
-      IF ( m .ne. 0 ) THEN
-        DO i = 1, m
-          y(i) = y(i) + alpha* x(i)
-        ENDDO
-        IF ( n .lt. 4 ) RETURN
-      ENDIF
-      mp1 = m + 1
-      DO i = mp1, n, 4
-        y(i) = y(i) + alpha* x(i)
-        y(i + 1) = y(i + 1) + alpha* x(i + 1)
-        y(i + 2) = y(i + 2) + alpha* x(i + 2)
-        y(i + 3) = y(i + 3) + alpha* x(i + 3)
-      ENDDO
-      
-      END SUBROUTINE waxpy
- 
       SUBROUTINE wscal(n, alpha, x, incx)
 !- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
 !     constant times a vector: x(1:N) <- Alpha*x(1:N) 
@@ -981,16 +978,16 @@ END FUNCTION arr2
 ! Following line is just to avoid compiler message about unused variables
    IF ( incx == 0 )  CONTINUE
 
-      IF ( alpha .eq. one ) RETURN
-      IF ( n .le. 0 ) RETURN
+      IF (alpha .eq. one)RETURN
+      IF (n .le. 0)RETURN
 
       m = mod(n, 5)
-      IF ( m .ne. 0 ) THEN
-        IF ( alpha .eq. (- one) ) THEN
+      IF ( m .ne. 0)THEN
+        IF (alpha .eq. (- one))THEN
           DO i = 1, m
             x(i) = - x(i)
           ENDDO
-        ELSEIF ( alpha .eq. zero ) THEN
+        ELSEIF (alpha .eq. zero)THEN
           DO i = 1, m
             x(i) = zero
           ENDDO
@@ -999,10 +996,10 @@ END FUNCTION arr2
             x(i) = alpha* x(i)
           ENDDO
         ENDIF
-        IF ( n .lt. 5 ) RETURN
+        IF ( n .lt. 5)RETURN
       ENDIF
       mp1 = m + 1
-      IF ( alpha .eq. (- one) ) THEN
+      IF (alpha .eq. (- one))THEN
         DO i = mp1, n, 5
           x(i)   = - x(i)
           x(i + 1) = - x(i + 1)
@@ -1010,7 +1007,7 @@ END FUNCTION arr2
           x(i + 3) = - x(i + 3)
           x(i + 4) = - x(i + 4)
         ENDDO
-      ELSEIF ( alpha .eq. zero ) THEN
+      ELSEIF (alpha .eq. zero)THEN
         DO i = mp1, n, 5
           x(i)   = zero
           x(i + 1) = zero
@@ -1029,6 +1026,42 @@ END FUNCTION arr2
       ENDIF
 
       END SUBROUTINE wscal
+ 
+      SUBROUTINE waxpy(n, alpha, x, incx, y, incy)
+!- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+!     constant times a vector plus a vector: y <- y + Alpha*x
+!     only for incX=incY=1
+!     after BLAS
+!     replace this by the function from the optimized BLAS implementation:
+!         CALL SAXPY(N,Alpha,X,1,Y,1) or  CALL DAXPY(N,Alpha,X,1,Y,1)
+!- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+
+      INTEGER  :: i, incx, incy, m, mp1, n
+      REAL(kind=dp):: x(n), y(n), alpha
+      REAL(kind=dp), PARAMETER :: zero = 0.0_dp
+
+!  
+! Following line is just to avoid compiler message about unused variables
+   IF ( incx == 0  .OR.  incy == 0 )  CONTINUE
+      IF (alpha .eq. zero)RETURN
+      IF (n .le. 0)RETURN
+
+      m = mod(n, 4)
+      IF ( m .ne. 0)THEN
+        DO i = 1, m
+          y(i) = y(i) + alpha* x(i)
+        ENDDO
+        IF ( n .lt. 4)RETURN
+      ENDIF
+      mp1 = m + 1
+      DO i = mp1, n, 4
+        y(i) = y(i) + alpha* x(i)
+        y(i + 1) = y(i + 1) + alpha* x(i + 1)
+        y(i + 2) = y(i + 2) + alpha* x(i + 2)
+        y(i + 3) = y(i + 3) + alpha* x(i + 3)
+      ENDDO
+      
+      END SUBROUTINE waxpy
  
 SUBROUTINE rosenbrock(n, y, tstart, tend, &
            abstol, reltol,             &
@@ -1184,7 +1217,7 @@ SUBROUTINE rosenbrock(n, y, tstart, tend, &
 
 !~~~>  for scalar tolerances (icntrl(2).ne.0) the code uses abstol(1)and reltol(1)
 !   For Vector tolerances (ICNTRL(2) == 0) the code uses AbsTol(1:N) and RelTol(1:N)
-   IF ( icntrl(2) == 0 ) THEN
+   IF (icntrl(2) == 0)THEN
       vectortol = .TRUE.
       uplimtol  = n
    ELSE
@@ -1213,9 +1246,9 @@ SUBROUTINE rosenbrock(n, y, tstart, tend, &
    END select
 
 !~~~>   the maximum number of steps admitted
-   IF ( icntrl(4) == 0 ) THEN
+   IF (icntrl(4) == 0)THEN
       max_no_steps = 200000
-   ELSEIF ( icntrl(4)> 0 ) THEN
+   ELSEIF (icntrl(4)> 0)THEN
       max_no_steps=icntrl(4)
    ELSE
       PRINT *,'User-selected max no. of steps: ICNTRL(4) =',ICNTRL(4)
@@ -1227,9 +1260,9 @@ SUBROUTINE rosenbrock(n, y, tstart, tend, &
    roundoff = epsilon(one)
 
 !~~~>  lower bound on the step size: (positive value)
-   IF ( rcntrl(1) == zero ) THEN
+   IF (rcntrl(1) == zero)THEN
       hmin = zero
-   ELSEIF ( rcntrl(1)> zero ) THEN
+   ELSEIF (rcntrl(1)> zero)THEN
       hmin = rcntrl(1)
    ELSE
       PRINT *,'User-selected Hmin: RCNTRL(1) =',RCNTRL(1)
@@ -1237,9 +1270,9 @@ SUBROUTINE rosenbrock(n, y, tstart, tend, &
       RETURN
    ENDIF
 !~~~>  upper bound on the step size: (positive value)
-   IF ( rcntrl(2) == zero ) THEN
+   IF (rcntrl(2) == zero)THEN
       hmax = abs(tend-tstart)
-   ELSEIF ( rcntrl(2)> zero ) THEN
+   ELSEIF (rcntrl(2)> zero)THEN
       hmax = min(abs(rcntrl(2)), abs(tend-tstart))
    ELSE
       PRINT *,'User-selected Hmax: RCNTRL(2) =',RCNTRL(2)
@@ -1247,9 +1280,9 @@ SUBROUTINE rosenbrock(n, y, tstart, tend, &
       RETURN
    ENDIF
 !~~~>  starting step size: (positive value)
-   IF ( rcntrl(3) == zero ) THEN
+   IF (rcntrl(3) == zero)THEN
       hstart = max(hmin, deltamin)
-   ELSEIF ( rcntrl(3)> zero ) THEN
+   ELSEIF (rcntrl(3)> zero)THEN
       hstart = min(abs(rcntrl(3)), abs(tend-tstart))
    ELSE
       PRINT *,'User-selected Hstart: RCNTRL(3) =',RCNTRL(3)
@@ -1257,18 +1290,18 @@ SUBROUTINE rosenbrock(n, y, tstart, tend, &
       RETURN
    ENDIF
 !~~~>  step size can be changed s.t.  facmin < hnew/hold < facmax
-   IF ( rcntrl(4) == zero ) THEN
+   IF (rcntrl(4) == zero)THEN
       facmin = 0.2_dp
-   ELSEIF ( rcntrl(4)> zero ) THEN
+   ELSEIF (rcntrl(4)> zero)THEN
       facmin = rcntrl(4)
    ELSE
       PRINT *,'User-selected FacMin: RCNTRL(4) =',RCNTRL(4)
       CALL ros_errormsg(- 4, tstart, zero, ierr)
       RETURN
    ENDIF
-   IF ( rcntrl(5) == zero ) THEN
+   IF (rcntrl(5) == zero)THEN
       facmax = 6.0_dp
-   ELSEIF ( rcntrl(5)> zero ) THEN
+   ELSEIF (rcntrl(5)> zero)THEN
       facmax = rcntrl(5)
    ELSE
       PRINT *,'User-selected FacMax: RCNTRL(5) =',RCNTRL(5)
@@ -1276,9 +1309,9 @@ SUBROUTINE rosenbrock(n, y, tstart, tend, &
       RETURN
    ENDIF
 !~~~>   facrej: factor to decrease step after 2 succesive rejections
-   IF ( rcntrl(6) == zero ) THEN
+   IF (rcntrl(6) == zero)THEN
       facrej = 0.1_dp
-   ELSEIF ( rcntrl(6)> zero ) THEN
+   ELSEIF (rcntrl(6)> zero)THEN
       facrej = rcntrl(6)
    ELSE
       PRINT *,'User-selected FacRej: RCNTRL(6) =',RCNTRL(6)
@@ -1286,9 +1319,9 @@ SUBROUTINE rosenbrock(n, y, tstart, tend, &
       RETURN
    ENDIF
 !~~~>   facsafe: safety factor in the computation of new step size
-   IF ( rcntrl(7) == zero ) THEN
+   IF (rcntrl(7) == zero)THEN
       facsafe = 0.9_dp
-   ELSEIF ( rcntrl(7)> zero ) THEN
+   ELSEIF (rcntrl(7)> zero)THEN
       facsafe = rcntrl(7)
    ELSE
       PRINT *,'User-selected FacSafe: RCNTRL(7) =',RCNTRL(7)
@@ -1297,8 +1330,8 @@ SUBROUTINE rosenbrock(n, y, tstart, tend, &
    ENDIF
 !~~~>  check IF tolerances are reasonable
     DO i=1, uplimtol
-      IF ( (abstol(i)<= zero).or. (reltol(i)<= 10.0_dp* roundoff)&
-         .or. (reltol(i)>= 1.0_dp) ) THEN
+      IF ((abstol(i)<= zero).or. (reltol(i)<= 10.0_dp* roundoff)&
+         .or. (reltol(i)>= 1.0_dp))THEN
         PRINT *,' AbsTol(',i,') = ',AbsTol(i)
         PRINT *,' RelTol(',i,') = ',RelTol(i)
         CALL ros_errormsg(- 5, tstart, zero, ierr)
@@ -1417,9 +1450,9 @@ CONTAINS !  SUBROUTINEs internal to rosenbrock
    t = tstart
    rstatus(nhexit) = zero
    h = min( max(abs(hmin), abs(hstart)), abs(hmax))
-   IF ( abs(h)<= 10.0_dp* roundoff)h = deltamin
+   IF (abs(h)<= 10.0_dp* roundoff)h = deltamin
 
-   IF ( tend  >=  tstart ) THEN
+   IF (tend  >=  tstart)THEN
      direction = + 1
    ELSE
      direction = - 1
@@ -1434,11 +1467,11 @@ CONTAINS !  SUBROUTINEs internal to rosenbrock
 timeloop: DO WHILE((direction > 0).and.((t- tend) + roundoff <= zero)&
        .or. (direction < 0).and.((tend-t) + roundoff <= zero))
 
-   IF ( istatus(nstp)> max_no_steps ) THEN  ! too many steps
+   IF (istatus(nstp)> max_no_steps)THEN  ! too many steps
       CALL ros_errormsg(- 6, t, h, ierr)
       RETURN
    ENDIF
-   IF ( ((t+ 0.1_dp* h) == t).or.(h <= roundoff) ) THEN  ! step size too small
+   IF (((t+ 0.1_dp* h) == t).or.(h <= roundoff))THEN  ! step size too small
       CALL ros_errormsg(- 7, t, h, ierr)
       RETURN
    ENDIF
@@ -1451,7 +1484,7 @@ timeloop: DO WHILE((direction > 0).and.((t- tend) + roundoff <= zero)&
    istatus(nfun) = istatus(nfun) + 1
 
 !~~~>  compute the FUNCTION derivative with respect to t
-   IF ( .not.autonomous ) THEN
+   IF (.not.autonomous)THEN
       CALL ros_funtimederivative(t, roundoff, y, &
                 fcn0, dfdt)
    ENDIF
@@ -1465,7 +1498,7 @@ untilaccepted: do
 
    CALL ros_preparematrix(h, direction, ros_gamma(1), &
           jac0, ghimj, pivot, singular)
-   IF ( singular ) THEN ! more than 5 consecutive failed decompositions
+   IF (singular)THEN ! more than 5 consecutive failed decompositions
        CALL ros_errormsg(- 8, t, h, ierr)
        RETURN
    ENDIF
@@ -1477,11 +1510,11 @@ stage: DO istage = 1, ros_s
        ioffset = n* (istage-1)
 
       ! for the 1st istage the FUNCTION has been computed previously
-       IF ( istage == 1 ) THEN
+       IF (istage == 1)THEN
          !slim: CALL wcopy(n, fcn0, 1, fcn, 1)
        fcn(1:n) = fcn0(1:n)
       ! istage>1 and a new FUNCTION evaluation is needed at the current istage
-       ELSEIF ( ros_newf(istage) ) THEN
+       ELSEIF(ros_newf(istage))THEN
          !slim: CALL wcopy(n, y, 1, ynew, 1)
        ynew(1:n) = y(1:n)
          DO j = 1, istage-1
@@ -1498,7 +1531,7 @@ stage: DO istage = 1, ros_s
          hc = ros_c((istage-1) * (istage-2) /2+ j) /(direction* h)
          CALL waxpy(n, hc, k(n* (j- 1) + 1), 1, k(ioffset+ 1), 1)
        ENDDO
-       IF ( (.not. autonomous).and.(ros_gamma(istage).ne.zero) ) THEN
+       IF ((.not. autonomous).and.(ros_gamma(istage).ne.zero))THEN
          hg = direction* h* ros_gamma(istage)
          CALL waxpy(n, hg, dfdt, 1, k(ioffset+ 1), 1)
        ENDIF
@@ -1528,13 +1561,13 @@ stage: DO istage = 1, ros_s
 
 !~~~>  check the error magnitude and adjust step size
    istatus(nstp) = istatus(nstp) + 1
-   IF ( (err <= one).or.(h <= hmin) ) THEN  !~~~> accept step
+   IF ((err <= one).or.(h <= hmin))THEN  !~~~> accept step
       istatus(nacc) = istatus(nacc) + 1
       !slim: CALL wcopy(n, ynew, 1, y, 1)
       y(1:n) = ynew(1:n)
       t = t + direction* h
       hnew = max(hmin, min(hnew, hmax))
-      IF ( rejectlasth ) THEN  ! no step size increase after a rejected step
+      IF (rejectlasth)THEN  ! no step size increase after a rejected step
          hnew = min(hnew, h)
       ENDIF
       rstatus(nhexit) = h
@@ -1545,13 +1578,13 @@ stage: DO istage = 1, ros_s
       h = hnew
       exit untilaccepted ! exit the loop: WHILE step not accepted
    ELSE           !~~~> reject step
-      IF ( rejectmoreh ) THEN
+      IF (rejectmoreh)THEN
          hnew = h* facrej
       ENDIF
       rejectmoreh = rejectlasth
       rejectlasth = .TRUE.
       h = hnew
-      IF ( istatus(nacc)>= 1) istatus(nrej) = istatus(nrej) + 1
+      IF (istatus(nacc)>= 1) istatus(nrej) = istatus(nrej) + 1
    ENDIF ! err <= 1
 
    END DO untilaccepted
@@ -1583,7 +1616,7 @@ stage: DO istage = 1, ros_s
    err = zero
    DO i=1, n
      ymax = max(abs(y(i)), abs(ynew(i)))
-     IF ( vectortol ) THEN
+     IF (vectortol)THEN
        scale = abstol(i) + reltol(i) * ymax
      ELSE
        scale = abstol(1) + reltol(1) * ymax
@@ -1681,19 +1714,16 @@ stage: DO istage = 1, ros_s
 #endif   
 !~~~>    compute lu decomposition
      CALL ros_decomp( ghimj, pivot, ising)
-     IF ( ising == 0 ) THEN
+     IF (ising == 0)THEN
 !~~~>    IF successful done
         singular = .FALSE.
-!  
-! The following line is just to avoid compiler message about unused variables
-   IF ( direction==0 )  CONTINUE
      ELSE ! ising .ne. 0
 !~~~>    IF unsuccessful half the step size; IF 5 consecutive fails THEN RETURN
         istatus(nsng) = istatus(nsng) + 1
         nconsecutive = nconsecutive+1
         singular = .TRUE.
         PRINT*,'Warning: LU Decomposition returned ISING = ',ISING
-        IF ( nconsecutive <= 5 ) THEN ! less than 5 consecutive failed decompositions
+        IF (nconsecutive <= 5)THEN ! less than 5 consecutive failed decompositions
            h = h* half
         ELSE  ! more than 5 consecutive failed decompositions
            RETURN
@@ -1747,11 +1777,11 @@ stage: DO istage = 1, ros_s
    REAL(kind=dp), INTENT(INOUT):: b(n)
 !  
 ! Following line is just to avoid compiler message about unused variables
-  IF ( pivot(1) == 0 )  CONTINUE
+   IF ( pivot(1) == 0 )  CONTINUE
 
 #ifdef full_algebra    
    CALL  DGETRS( 'N',N ,1,A,N,Pivot,b,N,ISING)
-   IF ( info < 0 ) THEN
+   IF (info < 0)THEN
       print* , "error in dgetrs. ising=", ising
    ENDIF  
 #else   
@@ -2250,10 +2280,6 @@ END SUBROUTINE jactemplate
     a = 0.                                                            
     ier = 0                                                           
                                                                       
-! Following line is just to avoid compiler message about unused variables
-! if there are only passive tracers
-    IF ( jvs(1) >= 0.0_dp )  CONTINUE
-!  
 !   i = 1
 !   i = 2
 !   i = 3
@@ -2307,9 +2333,9 @@ SUBROUTINE chem_gasphase_integrate (time_step_len, conc, tempi, qvapi, fakti, ph
   INTEGER                                :: vl_dim_lo               
                                                                     
                                                                     
-  IF ( PRESENT (istatus)) istatus = 0                             
-  IF ( PRESENT (icntrl_i)) icntrl  = icntrl_i                      
-  IF ( PRESENT (rcntrl_i)) rcntrl  = rcntrl_i                      
+  IF (PRESENT (istatus)) istatus = 0                             
+  IF (PRESENT (icntrl_i)) icntrl  = icntrl_i                      
+  IF (PRESENT (rcntrl_i)) rcntrl  = rcntrl_i                      
                                                                     
   var => c(1:nvar)                                                 
                                                                     
@@ -2341,19 +2367,19 @@ SUBROUTINE chem_gasphase_integrate (time_step_len, conc, tempi, qvapi, fakti, ph
     CALL integrate(0._dp, dt, icntrl, rcntrl, istatus_u = istatus_u, ierr_u=ierr_u)
                                                                     
                                                                     
-   IF ( PRESENT(l_debug) .AND. PRESENT(pe) ) THEN                       
-      IF ( l_debug)CALL error_output(conc(is, :), ierr_u, pe)           
+   IF (PRESENT(l_debug) .AND. PRESENT(pe)) THEN                       
+      IF (l_debug) CALL error_output(conc(is, :), ierr_u, pe)           
    ENDIF                                                              
                                                                       
     conc(is, :) = c(:)                                                
                                                                     
     ! RETURN diagnostic information                                 
                                                                     
-    IF ( PRESENT(ierrf))  ierrf(is) = ierr_u                      
-    IF ( PRESENT(xnacc))  xnacc(is) = istatus_u(4)               
-    IF ( PRESENT(xnrej))  xnrej(is) = istatus_u(5)               
+    IF (PRESENT(ierrf))   ierrf(is) = ierr_u                      
+    IF (PRESENT(xnacc))   xnacc(is) = istatus_u(4)               
+    IF (PRESENT(xnrej))   xnrej(is) = istatus_u(5)               
                                                                     
-    IF ( PRESENT(istatus)) THEN                                   
+    IF (PRESENT (istatus)) THEN                                   
       istatus(1:8) = istatus(1:8) + istatus_u(1:8)                
     ENDIF                                                          
                                                                     

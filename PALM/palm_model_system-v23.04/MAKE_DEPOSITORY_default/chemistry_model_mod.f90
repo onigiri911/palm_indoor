@@ -13,10 +13,255 @@
 ! You should have received a copy of the GNU General Public License along with PALM. If not, see
 ! <http://www.gnu.org/licenses/>.
 !
-! Copyright 2017-2021 Leibniz Universitaet Hannover
-! Copyright 2017-2021 Karlsruhe Institute of Technology
-! Copyright 2017-2021 Freie Universitaet Berlin
+! Copyright 2017-2020 Leibniz Universitaet Hannover
+! Copyright 2017-2020 Karlsruhe Institute of Technology
+! Copyright 2017-2020 Freie Universitaet Berlin
 !--------------------------------------------------------------------------------------------------!
+!
+! Current revisions:
+! -----------------
+!
+!
+! Former revisions:
+! -----------------
+! $Id: chemistry_model_mod.f90 4768 2020-11-02 19:11:23Z suehring $
+! Enable 3D data output also with 64-bit precision
+!
+! 4731 2020-10-07 13:25:11Z schwenkel
+! Move exchange_horiz from time_integration to modules
+!
+! 4671 2020-09-09 20:27:58Z pavelkrc
+! Implementation of downward facing USM and LSM surfaces
+!
+! 4637 2020-08-07 07:49:33Z suehring
+! Avoid usage of omp_lib, instead declare omp_get_thread_num explicitly
+!
+! 4636 2020-08-06 14:10:12Z resler
+! Fix bugs in OpenMP directives
+!
+! 4636 2020-08-06 14:10:12Z suehring
+! - Bugfix in variable name separation in profile-output initialization
+! - Bugfix in counting the number of chemistry profiles
+! 
+! 4581 2020-06-29 08:49:58Z suehring
+! Enable output of resolved-scale vertical fluxes of chemical species.
+! 
+! 4577 2020-06-25 09:53:58Z raasch
+! further re-formatting to follow the PALM coding standard
+!
+! 4559 2020-06-11 08:51:48Z raasch
+! file re-formatted to follow the PALM coding standard
+!
+! 4550 2020-05-29 15:22:13Z raasch
+! bugfix for reading local restart data
+!
+! 4544 2020-05-21 14:43:05Z raasch
+! conc_av changed from pointer to allocatable array, array spec_conc_av removed
+!
+! 4542 2020-05-19 15:45:12Z raasch
+! redundant if statement removed
+!
+! 4535 2020-05-15 12:07:23Z raasch
+! bugfix for restart data format query
+!
+! 4517 2020-05-03 14:29:30Z raasch
+! added restart with MPI-IO
+!
+! 4511 2020-04-30 12:20:40Z raasch
+! decycling replaced by explicit setting of lateral boundary conditions
+!
+! 4487 2020-04-03 09:38:20Z raasch
+! bugfix for subroutine calls that contain the decycle_chem switches as arguments
+!
+! 4481 2020-03-31 18:55:54Z maronga
+! use statement for exchange horiz added,
+! bugfix for call of exchange horiz 2d
+!
+! 4442 2020-03-04 19:21:13Z suehring
+! Change order of dimension in surface array %frac to allow for better
+! vectorization.
+!
+! 4441 2020-03-04 19:20:35Z suehring
+! in subroutine chem_init (ECC)
+! - allows different init paths emission data for legacy mode emission and on-demand mode in
+!   subroutine chem_init_internal (ECC)
+! - reads netcdf file only when legacy mode is activated (i.e., emiss_read_legacy_mode = .TRUE.)
+!   otherwise file is read once at the beginning to obtain header information, and emission data
+!   are extracted on an on-demand basis
+!
+! 4372 2020-01-14 10:20:35Z banzhafs
+! chem_parin : added handler for new namelist item emiss_legacy_read_mode (ECC) added messages
+! CM0465 - legacy read mode selection
+! CM0466 - legacy read mode force selection
+! CM0467 - new read mode selection
+!
+! 4370 2020-01-10 14:00:44Z raasch
+! vector directives added to force vectorization on Intel19 compiler
+!
+! 4346 2019-12-18 11:55:56Z motisi
+! Introduction of wall_flags_total_0, which currently sets bits based on static topography
+! information used in wall_flags_static_0
+!
+! 4329 2019-12-10 15:46:36Z motisi
+! Renamed wall_flags_0 to wall_flags_static_0
+!
+! 4306 2019-11-25 12:04:48Z banzhafs
+! Corretion for r4304 commit
+!
+! 4304 2019-11-25 10:43:03Z banzhafs
+! Precision clean-up in drydepo_aero_zhang_vd subroutine
+!
+! 4292 2019-11-11 13:04:50Z banzhafs
+! Bugfix for r4290
+!
+! 4290 2019-11-11 12:06:14Z banzhafs
+! Bugfix in sedimentation resistance calculation in drydepo_aero_zhang_vd subroutine
+!
+! 4273 2019-10-24 13:40:54Z monakurppa
+! Add logical switches nesting_chem and nesting_offline_chem (both .TRUE. by default)
+!
+! 4272 2019-10-23 15:18:57Z schwenkel
+! Further modularization of boundary conditions: moved boundary conditions to respective modules
+!
+! 4268 2019-10-17 11:29:38Z schwenkel
+! Moving module specific boundary conditions from time_integration to module
+!
+! 4230 2019-09-11 13:58:14Z suehring
+! Bugfix, initialize mean profiles also in restart runs. Also initialize array used for Runge-Kutta
+! tendecies in restart runs.
+!
+! 4227 2019-09-10 18:04:34Z gronemeier
+! implement new palm_date_time_mod
+!
+! 4182 2019-08-22 15:20:23Z scharf
+! Corrected "Former revisions" section
+!
+! 4167 2019-08-16 11:01:48Z suehring
+! Changed behaviour of masked output over surface to follow terrain and ignore buildings
+! (J.Resler, T.Gronemeier)
+!
+! 4166 2019-08-16 07:54:21Z resler
+! Bugfix in decycling
+!
+! 4115 2019-07-24 12:50:49Z suehring
+! Fix faulty IF statement in decycling initialization
+!
+! 4110 2019-07-22 17:05:21Z suehring
+! - Decycling boundary conditions are only set at the ghost points not on the prognostic grid points
+! - Allocation and initialization of special advection flags cs_advc_flags_s used for chemistry.
+!   These are exclusively used for chemical species in order to distinguish from the usually-used
+!   flags which might be different when decycling is applied in combination with cyclic boundary
+!   conditions.
+!   Moreover, cs_advc_flags_s considers extended zones around buildings where first-order upwind
+!   scheme is applied for the horizontal advection terms, in order to overcome high concentration
+!   peaks due to stationary numerical oscillations caused by horizontal advection discretization.
+!
+! 4109 2019-07-22 17:00:34Z suehring
+! Slightly revise setting of boundary conditions at horizontal walls, use data-structure offset
+! index instead of pre-calculate it for each facing
+!
+! 4080 2019-07-09 18:17:37Z suehring
+! Restore accidantly removed limitation to positive values
+!
+! 4079 2019-07-09 18:04:41Z suehring
+! Application of monotonic flux limiter for the vertical scalar advection up to the topography top
+! (only for the cache-optimized version at the moment).
+!
+! 4069 2019-07-01 14:05:51Z Giersch
+! Masked output running index mid has been introduced as a local variable to avoid runtime error
+! (Loop variable has been modified) in time_integration
+!
+! 4029 2019-06-14 14:04:35Z raasch
+! nest_chemistry option removed
+!
+! 4004 2019-05-24 11:32:38Z suehring
+! in subroutine chem_parin check emiss_lod / mod_emis only when emissions_anthropogenic is activated
+! in namelist (E.C. Chan)
+!
+! 3968 2019-05-13 11:04:01Z suehring
+! - added "emiss_lod" which serves the same function as "mode_emis" both will be synchronized with
+!   emiss_lod having pirority over mode_emis (see informational messages)
+! - modified existing error message and introduced new informational messages
+!    - CM0436 - now also applies to invalid LOD settings
+!    - CM0463 - emiss_lod take precedence in case of conflict with mod_emis
+!    - CM0464 - emiss_lod valued assigned based on mode_emis if undefined
+!
+! 3930 2019-04-24 14:57:18Z forkel
+! Changed chem_non_transport_physics to chem_non_advective_processes
+!
+! 3929 2019-04-24 12:52:08Z banzhafs
+! Correct/complete module_interface introduction for chemistry model
+! Add subroutine chem_exchange_horiz_bounds
+! Bug fix deposition
+!
+! 3784 2019-03-05 14:16:20Z banzhafs
+! 2D output of emission fluxes
+!
+! 3784 2019-03-05 14:16:20Z banzhafs
+! Bugfix, uncomment erroneous commented variable used for dry deposition.
+! Bugfix in 3D emission output.
+!
+! 3784 2019-03-05 14:16:20Z banzhafs
+! Changes related to global restructuring of location messages and introduction
+! of additional debug messages
+!
+! 3784 2019-03-05 14:16:20Z banzhafs
+! some formatting of the deposition code
+!
+! 3784 2019-03-05 14:16:20Z banzhafs
+! some formatting
+!
+! 3784 2019-03-05 14:16:20Z banzhafs
+! added cs_mech to USE chem_gasphase_mod
+!
+! 3784 2019-03-05 14:16:20Z banzhafs
+! renamed get_mechanismname to get_mechanism_name
+! renamed do_emiss to emissions_anthropogenic and do_depo to deposition_dry (ecc)
+!
+! 3784 2019-03-05 14:16:20Z banzhafs
+! Unused variables removed/taken care of
+!
+! 3784 2019-03-05 14:16:20Z forkel
+! Replaced READ from unit 10 by CALL get_mechanismname also in chem_header
+!
+! 3783 2019-03-05 13:23:50Z forkel
+! Removed forgotte write statements an some unused variables (did not touch the parts related to
+! deposition)
+!
+! 3780 2019-03-05 11:19:45Z forkel
+! Removed READ from unit 10, added CALL get_mechanismname
+!
+! 3767 2019-02-27 08:18:02Z raasch
+! unused variable for file index removed from rrd-subroutines parameter list
+!
+! 3738 2019-02-12 17:00:45Z suehring
+! Clean-up debug prints
+!
+! 3737 2019-02-12 16:57:06Z suehring
+! Enable mesoscale offline nesting for chemistry variables as well as initialization of chemistry
+! via dynamic input file.
+!
+! 3719 2019-02-06 13:10:18Z kanani
+! Resolved cpu logpoint overlap with all progn.equations, moved cpu_log call to prognostic_equations
+! for better overview
+!
+! 3700 2019-01-26 17:03:42Z knoop
+! Some interface calls moved to module_interface + cleanup
+!
+! 3664 2019-01-09 14:00:37Z forkel
+! Replaced misplaced location message by @todo
+!
+! 3654 2019-01-07 16:31:57Z suehring
+! Disable misplaced location message
+!
+! 3652 2019-01-07 15:29:59Z forkel
+! Checks added for chemistry mechanism, parameter chem_mechanism added (basit)
+!
+! 2718 2018-01-02 08:49:38Z maronga
+! Initial revision
+!
+!
+!
 !
 ! Authors:
 ! --------
@@ -25,160 +270,107 @@
 ! @author Klaus Ketelsen
 ! @author Basit Khan
 ! @author Sabine Banzhaf
-! @author Edward C. Chan
-! @author Ilona Ilona Jäkel
-! @author Matthias Sühring
-! @author Pecanode GmbH
 !
 !
 !--------------------------------------------------------------------------------------------------!
 ! Description:
 ! ------------
 !> Chemistry model for PALM-4U
+!> @todo Extend chem_species type by nspec and nvar as addititional elements (RF)
+!> @todo Check possibility to reduce dimension of chem_species%conc from nspec to nvar (RF)
 !> @todo Adjust chem_rrd_local to CASE structure of others modules. It is not allowed to use the
 !>       chemistry model in a precursor run and additionally not using it in a main run
-!> @todo Implement turbulent inflow of chem spcs in inflow_turbulence. Do we need this? Not done for salsa either.
+!> @todo Implement turbulent inflow of chem spcs in inflow_turbulence.
+!> @todo Separate boundary conditions for each chem spcs to be implemented
+!> @todo Currently only total concentration are calculated. Resolved, parameterized and chemistry
+!>       fluxes although partially and some completely coded but are not operational/activated in
+!>       this version. bK.
+!> @todo slight differences in passive scalar and chem spcs when chem reactions turned off. Need to
+!>       be fixed. bK
+!> @todo test nesting for chem spcs, was implemented by suehring (kanani)
+!> @todo chemistry error messages
 !
 !--------------------------------------------------------------------------------------------------!
 
  MODULE chemistry_model_mod
 
     USE advec_s_pw_mod,                                                                            &
-        ONLY:  advec_s_pw
+         ONLY:  advec_s_pw
 
     USE advec_s_up_mod,                                                                            &
-        ONLY:  advec_s_up
+         ONLY:  advec_s_up
 
     USE advec_ws,                                                                                  &
-        ONLY:  advec_s_ws,                                                                         &
-               ws_init_flags_scalar
+         ONLY:  advec_s_ws, ws_init_flags_scalar
 
-    USE arrays_3d,                                                                                 &
-        ONLY:  dzw,                                                                                &
-               exner,                                                                              &
-               hyp,                                                                                &
-               pt,                                                                                 &
-               q,                                                                                  &
-               ql,                                                                                 &
-               rdf_sc,                                                                             &
-               rho_air_zw,                                                                         &
-               tend,                                                                               &
-               zu
+    USE diffusion_s_mod,                                                                           &
+         ONLY:  diffusion_s
+
+    USE kinds,                                                                                     &
+         ONLY:  iwp, wp
+
+    USE indices,                                                                                   &
+         ONLY:  advc_flags_s,                                                                      &
+                nbgp, nx, nxl, nxlg, nxr, nxrg, ny, nyn, nyng, nys, nysg, nz, nzb, nzt,            &
+                wall_flags_total_0
+
+    USE pegrid,                                                                                    &
+         ONLY: myid, threads_per_task
 
     USE bulk_cloud_model_mod,                                                                      &
-        ONLY:  bulk_cloud_model
+         ONLY:  bulk_cloud_model
+
+    USE control_parameters,                                                                        &
+         ONLY:  air_chemistry,                                                                     &
+                bc_dirichlet_l,                                                                    &
+                bc_dirichlet_n,                                                                    &
+                bc_dirichlet_r,                                                                    &
+                bc_dirichlet_s,                                                                    &
+                bc_radiation_l,                                                                    &
+                bc_lr_cyc,                                                                         &
+                bc_ns_cyc,                                                                         &
+                bc_radiation_n,                                                                    &
+                bc_radiation_r,                                                                    &
+                bc_radiation_s,                                                                    &
+                debug_output,                                                                      &
+                dt_3d,                                                                             &
+                humidity,                                                                          &
+                initializing_actions,                                                              &
+                intermediate_timestep_count,                                                       &
+                intermediate_timestep_count_max,                                                   &
+                max_pr_user,                                                                       &
+                message_string,                                                                    &
+                monotonic_limiter_z,                                                               &
+                omega,                                                                             &
+                restart_data_format_output,                                                        &
+                scalar_advec,                                                                      &
+                timestep_scheme,                                                                   &
+                tsc,                                                                               &
+                use_prescribed_profile_data,                                                       &
+                ws_scheme_sca
+
+    USE arrays_3d,                                                                                 &
+         ONLY:  exner, hyp, pt, q, ql, rdf_sc, tend, zu
 
     USE chem_gasphase_mod,                                                                         &
-        ONLY:  atol,                                                                               &
-               chem_gasphase_integrate,                                                            &
-               cs_mech,                                                                            &
-               get_mechanism_name,                                                                 &
-               nkppctrl,                                                                           &
-               nmaxfixsteps,                                                                       &
-               nphot,                                                                              &
-               nreact,                                                                             &
-               nspec,                                                                              &
-               nvar,                                                                               &
-               phot_names,                                                                         &
-               rtol,                                                                               &
-               spc_names,                                                                          &
-               t_steps,                                                                            &
-               vl_dim
+         ONLY:  atol, chem_gasphase_integrate, cs_mech, get_mechanism_name, nkppctrl,              &
+         nmaxfixsteps, nphot, nreact, nspec, nvar, phot_names, rtol, spc_names, t_steps, vl_dim
 
     USE chem_modules
 
     USE chem_photolysis_mod,                                                                       &
         ONLY:  photolysis_control
 
-    USE control_parameters,                                                                        &
-        ONLY:  advanced_div_correction,                                                            &
-               allow_negative_scalar_values,                                                       &
-               air_chemistry,                                                                      &
-               bc_dirichlet_l,                                                                     &
-               bc_dirichlet_n,                                                                     &
-               bc_dirichlet_r,                                                                     &
-               bc_dirichlet_s,                                                                     &
-               bc_radiation_l,                                                                     &
-               bc_lr_cyc,                                                                          &
-               bc_ns_cyc,                                                                          &
-               bc_radiation_n,                                                                     &
-               bc_radiation_r,                                                                     &
-               bc_radiation_s,                                                                     &
-               cyclic_fill_initialization,                                                         &
-               debug_output,                                                                       &
-               dt_3d,                                                                              &
-               humidity,                                                                           &
-               initializing_actions,                                                               &
-               intermediate_timestep_count,                                                        &
-               intermediate_timestep_count_max,                                                    &
-               max_pr_user,                                                                        &
-               message_string,                                                                     &
-               monotonic_limiter_z,                                                                &
-               nesting_offline,                                                                    &
-               omega,                                                                              &
-               restart_data_format_output,                                                         &
-               scalar_advec,                                                                       &
-               time_since_reference_point,                                                         &
-               timestep_scheme,                                                                    &
-               tsc,                                                                                &
-               use_prescribed_profile_data,                                                        &
-               ws_scheme_sca
-
     USE cpulog,                                                                                    &
-        ONLY:  cpu_log,                                                                            &
-               log_point_s
-
-    USE diffusion_s_mod,                                                                           &
-        ONLY:  diffusion_s
-
-    USE indices,                                                                                   &
-        ONLY:  advc_flags_s,                                                                       &
-               nbgp,                                                                               &
-               nx,                                                                                 &
-               nxl,                                                                                &
-               nxlg,                                                                               &
-               nxr,                                                                                &
-               nxrg,                                                                               &
-               ny,                                                                                 &
-               nyn,                                                                                &
-               nyng,                                                                               &
-               nys,                                                                                &
-               nysg,                                                                               &
-               nz,                                                                                 &
-               nzb,                                                                                &
-               nzt,                                                                                &
-               topo_flags
-
-    USE kinds
-
-    USE pegrid,                                                                                    &
-        ONLY: myid,                                                                                &
-              threads_per_task
-
-    USE palm_date_time_mod,                                                                        &
-        ONLY:  get_date_time
-
-    USE radiation_model_mod,                                                                       &
-        ONLY:  cos_zenith
+        ONLY:  cpu_log, log_point_s
 
     USE restart_data_mpi_io_mod,                                                                   &
-        ONLY:  rrd_mpi_io,                                                                         &
-               rd_mpi_io_check_array,                                                              &
-               wrd_mpi_io
+        ONLY:  rrd_mpi_io, rd_mpi_io_check_array, wrd_mpi_io
 
     USE statistics
 
     USE surface_mod,                                                                               &
-        ONLY:  bc_hv,                                                                              &
-               ind_pav_green,                                                                      &
-               ind_veg_wall,                                                                       &
-               ind_wat_win,                                                                        &
-               surf_def,                                                                           &
-               surf_lsm,                                                                           &
-               surf_type,                                                                          &
-               surf_top,                                                                           &
-               surf_usm
-
+         ONLY:  surf_def_h, surf_def_v, surf_lsm_h, surf_lsm_v, surf_usm_h, surf_usm_v
 
     IMPLICIT NONE
 
@@ -187,15 +379,15 @@
 
     INTEGER, DIMENSION(nkppctrl)                           ::  icntrl       !< 20 integer parameters for fine tuning KPP code
 
-    REAL(KIND=wp), PUBLIC ::  cs_time_step = 0.0_wp
+    REAL(kind=wp), PUBLIC ::  cs_time_step = 0._wp
 
-    REAL(KIND=wp), DIMENSION(nkppctrl)                     ::  rcntrl       !< 20 real parameters for fine tuning of KPP code
+    REAL(kind=wp), DIMENSION(nkppctrl)                     ::  rcntrl       !< 20 real parameters for fine tuning of KPP code
                                                                             !< (e.g starting internal timestep of solver)
 
-    REAL(KIND=wp), ALLOCATABLE, DIMENSION(:,:,:,:), TARGET ::  spec_conc_1  !< pointer for swapping of timelevels for conc
-    REAL(KIND=wp), ALLOCATABLE, DIMENSION(:,:,:,:), TARGET ::  spec_conc_2  !< pointer for swapping of timelevels for conc
-    REAL(KIND=wp), ALLOCATABLE, DIMENSION(:,:,:,:), TARGET ::  spec_conc_3  !< pointer for swapping of timelevels for conc
-    REAL(KIND=wp), ALLOCATABLE, DIMENSION(:,:,:,:), TARGET ::  freq_1       !< pointer for phtolysis frequncies
+    REAL(kind=wp), ALLOCATABLE, DIMENSION(:,:,:,:), TARGET ::  spec_conc_1  !< pointer for swapping of timelevels for conc
+    REAL(kind=wp), ALLOCATABLE, DIMENSION(:,:,:,:), TARGET ::  spec_conc_2  !< pointer for swapping of timelevels for conc
+    REAL(kind=wp), ALLOCATABLE, DIMENSION(:,:,:,:), TARGET ::  spec_conc_3  !< pointer for swapping of timelevels for conc
+    REAL(kind=wp), ALLOCATABLE, DIMENSION(:,:,:,:), TARGET ::  freq_1       !< pointer for phtolysis frequncies
                                                                             !< (only 1 timelevel required) (e.g. solver type)
 
 !
@@ -231,96 +423,32 @@
     INTEGER, PARAMETER ::  iratns_default = iratns_low
 !
 !-- Set alpha for f_light (4.57 is conversion factor from 1./(mumol m-2 s-1) to W m-2
-    REAL(wp), DIMENSION(nlu_dep), PARAMETER ::  alpha = (/                                         &
-                     0.009_wp, 0.009_wp, 0.009_wp, 0.006_wp, 0.006_wp, -999.0_wp, -999.0_wp,       &
-                     0.009_wp, -999.0_wp, -999.0_wp, 0.009_wp, 0.006_wp, -999.0_wp, 0.009_wp,      &
-                     0.008_wp                          /) * 4.57_wp
+    REAL(wp), DIMENSION(nlu_dep), PARAMETER ::  alpha   = (/ 0.009, 0.009, 0.009, 0.006, 0.006,    &
+                    -999.0, -999., 0.009, -999.0, -999.0, 0.009, 0.006, -999.0, 0.009, 0.008 /)*4.57
 !
 !-- Set temperatures per land use for f_temp
-    REAL(wp), DIMENSION(nlu_dep), PARAMETER ::  tmin = (/                                          &
-                     12.0_wp,  12.0_wp,  12.0_wp,  0.0_wp,  0.0_wp, -999.0_wp, -999.0_wp, 12.0_wp, &
-                     -999.0_wp, -999.0_wp, 12.0_wp,  0.0_wp, -999.0_wp, 12.0_wp,  8.0_wp           &
-                                                      /)
-    REAL(wp), DIMENSION(nlu_dep), PARAMETER ::  topt = (/                                          &
-                     26.0_wp, 26.0_wp,  26.0_wp, 18.0_wp, 20.0_wp, -999.0_wp, -999.0_wp, 26.0_wp,  &
-                     -999.0_wp, -999.0_wp, 26.0_wp, 20.0_wp, -999.0_wp, 26.0_wp, 24.0_wp           &
-                                                      /)
-    REAL(wp), DIMENSION(nlu_dep), PARAMETER ::  tmax = (/                                          &
-                     40.0_wp, 40.0_wp,  40.0_wp, 36.0_wp,   35.0_wp, -999.0_wp, -999.0_wp, 40.0_wp,&
-                     -999.0_wp, -999.0_wp,  40.0_wp, 35.0_wp, -999.0_wp, 40.0_wp, 39.0_wp          &
-                                                      /)
+    REAL(wp), DIMENSION(nlu_dep), PARAMETER ::  tmin = (/ 12.0,  12.0,  12.0,  0.0,  0.0, -999.0,  &
+                                      -999.0, 12.0, -999.0, -999.0, 12.0,  0.0, -999.0, 12.0,  8.0/)
+    REAL(wp), DIMENSION(nlu_dep), PARAMETER ::  topt = (/ 26.0, 26.0,  26.0, 18.0, 20.0, -999.0,   &
+                                     -999.0, 26.0, -999.0, -999.0, 26.0, 20.0, -999.0, 26.0, 24.0 /)
+    REAL(wp), DIMENSION(nlu_dep), PARAMETER ::  tmax = (/ 40.0, 40.0,  40.0, 36.0, 35.0, -999.0,   &
+                                    -999.0, 40.0, -999.0, -999.0,  40.0, 35.0, -999.0, 40.0, 39.0 /)
 !
 !-- Set f_min:
-    REAL(wp), DIMENSION(nlu_dep), PARAMETER ::  f_min = (/                                         &
-                     0.01_wp, 0.01_wp, 0.01_wp, 0.1_wp, 0.1_wp, -999.0_wp, -999.0_wp, 0.01_wp,     &
-                     -999.0_wp, -999.0_wp, 0.01_wp, 0.1_wp, -999.0_wp, 0.01_wp, 0.04_wp            &
-                                                       /)
+    REAL(wp), DIMENSION(nlu_dep), PARAMETER ::  f_min = (/ 0.01, 0.01, 0.01, 0.1, 0.1, -999.0,     &
+                                       -999.0, 0.01, -999.0, -999.0, 0.01, 0.1, -999.0, 0.01, 0.04/)
 
 !
 !-- Set maximal conductance (m/s)
 !-- (R T/P) = 1/41000 mmol/m3 is given for 20 deg C to go from  mmol O3/m2/s to m/s
-    REAL(wp), DIMENSION(nlu_dep), PARAMETER ::  g_max = (/                                         &
-                     270.0_wp, 300.0_wp, 300.0_wp, 140.0_wp, 150.0_wp, -999.0_wp, -999.0_wp,       &
-                     270.0_wp, -999.0_wp, -999.0_wp, 270.0_wp, 150.0_wp, -999.0_wp, 300.0_wp,      &
-                     422.0_wp                          /) / 41000.0_wp
+    REAL(wp), DIMENSION(nlu_dep), PARAMETER ::  g_max = (/ 270.0, 300.0, 300.0, 140.0, 150.0,      &
+              -999.0, -999.0, 270.0, -999.0, -999.0, 270.0, 150.0, -999.0, 300.0, 422.0 /) / 41000.0
 !
 !-- Set max, min for vapour pressure deficit vpd
-    REAL(wp), DIMENSION(nlu_dep), PARAMETER ::  vpd_max = (/                                       &
-                     1.3_wp, 0.9_wp, 0.9_wp, 0.5_wp, 1.0_wp, -999.0_wp, -999.0_wp, 1.3_wp,         &
-                     -999.0_wp, -999.0_wp, 1.3_wp, 1.0_wp, -999.0_wp, 0.9_wp, 2.8_wp               &
-                                                         /)
-    REAL(wp), DIMENSION(nlu_dep), PARAMETER ::  vpd_min = (/                                       &
-                     3.0_wp, 2.8_wp, 2.8_wp, 3.0_wp, 3.25_wp, -999.0_wp, -999.0_wp, 3.0_wp,        &
-                     -999.0_wp, -999.0_wp, 3.0_wp,  3.25_wp, -999.0_wp, 2.8_wp, 4.5_wp             &
-                                                         /)
-
-!
-!-- Soil resistance (numbers matched with lu_classes and component numbers)
-    !     grs          ara        crp       cnf         dec         wat        urb      oth
-    !     des          ice        sav       trf         wai         med        sem
-    REAL(wp), PARAMETER ::  rsoil(nlu_dep,ncmp) = RESHAPE( (/                                      &
-         1000.0_wp,  200.0_wp,  200.0_wp,  200.0_wp,  200.0_wp, 2000.0_wp,  400.0_wp, 1000.0_wp,   &
-         2000.0_wp, 2000.0_wp, 1000.0_wp,  200.0_wp, 2000.0_wp,  200.0_wp,  400.0_wp,              &    !< O3
-         1000.0_wp, 1000.0_wp, 1000.0_wp, 1000.0_wp, 1000.0_wp,   10.0_wp, 1000.0_wp, 1000.0_wp,   &
-         1000.0_wp,  500.0_wp, 1000.0_wp, 1000.0_wp,   10.0_wp, 1000.0_wp, 1000.0_wp,              &    !< SO2
-         1000.0_wp, 1000.0_wp, 1000.0_wp, 1000.0_wp, 1000.0_wp, 2000.0_wp, 1000.0_wp, 1000.0_wp,   &
-         1000.0_wp, 2000.0_wp, 1000.0_wp, 1000.0_wp, 2000.0_wp, 1000.0_wp, 1000.0_wp,              &    !< NO2
-         -999.0_wp, -999.0_wp, -999.0_wp, -999.0_wp, -999.0_wp, 2000.0_wp, 1000.0_wp, -999.0_wp,   &
-         2000.0_wp, 2000.0_wp, -999.0_wp, -999.0_wp, 2000.0_wp, -999.0_wp, -999.0_wp,              &    !< NO
-          100.0_wp,  100.0_wp,  100.0_wp,  100.0_wp,  100.0_wp,   10.0_wp,  100.0_wp,  100.0_wp,   &
-          100.0_wp, 1000.0_wp,  100.0_wp,  100.0_wp,   10.0_wp,  100.0_wp,  100.0_wp,              &    !< NH3
-         -999.0_wp, -999.0_wp, -999.0_wp, -999.0_wp, -999.0_wp, 2000.0_wp, 1000.0_wp, -999.0_wp,   &
-         2000.0_wp, 2000.0_wp, -999.0_wp, -999.0_wp, 2000.0_wp, -999.0_wp, -999.0_wp,              &    !< CO
-         -999.0_wp, -999.0_wp, -999.0_wp, -999.0_wp, -999.0_wp, -999.0_wp, -999.0_wp, -999.0_wp,   &
-         -999.0_wp, -999.0_wp, -999.0_wp, -999.0_wp, -999.0_wp, -999.0_wp, -999.0_wp,              &    !< NO3
-         -999.0_wp, -999.0_wp, -999.0_wp, -999.0_wp, -999.0_wp, -999.0_wp, -999.0_wp, -999.0_wp,   &
-         -999.0_wp, -999.0_wp, -999.0_wp, -999.0_wp, -999.0_wp, -999.0_wp, -999.0_wp,              &    !< HNO3
-         -999.0_wp, -999.0_wp, -999.0_wp, -999.0_wp, -999.0_wp, -999.0_wp, -999.0_wp, -999.0_wp,   &
-         -999.0_wp, -999.0_wp, -999.0_wp, -999.0_wp, -999.0_wp, -999.0_wp, -999.0_wp,              &    !< N2O5
-         -999.0_wp, -999.0_wp, -999.0_wp, -999.0_wp, -999.0_wp, -999.0_wp, -999.0_wp, -999.0_wp,   &
-         -999.0_wp, -999.0_wp, -999.0_wp, -999.0_wp, -999.0_wp, -999.0_wp, -999.0_wp /),           &    !< H2O2
-                                                                                 (/nlu_dep,ncmp/) )
-
-    REAL(wp), PARAMETER ::  rsoil_frozen(ncmp) = (/ 2000.0_wp,                                     & !o3
-                                                    500.0_wp,                                      & !so2
-                                                    2000.0_wp,                                     & !no2
-                                                    -999.0_wp,                                     & !no
-                                                    1000.0_wp,                                     & !nh3
-                                                    -999.0_wp,                                     & !co
-                                                    -999.0_wp,                                     & !no3
-                                                    -999.0_wp,                                     & !hno3
-                                                    -999.0_wp,                                     & !n2o5
-                                                    -999.0_wp /)                                     !h2o2
-    REAL(wp), PARAMETER ::  rsoil_wet(ncmp)    = (/ 2000.0_wp,                                     & !o3
-                                                    10.0_wp ,                                      & !so2
-                                                    2000.0_wp,                                     & !no2
-                                                    -999.0_wp,                                     & !no
-                                                    10.0_wp  ,                                     & !nh3
-                                                    -999.0_wp,                                     & !co
-                                                    -999.0_wp,                                     & !no3
-                                                    -999.0_wp,                                     & !hno3
-                                                    -999.0_wp,                                     & !n2o5
-                                                    -999.0_wp /)                                     !h2o2
+    REAL(wp), DIMENSION(nlu_dep), PARAMETER ::  vpd_max = (/ 1.3, 0.9, 0.9, 0.5, 1.0, -999.0,      &
+                                           -999.0, 1.3, -999.0, -999.0, 1.3, 1.0, -999.0, 0.9, 2.8/)
+    REAL(wp), DIMENSION(nlu_dep), PARAMETER ::  vpd_min = (/ 3.0, 2.8, 2.8, 3.0, 3.25, -999.0,     &
+                                         -999.0, 3.0, -999.0, -999.0, 3.0,  3.25, -999.0, 2.8, 4.5/)
 
     PUBLIC nreact
     PUBLIC nspec               !< number of gas phase chemical species including constant compound (e.g. N2)
@@ -387,7 +515,6 @@
     END INTERFACE chem_init_profiles
 
     INTERFACE chem_integrate
-       MODULE PROCEDURE chem_integrate
        MODULE PROCEDURE chem_integrate_ij
     END INTERFACE chem_integrate
 
@@ -428,8 +555,69 @@
 
     INTERFACE chem_depo
        MODULE PROCEDURE chem_depo
-       MODULE PROCEDURE chem_depo_ij
     END INTERFACE chem_depo
+
+    INTERFACE drydepos_gas_depac
+       MODULE PROCEDURE drydepos_gas_depac
+    END INTERFACE drydepos_gas_depac
+
+    INTERFACE rc_special
+       MODULE PROCEDURE rc_special
+    END INTERFACE rc_special
+
+    INTERFACE  rc_gw
+       MODULE PROCEDURE rc_gw
+    END INTERFACE rc_gw
+
+    INTERFACE rw_so2
+       MODULE PROCEDURE rw_so2
+    END INTERFACE rw_so2
+
+    INTERFACE rw_nh3_sutton
+       MODULE PROCEDURE rw_nh3_sutton
+    END INTERFACE rw_nh3_sutton
+
+    INTERFACE rw_constant
+       MODULE PROCEDURE rw_constant
+    END INTERFACE rw_constant
+
+    INTERFACE rc_gstom
+       MODULE PROCEDURE rc_gstom
+    END INTERFACE rc_gstom
+
+    INTERFACE rc_gstom_emb
+       MODULE PROCEDURE rc_gstom_emb
+    END INTERFACE rc_gstom_emb
+
+    INTERFACE par_dir_diff
+       MODULE PROCEDURE par_dir_diff
+    END INTERFACE par_dir_diff
+
+    INTERFACE rc_get_vpd
+       MODULE PROCEDURE rc_get_vpd
+    END INTERFACE rc_get_vpd
+
+    INTERFACE rc_gsoil_eff
+       MODULE PROCEDURE rc_gsoil_eff
+    END INTERFACE rc_gsoil_eff
+
+    INTERFACE rc_rinc
+       MODULE PROCEDURE rc_rinc
+    END INTERFACE rc_rinc
+
+    INTERFACE rc_rctot
+       MODULE PROCEDURE rc_rctot
+    END INTERFACE rc_rctot
+
+    INTERFACE drydepo_aero_zhang_vd
+       MODULE PROCEDURE drydepo_aero_zhang_vd
+    END INTERFACE drydepo_aero_zhang_vd
+
+    INTERFACE get_rb_cell
+       MODULE PROCEDURE  get_rb_cell
+    END INTERFACE get_rb_cell
+
+
 
     PUBLIC chem_3d_data_averaging, chem_boundary_conditions, chem_check_data_output,               &
            chem_check_data_output_pr, chem_check_parameters, chem_data_output_2d,                  &
@@ -462,6 +650,10 @@
 
     CHARACTER (LEN=*) ::  mode     !<
     CHARACTER (LEN=*) ::  variable !<
+
+    LOGICAL ::  match_def  !< flag indicating default-type surface
+    LOGICAL ::  match_lsm  !< flag indicating natural-type surface
+    LOGICAL ::  match_usm  !< flag indicating urban-type surface
 
     INTEGER(iwp) ::  i                  !< grid index x direction
     INTEGER(iwp) ::  j                  !< grid index y direction
@@ -499,21 +691,23 @@
              ELSEIF ( TRIM( variable(4:) ) == TRIM( 'cssws*' ) )  THEN
                 DO  i = nxl, nxr
                    DO  j = nys, nyn
-                      DO  m = surf_def%start_index(j,i), surf_def%end_index(j,i)
+                      match_def = surf_def_h(0)%start_index(j,i) <= surf_def_h(0)%end_index(j,i)
+                      match_lsm = surf_lsm_h(0)%start_index(j,i) <= surf_lsm_h(0)%end_index(j,i)
+                      match_usm = surf_usm_h(0)%start_index(j,i) <= surf_usm_h(0)%end_index(j,i)
+
+                      IF ( match_def )  THEN
+                         m = surf_def_h(0)%end_index(j,i)
                          chem_species(lsp)%cssws_av(j,i) = chem_species(lsp)%cssws_av(j,i) +       &
-                                                           MERGE( surf_def%cssws(lsp,m), 0.0_wp,   &
-                                                                  surf_def%upward(m) )
-                      ENDDO
-                      DO  m = surf_lsm%start_index(j,i), surf_lsm%end_index(j,i)
+                                                           surf_def_h(0)%cssws(lsp,m)
+                      ELSEIF ( match_lsm  .AND.  .NOT. match_usm )  THEN
+                         m = surf_lsm_h(0)%end_index(j,i)
                          chem_species(lsp)%cssws_av(j,i) = chem_species(lsp)%cssws_av(j,i) +       &
-                                                           MERGE( surf_lsm%cssws(lsp,m), 0.0_wp,   &
-                                                                  surf_lsm%upward(m) )
-                      ENDDO
-                      DO  m = surf_usm%start_index(j,i), surf_usm%end_index(j,i)
+                                                           surf_lsm_h(0)%cssws(lsp,m)
+                      ELSEIF ( match_usm )  THEN
+                         m = surf_usm_h(0)%end_index(j,i)
                          chem_species(lsp)%cssws_av(j,i) = chem_species(lsp)%cssws_av(j,i) +       &
-                                                           MERGE( surf_usm%cssws(lsp,m), 0.0_wp,   &
-                                                                  surf_usm%upward(m) )
-                      ENDDO
+                                                           surf_usm_h(0)%cssws(lsp,m)
+                      ENDIF
                    ENDDO
                 ENDDO
              ENDIF
@@ -560,9 +754,13 @@
     USE arrays_3d,                                                                                 &
         ONLY:  dzu
 
+    USE surface_mod,                                                                               &
+        ONLY:  bc_h
+
     INTEGER(iwp) ::  i                            !< grid index x direction.
     INTEGER(iwp) ::  j                            !< grid index y direction.
     INTEGER(iwp) ::  k                            !< grid index z direction.
+    INTEGER(iwp) ::  l                            !< running index boundary type, for up- and downward-facing walls.
     INTEGER(iwp) ::  lsp                          !< running index for chem spcs.
     INTEGER(iwp) ::  m                            !< running index surface elements.
 
@@ -573,41 +771,40 @@
 !
 !--    Boundary condtions for chemical species at horizontal walls
        DO  lsp = 1, nspec
-!
-!--       Surface conditions:
+
           IF ( ibc_cs_b == 0 )  THEN
-!
-!--          Dirichlet:
-!--          Run loop over all non-natural and natural walls. Note, in wall-datatype the k,j,i
-!--          coordinate belong to the atmospheric grid point, therefore, set s_p at k+koff,
-!--          j+joff, i+ioff, respectively.
-             !$OMP PARALLEL DO PRIVATE( i, j, k )
-             DO  m = 1, bc_hv%ns
-                i = bc_hv%i(m)
-                j = bc_hv%j(m)
-                k = bc_hv%k(m)
-                chem_species(lsp)%conc_p(k+bc_hv%koff(m),j+bc_hv%joff(m),i+bc_hv%ioff(m)) =        &
-                            chem_species(lsp)%conc(k+bc_hv%koff(m),j+bc_hv%joff(m),i+bc_hv%ioff(m))
+             DO  l = 0, 1
+                !$OMP PARALLEL DO PRIVATE( i, j, k )
+                DO  m = 1, bc_h(l)%ns
+                    i = bc_h(l)%i(m)
+                    j = bc_h(l)%j(m)
+                    k = bc_h(l)%k(m)
+                   chem_species(lsp)%conc_p(k+bc_h(l)%koff,j,i) =                                  &
+                                                          chem_species(lsp)%conc(k+bc_h(l)%koff,j,i)
+                ENDDO
              ENDDO
 
           ELSEIF ( ibc_cs_b == 1 )  THEN
 !
-!--          Neumann:
-             !$OMP PARALLEL DO PRIVATE( i, j, k )
-             DO  m = 1, bc_hv%ns
-                i = bc_hv%i(m)
-                j = bc_hv%j(m)
-                k = bc_hv%k(m)
-                chem_species(lsp)%conc_p(k+bc_hv%koff(m),j+bc_hv%joff(m),i+bc_hv%ioff(m)) =        &
-                                                                   chem_species(lsp)%conc_p(k,j,i)
+!--          In boundary_conds there is som extra loop over m here for passive tracer
+!>           TODO: clarify the meaning of the above comment. Explain in more detail or remove it. (Siggi)
+             DO  l = 0, 1
+                !$OMP PARALLEL DO PRIVATE( i, j, k )
+                DO m = 1, bc_h(l)%ns
+                   i = bc_h(l)%i(m)
+                   j = bc_h(l)%j(m)
+                   k = bc_h(l)%k(m)
+                   chem_species(lsp)%conc_p(k+bc_h(l)%koff,j,i) = chem_species(lsp)%conc_p(k,j,i)
+                ENDDO
              ENDDO
-
           ENDIF
 
-       ENDDO
+       ENDDO    ! end lsp loop
 
 !
-!--    Top boundary conditions for chemical species
+!--    Top boundary conditions for chemical species - Should this not be done for all species?
+!>     TODO: This question also needs to be clarified. I guess it can be removed because the loop
+!>           already runs over all species? (Siggi)
        DO  lsp = 1, nspec
           IF ( ibc_cs_t == 0 )  THEN
              chem_species(lsp)%conc_p(nzt+1,:,:) = chem_species(lsp)%conc(nzt+1,:,:)
@@ -646,6 +843,72 @@
           ENDDO
        ENDIF
 
+!--    For testing: set Dirichlet conditions for all boundaries
+!      IF ( bc_dirichlet_cs_s )  THEN
+!         DO  lsp = 1, nspec
+!            DO  i = nxlg, nxrg
+!               DO  j = nysg, nys-1
+!                  DO  k = nzb, nzt
+!                     IF ( k /= nzb )  THEN
+!                        flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
+!                     ELSE
+!                        flag = 1.0
+!                     ENDIF
+!                     chem_species(lsp)%conc_p(k,j,i) = chem_species(lsp)%conc_pr_init(k) * flag
+!                  ENDDO
+!               ENDDO
+!            ENDDO
+!         ENDDO
+!      ENDIF
+!      IF ( bc_dirichlet_cs_n )  THEN
+!         DO  lsp = 1, nspec
+!            DO  i = nxlg, nxrg
+!               DO  j = nyn+1, nyng
+!                  DO  k = nzb, nzt
+!                     IF ( k /= nzb )  THEN
+!                        flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
+!                     ELSE
+!                        flag = 1.0
+!                     ENDIF
+!                     chem_species(lsp)%conc_p(k,j,i) = chem_species(lsp)%conc_pr_init(k) * flag
+!                  ENDDO
+!               ENDDO
+!            ENDDO
+!         ENDDO
+!      ENDIF
+!      IF ( bc_dirichlet_cs_l )  THEN
+!         DO  lsp = 1, nspec
+!            DO  i = nxlg, nxl-1
+!               DO  j = nysg, nyng
+!                  DO  k = nzb, nzt
+!                     IF ( k /= nzb )  THEN
+!                        flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
+!                     ELSE
+!                        flag = 1.0
+!                     ENDIF
+!                     chem_species(lsp)%conc_p(k,j,i) = chem_species(lsp)%conc_pr_init(k) * flag
+!                  ENDDO
+!               ENDDO
+!            ENDDO
+!         ENDDO
+!      ENDIF
+!      IF ( bc_dirichlet_cs_r )  THEN
+!         DO  lsp = 1, nspec
+!            DO  i = nxr+1, nxrg
+!               DO  j = nysg, nyng
+!                  DO  k = nzb, nzt
+!                     IF ( k /= nzb )  THEN
+!                        flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
+!                     ELSE
+!                        flag = 1.0
+!                     ENDIF
+!                     chem_species(lsp)%conc_p(k,j,i) = chem_species(lsp)%conc_pr_init(k) * flag
+!                  ENDDO
+!               ENDDO
+!            ENDDO
+!         ENDDO
+!      ENDIF
+
     ELSE
 !
 !--    Lateral Neumann booundary conditions for timelevel t.
@@ -671,6 +934,72 @@
              chem_species(lsp)%conc(:,:,nxr+1) = chem_species(lsp)%conc(:,:,nxr)
           ENDDO
        ENDIF
+
+!--    For testing: set Dirichlet conditions for all boundaries
+!      IF ( bc_dirichlet_cs_s )  THEN
+!         DO  lsp = 1, nspec
+!            DO  i = nxlg, nxrg
+!               DO  j = nysg, nys-1
+!                  DO  k = nzb, nzt
+!                     IF ( k /= nzb )  THEN
+!                        flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
+!                     ELSE
+!                        flag = 1.0
+!                     ENDIF
+!                     chem_species(lsp)%conc(k,j,i) = chem_species(lsp)%conc_pr_init(k) * flag
+!                  ENDDO
+!               ENDDO
+!            ENDDO
+!         ENDDO
+!      ENDIF
+!      IF ( bc_dirichlet_cs_n )  THEN
+!         DO  lsp = 1, nspec
+!            DO  i = nxlg, nxrg
+!               DO  j = nyn+1, nyng
+!                  DO  k = nzb, nzt
+!                     IF ( k /= nzb )  THEN
+!                        flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
+!                     ELSE
+!                        flag = 1.0
+!                     ENDIF
+!                     chem_species(lsp)%conc(k,j,i) = chem_species(lsp)%conc_pr_init(k) * flag
+!                  ENDDO
+!               ENDDO
+!            ENDDO
+!         ENDDO
+!      ENDIF
+!      IF ( bc_dirichlet_cs_l )  THEN
+!         DO  lsp = 1, nspec
+!            DO  i = nxlg, nxl-1
+!               DO  j = nysg, nyng
+!                  DO  k = nzb, nzt
+!                     IF ( k /= nzb )  THEN
+!                        flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
+!                     ELSE
+!                        flag = 1.0
+!                     ENDIF
+!                     chem_species(lsp)%conc(k,j,i) = chem_species(lsp)%conc_pr_init(k) * flag
+!                  ENDDO
+!               ENDDO
+!            ENDDO
+!         ENDDO
+!      ENDIF
+!      IF ( bc_dirichlet_cs_r )  THEN
+!         DO  lsp = 1, nspec
+!            DO  i = nxr+1, nxrg
+!               DO  j = nysg, nyng
+!                  DO  k = nzb, nzt
+!                     IF ( k /= nzb )  THEN
+!                        flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
+!                     ELSE
+!                        flag = 1.0
+!                     ENDIF
+!                     chem_species(lsp)%conc(k,j,i) = chem_species(lsp)%conc_pr_init(k) * flag
+!                  ENDDO
+!               ENDDO
+!            ENDDO
+!         ENDDO
+!      ENDIF
 
     ENDIF
 
@@ -730,9 +1059,6 @@
           IF (spec_name(1:2) == 'PM')  THEN
             unit = 'kg m-3'
           ENDIF
-
-          IF ( spec_name(1:3) == 'POL' ) unit = 'nConc m-3'
-
        ENDDO
 
        DO  lsp=1,nphot
@@ -757,8 +1083,7 @@
     USE arrays_3d
 
     USE control_parameters,                                                                        &
-        ONLY:  data_output_pr,                                                                     &
-               message_string
+        ONLY:  data_output_pr, message_string
 
     USE profil_parameter
 
@@ -780,19 +1105,19 @@
        CASE ( 'kc_' )
 
           IF ( .NOT. air_chemistry )  THEN
-             message_string = 'data_output_pr = "' // TRIM( data_output_pr(var_count) ) //          &
-                              '" not implemented for air_chemistry = .FALSE.'
-             CALL message( 'chem_check_data_output_pr', 'CHM0001', 1, 2, 0, 6, 0 )
+             message_string = 'data_output_pr = ' // TRIM( data_output_pr(var_count) ) //          &
+                              ' is not implemented for air_chemistry = .FALSE.'
+             CALL message( 'chem_check_parameters', 'CM0433', 1, 2, 0, 6, 0 )
 
           ENDIF
 !
 !--       Output of total fluxes is not allowed to date.
           IF ( TRIM( variable(1:4) ) == 'kc_w' )  THEN
              IF ( TRIM( variable(1:5) ) /= 'kc_w*'  .AND.  TRIM( variable(1:5) ) /= 'kc_w"' )  THEN
-                message_string = 'data_output_pr = "' // TRIM( data_output_pr(var_count) ) //      &
-                                 '" currently not implemented'
-
-                CALL message( 'chem_check_data_output_pr', 'CHM0002', 1, 2, 0, 6, 0 )
+                message_string = 'data_output_pr = ' // TRIM( data_output_pr(var_count) ) //       &
+                              ' is currently not implemented. Please output resolved- and '//      &
+                              'subgrid-scale fluxes individually to obtain the total flux.'
+                CALL message( 'chem_check_parameters', 'CM0498', 1, 2, 0, 6, 0 )
              ENDIF
           ENDIF
 !
@@ -880,44 +1205,44 @@
  SUBROUTINE chem_check_parameters
 
     USE control_parameters,                                                                        &
-        ONLY:  bc_lr,                                                                              &
-               bc_ns,                                                                              &
-               data_output_pr
+        ONLY:  bc_lr, bc_ns
 
-    USE radiation_model_mod,                                                                       &
-        ONLY:  radiation_volumetric_flux
-
-
-    INTEGER(iwp) ::  i             !< loop variable
-    INTEGER(iwp) ::  lsp           !< running index for chem spcs.
-    INTEGER(iwp) ::  lsp_usr       !< running index for user defined chem spcs
+    INTEGER (iwp) ::  lsp          !< running index for chem spcs.
+    INTEGER (iwp) ::  lsp_usr      !< running index for user defined chem spcs
 
     LOGICAL  ::  found
 
-
-    IF ( .NOT. radiation_volumetric_flux  .AND.  photolysis_shading )  THEN
-       message_string = 'photolyis shading requires 3D volumetric radiation flux set to true'
-       CALL message( 'chem_check_parameters', 'CHM0003', 1, 2, 0, 6, 0 )
+!
+!-- Check for chemical reactions status
+    IF ( chem_gasphase_on )  THEN
+       message_string = 'Chemical reactions: ON'
+       CALL message( 'chem_check_parameters', 'CM0421', 0, 0, 0, 6, 0 )
+    ELSEIF ( .NOT. (chem_gasphase_on) )  THEN
+       message_string = 'Chemical reactions: OFF'
+       CALL message( 'chem_check_parameters', 'CM0422', 0, 0, 0, 6, 0 )
     ENDIF
-
 !
 !-- Check for chemistry time-step
     IF ( call_chem_at_all_substeps )  THEN
-       message_string = 'call_chem_at_all_substeps should only be used for test purposes'
-       CALL message( 'chem_check_parameters', 'CHM0004', 0, 1, 0, 6, 0 )
+       message_string = 'Chemistry is calculated at all meteorology time-step'
+       CALL message( 'chem_check_parameters', 'CM0423', 0, 0, 0, 6, 0 )
+    ELSEIF ( .not. (call_chem_at_all_substeps) )  THEN
+       message_string = 'Sub-time-steps are skipped for chemistry time-steps'
+       CALL message( 'chem_check_parameters', 'CM0424', 0, 0, 0, 6, 0 )
     ENDIF
 !
 !-- Check for photolysis scheme
-    IF ( ( photolysis_scheme /= 'simple' ) .AND. ( photolysis_scheme /= 'constant' )  )  THEN
-       message_string = 'unknown photolysis scheme = "' // TRIM( photolysis_scheme ) // '"'
-       CALL message( 'chem_check_parameters', 'CHM0005', 1, 2, 0, 6, 0 )
+    IF ( (photolysis_scheme /= 'simple') .AND. (photolysis_scheme /= 'constant')  )  THEN
+       message_string = 'Incorrect photolysis scheme selected, please check spelling'
+       CALL message( 'chem_check_parameters', 'CM0425', 1, 2, 0, 6, 0 )
     ENDIF
 !
 !-- Check for chemical mechanism used
     CALL get_mechanism_name
     IF ( chem_mechanism /= TRIM( cs_mech ) )  THEN
-       message_string = 'unknown chem_mechanism = "' // TRIM( chem_mechanism ) // '"'
-       CALL message( 'chem_check_parameters', 'CHM0006', 1, 2, 0, 6, 0 )
+       message_string =                                                                            &
+       'Incorrect chemistry mechanism selected, check spelling in namelist and/or chem_gasphase_mod'
+       CALL message( 'chem_check_parameters', 'CM0462', 1, 2, 0, 6, 0 )
     ENDIF
 
 !
@@ -928,7 +1253,7 @@
        ibc_cs_b = 1
     ELSE
        message_string = 'unknown boundary condition: bc_cs_b ="' // TRIM( bc_cs_b ) // '"'
-       CALL message( 'chem_check_parameters', 'CHM0007', 1, 2, 0, 6, 0 )
+       CALL message( 'chem_boundary_conds', 'CM0429', 1, 2, 0, 6, 0 )
     ENDIF
 !
 !-- Check top boundary condition and set internal steering parameter
@@ -942,7 +1267,7 @@
        ibc_cs_t = 3
     ELSE
        message_string = 'unknown boundary condition: bc_c_t ="' // TRIM( bc_cs_t ) // '"'
-       CALL message( 'chem_check_parameters', 'CHM0007', 1, 2, 0, 6, 0 )
+       CALL message( 'check_parameters', 'CM0430', 1, 2, 0, 6, 0 )
     ENDIF
 
 !
@@ -974,11 +1299,11 @@
     ENDIF
     IF ( bc_cs_l /= 'dirichlet'  .AND.  bc_cs_l /= 'neumann'  .AND.  bc_cs_l /= 'cyclic' )  THEN
        message_string = 'unknown boundary condition: bc_cs_l = "' // TRIM( bc_cs_l ) // '"'
-       CALL message( 'chem_check_parameters','CHM0007', 1, 2, 0, 6, 0 )
+       CALL message( 'chem_check_parameters','PA0505', 1, 2, 0, 6, 0 )
     ENDIF
     IF ( bc_cs_r /= 'dirichlet'  .AND.  bc_cs_r /= 'neumann'  .AND.  bc_cs_r /= 'cyclic' )  THEN
        message_string = 'unknown boundary condition: bc_cs_r = "' // TRIM( bc_cs_r ) // '"'
-       CALL message( 'chem_check_parameters','CHM0007', 1, 2, 0, 6, 0 )
+       CALL message( 'chem_check_parameters','PA0551', 1, 2, 0, 6, 0 )
     ENDIF
 !
 !-- Check north and south boundary conditions. First set default value if not set by user.
@@ -1002,23 +1327,23 @@
     ENDIF
     IF ( bc_cs_n /= 'dirichlet'  .AND.  bc_cs_n /= 'neumann'  .AND.  bc_cs_n /= 'cyclic' )  THEN
        message_string = 'unknown boundary condition: bc_cs_n = "' // TRIM( bc_cs_n ) // '"'
-       CALL message( 'chem_check_parameters','CHM0007', 1, 2, 0, 6, 0 )
+       CALL message( 'chem_check_parameters','PA0714', 1, 2, 0, 6, 0 )
     ENDIF
     IF ( bc_cs_s /= 'dirichlet'  .AND.  bc_cs_s /= 'neumann'  .AND.  bc_cs_s /= 'cyclic' )  THEN
        message_string = 'unknown boundary condition: bc_cs_s = "' // TRIM( bc_cs_s ) // '"'
-       CALL message( 'chem_check_parameters','CHM0007', 1, 2, 0, 6, 0 )
+       CALL message( 'chem_check_parameters','PA0715', 1, 2, 0, 6, 0 )
     ENDIF
 !
 !-- Cyclic conditions must be set identically at opposing boundaries
     IF ( ( bc_cs_l == 'cyclic' .AND. bc_cs_r /= 'cyclic' )  .OR.                                   &
          ( bc_cs_r == 'cyclic' .AND. bc_cs_l /= 'cyclic' ) )  THEN
        message_string = 'boundary conditions bc_cs_l and bc_cs_r must both be cyclic or non-cyclic'
-       CALL message( 'chem_check_parameters','CHM0008', 1, 2, 0, 6, 0 )
+       CALL message( 'chem_check_parameters','PA0716', 1, 2, 0, 6, 0 )
     ENDIF
     IF ( ( bc_cs_n == 'cyclic' .AND. bc_cs_s /= 'cyclic' )  .OR.                                   &
          ( bc_cs_s == 'cyclic' .AND. bc_cs_n /= 'cyclic' ) )  THEN
        message_string = 'boundary conditions bc_cs_n and bc_cs_s must both be cyclic or non-cyclic'
-       CALL message( 'chem_check_parameters','CHM0008', 1, 2, 0, 6, 0 )
+       CALL message( 'chem_check_parameters','PA0717', 1, 2, 0, 6, 0 )
     ENDIF
 !
 !-- Set the switches that control application of horizontal boundary conditions at the boundaries
@@ -1052,6 +1377,7 @@
 !
 !-- chem_check_parameters is called before the array chem_species is allocated!
 !-- temporary switch of this part of the check
+!    RETURN                !bK commented
 !> TODO: this workaround definitely needs to be removed from here!!!
     CALL chem_init_internal
 !
@@ -1067,9 +1393,9 @@
           ENDIF
        ENDDO
        IF ( .NOT.  found )  THEN
-          message_string = 'unused/incorrect input for initial surface value = "' //               &
-                            TRIM( cs_name(lsp_usr) ) // '"'
-          CALL message( 'chem_check_parameters', 'CHM0009', 1, 2, 0, 6, 0 )
+          message_string = 'Unused/incorrect input for initial surface value: ' //     &
+                            TRIM( cs_name(lsp_usr) )
+          CALL message( 'chem_check_parameters', 'CM0427', 1, 2, 0, 6, 0 )
        ENDIF
        lsp_usr = lsp_usr + 1
     ENDDO
@@ -1086,21 +1412,11 @@
           ENDIF
        ENDDO
        IF ( .NOT.  found )  THEN
-          message_string = 'unused/incorrect input of chemical species for surface emission ' //   &
-                           'fluxes = "' // TRIM( surface_csflux_name(lsp_usr) ) // '"'
-          CALL message( 'chem_check_parameters', 'CHM0010', 1, 2, 0, 6, 0 )
+          message_string = 'Unused/incorrect input of chemical species for surface emission fluxes: '  &
+                            // TRIM( surface_csflux_name(lsp_usr) )
+          CALL message( 'chem_check_parameters', 'CM0428', 1, 2, 0, 6, 0 )
        ENDIF
        lsp_usr = lsp_usr + 1
-    ENDDO
-!
-!-- Determine the number of chemistry profiles and append them to the standard data output.
-    i = 1
-
-    DO  WHILE ( data_output_pr(i)  /= ' '  .AND.  i <= SIZE( data_output_pr ) )
-       IF ( TRIM( data_output_pr(i)(1:3) ) == 'kc_' )  THEN
-          max_pr_cs = max_pr_cs + 1
-       ENDIF
-       i = i + 1
     ENDDO
 
  END SUBROUTINE chem_check_parameters
@@ -1112,7 +1428,8 @@
 !> Subroutine defining 2D output variables for chemical species
 !> @todo: Remove "mode" from argument list, not used.
 !--------------------------------------------------------------------------------------------------!
- SUBROUTINE chem_data_output_2d( av, variable, found, grid, mode, local_pf, two_d, nzb_do, nzt_do )
+ SUBROUTINE chem_data_output_2d( av, variable, found, grid, mode, local_pf, two_d, nzb_do, nzt_do, &
+                                 fill_value )
 
 
     CHARACTER (LEN=*) ::  grid       !<
@@ -1128,10 +1445,12 @@
     LOGICAL      ::  two_d           !< flag parameter that indicates 2D variables (horizontal cross
                                      !< sections)
 
+    REAL(wp)     ::  fill_value
+
     REAL(wp), DIMENSION(nxl:nxr,nys:nyn,nzb:nzt+1) ::  local_pf
 
 !
-!-- Local variables.
+!-- local variables.
     CHARACTER(LEN=16)    ::  spec_name
     INTEGER(iwp) ::  lsp
     INTEGER(iwp) ::  i               !< grid index along x-direction
@@ -1139,8 +1458,6 @@
     INTEGER(iwp) ::  k               !< grid index along z-direction
     INTEGER(iwp) ::  m               !< running indices for surfaces
     INTEGER(iwp) ::  char_len        !< length of a character string
-
-
 !
 !-- Next statement is to avoid compiler warnings about unused variables
     IF ( mode(1:1) == ' '  .OR.  two_d )  CONTINUE
@@ -1159,17 +1476,17 @@
           IF ( TRIM( spec_name ) == TRIM( chem_species(lsp)%name) )  THEN
 !
 !--          No average output for now.
-             DO  m = 1, surf_lsm%ns
-                local_pf(surf_lsm%i(m),surf_lsm%j(m),nzb+1) =                                  &
-                                           MERGE( surf_lsm%cssws(lsp,m),                       &
-                                                  local_pf(surf_lsm%i(m),surf_lsm%j(m),nzb+1), &
-                                                  surf_lsm%upward(m) )
+!--          !!! IT NEEDS TO RETHINK - with fully 3D structure, only lower (upper)
+!--          !!! upward facing horizontal surfaces should be taken into account here
+             DO  m = 1, surf_lsm_h(0)%ns
+                local_pf(surf_lsm_h(0)%i(m),surf_lsm_h(0)%j(m),nzb+1) =                                  &
+                                                   local_pf(surf_lsm_h(0)%i(m),surf_lsm_h(0)%j(m),nzb+1) &
+                                                   + surf_lsm_h(0)%cssws(lsp,m)
              ENDDO
-             DO  m = 1, surf_usm%ns
-                local_pf(surf_usm%i(m),surf_usm%j(m),nzb+1) =                                  &
-                                           MERGE( surf_usm%cssws(lsp,m),                       &
-                                                  local_pf(surf_usm%i(m),surf_usm%j(m),nzb+1), &
-                                                  surf_usm%upward(m) )
+             DO  m = 1, surf_usm_h(0)%ns
+                   local_pf(surf_usm_h(0)%i(m),surf_usm_h(0)%j(m),nzb+1) =                               &
+                                                   local_pf(surf_usm_h(0)%i(m),surf_usm_h(0)%j(m),nzb+1) &
+                                                   + surf_usm_h(0)%cssws(lsp,m)
              ENDDO
              grid = 'zu'
              found = .TRUE.
@@ -1183,13 +1500,18 @@
                 ( (variable(char_len-2:) == '_xy')  .OR.                                           &
                   (variable(char_len-2:) == '_xz')  .OR.                                           &
                   (variable(char_len-2:) == '_yz') ) )  THEN
+!
+!--   todo: remove or replace by "CALL message" mechanism (kanani)
+!                    IF(myid == 0)  WRITE(6,*) 'Output of species ' // TRIM( variable )  //       &
+!                                                             TRIM( chem_species(lsp)%name )
              IF (av == 0)  THEN
                 DO  i = nxl, nxr
                    DO  j = nys, nyn
                       DO  k = nzb_do, nzt_do
-                         IF ( BTEST( topo_flags(k,j,i), 0 ) )  THEN
-                            local_pf(i,j,k) = chem_species(lsp)%conc(k,j,i)
-                         ENDIF
+                           local_pf(i,j,k) = MERGE(                                                &
+                                              chem_species(lsp)%conc(k,j,i),                       &
+                                              REAL( fill_value, KIND = wp ),                       &
+                                              BTEST( wall_flags_total_0(k,j,i), 0 ) )
                       ENDDO
                    ENDDO
                 ENDDO
@@ -1198,9 +1520,10 @@
                 DO  i = nxl, nxr
                    DO  j = nys, nyn
                       DO  k = nzb_do, nzt_do
-                         IF ( BTEST( topo_flags(k,j,i), 0 ) )  THEN
-                            local_pf(i,j,k) = chem_species(lsp)%conc_av(k,j,i)
-                         ENDIF
+                           local_pf(i,j,k) = MERGE(                                                &
+                                              chem_species(lsp)%conc_av(k,j,i),                    &
+                                              REAL( fill_value, KIND = wp ),                       &
+                                              BTEST( wall_flags_total_0(k,j,i), 0 ) )
                       ENDDO
                    ENDDO
                 ENDDO
@@ -1221,8 +1544,10 @@
 ! ------------
 !> Subroutine defining 3D output variables for chemical species
 !--------------------------------------------------------------------------------------------------!
- SUBROUTINE chem_data_output_3d( av, variable, found, local_pf, nzb_do, nzt_do )
+ SUBROUTINE chem_data_output_3d( av, variable, found, local_pf, fill_value, nzb_do, nzt_do )
 
+
+    USE surface_mod
 
     CHARACTER (LEN=*)    ::  variable     !<
 
@@ -1231,6 +1556,8 @@
     INTEGER(iwp) ::  nzt_do             !< vertical upper limit of the data output (usually nz_do3d)
 
     LOGICAL      ::  found                !<
+
+    REAL(wp)             ::  fill_value   !<
 
     REAL(wp), DIMENSION(nxl:nxr,nys:nyn,nzb_do:nzt_do) ::  local_pf
 !
@@ -1241,6 +1568,7 @@
     INTEGER(iwp)         ::  j
     INTEGER(iwp)         ::  k
     INTEGER(iwp)         ::  m       !< running indices for surfaces
+    INTEGER(iwp)         ::  l
     INTEGER(iwp)         ::  lsp     !< running index for chem spcs
 
 
@@ -1259,13 +1587,29 @@
              local_pf = 0.0_wp
 !
 !--          no average for now
-             DO  m = 1, surf_usm%ns
-                local_pf(surf_usm%i(m),surf_usm%j(m),surf_usm%k(m)) =                              &
-                        local_pf(surf_usm%i(m),surf_usm%j(m),surf_usm%k(m)) + surf_usm%cssws(lsp,m)
+             DO l = 0, 1
+                DO  m = 1, surf_usm_h(l)%ns
+                   local_pf(surf_usm_h(l)%i(m),surf_usm_h(l)%j(m),surf_usm_h(l)%k(m)) =            &
+                                local_pf(surf_usm_h(l)%i(m),surf_usm_h(l)%j(m),surf_usm_h(l)%k(m)) &
+                                + surf_usm_h(l)%cssws(lsp,m)
+                ENDDO
+                DO  m = 1, surf_lsm_h(l)%ns
+                   local_pf(surf_lsm_h(l)%i(m),surf_lsm_h(l)%j(m),surf_lsm_h(l)%k(m)) =            &
+                                local_pf(surf_lsm_h(l)%i(m),surf_lsm_h(l)%j(m),surf_lsm_h(l)%k(m)) &
+                                + surf_lsm_h(l)%cssws(lsp,m)
+                ENDDO
              ENDDO
-             DO  m = 1, surf_lsm%ns
-                local_pf(surf_lsm%i(m),surf_lsm%j(m),surf_lsm%k(m)) =                              &
-                        local_pf(surf_lsm%i(m),surf_lsm%j(m),surf_lsm%k(m)) + surf_lsm%cssws(lsp,m)
+             DO  l = 0, 3
+                DO  m = 1, surf_usm_v(l)%ns
+                   local_pf(surf_usm_v(l)%i(m),surf_usm_v(l)%j(m),surf_usm_v(l)%k(m)) =            &
+                                local_pf(surf_usm_v(l)%i(m),surf_usm_v(l)%j(m),surf_usm_v(l)%k(m)) &
+                                + surf_usm_v(l)%cssws(lsp,m)
+                ENDDO
+                DO  m = 1, surf_lsm_v(l)%ns
+                   local_pf(surf_lsm_v(l)%i(m),surf_lsm_v(l)%j(m),surf_lsm_v(l)%k(m)) =            &
+                                local_pf(surf_lsm_v(l)%i(m),surf_lsm_v(l)%j(m),surf_lsm_v(l)%k(m)) &
+                                + surf_lsm_v(l)%cssws(lsp,m)
+                ENDDO
              ENDDO
              found = .TRUE.
           ENDIF
@@ -1273,13 +1617,18 @@
     ELSE
       DO  lsp = 1, nspec
          IF ( TRIM( spec_name ) == TRIM( chem_species(lsp)%name) )  THEN
+!
+!--   todo: remove or replace by "CALL message" mechanism (kanani)
+!              IF(myid == 0 .AND. chem_debug0 )  WRITE(6,*) 'Output of species ' // TRIM( variable )  // &
+!                                                           TRIM( chem_species(lsp)%name )
             IF (av == 0)  THEN
                DO  i = nxl, nxr
                   DO  j = nys, nyn
                      DO  k = nzb_do, nzt_do
-                        IF ( BTEST( topo_flags(k,j,i), 0 ) )  THEN
-                           local_pf(i,j,k) = chem_species(lsp)%conc(k,j,i)
-                        ENDIF
+                         local_pf(i,j,k) = MERGE(                                                  &
+                                             chem_species(lsp)%conc(k,j,i),                        &
+                                             REAL( fill_value, KIND = wp ),                        &
+                                             BTEST( wall_flags_total_0(k,j,i), 0 ) )
                      ENDDO
                   ENDDO
                ENDDO
@@ -1289,9 +1638,10 @@
                DO  i = nxl, nxr
                   DO  j = nys, nyn
                      DO  k = nzb_do, nzt_do
-                        IF ( BTEST( topo_flags(k,j,i), 0 ) )  THEN
-                           local_pf(i,j,k) = chem_species(lsp)%conc_av(k,j,i)
-                        ENDIF
+                         local_pf(i,j,k) = MERGE(                                                  &
+                                             chem_species(lsp)%conc_av(k,j,i),                     &
+                                             REAL( fill_value, KIND = wp ),                        &
+                                             BTEST( wall_flags_total_0(k,j,i), 0 ) )
                      ENDDO
                   ENDDO
                ENDDO
@@ -1299,23 +1649,6 @@
             found = .TRUE.
          ENDIF
       ENDDO
-
-       DO  lsp=1,nphot
-          IF ( TRIM( spec_name ) == TRIM( phot_frequen(lsp)%name ) )  THEN
-            IF (av == 0)  THEN
-               DO  i = nxl, nxr
-                  DO  j = nys, nyn
-                     DO  k = nzb_do, nzt_do
-                        IF ( BTEST( topo_flags(k,j,i), 0 ) )  THEN
-                           local_pf(i,j,k) = phot_frequen(lsp)%freq(k,j,i)
-                        ENDIF
-                     ENDDO
-                  ENDDO
-               ENDDO
-            ENDIF
-            found = .TRUE.
-          ENDIF
-       ENDDO
     ENDIF
 
     RETURN
@@ -1330,7 +1663,10 @@
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE chem_data_output_mask( av, variable, found, local_pf, mid )
 
+
     USE control_parameters
+
+    REAL(wp), PARAMETER ::  fill_value = -9999.0_wp    !< value for the _FillValue attribute
 
     CHARACTER(LEN=16) ::  spec_name
     CHARACTER(LEN=*)  ::  variable    !<
@@ -1343,7 +1679,7 @@
     INTEGER(iwp) ::  jm              !< loop index for masked variables
     INTEGER(iwp) ::  k               !< grid index along z-direction
     INTEGER(iwp) ::  kk              !< masked output index along z-direction
-    INTEGER(iwp) ::  ktt             !< k index of lowest non-terrain grid point
+    INTEGER(iwp) ::  ktt             !< k index of highest terrain surface
     INTEGER(iwp) ::  lsp
     INTEGER(iwp) ::  mid             !< masked output running index
 
@@ -1360,6 +1696,10 @@
 
     DO  lsp=1,nspec
        IF (TRIM( spec_name ) == TRIM( chem_species(lsp)%name) )  THEN
+!
+!-- todo: remove or replace by "CALL message" mechanism (kanani)
+!              IF(myid == 0 .AND. chem_debug0 )  WRITE(6,*) 'Output of species ' // TRIM( variable )  // &
+!                                                        TRIM( chem_species(lsp)%name )
           IF (av == 0)  THEN
              IF ( .NOT. mask_surface(mid) )  THEN
 
@@ -1379,16 +1719,18 @@
                 DO  i = 1, mask_size_l(mid,1)
                    DO  j = 1, mask_size_l(mid,2)
 !
-!--                   Get k index of the lowest non-terrain grid point
+!--                   Get k index of the highest terraing surface
                       im = mask_i(mid,i)
                       jm = mask_j(mid,j)
-                      ktt = MINLOC( MERGE( 1, 0, BTEST( topo_flags(:,jm,im), 5 ) ),                &
+                      ktt = MINLOC( MERGE( 1, 0, BTEST( wall_flags_total_0(:,jm,im), 5 ) ),        &
                                     DIM = 1 ) - 1
                       DO  k = 1, mask_size_l(mid,3)
-                         kk = MIN( ktt + mask_k(mid,k) - 1, nzt+1 )
+                         kk = MIN( ktt+mask_k(mid,k), nzt+1 )
 !
-!--                      Set value if not in building.
-                         IF ( .NOT. BTEST( topo_flags(kk,jm,im), 6 ) )  THEN
+!--                      Set value if not in building
+                         IF ( BTEST( wall_flags_total_0(kk,jm,im), 6 ) )  THEN
+                            local_pf(i,j,k) = fill_value
+                         ELSE
                             local_pf(i,j,k) = chem_species(lsp)%conc(kk,jm,im)
                          ENDIF
                       ENDDO
@@ -1415,16 +1757,18 @@
                 DO  i = 1, mask_size_l(mid,1)
                    DO  j = 1, mask_size_l(mid,2)
 !
-!--                   Get k index of the lowest non-terrain grid point
+!--                   Get k index of the highest terraing surface
                       im = mask_i(mid,i)
                       jm = mask_j(mid,j)
-                      ktt = MINLOC( MERGE( 1, 0, BTEST( topo_flags(:,jm,im), 5 )),                 &
+                      ktt = MINLOC( MERGE( 1, 0, BTEST( wall_flags_total_0(:,jm,im), 5 )),         &
                                     DIM = 1 ) - 1
                       DO  k = 1, mask_size_l(mid,3)
-                         kk = MIN( ktt + mask_k(mid,k) - 1, nzt+1 )
+                         kk = MIN( ktt+mask_k(mid,k), nzt+1 )
 !
-!--                      Set value if not in building.
-                         IF ( .NOT. BTEST( topo_flags(kk,jm,im), 6 ) )  THEN
+!--                      Set value if not in building
+                         IF ( BTEST( wall_flags_total_0(kk,jm,im), 6 ) )  THEN
+                            local_pf(i,j,k) = fill_value
+                         ELSE
                             local_pf(i,j,k) = chem_species(lsp)%conc_av(kk,jm,im)
                          ENDIF
                       ENDDO
@@ -1475,6 +1819,7 @@
        grid_z = 'none'
     ENDIF
 
+
  END SUBROUTINE chem_define_netcdf_grid
 
 
@@ -1484,9 +1829,6 @@
 !> Subroutine defining header output for chemistry model
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE chem_header( io )
-
-    USE radiation_model_mod,                                                                       &
-        ONLY:  radiation_volumetric_flux
 
     CHARACTER (LEN=80)  :: docsflux_chr
     CHARACTER (LEN=80)  :: docsinit_chr
@@ -1510,25 +1852,18 @@
        WRITE( io, 3 )
     ENDIF
 !
-!-- Emission mode info
-    WRITE( io, 4 ) emiss_read_legacy_mode
+!-- Chemistry time-step
+    WRITE ( io, 4 ) cs_time_step
 !
+!-- Emission mode info
 !-- At the moment the evaluation is done with both emiss_lod and mode_emis but once salsa has been
-!-- migrated to emiss_lod the .OR. mode_emis conditions can be removed
+!-- migrated to emiss_lod the .OR. mode_emis conditions can be removed (ecc 20190513)
     IF     ( ( emiss_lod == 1 )  .OR.  ( mode_emis == 'DEFAULT' ) )        THEN
-       WRITE( io, 5 )
+        WRITE ( io, 5 )
     ELSEIF ( ( emiss_lod == 0 )  .OR.  ( mode_emis == 'PARAMETERIZED' ) )  THEN
-       WRITE( io, 6 )
+        WRITE ( io, 6 )
     ELSEIF ( ( emiss_lod == 2 )  .OR.  ( mode_emis == 'PRE-PROCESSED' ) )  THEN
-       WRITE( io, 7 )
-    ENDIF
-
-    IF     (  emis_biogenic_lod == 0 )  THEN
-       WRITE( io, 15 )
-    ELSEIF (  emis_biogenic_lod == 1 )  THEN
-       WRITE( io, 16 )
-    ELSEIF (  emis_biogenic_lod == 2 )  THEN
-       WRITE( io, 17 )
+        WRITE ( io, 7 )
     ENDIF
 !
 !-- Photolysis scheme info
@@ -1537,40 +1872,6 @@
     ELSEIF (photolysis_scheme == "constant" )  THEN
        WRITE( io, 9 )
     ENDIF
-
-    IF  ( radiation_volumetric_flux .AND. photolysis_shading )  THEN
-       WRITE( io, 20 )
-    ELSEIF ( .NOT.  photolysis_shading ) THEN
-       WRITE( io, 21 )
-    ENDIF
-
-
-
-!
-!-- ISORROPIA
-    IF ( chem_isorropia )  THEN
-       WRITE( io, * ) '   --> ISORROPIA coupling activated'
-       WRITE( io, * ) '       Problem type                                CNTRL(1) : ',            &
-                      chem_isorropia_problem_type
-       WRITE( io, * ) '       Aerosol state                               CNTRL(2) : ',            &
-                      chem_isorropia_aerosol_state
-       WRITE( io, * ) '       MDR weighting method                        WFTYPI   : ',            &
-                      chem_isorropia_mdr_weight_method
-       WRITE( io, * ) '       Activity coefficient algorithm              IACALCI  : ',            &
-                      chem_isorropia_activity_coefficient_method
-       WRITE( io, * ) '       ISORROPIA solver convergence                EPSI     : ',            &
-                      chem_isorropia_solver_tolerance
-       WRITE( io, * ) '       ISORROPIA solver maximum iterations         MAXTI    : ',            &
-                      chem_isorropia_max_iteration
-       WRITE( io, * ) '       Activity coefficient solver sweeps          NSWEEPI  : ',            &
-                      chem_isorropia_max_activity_sweep
-       WRITE( io, * ) '       Activity coefficient solver tolerance       EPSACTI  : ',            &
-                      chem_isorropia_activity_tolerance
-       WRITE( io, * ) '       Subdivisions for root tracking              NDIV     : ',            &
-                      chem_isorropia_root_subdivisions
-       WRITE( io, * ) '       Mass conservation mode (ISORROPIA II only)  NADJI    : ',            &
-                      chem_isorropia_mass_conservation_mode
-    ENDIF
 !
 !-- Emission flux info
     lsp = 1
@@ -1578,14 +1879,14 @@
     DO WHILE ( surface_csflux_name(lsp) /= 'novalue' )
        docsflux_chr = TRIM( docsflux_chr ) // ' ' // TRIM( surface_csflux_name(lsp) ) // ','
        IF ( LEN_TRIM( docsflux_chr ) >= 75 )  THEN
-          WRITE( io, 10 ) docsflux_chr
+          WRITE ( io, 10 )  docsflux_chr
           docsflux_chr = '       '
        ENDIF
        lsp = lsp + 1
     ENDDO
 
     IF ( docsflux_chr /= '' )  THEN
-       WRITE( io, 10 ) docsflux_chr
+       WRITE ( io, 10 )  docsflux_chr
     ENDIF
 !
 !-- Initialization of Surface and profile chemical species
@@ -1594,65 +1895,48 @@
     DO WHILE ( cs_name(lsp) /= 'novalue' )
        docsinit_chr = TRIM( docsinit_chr ) // ' ' // TRIM( cs_name(lsp) ) // ','
        IF ( LEN_TRIM( docsinit_chr ) >= 75 )  THEN
-          WRITE( io, 11 ) docsinit_chr
+          WRITE ( io, 11 )  docsinit_chr
           docsinit_chr = '       '
        ENDIF
        lsp = lsp + 1
     ENDDO
 
     IF ( docsinit_chr /= '' )  THEN
-       WRITE( io, 11 ) docsinit_chr
+       WRITE ( io, 11 )  docsinit_chr
     ENDIF
 
-    IF ( nesting_chem )  WRITE( io, 12 ) nesting_chem
-    IF ( nesting_offline_chem .AND. nesting_offline )  WRITE( io, 13 ) nesting_offline_chem
+    IF ( nesting_chem )  WRITE( io, 12 )  nesting_chem
+    IF ( nesting_offline_chem )  WRITE( io, 13 )  nesting_offline_chem
 
-    WRITE( io, 14 ) TRIM( bc_cs_b ), TRIM( bc_cs_t ), TRIM( bc_cs_s ), TRIM( bc_cs_n ),            &
-                    TRIM( bc_cs_l ), TRIM( bc_cs_r )
+    WRITE( io, 14 )  TRIM( bc_cs_b ), TRIM( bc_cs_t ), TRIM( bc_cs_s ), TRIM( bc_cs_n ),           &
+                     TRIM( bc_cs_l ), TRIM( bc_cs_r )
 
 !
 !-- Number of variable and fix chemical species and number of reactions
     cs_fixed = nspec - nvar
-    WRITE( io, * ) '   --> Chemical Mechanism          : ', cs_mech
-    WRITE( io, * ) '   --> Chemical species, variable  : ', nvar
-    WRITE( io, * ) '   --> Chemical species, fixed     : ', cs_fixed
-    WRITE( io, * ) '   --> Total number of reactions   : ', nreact
-    WRITE( io, * ) '   --> Gas phase chemistry solver  : ', icntrl(3)
-    WRITE( io, * ) '   --> Vector length (vector mode if > 1): ', vl_dim
-
-    IF ( allow_negative_scalar_values )  THEN
-       WRITE( io, 18 )
-    ELSE
-       WRITE( io, 19 )
-    ENDIF
+    WRITE ( io, * ) '   --> Chemical Mechanism        : ', cs_mech
+    WRITE ( io, * ) '   --> Chemical species, variable: ', nvar
+    WRITE ( io, * ) '   --> Chemical species, fixed   : ', cs_fixed
+    WRITE ( io, * ) '   --> Total number of reactions : ', nreact
 
 
 1   FORMAT (//' Chemistry model information:'/' ----------------------------'/)
 2   FORMAT ('    --> Chemical reactions are turned on')
 3   FORMAT ('    --> Chemical reactions are turned off')
-4   FORMAT ('    --> Legacy emission read mode: ',L3,/,                                            &
-            '        All emissions data will be loaded prior to start of simulation')
+4   FORMAT ('    --> Time-step for chemical species: ',F6.2, ' s')
 5   FORMAT ('    --> Emission mode = DEFAULT ')
-6   FORMAT ('    --> Emission mode = PARAMETERIZED (LOD 0)')
-7   FORMAT ('    --> Emission mode = PRE-PROCESSED (LOD 2)')
+6   FORMAT ('    --> Emission mode = PARAMETERIZED ')
+7   FORMAT ('    --> Emission mode = PRE-PROCESSED ')
 8   FORMAT ('    --> Photolysis scheme used =  simple ')
 9   FORMAT ('    --> Photolysis scheme used =  constant ')
 10  FORMAT (/'    ',A)
 11  FORMAT (/'    ',A)
-12  FORMAT (/'    Self nesting for chemistry variables (if nested_run): ', L1 )
-13  FORMAT (/'    Offline nesting for chemistry variables : ', L1 )
-14  FORMAT (/'    Boundary conditions for chemical species:', /                                     &
-             '       bottom/top:   ',A10,' / ',A10, /                                               &
-             '       north/south:  ',A10,' / ',A10, /                                               &
-             '       left/right:   ',A10,' / ',A10)
-15  FORMAT ('    --> Biogenic emission mode = DEFAULT ')
-16  FORMAT ('    --> Biogenic emission mode = MEGAN ')
-17  FORMAT ('    --> Biogenic emission mode = BAUME ')
-18  FORMAT (/'     Negative values of chemical species due to dispersion errors are permitted!')
-19  FORMAT (/'     Negative values of chemical species due to dispersion errors are cut, which',/  &
-             '     which may appear in results as (small) artificial source of chemical species.')
-20  FORMAT ('        3D radiation flux and photolyis shading are turned on')
-21  FORMAT ('        Photolyis shading turned off')
+12  FORMAT (/'   Nesting for chemistry variables: ', L1 )
+13  FORMAT (/'   Offline nesting for chemistry variables: ', L1 )
+14  FORMAT (/'   Boundary conditions for chemical species:', /                                     &
+             '      bottom/top:   ',A10,' / ',A10, /                                               &
+             '      north/south:  ',A10,' / ',A10, /                                               &
+             '      left/right:   ',A10,' / ',A10)
 
  END SUBROUTINE chem_header
 
@@ -1672,47 +1956,19 @@
 !--------------------------------------------------------------------------------------------------!
 ! Description:
 ! ------------
-!> Subroutine initializating chemistry_model_mod.
+!> Subroutine initializating chemistry_model_mod
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE chem_init
 
-    USE chem_emis_biogenic_mod,                                                                    &
-        ONLY:  chem_emis_biogenic_init
+!
+!-- 20200203 (ECC)
+!-- introduced additional interfaces for on-demand emission update
 
-    USE chem_emis_generic_mod,                                                                     &
-        ONLY:  chem_emis_generic_init
-
-    USE chem_emis_domestic_mod,                                                                    &
-        ONLY:  chem_emis_domestic_init
-
-    USE chem_emis_pollen_mod,                                                                      &
-        ONLY:  chem_emis_pollen_init
-
-    USE chem_emis_pt_source_mod,                                                                   &
-        ONLY:  chem_emis_pt_source_init
-
-    USE chem_emis_traffic_mod,                                                                     &
-        ONLY:  chem_emis_traffic_init
+!    USE chem_emissions_mod,                                                                        &
+!        ONLY:  chem_emissions_init
 
     USE chem_emissions_mod,                                                                        &
-        ONLY:  chem_emissions_header_init,                                                         &
-               chem_emissions_init
-
-    USE chem_isorropia_mod,                                                                        &
-        ONLY:  chem_isorropia_init
-
-    USE chem_modules,                                                                              &
-        ONLY:  chem_isorropia,                                                                     &
-               chem_wet_deposition,                                                                &
-               emis_biogenic,                                                                      &
-               emis_domestic,                                                                      &
-               emis_generic,                                                                       &
-               emis_pollen,                                                                        &
-               emis_pt_source,                                                                     &
-               emis_traffic
-
-    USE chem_wet_deposition_mod,                                                                   &
-        ONLY:  chem_wet_deposition_init
+        ONLY:  chem_emissions_header_init, chem_emissions_init
 
     USE netcdf_data_input_mod,                                                                     &
         ONLY:  init_3d
@@ -1725,13 +1981,17 @@
 
     IF ( debug_output )  CALL debug_message( 'chem_init', 'start' )
 !
-!-- Next statement is to avoid compiler warning about unused variables.
+!-- Next statement is to avoid compiler warning about unused variables
     IF ( ( ilu_arable + ilu_coniferous_forest + ilu_deciduous_forest + ilu_mediterrean_scrub +     &
            ilu_permanent_crops + ilu_savanna + ilu_semi_natural_veg + ilu_tropical_forest +        &
            ilu_urban ) == 0 )  CONTINUE
 
 !
-!-- NB Calls specific emisisons initialization subroutines for legacy mode and on-demand mode.
+!-- 20200203 (ECC)
+!-- Calls specific emisisons initialization subroutines for legacy mode and on-demand mode
+
+!    IF ( emissions_anthropogenic )  CALL chem_emissions_init
+
     IF  ( emissions_anthropogenic )  THEN
 
        IF  ( emiss_read_legacy_mode )  THEN
@@ -1742,26 +2002,11 @@
 
     ENDIF
 
-!
-!-- Initiate ISORROPIA.
-    IF ( chem_isorropia )  CALL chem_isorropia_init( )
-!
-!-- Initiate wet deposition.
-    IF ( chem_wet_deposition )  CALL chem_wet_deposition_init( )
-
-!
-!-- Initiate activated emission modes.
-    IF ( emis_biogenic  )  CALL chem_emis_biogenic_init( )
-    IF ( emis_generic   )  CALL chem_emis_generic_init( )
-    IF ( emis_domestic  )  CALL chem_emis_domestic_init( )
-    IF ( emis_pollen    )  CALL chem_emis_pollen_init( )
-    IF ( emis_pt_source )  CALL chem_emis_pt_source_init( )
-    IF ( emis_traffic   )  CALL chem_emis_traffic_init( )
 
 !
 !-- Chemistry variables will be initialized if availabe from dynamic input file. Note, it is
 !-- possible to initialize only part of the chemistry variables from dynamic input.
-    IF ( INDEX( initializing_actions, 'read_from_file' ) /= 0 )  THEN
+    IF ( INDEX( initializing_actions, 'inifor' ) /= 0 )  THEN
        DO  n = 1, nspec
           IF ( init_3d%from_file_chem(n) )  THEN
              DO  i = nxlg, nxrg
@@ -1772,12 +2017,6 @@
           ENDIF
        ENDDO
     ENDIF
-!
-!-- Initialize also the new time level. This is especially required in restart runs to properly
-!-- maintain the lateral boundary conditions.
-    DO  n = 1, nspec
-       chem_species(n)%conc_p = chem_species(n)%conc
-    ENDDO
 
     IF ( debug_output )  CALL debug_message( 'chem_init', 'end' )
 
@@ -1792,25 +2031,23 @@
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE chem_init_internal
 
-    USE netcdf_data_input_mod,                                                                     &
-        ONLY:  chem_emis,                                                                          &
-               chem_emis_att,                                                                      &
-               input_pids_dynamic,                                                                 &
-               init_3d,                                                                            &
-               netcdf_data_input_chemistry_data
-
     USE pegrid
+
+    USE netcdf_data_input_mod,                                                                     &
+        ONLY:  chem_emis, chem_emis_att, input_pids_dynamic, init_3d,                              &
+               netcdf_data_input_chemistry_data
 
 !
 !-- Local variables
-    INTEGER(iwp) ::  i                 !< running index in x-direction
-    INTEGER(iwp) ::  j                 !< running index in y-direction
-    INTEGER(iwp) ::  k                 !< running index in z-direction
+    INTEGER(iwp) ::  i                 !< running index for for horiz numerical grid points
+    INTEGER(iwp) ::  j                 !< running index for for horiz numerical grid points
+    INTEGER(iwp) ::  lpr_lev           !< running index for chem spcs profile level
     INTEGER(iwp) ::  lsp               !< running index for chem spcs
 
     REAL(wp)     ::  flag              !< flag for masking topography/building grid points
 !
-!-- NB reads netcdf data only under legacy mode
+!-- 20200203 ECC
+!-- reads netcdf data only under legacy mode
 
 !    IF ( emissions_anthropogenic )  THEN
 !       CALL netcdf_data_input_chemistry_data( chem_emis_att, chem_emis )
@@ -1825,18 +2062,17 @@
 !
 !-- Allocate memory for chemical species
     ALLOCATE( chem_species(nspec) )
-    ALLOCATE( spec_conc_1(nzb:nzt+1,nysg:nyng,nxlg:nxrg,nspec) )
-    ALLOCATE( spec_conc_2(nzb:nzt+1,nysg:nyng,nxlg:nxrg,nspec) )
-    ALLOCATE( spec_conc_3(nzb:nzt+1,nysg:nyng,nxlg:nxrg,nspec) )
+    ALLOCATE( spec_conc_1 (nzb:nzt+1,nysg:nyng,nxlg:nxrg,nspec) )
+    ALLOCATE( spec_conc_2 (nzb:nzt+1,nysg:nyng,nxlg:nxrg,nspec) )
+    ALLOCATE( spec_conc_3 (nzb:nzt+1,nysg:nyng,nxlg:nxrg,nspec) )
     ALLOCATE( phot_frequen(nphot) )
     ALLOCATE( freq_1(nzb:nzt+1,nysg:nyng,nxlg:nxrg,nphot) )
     ALLOCATE( bc_cs_t_val(nspec) )
 !
 !-- Initialize arrays
-    spec_conc_1(:,:,:,:) = 0.0_wp
-    spec_conc_2(:,:,:,:) = 0.0_wp
-    spec_conc_3(:,:,:,:) = 0.0_wp
-    freq_1(:,:,:,:) = 0.0_wp
+    spec_conc_1 (:,:,:,:) = 0.0_wp
+    spec_conc_2 (:,:,:,:) = 0.0_wp
+    spec_conc_3 (:,:,:,:) = 0.0_wp
 
 !
 !-- Allocate array to store locally summed-up resolved-scale vertical fluxes.
@@ -1877,63 +2113,80 @@
     ENDDO
 
 !
-!-- For chemistry variables lateral boundary conditions can be set non-cyclic while
-!-- the other scalars may have cyclic boundary conditions.
-!-- However, large gradients near the boundaries may produce stationary numerical
-!-- oscillations near the lateral boundaries when a higher-order scheme is
+!-- For some passive scalars decycling may be enabled. This case, the lateral boundary conditions
+!-- are non-cyclic for these scalars (chemical species and aerosols), while the other scalars may
+!-- have cyclic boundary conditions. However, large gradients near the boundaries may produce
+!-- stationary numerical oscillations near the lateral boundaries when a higher-order scheme is
 !-- applied near these boundaries.
 !-- To get rid-off this, set-up additional flags that control the order of the scalar advection
-!-- scheme near the lateral boundaries for passive scalars with non-cyclic bcs
+!-- scheme near the lateral boundaries for passive scalars with decycling.
     IF ( scalar_advec == 'ws-scheme' )  THEN
        ALLOCATE( cs_advc_flags_s(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
 !
-!--    In case of non-cyclic boundary conditions set topo_flags bit 31
-!--    Bit 31 is used to identify extended degradation zones.
+!--    In case of decyling, set Neumann boundary conditions for wall_flags_total_0 bit 31 instead of
+!--    cyclic boundary conditions.
+!--    Bit 31 is used to identify extended degradation zones (please see following comment).
 !--    Note, since several also other modules like Salsa or other future one may access this bit but
-!--    may have other boundary conditions, the original value of topo_flags bit 31 must not
+!--    may have other boundary conditions, the original value of wall_flags_total_0 bit 31 must not
 !--    be modified. Hence, store the boundary conditions directly on cs_advc_flags_s.
 !--    cs_advc_flags_s will be later overwritten in ws_init_flags_scalar and bit 31 won't be used to
 !--    control the numerical order.
 !--    Initialize with flag 31 only.
        cs_advc_flags_s = 0
-       cs_advc_flags_s = MERGE( IBSET( cs_advc_flags_s, 31 ), 0, BTEST( topo_flags, 31 ) )
+       cs_advc_flags_s = MERGE( IBSET( cs_advc_flags_s, 31 ), 0, BTEST( wall_flags_total_0, 31 ) )
 
        IF ( bc_dirichlet_cs_n .OR. bc_dirichlet_cs_s )  THEN
           IF ( nys == 0  )  THEN
              DO  i = 1, nbgp
-                cs_advc_flags_s(:,nys-i,:) = cs_advc_flags_s(:,nys,:)
+                cs_advc_flags_s(:,nys-i,:) = MERGE(                                                &
+                                                    IBSET( cs_advc_flags_s(:,nys,:), 31 ),         &
+                                                    IBCLR( cs_advc_flags_s(:,nys,:), 31 ),         &
+                                                    BTEST( cs_advc_flags_s(:,nys,:), 31 )          &
+                                                  )
              ENDDO
           ENDIF
           IF ( nyn == ny )  THEN
              DO  i = 1, nbgp
-                cs_advc_flags_s(:,nyn+i,:) = cs_advc_flags_s(:,nyn,:)
+                cs_advc_flags_s(:,nyn+i,:) = MERGE(                                                &
+                                                    IBSET( cs_advc_flags_s(:,nyn,:), 31 ),         &
+                                                    IBCLR( cs_advc_flags_s(:,nyn,:), 31 ),         &
+                                                    BTEST( cs_advc_flags_s(:,nyn,:), 31 )          &
+                                                  )
              ENDDO
           ENDIF
        ENDIF
        IF ( bc_dirichlet_cs_l .OR. bc_dirichlet_cs_r )  THEN
           IF ( nxl == 0  )  THEN
              DO  i = 1, nbgp
-                cs_advc_flags_s(:,:,nxl-i) = cs_advc_flags_s(:,:,nxl)
+                cs_advc_flags_s(:,:,nxl-i) = MERGE(                                                &
+                                                    IBSET( cs_advc_flags_s(:,:,nxl), 31 ),         &
+                                                    IBCLR( cs_advc_flags_s(:,:,nxl), 31 ),         &
+                                                    BTEST( cs_advc_flags_s(:,:,nxl), 31 )          &
+                                                  )
              ENDDO
           ENDIF
           IF ( nxr == nx )  THEN
              DO  i = 1, nbgp
-                cs_advc_flags_s(:,:,nxr+i) = cs_advc_flags_s(:,:,nxr)
+                cs_advc_flags_s(:,:,nxr+i) = MERGE(                                                &
+                                                    IBSET( cs_advc_flags_s(:,:,nxr), 31 ), &
+                                                    IBCLR( cs_advc_flags_s(:,:,nxr), 31 ), &
+                                                    BTEST( cs_advc_flags_s(:,:,nxr), 31 )  &
+                                                  )
              ENDDO
           ENDIF
 
        ENDIF
 !
 !--    To initialize advection flags appropriately, pass the boundary flags.
-!--    The extensive_degrad argument indicates that a passive scalar is treated, where the
-!--    horizontal advection terms are degraded already 2 grid points before the lateral boundary
-!--    to avoid stationary oscillations at large-gradients.
+!--    The last argument indicates that a passive scalar is treated, where the horizontal advection
+!--    terms are degraded already 2 grid points before the lateral boundary to avoid stationary
+!--    oscillations at large-gradients.
 !--    Also, extended degradation zones are applied, where horizontal advection of passive scalars
 !--    is discretized by first-order scheme at all grid points that in the vicinity of buildings
-!--    (<= 3 grid points), even if no building is within the numerical stencil, first-order
+!--    (<= 3 grid points). Even though no building is within the numerical stencil, first-order
 !--    scheme is used.
-!--    At the fourth and fifth grid point apart from the building, the order of the horizontal
-!--    advection scheme is successively increased.
+!--    At fourth and fifth grid point the order of the horizontal advection scheme
+!--    is successively upgraded.
 !--    These extended degradation zones are used to avoid stationary numerical oscillations, which
 !--    are responsible for high concentration maxima that may appear under shear-free stable
 !--    conditions.
@@ -1941,8 +2194,7 @@
                                   bc_dirichlet_cs_n  .OR.  bc_radiation_cs_n,                      &
                                   bc_dirichlet_cs_r  .OR.  bc_radiation_cs_r,                      &
                                   bc_dirichlet_cs_s  .OR.  bc_radiation_cs_s,                      &
-                                  cs_advc_flags_s, extensive_degrad = .TRUE.,                      &
-                                  alternative_communicator = communicator_chem )
+                                  cs_advc_flags_s, .TRUE. )
     ENDIF
 !
 !-- Initial concentration of profiles is prescribed by parameters cs_profile and cs_heights in the
@@ -1963,8 +2215,7 @@
 !
 !-- Initialize model variables
     IF ( TRIM( initializing_actions ) /= 'read_restart_data'  .AND.                                &
-         .NOT. cyclic_fill_initialization )                                                        &
-    THEN
+         TRIM( initializing_actions ) /= 'cyclic_fill' )  THEN
 !
 !--    First model run of a possible job queue.
 !--    Initial profiles of the variables must be computed.
@@ -1975,23 +2226,24 @@
           DO  lsp = 1, nspec
              DO  i = nxlg, nxrg
                 DO  j = nysg, nyng
-                   DO  k = 1, nzt+1
-                      flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
-                      chem_species(lsp)%conc(k,j,i) = chem_species(lsp)%conc_pr_init(k) * flag
+                   DO lpr_lev = 1, nz + 1
+                      flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(lpr_lev,j,i), 0 ) )
+                      chem_species(lsp)%conc(lpr_lev,j,i) = chem_species(lsp)%conc_pr_init(lpr_lev)&
+                                                            * flag
                    ENDDO
                 ENDDO
              ENDDO
           ENDDO
 
-       ELSEIF ( INDEX( initializing_actions, 'set_constant_profiles' ) /= 0  .OR.                  &
-                INDEX( initializing_actions, 'interpolate_from_parent' ) /= 0 )  THEN
+       ELSEIF ( INDEX( initializing_actions, 'set_constant_profiles') /= 0 )  THEN
 
           DO  lsp = 1, nspec
              DO  i = nxlg, nxrg
                 DO  j = nysg, nyng
-                   DO  k = nzb, nzt+1
-                      flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
-                      chem_species(lsp)%conc(k,j,i) = chem_species(lsp)%conc_pr_init(k) * flag
+                   DO  lpr_lev = nzb, nz+1
+                      flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(lpr_lev,j,i), 0 ) )
+                      chem_species(lsp)%conc(lpr_lev,j,i) = chem_species(lsp)%conc_pr_init(lpr_lev)&
+                                                            * flag
                    ENDDO
                 ENDDO
              ENDDO
@@ -1999,6 +2251,19 @@
 
        ENDIF
 !
+!--    If required, change the surface chem spcs at the start of the 3D run
+       IF ( cs_surface_initial_change(1) /= 0.0_wp )  THEN
+          DO  lsp = 1, nspec
+             DO  i = nxlg, nxrg
+                DO  j = nysg, nyng
+                   flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(nzb,j,i), 0 ) )
+                   chem_species(lsp)%conc(nzb,j,i) = chem_species(lsp)%conc(nzb,j,i) +             &
+                                                     cs_surface_initial_change(lsp) * flag
+                ENDDO
+             ENDDO
+          ENDDO
+       ENDIF
+
     ENDIF
 !
 !-- Initial old and new time levels. Note, this has to be done also in restart runs
@@ -2009,11 +2274,15 @@
 
     DO  lsp = 1, nphot
        phot_frequen(lsp)%name = phot_names(lsp)
+!
+!-- todo: remove or replace by "CALL message" mechanism (kanani)
+!--       IF( myid == 0 )  THEN
+!--          WRITE(6,'(a,i4,3x,a)')  'Photolysis: ',lsp,TRIM( phot_names(lsp) )
+!--       ENDIF
        phot_frequen(lsp)%freq(nzb:nzt+1,nysg:nyng,nxlg:nxrg)  =>  freq_1(:,:,:,lsp)
     ENDDO
 
 !    CALL photolysis_init   ! probably also required for restart
-
 
     RETURN
 
@@ -2033,13 +2302,11 @@
 
 !
 !-- Local variables
-    INTEGER ::  k          !< running index in z-direction
+    INTEGER ::  lpr_lev    !< running index for profile level for each chem spcs.
     INTEGER ::  lsp        !< running index for number of species in derived data type species_def
     INTEGER ::  lsp_usr    !< running index for number of species (user defined)  in cs_names,
                            !< cs_profiles etc
     INTEGER ::  npr_lev    !< the next available profile lev
-
-
 !
 !-- Parameter "cs_profile" and "cs_heights" are used to prescribe user defined initial profiles
 !-- and heights. If parameter "cs_profile" is not prescribed then initial surface values
@@ -2057,37 +2324,37 @@
 !
 !--            Set a vertically constant profile based on the surface conc (cs_surface(lsp_usr)) of
 !--            each species
-                DO  k = 0, nzt+1
-                   chem_species(lsp)%conc_pr_init(k) = cs_surface(lsp_usr)
+                DO lpr_lev = 0, nzt+1
+                   chem_species(lsp)%conc_pr_init(lpr_lev) = cs_surface(lsp_usr)
                 ENDDO
              ELSE
                 IF ( cs_heights(1,1) /= 0.0_wp )  THEN
-                   WRITE( message_string, * ) 'illegal cs_heights(1,1) = ', cs_heights(1,1)
-                   CALL message( 'chem_check_parameters', 'CHM0011', 1, 2, 0, 6, 0 )
+                   message_string = 'The surface value of cs_heights must be 0.0'
+                   CALL message( 'chem_check_parameters', 'CM0434', 1, 2, 0, 6, 0 )
                 ENDIF
 
                 use_prescribed_profile_data = .TRUE.
 
                 npr_lev = 1
 !                chem_species(lsp)%conc_pr_init(0) = 0.0_wp
-                DO  k = 1, nzt+1
+                DO  lpr_lev = 1, nz+1
                    IF ( npr_lev < 100 )  THEN
-                      DO  WHILE ( cs_heights(lsp_usr, npr_lev+1) <= zu(k) )
+                      DO  WHILE ( cs_heights(lsp_usr, npr_lev+1) <= zu(lpr_lev) )
                          npr_lev = npr_lev + 1
                          IF ( npr_lev == 100 )  THEN
                             message_string = 'number of chem spcs exceeding the limit'
-                            CALL message( 'chem_check_parameters', 'CHM0012', 1, 2, 0, 6, 0 )
+                            CALL message( 'chem_check_parameters', 'CM0435', 1, 2, 0, 6, 0 )
                             EXIT
                          ENDIF
                       ENDDO
                    ENDIF
                    IF ( npr_lev < 100  .AND.  cs_heights(lsp_usr,npr_lev+1) /= 9999999.9_wp )  THEN
-                      chem_species(lsp)%conc_pr_init(k) = cs_profile(lsp_usr,npr_lev) +            &
-                           ( zu(k) - cs_heights(lsp_usr, npr_lev) ) /                              &
-                           ( cs_heights(lsp_usr,npr_lev+1) - cs_heights(lsp_usr,npr_lev) ) *       &
-                           ( cs_profile(lsp_usr,npr_lev+1) - cs_profile(lsp_usr,npr_lev) )
+                      chem_species(lsp)%conc_pr_init(lpr_lev) = cs_profile(lsp_usr, npr_lev) +     &
+                           ( zu(lpr_lev) - cs_heights(lsp_usr, npr_lev) ) /                        &
+                           ( cs_heights(lsp_usr, (npr_lev + 1)) - cs_heights(lsp_usr, npr_lev ) ) *&
+                           ( cs_profile(lsp_usr, (npr_lev + 1)) - cs_profile(lsp_usr, npr_lev ) )
                    ELSE
-                      chem_species(lsp)%conc_pr_init(k) = cs_profile(lsp_usr, npr_lev)
+                      chem_species(lsp)%conc_pr_init(lpr_lev) = cs_profile(lsp_usr, npr_lev)
                    ENDIF
                 ENDDO
              ENDIF
@@ -2109,185 +2376,54 @@
 !--------------------------------------------------------------------------------------------------!
 ! Description:
 ! ------------
-!> Subroutine to integrate chemical species in the given chemical mechanism. Vector-optimized
-!> version.
-!--------------------------------------------------------------------------------------------------!
-  SUBROUTINE chem_integrate
-
-    REAL(wp), PARAMETER ::  fr2ppm  = 1.0E6_wp     !< Conversion factor fraction to ppm
-    REAL(wp), PARAMETER ::  p_std   = 101325.0_wp  !< standard pressure (Pa)
-    REAL(wp), PARAMETER ::  ppm2fr  = 1.0E-6_wp    !< Conversion factor ppm to fraction
-    REAL(wp), PARAMETER ::  t_std   = 273.15_wp    !< standard pressure (Pa)
-    REAL(wp), PARAMETER ::  vmolcm  = 22.414E3_wp  !< Mole volume (22.414 l) in cm^3
-    REAL(wp), PARAMETER ::  xna     = 6.022E23_wp  !< Avogadro number (molecules/mol)
-
-    INTEGER(iwp) ::  i      !< running index for x-direction
-    INTEGER(iwp) ::  j      !< running index for y-direction
-    INTEGER(iwp) ::  ks     !< start index of treated index space
-    INTEGER(iwp) ::  ke     !< end index of treated index space
-    INTEGER(iwp) ::  lph    !< running index for photolysis frequencies
-    INTEGER(iwp) ::  lsp    !< running index for chem species
-    INTEGER(iwp) ::  m      !< dummy variable used to determine the start and end index
-    INTEGER(iwp) ::  nr_1d  !< number of prognostic grid points per subdomain
-
-    INTEGER, DIMENSION(20) ::  istatus  !< return value of gasphase integration
-
-    REAL(wp)      ::  conv     !< conversion factor
-    REAL(kind=wp) ::  dt_chem  !< chemistry timestep
-
-    REAL(wp),DIMENSION(size(rcntrl))   :: rcntrl_local
-
-    REAL(kind=wp), ALLOCATABLE, DIMENSION(:)   ::  tmp_fact
-    REAL(kind=wp), ALLOCATABLE, DIMENSION(:)   ::  tmp_fact_i  !< conversion factor between molecules cm^{-3} and ppm
-    REAL(kind=wp), ALLOCATABLE, DIMENSION(:)   ::  tmp_qvap
-    REAL(kind=wp), ALLOCATABLE, DIMENSION(:)   ::  tmp_temp
-
-    REAL(kind=wp), ALLOCATABLE, DIMENSION(:,:) ::  tmp_conc
-    REAL(kind=wp), ALLOCATABLE, DIMENSION(:,:) ::  tmp_phot
-
-
-!
-!-- Set chem_gasphase_on to .FALSE. if you want to skip computation of gas phase chemistry.
-    IF ( chem_gasphase_on )  THEN
-!
-!--    Compute length of time step
-       IF ( call_chem_at_all_substeps )  THEN
-          dt_chem = dt_3d * weight_pres(intermediate_timestep_count)
-       ELSE
-          dt_chem = dt_3d
-       ENDIF
-
-       nr_1d = (nxr-nxl+1)*(nyn-nys+1)*(nzt-nzb+2)
-
-       ALLOCATE( tmp_fact(nr_1d) )
-       ALLOCATE( tmp_fact_i(nr_1d) )
-       ALLOCATE( tmp_qvap(nr_1d) )
-       ALLOCATE( tmp_temp(nr_1d) )
-       ALLOCATE( tmp_conc(nr_1d,nspec) )
-       ALLOCATE( tmp_phot(nr_1d,nphot) )
-
-       IF ( MAXVAL( rcntrl ) > 0.0 )  THEN
-          IF( time_since_reference_point <= 2.0_wp * dt_3d )  THEN
-             rcntrl_local = 0
-          ELSE
-             rcntrl_local = rcntrl
-          ENDIF
-       ELSE
-          rcntrl_local = 0
-       ENDIF
-
-       m = 1
-
-       cs_time_step = dt_chem
-!
-!--    Pre-calculate arrays for concentration, water vapor, photolysis frequency, etc.,
-!--    for the entire subdomain and pass them as a whole to chem_integrate.
-!--    In the following loop, the ks and ke indices represent the index space of a vertical
-!--    column (at j,i) with respect to a 1D-array for all prognostic grid point of the
-!--    subdomain.
-       DO  i = nxl, nxr
-          DO  j = nys, nyn
-             ks = m
-             ke = m + ( nzt - nzb + 1 )
-             m  = m + ( nzt - nzb + 2 )
-
-             tmp_temp(ks:ke) = pt(nzb+1:nzt,j,i) * exner(nzb+1:nzt)
-!
-!--          Convert ppm to molecules/cm**3
-!--          tmp_fact = 1.e-6_wp*6.022e23_wp/(22.414_wp*1000._wp) * 273.15_wp *
-!--                     hyp(nzb+1:nzt)/( 101300.0_wp * tmp_temp )
-             conv = ppm2fr * xna / vmolcm
-             tmp_fact(ks:ke) = conv * t_std * hyp(nzb+1:nzt) / ( tmp_temp(ks:ke) * p_std )
-             tmp_fact_i(ks:ke) = 1.0_wp / tmp_fact(ks:ke)
-
-             IF ( humidity )  THEN
-                IF ( bulk_cloud_model )  THEN
-                   tmp_qvap(ks:ke) = ( q(nzb+1:nzt,j,i) - ql(nzb+1:nzt,j,i) ) *                    &
-                                     xm_air / xm_h2o * fr2ppm * tmp_fact(ks:ke)
-                ELSE
-                   tmp_qvap(ks:ke) = q(nzb+1:nzt,j,i) * xm_air / xm_h2o * fr2ppm * tmp_fact(ks:ke)
-                ENDIF
-             ELSE
-!
-!--             Constant value for q if water vapor is not computed.
-                tmp_qvap(ks:ke) = 0.01 * xm_air / xm_h2o * fr2ppm * tmp_fact(ks:ke)
-             ENDIF
-
-             DO  lsp = 1, nspec
-                tmp_conc(ks:ke,lsp) = chem_species(lsp)%conc(nzb+1:nzt,j,i) * tmp_fact(ks:ke)
-             ENDDO
-
-             DO lph = 1, nphot
-                tmp_phot(ks:ke,lph) = phot_frequen(lph)%freq(nzb+1:nzt,j,i)
-             ENDDO
-
-          ENDDO
-       ENDDO
-
-       CALL chem_gasphase_integrate( dt_chem, tmp_conc, tmp_temp, tmp_qvap, tmp_fact, tmp_phot,    &
-                                     icntrl_i = icntrl, rcntrl_i = rcntrl_local, istatus=istatus )
-
-       m = 1
-       DO  i = nxl, nxr
-          DO  j = nys, nyn
-             ks = m
-             ke = m + ( nzt - nzb + 1 )
-             m  = m + ( nzt - nzb + 2 )
-             DO  lsp = 1, nspec
-                chem_species(lsp)%conc(nzb+1:nzt,j,i) = tmp_conc(ks:ke,lsp) * tmp_fact_i(ks:ke)
-             ENDDO
-          ENDDO
-       ENDDO
-
-    ENDIF
-
- END SUBROUTINE chem_integrate
-
-
-!--------------------------------------------------------------------------------------------------!
-! Description:
-! ------------
-!> Subroutine to integrate chemical species in the given chemical mechanism. Cache-optimized
-!> version.
+!> Subroutine to integrate chemical species in the given chemical mechanism
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE chem_integrate_ij( i, j )
 
-    REAL(wp), PARAMETER ::  fr2ppm  = 1.0e6_wp              !< Conversion factor fraction to ppm
-    REAL(wp), PARAMETER ::  p_std   = 101325.0_wp           !< standard pressure (Pa)
-    REAL(wp), PARAMETER ::  ppm2fr  = 1.0e-6_wp             !< Conversion factor ppm to fraction
-    REAL(wp), PARAMETER ::  t_std   = 273.15_wp             !< standard pressure (Pa)
-    REAL(wp), PARAMETER ::  vmolcm  = 22.414e3_wp           !< Mole volume (22.414 l) in cm^3
-    REAL(wp), PARAMETER ::  xna     = 6.022e23_wp           !< Avogadro number (molecules/mol)
+    USE statistics,                                                                                &
+        ONLY:  weight_pres
 
-    INTEGER,INTENT(IN) ::  i
-    INTEGER,INTENT(IN) ::  j
+    USE control_parameters,                                                                        &
+        ONLY:  dt_3d, intermediate_timestep_count, time_since_reference_point
+
+    REAL(wp), PARAMETER              ::  fr2ppm  = 1.0e6_wp              !< Conversion factor fraction to ppm
+!    REAL(wp), PARAMETER              ::  xm_air  = 28.96_wp              !< Mole mass of dry air
+!    REAL(wp), PARAMETER              ::  xm_h2o  = 18.01528_wp           !< Mole mass of water vapor
+    REAL(wp), PARAMETER              ::  p_std   = 101325.0_wp           !< standard pressure (Pa)
+    REAL(wp), PARAMETER              ::  ppm2fr  = 1.0e-6_wp             !< Conversion factor ppm to fraction
+    REAL(wp), PARAMETER              ::  t_std   = 273.15_wp             !< standard pressure (Pa)
+    REAL(wp), PARAMETER              ::  vmolcm  = 22.414e3_wp           !< Mole volume (22.414 l) in cm^3
+    REAL(wp), PARAMETER              ::  xna     = 6.022e23_wp           !< Avogadro number (molecules/mol)
+
+    INTEGER,INTENT(IN)       :: i
+    INTEGER,INTENT(IN)       :: j
 !
 !-- Local variables
-    INTEGER(iwp) ::  lph  !< running index for photolysis frequencies
-    INTEGER(iwp) ::  lsp  !< running index for chem spcs.
+    INTEGER(iwp) ::  lph                                 !< running index for photolysis frequencies
+    INTEGER(iwp) ::  lsp                                 !< running index for chem spcs.
 
-    INTEGER, DIMENSION(20) ::  istatus
+    INTEGER, DIMENSION(20)        :: istatus
 
-    INTEGER,DIMENSION(nzb+1:nzt) ::  nacc  !< Number of accepted steps
-    INTEGER,DIMENSION(nzb+1:nzt) ::  nrej  !< Number of rejected steps
+    INTEGER,DIMENSION(nzb+1:nzt)  :: nacc          !< Number of accepted steps
+    INTEGER,DIMENSION(nzb+1:nzt)  :: nrej          !< Number of rejected steps
 
-    REAL(wp)      ::  conv     !< conversion factor
-    REAL(KIND=wp) ::  dt_chem  !<
+    REAL(wp)                         ::  conv                                !< conversion factor
+    REAL(kind=wp)                    ::  dt_chem
 
-    REAL(wp),DIMENSION(size(rcntrl)) :: rcntrl_local  !<
+    REAL(wp),DIMENSION(size(rcntrl)) :: rcntrl_local
 
-    REAL(KIND=wp), DIMENSION(nzb+1:nzt) :: tmp_fact    !<
-    REAL(KIND=wp), DIMENSION(nzb+1:nzt) :: tmp_fact_i  !< conversion factor between  molecules cm^{-3} and ppm
-    REAL(KIND=wp), DIMENSION(nzb+1:nzt) :: tmp_qvap    !<
-    REAL(KIND=wp), DIMENSION(nzb+1:nzt) :: tmp_temp    !<
+    REAL(kind=wp), DIMENSION(nzb+1:nzt)                      :: tmp_fact
+    REAL(kind=wp), DIMENSION(nzb+1:nzt)                      :: tmp_fact_i    !< conversion factor between
+                                                                              !< molecules cm^{-3} and ppm
+    REAL(kind=wp), DIMENSION(nzb+1:nzt)                      :: tmp_qvap
+    REAL(kind=wp), DIMENSION(nzb+1:nzt)                      :: tmp_temp
 
-    REAL(KIND=wp), DIMENSION(nzb+1:nzt,nspec) :: tmp_conc  !<
-    REAL(KIND=wp), DIMENSION(nzb+1:nzt,nphot) :: tmp_phot  !<
-
+    REAL(kind=wp), DIMENSION(nzb+1:nzt,nspec)                :: tmp_conc
+    REAL(kind=wp), DIMENSION(nzb+1:nzt,nphot)                :: tmp_phot
 
 !
-!-- Set chem_gasphase_on to .FALSE. if you want to skip computation of gas phase chemistry.
-    IF ( chem_gasphase_on )  THEN
+!-- Set chem_gasphase_on to .FALSE. if you want to skip computation of gas phase chemistry
+    IF (chem_gasphase_on)  THEN
        nacc = 0
        nrej = 0
 
@@ -2297,31 +2433,30 @@
 !--    tmp_fact = 1.e-6_wp*6.022e23_wp/(22.414_wp*1000._wp) * 273.15_wp *
 !--               hyp(nzb+1:nzt)/( 101300.0_wp * tmp_temp )
        conv = ppm2fr * xna / vmolcm
-       tmp_fact(:) = conv * t_std * hyp(nzb+1:nzt) / ( tmp_temp(:) * p_std )
-       tmp_fact_i = 1.0_wp / tmp_fact
+       tmp_fact(:) = conv * t_std * hyp(nzb+1:nzt) / (tmp_temp(:) * p_std)
+       tmp_fact_i = 1.0_wp/tmp_fact
 
        IF ( humidity )  THEN
           IF ( bulk_cloud_model )  THEN
              tmp_qvap(:) = ( q(nzb+1:nzt,j,i) - ql(nzb+1:nzt,j,i) ) *                              &
-                             xm_air / xm_h2o * fr2ppm * tmp_fact(:)
+                             xm_air/xm_h2o * fr2ppm * tmp_fact(:)
           ELSE
-             tmp_qvap(:) = q(nzb+1:nzt,j,i) * xm_air / xm_h2o * fr2ppm * tmp_fact(:)
+             tmp_qvap(:) = q(nzb+1:nzt,j,i) * xm_air/xm_h2o * fr2ppm * tmp_fact(:)
           ENDIF
        ELSE
-!
-!--       Constant value for q if water vapor is not computed.
-          tmp_qvap(:) = 0.01_wp * xm_air / xm_h2o * fr2ppm * tmp_fact(:)
+          tmp_qvap(:) = 0.01 * xm_air/xm_h2o * fr2ppm * tmp_fact(:)   !< Constant value for q if
+                                                                      !< water vapor is not computed
        ENDIF
 
-       DO  lsp = 1, nspec
+       DO  lsp = 1,nspec
           tmp_conc(:,lsp) = chem_species(lsp)%conc(nzb+1:nzt,j,i) * tmp_fact(:)
        ENDDO
 
-       DO lph = 1, nphot
+       DO lph = 1,nphot
           tmp_phot(:,lph) = phot_frequen(lph)%freq(nzb+1:nzt,j,i)
        ENDDO
 !
-!--    Compute length of time step.
+!--    Compute length of time step
        IF ( call_chem_at_all_substeps )  THEN
           dt_chem = dt_3d * weight_pres(intermediate_timestep_count)
        ELSE
@@ -2331,50 +2466,51 @@
        cs_time_step = dt_chem
 
        IF ( MAXVAL( rcntrl ) > 0.0 )  THEN    ! Only if rcntrl is set
-          IF( time_since_reference_point <= 2.0_wp * dt_3d)  THEN
+          IF( time_since_reference_point <= 2*dt_3d)  THEN
              rcntrl_local = 0
           ELSE
              rcntrl_local = rcntrl
           ENDIF
        ELSE
           rcntrl_local = 0
-       ENDIF
+       END IF
 
        CALL chem_gasphase_integrate ( dt_chem, tmp_conc, tmp_temp, tmp_qvap, tmp_fact, tmp_phot,   &
-                                      icntrl_i = icntrl, rcntrl_i = rcntrl_local, xnacc = nacc,    &
-                                      xnrej = nrej, istatus=istatus )
+            icntrl_i = icntrl, rcntrl_i = rcntrl_local, xnacc = nacc, xnrej = nrej, istatus=istatus )
 
        DO  lsp = 1,nspec
-          chem_species(lsp)%conc(nzb+1:nzt,j,i) = tmp_conc(:,lsp) * tmp_fact_i(:)
+          chem_species(lsp)%conc (nzb+1:nzt,j,i) = tmp_conc(:,lsp) * tmp_fact_i(:)
        ENDDO
+
 
     ENDIF
 
+    RETURN
  END SUBROUTINE chem_integrate_ij
 
 
 !--------------------------------------------------------------------------------------------------!
 ! Description:
 ! ------------
-!> Subroutine defining parin for &chemistry_parameters for chemistry model.
+!> Subroutine defining parin for &chemistry_parameters for chemistry model
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE chem_parin
 
     USE chem_modules
     USE control_parameters
+
     USE pegrid
     USE statistics
 
-    CHARACTER(LEN=8)   ::  solver_type  !<
-    CHARACTER(LEN=100) ::  line         !< dummy string that contains the current line of the parameter file
 
-    INTEGER(iwp) ::  io_status  !< Status after reading the namelist file
+    CHARACTER (LEN=80) ::  line                        !< dummy string that contains the current
+                                                       !< line of the parameter file
 
-    LOGICAL ::  switch_off_module = .FALSE.  !< local namelist parameter to switch off the module
-                                             !< although the respective module namelist appears in
-                                             !< the namelist file
+    INTEGER(iwp) ::  i                                 !<
+    INTEGER(iwp) ::  max_pr_cs_tmp                     !<
 
-    REAL(wp), DIMENSION(nmaxfixsteps) ::  my_steps  !< List of fixed timesteps  my_step(1) = 0.0 automatic stepping
+    REAL(wp), DIMENSION(nmaxfixsteps) ::   my_steps    !< List of fixed timesteps   my_step(1) = 0.0
+                                                       !< automatic stepping
 
 
     NAMELIST /chemistry_parameters/                                                                &
@@ -2385,83 +2521,24 @@
          bc_cs_s,                                                                                  &
          bc_cs_t,                                                                                  &
          call_chem_at_all_substeps,                                                                &
+         chem_debug0,                                                                              &
+         chem_debug1,                                                                              &
+         chem_debug2,                                                                              &
          chem_gasphase_on,                                                                         &
-         chem_isorropia,                                                                           &
-         chem_isorropia_activity_coefficient_method,                                               &
-         chem_isorropia_activity_tolerance,                                                        &
-         chem_isorropia_aerosol_state,                                                             &
-         chem_isorropia_mass_conservation_mode,                                                    &
-         chem_isorropia_max_iteration,                                                             &
-         chem_isorropia_max_activity_sweep,                                                        &
-         chem_isorropia_mdr_weight_method,                                                         &
-         chem_isorropia_root_subdivisions,                                                         &
-         chem_isorropia_problem_type,                                                              &
-         chem_isorropia_solver_tolerance,                                                          &
-         chem_isorropia_update_interval,                                                           &
          chem_mechanism,                                                                           &
-         chem_wet_deposition,                                                                      &
-         chem_wet_deposition_model_override,                                                       &
-         chem_wet_deposition_cloud_level_lower,                                                    &
-         chem_wet_deposition_cloud_level_upper,                                                    &
-         chem_wet_deposition_rain_rate,                                                            &
-         chem_wet_deposition_update_interval,                                                      &
          cs_heights,                                                                               &
          cs_name,                                                                                  &
          cs_profile,                                                                               &
          cs_surface,                                                                               &
-         deposition_dry,                                                                           &
+         cs_surface_initial_change,                                                                &
+         cs_vertical_gradient_level,                                                               &
          daytype_mdh,                                                                              &
-         ebio_dt,                                                                                  &
-         ebio_ef_pft,                                                                              &
-         ebio_ef_tree,                                                                             &
-         ebio_emis_name,                                                                           &
-         ebio_max_emis_day,                                                                        &
-         ebio_pft,                                                                                 &
-         ebio_ppfd_factor,                                                                         &
-         ebio_rad_method,                                                                          &
-         ebio_soilm_method,                                                                        &
-         ebio_tree,                                                                                &
+         deposition_dry,                                                                           &
          emissions_anthropogenic,                                                                  &
+         emiss_lod,                                                                                &
          emiss_factor_main,                                                                        &
          emiss_factor_side,                                                                        &
-         emiss_interpolate,                                                                        &
-         emiss_lod,                                                                                &
          emiss_read_legacy_mode,                                                                   &
-         emis_biogenic,                                                                            &
-         emis_biogenic_lod,                                                                        &
-         emis_domestic,                                                                            &
-         emis_domestic_base_temperature,                                                           &
-         emis_domestic_compact_factors,                                                            &
-         emis_domestic_energy_demands,                                                             &
-         emis_domestic_heating_degree,                                                             &
-         emis_domestic_lod,                                                                        &
-         emis_domestic_sampling_k,                                                                 &
-         emis_domestic_species_emission_factors,                                                   &
-         emis_domestic_species_names,                                                              &
-         emis_domestic_update_interval,                                                            &
-         emis_generic,                                                                             &
-         emis_pollen,                                                                              &
-         epol_ignore_precip,                                                                       &
-         epol_ignore_solar,                                                                        &
-         epol_model,                                                                               &
-         epol_pool_reset_hour,                                                                     &
-         epol_seasonal_factors,                                                                    &
-         epol_specs_names,                                                                         &
-         epol_tke_scheme,                                                                          &
-         epol_tke_sgs_fraction,                                                                    &
-         epol_tree_specs,                                                                          &
-         epol_tuning_factors,                                                                      &
-         epol_update_interval,                                                                     &
-         epol_vegetation_specs,                                                                    &
-         emis_pt_source,                                                                           &
-         emis_pt_source_annual_values,                                                             &
-         emis_pt_source_k_spread,                                                                  &
-         emis_pt_source_k_weights,                                                                 &
-         emis_pt_source_leap_year,                                                                 &
-         emis_pt_source_locations_ijk,                                                             &
-         emis_pt_source_species_names,                                                             &
-         emis_traffic,                                                                             &
-         emis_traffic_lod,                                                                         &
          icntrl,                                                                                   &
          main_street_id,                                                                           &
          max_street_id,                                                                            &
@@ -2469,15 +2546,15 @@
          my_steps,                                                                                 &
          nesting_chem,                                                                             &
          nesting_offline_chem,                                                                     &
-         photolysis_scheme,                                                                        &
-         photolysis_shading,                                                                       &
          rcntrl,                                                                                   &
          side_street_id,                                                                           &
+         photolysis_scheme,                                                                        &
+         wall_csflux,                                                                              &
+         cs_vertical_gradient,                                                                     &
+         top_csflux,                                                                               &
          surface_csflux,                                                                           &
          surface_csflux_name,                                                                      &
-         switch_off_module,                                                                        &
-         time_fac_type,                                                                            &
-         wall_csflux
+         time_fac_type
 !
 !-- Analogically to chem_names(nspj) we could invent chem_surfaceflux(nspj) and chem_topflux(nspj)
 !-- so this way we could prescribe a specific flux value for each species
@@ -2488,9 +2565,10 @@
     !>  cs_profiles(1,:) = 10.0, 20.0, 20.0, 30.0, .....  (chem spcs conc at height lvls chem_heights(1,:)) etc.
     !>  If the respective concentration profile should be constant with height, then use "cs_surface( number of spcs)"
     !>  then write these cs_surface values to chem_species(lsp)%conc_pr_init(:)
-
 !
-!-- Read chem namelist.
+!-- Read chem namelist
+    CHARACTER(LEN=8)    :: solver_type
+
     icntrl    = 0
     rcntrl    = 0.0_wp
     my_steps  = 0.0_wp
@@ -2498,26 +2576,28 @@
     atol = 1.0_wp
     rtol = 0.01_wp
 !
-!-- Move to the beginning of the namelist file and try to find and read the namelist named.
-!-- chemistry_parameters.
-    REWIND( 11 )
-    READ( 11, chemistry_parameters, IOSTAT=io_status )
+!-- Try to find chemistry package
+    REWIND ( 11 )
+    line = ' '
+    DO   WHILE ( INDEX( line, '&chemistry_parameters' ) == 0 )
+       READ ( 11, '(A)', END=20 )  line
+    ENDDO
+    BACKSPACE ( 11 )
 !
-!-- Action depending on the READ status
-    IF ( io_status == 0 )  THEN
+!-- Read chemistry namelist
+    READ ( 11, chemistry_parameters, ERR = 10, END = 20 )
 !
-!      chemistry_parameters namelist was found and read correctly. Switch on chemistry model.
-       IF ( .NOT. switch_off_module )  air_chemistry = .TRUE.
+!-- Enable chemistry model
+    air_chemistry = .TRUE.
+    GOTO 20
 
-    ELSEIF ( io_status > 0 )  THEN
-!
-!--    chemistry_parameters namelist was found, but contained errors. Print an error message
-!--    including the line that caused the problem.
-       BACKSPACE( 11 )
-       READ( 11 , '(A)') line
-       CALL parin_fail_message( 'chemistry_parameters', line )
+ 10 BACKSPACE( 11 )
+    READ( 11 , '(A)') line
+    CALL parin_fail_message( 'chemistry_parameters', line )
 
-    ENDIF
+ 20 CONTINUE
+
+
 
 !
 !-- Synchronize emiss_lod and mod_emis only if emissions_anthropogenic is activated in the namelist.
@@ -2530,30 +2610,35 @@
           IF ( ( mode_emis /= 'PARAMETERIZED'  )    .AND.                                          &
                ( mode_emis /= 'DEFAULT'        )    .AND.                                          &
                ( mode_emis /= 'PRE-PROCESSED'  ) )  THEN
-             message_string = 'unknown mode_emiss = "' // TRIM( mode_emis ) // '"'
-             CALL message( 'chem_parin', 'CHM0013', 1, 2, 0, 6, 0 )
+             message_string = 'Incorrect mode_emiss  option select. Please check spelling'
+             CALL message( 'chem_check_parameters', 'CM0436', 1, 2, 0, 6, 0 )
           ENDIF
        ELSE
           IF ( ( emiss_lod /= 0 )    .AND.                                                         &
                ( emiss_lod /= 1 )    .AND.                                                         &
                ( emiss_lod /= 2 ) )  THEN
-             WRITE( message_string, * ) 'illegal emiss_lod = ', emiss_lod
-             CALL message( 'chem_parin', 'CHM0014', 1, 2, 0, 6, 0 )
+             message_string = 'Invalid value for emiss_lod (0, 1, or 2)'
+             CALL message( 'chem_check_parameters', 'CM0436', 1, 2, 0, 6, 0 )
           ENDIF
        ENDIF
 
 !
-!--    Conflict resolution for emiss_lod and mode_emis.
-!--    1) if emiss_lod is defined, have mode_emis assume same setting as emiss_lod
-!--    2) if emiss_lod it not defined, have emiss_lod assuem same setting as mode_emis
-!--    This check is in place to retain backward compatibility with salsa until the code is
-!--    migrated completely to emiss_lod.
+! For reference (ecc)
+!    IF ( (mode_emis /= 'PARAMETERIZED')  .AND. ( mode_emis /= 'DEFAULT' ) .AND. ( mode_emis /= 'PRE-PROCESSED'  ) )  THEN
+!       message_string = 'Incorrect mode_emiss  option select. Please check spelling'
+!       CALL message( 'chem_check_parameters', 'CM0436', 1, 2, 0, 6, 0 )
+!    ENDIF
+
+!
+!-- Conflict resolution for emiss_lod and mode_emis
+!-- 1) if emiss_lod is defined, have mode_emis assume same setting as emiss_lod
+!-- 2) if emiss_lod it not defined, have emiss_lod assuem same setting as mode_emis
+!-- this check is in place to retain backward compatibility with salsa until the code is migrated
+!-- completed to emiss_lod
+!-- note that
        IF  ( emiss_lod >= 0 ) THEN
 
           SELECT CASE  ( emiss_lod )
-!
-!--          Synchronize mode_emis to defined emiss_lod (mode_emis will be depreciated in
-!--          future releases)
              CASE (0)  !- parameterized mode
                 mode_emis = 'PARAMETERIZED'
              CASE (1)  !- default mode
@@ -2561,6 +2646,14 @@
              CASE (2)  !- preprocessed mode
                 mode_emis = 'PRE-PROCESSED'
           END SELECT
+
+          message_string = 'Synchronizing mode_emis to defined emiss_lod'               //         &
+                           CHAR( 10 )  //  '                    '                       //         &
+                           'NOTE - mode_emis will be depreciated in future releases'    //         &
+                           CHAR( 10 )  //  '                    '                       //         &
+                           'please use emiss_lod to define emission mode'
+
+          CALL message ( 'parin_chem', 'CM0463', 0, 0, 0, 6, 0 )
 
        ELSE ! if emiss_lod is not set
 
@@ -2573,66 +2666,122 @@
                 emiss_lod = 2
           END SELECT
 
-          message_string = 'emiss_lod undefined.  Using existing mode_emis setting&'    //         &
-                           'NOTE - mode_emis will be depreciated in future releases.&'   //        &
-                           'Please use emiss_lod to define emission mode.'
-          CALL message( 'chem_parin', 'CHM0015', 0, 1, 0, 6, 0 )
+          message_string = 'emiss_lod undefined.  Using existing mod_emiss setting'     //         &
+                           CHAR( 10 )  //  '                    '                       //         &
+                           'NOTE - mode_emis will be depreciated in future releases'    //         &
+                           CHAR( 10 )  //  '                    '                       //         &
+                           'please use emiss_lod to define emission mode'
+
+          CALL message ( 'parin_chem', 'CM0464', 0, 0, 0, 6, 0 )
        ENDIF
 
 !
-!-- NB input check for emission read mode.
+!-- (ECC) input check for emission read mode.
 !--    legacy : business as usual (everything read / set up at start of run)
 !--    new    : emission based on timestamp, and for lod2 data is loaded on an hourly basis
 
 !
-!-- NB handler for emiss_read_legacy_mode
+!-- (ECC) handler for emiss_read_legacy_mode
 !-- * emiss_read_legacy_mode is defaulted to TRUE
 !-- * if emiss_read_legacy_mode is TRUE and LOD is 0 or 1,
 !--       force emission_read_legacy_mode to TRUE (not yet implemented)
-       IF ( .NOT. emiss_read_legacy_mode )  THEN    !< if new read mode selected
+
+       IF ( emiss_read_legacy_mode )  THEN       !< notify legacy read mode
+
+          message_string = 'Legacy emission read mode activated'            //                     &
+                           CHAR( 10 )  //  '                    '           //                     &
+                           'All emissions data will be loaded '             //                     &
+                           'prior to start of simulation'
+          CALL message ( 'parin_chem', 'CM0465', 0, 0, 0, 6, 0 )
+
+       ELSE                                     !< if new read mode selected
 
           IF ( emiss_lod < 2 )  THEN            !< check LOD compatibility
 
-             message_string = 'New emission read mode currently unavailable for LODs 0 and 1.&' // &
-                              'Reverting to legacy emission read mode.'
-             CALL message( 'chem_parin', 'CHM0016', 0, 0, 0, 6, 0 )
+             message_string = 'New emission read mode '                    //                      &
+                              'currently unavailable for LODs 0 and 1.'    //                      &
+                              CHAR( 10 )  //  '                    '       //                      &
+                              'Reverting to legacy emission read mode'
+             CALL message ( 'parin_chem', 'CM0466', 0, 0, 0, 6, 0 )
 
              emiss_read_legacy_mode = .TRUE.
 
           ELSE                                  !< notify new read mode
 
-             message_string = 'New emission read mode activated.& LOD 2 emissions will be ' //     &
-                              'updated on-demand according to indicated timestamps.'
-             CALL message( 'chem_parin', 'CHM0017', 0, 0, 0, 6, 0 )
+             message_string = 'New emission read mode activated'           //                      &
+                              CHAR( 10 )  //  '                    '       //                      &
+                              'LOD 2 emissions will be updated on-demand ' //                      &
+                              'according to indicated timestamps'
+             CALL message ( 'parin_chem', 'CM0467', 0, 0, 0, 6, 0 )
 
           ENDIF
 
        ENDIF ! if emiss_read_legacy_mode
 
+
     ENDIF  ! if emissions_anthropengic
 
-    t_steps = my_steps
 
+    t_steps = my_steps
+!
+!-- Determine the number of user-defined profiles and append them to the standard data output
+!-- (data_output_pr)
+    max_pr_cs_tmp = 0
+    i = 1
+
+    DO  WHILE ( data_output_pr(i)  /= ' '  .AND.  i <= SIZE( data_output_pr ) )
+       IF ( TRIM( data_output_pr(i)(1:3) ) == 'kc_' )  THEN
+          max_pr_cs_tmp = max_pr_cs_tmp+1
+       ENDIF
+       i = i +1
+    ENDDO
+
+    IF ( max_pr_cs_tmp > 0 )  THEN
+       cs_pr_namelist_found = .TRUE.
+       max_pr_cs = max_pr_cs_tmp
+    ENDIF
 !
 !-- Set Solver Type
-    IF ( icntrl(3) == 0 )  THEN
+    IF(icntrl(3) == 0)  THEN
        solver_type = 'rodas3'           !Default
-    ELSEIF ( icntrl(3) == 1 )  THEN
+    ELSE IF(icntrl(3) == 1)  THEN
        solver_type = 'ros2'
-    ELSEIF ( icntrl(3) == 2 )  THEN
+    ELSE IF(icntrl(3) == 2)  THEN
        solver_type = 'ros3'
-    ELSEIF ( icntrl(3) == 3 )  THEN
+    ELSE IF(icntrl(3) == 3)  THEN
        solver_type = 'ro4'
-    ELSEIF ( icntrl(3) == 4 )  THEN
+    ELSE IF(icntrl(3) == 4)  THEN
        solver_type = 'rodas3'
-    ELSEIF ( icntrl(3) == 5 )  THEN
+    ELSE IF(icntrl(3) == 5)  THEN
        solver_type = 'rodas4'
-    ELSEIF ( icntrl(3) == 6 )  THEN
+    ELSE IF(icntrl(3) == 6)  THEN
        solver_type = 'Rang3'
     ELSE
-       WRITE( message_string, * ) 'illegal Rosenbrock-solver type icntrl(3) = ', icntrl(3)
-       CALL message( 'chem_parin', 'CHM0018', 1, 2, 0, 6, 0 )
+       message_string = 'illegal Rosenbrock-solver type'
+       CALL message( 'chem_parin', 'PA0506', 1, 2, 0, 6, 0 )
     END IF
+
+!
+!--   todo: remove or replace by "CALL message" mechanism (kanani)
+!       write(text,*) 'gas_phase chemistry: solver_type = ',TRIM( solver_type )
+!kk    Has to be changed to right calling sequence
+!        IF(myid == 0)  THEN
+!           write(9,*) ' '
+!           write(9,*) 'kpp setup '
+!           write(9,*) ' '
+!           write(9,*) '    gas_phase chemistry: solver_type = ',TRIM( solver_type )
+!           write(9,*) ' '
+!           write(9,*) '    Hstart  = ',rcntrl(3)
+!           write(9,*) '    FacMin  = ',rcntrl(4)
+!           write(9,*) '    FacMax  = ',rcntrl(5)
+!           write(9,*) ' '
+!           IF(vl_dim > 1)  THEN
+!              write(9,*) '    Vector mode                   vektor length = ',vl_dim
+!           ELSE
+!              write(9,*) '    Scalar mode'
+!           ENDIF
+!           write(9,*) ' '
+!        END IF
 
     RETURN
 
@@ -2644,59 +2793,16 @@
 ! ------------
 !> Call for all grid points
 !--------------------------------------------------------------------------------------------------!
- SUBROUTINE chem_actions( location )
+    SUBROUTINE chem_actions( location )
 
-    USE chem_emis_biogenic_mod,                                                                    &
-        ONLY:  chem_emis_biogenic_update
-
-    USE chem_emis_domestic_mod,                                                                    &
-        ONLY:  chem_emis_domestic_update,                                                          &
-               chem_emis_domestic_cleanup
-
-    USE chem_emis_generic_mod,                                                                     &
-        ONLY:  chem_emis_generic_update,                                                           &
-               chem_emis_generic_cleanup
-
-    USE chem_emis_pollen_mod,                                                                      &
-        ONLY:  chem_emis_pollen_update
-
-    USE chem_emis_pt_source_mod,                                                                   &
-        ONLY:  chem_emis_pt_source_update,                                                         &
-               chem_emis_pt_source_cleanup
-
-    USE chem_emis_traffic_mod,                                                                     &
-        ONLY:  chem_emis_traffic_update,                                                           &
-               chem_emis_traffic_cleanup
-
-    USE chem_emis_vsrc_mod,                                                                        &
-        ONLY:  chem_emis_vsrc_reset_source,                                                        &
-               chem_emis_vsrc_cleanup
-
-    USE chem_isorropia_mod,                                                                        &
-        ONLY:  chem_isorropia_update,                                                              &
-               chem_isorropia_cleanup
-
-    USE chem_wet_deposition_mod,                                                                   &
-        ONLY:  chem_wet_deposition_cleanup
-
-    USE chem_modules,                                                                              &
-        ONLY:  chem_isorropia,                                                                     &
-               chem_wet_deposition,                                                                &
-               emis_biogenic,                                                                      &
-               emis_generic,                                                                       &
-               emis_domestic,                                                                      &
-               emis_pollen,                                                                        &
-               emis_pt_source,                                                                     &
-               emis_traffic
 
     CHARACTER (LEN=*), INTENT(IN) ::  location !< call location string
-
 
     SELECT CASE ( location )
 
        CASE ( 'before_prognostic_equations' )
 !
-!--       Chemical reactions and deposition.
+!--       Chemical reactions and deposition
           IF ( chem_gasphase_on )  THEN
 !
 !--          If required, calculate photolysis frequencies -
@@ -2714,38 +2820,12 @@
              sums_ws_l = 0.0_wp
           ENDIF
 
-       CASE ( 'update_emission_sources' )
-!
-!--       Updates emission sources for all activated modes.
-          CALL chem_emis_vsrc_reset_source( )
-          IF ( emis_biogenic  )  CALL chem_emis_biogenic_update( )
-          IF ( emis_generic   )  CALL chem_emis_generic_update( )
-          IF ( emis_domestic  )  CALL chem_emis_domestic_update( )
-          IF ( emis_pollen    )  CALL chem_emis_pollen_update( )
-          IF ( emis_pt_source )  CALL chem_emis_pt_source_update( )
-          IF ( emis_traffic   )  CALL chem_emis_traffic_update( )
-
-!
-!--       SIA update (w/ ISORROPIA).
-          IF ( chem_isorropia )  CALL chem_isorropia_update( )
-
-       CASE ( 'after_time_integration' )
-!
-!--       Deallocates all dynamic memory.
-          IF ( chem_isorropia      )  CALL chem_isorropia_cleanup( )
-          IF ( chem_wet_deposition )  CALL chem_wet_deposition_cleanup( )
-          IF ( emis_domestic  )  CALL chem_emis_domestic_cleanup( )
-          IF ( emis_generic   )  CALL chem_emis_generic_cleanup( )
-          IF ( emis_pt_source )  CALL chem_emis_pt_source_cleanup( )
-          IF ( emis_traffic   )  CALL chem_emis_traffic_cleanup( )
-          CALL chem_emis_vsrc_cleanup ( )
-
        CASE DEFAULT
           CONTINUE
 
     END SELECT
 
- END SUBROUTINE chem_actions
+    END SUBROUTINE chem_actions
 
 
 !--------------------------------------------------------------------------------------------------!
@@ -2754,7 +2834,7 @@
 !> Call for grid points i,j
 !--------------------------------------------------------------------------------------------------!
 
- SUBROUTINE chem_actions_ij( i, j, location )
+    SUBROUTINE chem_actions_ij( i, j, location )
 
     CHARACTER (LEN=*), INTENT(IN) ::  location  !< call location string
 
@@ -2773,189 +2853,107 @@
     END SELECT
 
 
- END SUBROUTINE chem_actions_ij
+    END SUBROUTINE chem_actions_ij
 
 
 !--------------------------------------------------------------------------------------------------!
 ! Description:
 ! ------------
-!> Call for all grid points.
+!> Call for all grid points
 !--------------------------------------------------------------------------------------------------!
- SUBROUTINE chem_non_advective_processes()
+    SUBROUTINE chem_non_advective_processes()
 
-    USE chem_modules,                                                                              &
-        ONLY:  emis_pollen
 
-    USE chem_emis_vsrc_mod,                                                                        &
-        ONLY:  chem_emis_vsrc_assign_source
-
-    USE chem_emis_pollen_mod,                                                                      &
-        ONLY:  chem_emis_pollen_update_settling
-
-    USE chem_wet_deposition_mod,                                                                   &
-        ONLY:  chem_wet_deposition_update_ij
-
-    INTEGER(iwp) ::  i  !< grid index in x-direction
-    INTEGER(iwp) ::  j  !< grid index in y-direction
-
+      INTEGER(iwp) ::  i  !<
+      INTEGER(iwp) ::  j  !<
 
 !
-!-- Calculation of chemical reactions and deposition.
-    IF ( intermediate_timestep_count == 1  .OR.  call_chem_at_all_substeps )  THEN
-!
-!--    For scalars or short vectors use one z column as base for spitting into vector chunks.
-!--    vl_dim is created by kpp.
-       IF ( vl_dim <= 32 )  THEN
-          !$OMP PARALLEL PRIVATE (i,j)
-          !$OMP DO schedule(static,1)
-          DO  i = nxl, nxr
-             DO  j = nys, nyn
-                CALL chem_emis_vsrc_assign_source( i, j )
-             ENDDO
-          ENDDO
-          !$OMP END PARALLEL
-!
-!--    For long vectors use the whole local 3D array column as base for spitting into vector
-!--    chunks. This method uses more memory as above
-       ELSE
-          !$OMP PARALLEL PRIVATE (i,j)
-          !$OMP DO schedule(static,1)
-          DO  i = nxl, nxr
-             DO  j = nys, nyn
-                CALL chem_emis_vsrc_assign_source( i, j )
-             ENDDO
-          ENDDO
-          !$OMP END PARALLEL
-       ENDIF
+!--   Calculation of chemical reactions and deposition.
+      IF ( intermediate_timestep_count == 1  .OR.  call_chem_at_all_substeps )  THEN
 
-       IF ( chem_gasphase_on )  THEN
-          CALL cpu_log( log_point_s(19), 'chem.reactions', 'start' )
-!
-!--       For scalars or short vectors use one z column as base for spitting into vector chunks.
-!--       vl_dim is created by kpp.
-          IF ( vl_dim <= 32 )  THEN
-             !$OMP PARALLEL PRIVATE (i,j)
-             !$OMP DO schedule(static,1)
-             DO  i = nxl, nxr
-                DO  j = nys, nyn
-                   CALL chem_integrate( i, j )
-                ENDDO
-             ENDDO
-             !$OMP END PARALLEL
-!
-!--       For long vectors use the whole local 3D array column as base for spitting into vector
-!--       chunks. This method uses more memory as above
-          ELSE
+         IF ( chem_gasphase_on )  THEN
+            CALL cpu_log( log_point_s(19), 'chem.reactions', 'start' )
+            !$OMP PARALLEL PRIVATE (i,j)
+            !$OMP DO schedule(static,1)
+            DO  i = nxl, nxr
+               DO  j = nys, nyn
+                  CALL chem_integrate( i, j )
+               ENDDO
+            ENDDO
+            !$OMP END PARALLEL
+            CALL cpu_log( log_point_s(19), 'chem.reactions', 'stop' )
+         ENDIF
 
-             CALL chem_integrate
+         IF ( deposition_dry )  THEN
+            CALL cpu_log( log_point_s(24), 'chem.deposition', 'start' )
+            DO  i = nxl, nxr
+               DO  j = nys, nyn
+                  CALL chem_depo( i, j )
+               ENDDO
+            ENDDO
+            CALL cpu_log( log_point_s(24), 'chem.deposition', 'stop' )
+         ENDIF
 
-          ENDIF
+      ENDIF
 
-          CALL cpu_log( log_point_s(19), 'chem.reactions', 'stop' )
 
-       ENDIF
 
-       IF ( deposition_dry )  THEN
-          CALL cpu_log( log_point_s(24), 'chem.deposition', 'start' )
-          CALL chem_depo
-          CALL cpu_log( log_point_s(24), 'chem.deposition', 'stop' )
-       ENDIF
-
-       IF ( emis_pollen )  THEN
-          DO  i = nxl, nxr
-             DO  j = nys, nyn
-                CALL chem_emis_pollen_update_settling( i, j )
-             ENDDO
-          ENDDO
-       ENDIF
-
-       IF ( chem_wet_deposition )  THEN
-          DO  i = nxl, nxr
-             DO  j = nys, nyn
-                CALL chem_wet_deposition_update_ij( i, j )
-             ENDDO
-          ENDDO
-       ENDIF
-
-    ENDIF
-
- END SUBROUTINE chem_non_advective_processes
+    END SUBROUTINE chem_non_advective_processes
 
 
 !--------------------------------------------------------------------------------------------------!
 ! Description:
 ! ------------
-!> Call for grid points i,j.
+!> Call for grid points i,j
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE chem_non_advective_processes_ij( i, j )
 
-    USE chem_modules,                                                                              &
-        ONLY:  emis_pollen
 
-    USE chem_emis_vsrc_mod,                                                                        &
-        ONLY:  chem_emis_vsrc_assign_source
-
-    USE chem_emis_pollen_mod,                                                                      &
-        ONLY:  chem_emis_pollen_update_settling
-
-    USE chem_wet_deposition_mod,                                                                   &
-        ONLY:  chem_wet_deposition_update_ij
-
-    INTEGER(iwp), INTENT(IN) ::  i  !< grid index in x-direction
-    INTEGER(iwp), INTENT(IN) ::  j  !< grid index in y-direction
-
+   INTEGER(iwp), INTENT(IN) ::  i  !< grid index in x-direction
+   INTEGER(iwp), INTENT(IN) ::  j  !< grid index in y-direction
 
 !
 !-- Calculation of chemical reactions and deposition.
-!-- It would have been nice to have time measurements for chemistry and deposition here.
-!-- Unfortunately measurements within i,j loops degrade performance ince they are calles so often
-!-- and the counter for this measurement gets extremely huge values. Therefore, no measurements
-!-- here.
-    IF ( intermediate_timestep_count == 1  .OR.  call_chem_at_all_substeps )  THEN
+   IF ( intermediate_timestep_count == 1  .OR.  call_chem_at_all_substeps )  THEN
 
-       IF ( chem_gasphase_on )  THEN
-          CALL chem_emis_vsrc_assign_source ( i, j )
-          CALL chem_integrate( i, j )
-       ENDIF
+      IF ( chem_gasphase_on )  THEN
+         CALL cpu_log( log_point_s(19), 'chem.reactions', 'start' )
+         CALL chem_integrate( i, j )
+         CALL cpu_log( log_point_s(19), 'chem.reactions', 'stop' )
+      ENDIF
 
-       IF ( deposition_dry )  THEN
-          CALL chem_depo( i, j )
-       ENDIF
+      IF ( deposition_dry )  THEN
+         CALL cpu_log( log_point_s(24), 'chem.deposition', 'start' )
+         CALL chem_depo( i, j )
+         CALL cpu_log( log_point_s(24), 'chem.deposition', 'stop' )
+      ENDIF
 
-       IF ( emis_pollen )  THEN
-          CALL chem_emis_pollen_update_settling( i , j )
-       ENDIF
+   ENDIF
 
-       IF ( chem_wet_deposition )  THEN
-           CALL chem_wet_deposition_update_ij( i, j )
-       ENDIF
 
-    ENDIF
 
  END SUBROUTINE chem_non_advective_processes_ij
-
 
 !--------------------------------------------------------------------------------------------------!
 ! Description:
 ! ------------
-!> Routine for exchange horiz of chemical quantities.
+!> routine for exchange horiz of chemical quantities
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE chem_exchange_horiz_bounds( location )
 
     USE exchange_horiz_mod,                                                                        &
         ONLY:  exchange_horiz
 
-    CHARACTER (LEN=*), INTENT(IN) ::  location  !< call location string
+   INTEGER(iwp) ::  lsp       !<
+   INTEGER(iwp) ::  n
 
-    INTEGER(iwp) ::  lsp  !<
-    INTEGER(iwp) ::  n    !<
+   CHARACTER (LEN=*), INTENT(IN) ::  location !< call location string
 
-
-    SELECT CASE ( location )
+   SELECT CASE ( location )
 
        CASE ( 'before_prognostic_equation' )
 !
-!--       Loop over chemical species.
+!--       Loop over chemical species
           CALL cpu_log( log_point_s(84), 'chem.exch-horiz', 'start' )
           DO  lsp = 1, nvar
              CALL exchange_horiz( chem_species(lsp)%conc, nbgp,                                    &
@@ -2997,6 +2995,7 @@
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE chem_prognostic_equations()
 
+
     INTEGER ::  i   !< running index
     INTEGER ::  j   !< running index
     INTEGER ::  k   !< running index
@@ -3015,21 +3014,11 @@
        IF ( timestep_scheme(1:5) == 'runge' )  THEN
           IF ( ws_scheme_sca )  THEN
              sums_wschs_ws_l(nzb:,0:) => sums_ws_l(:,:,ilsp)
-
-             IF ( .NOT. advanced_div_correction )  THEN
-                CALL advec_s_ws( cs_advc_flags_s, chem_species(ilsp)%conc, 'kc',                   &
-                                 bc_dirichlet_cs_l  .OR.  bc_radiation_cs_l,                       &
-                                 bc_dirichlet_cs_n  .OR.  bc_radiation_cs_n,                       &
-                                 bc_dirichlet_cs_r  .OR.  bc_radiation_cs_r,                       &
-                                 bc_dirichlet_cs_s  .OR.  bc_radiation_cs_s )
-             ELSE
-                CALL advec_s_ws( cs_advc_flags_s, chem_species(ilsp)%conc, 'kc',                   &
-                                 bc_dirichlet_cs_l  .OR.  bc_radiation_cs_l,                       &
-                                 bc_dirichlet_cs_n  .OR.  bc_radiation_cs_n,                       &
-                                 bc_dirichlet_cs_r  .OR.  bc_radiation_cs_r,                       &
-                                 bc_dirichlet_cs_s  .OR.  bc_radiation_cs_s,                       &
-                                 advanced_div_correction )
-             ENDIF
+             CALL advec_s_ws( cs_advc_flags_s, chem_species(ilsp)%conc, 'kc',                      &
+                              bc_dirichlet_cs_l  .OR.  bc_radiation_cs_l,                          &
+                              bc_dirichlet_cs_n  .OR.  bc_radiation_cs_n,                          &
+                              bc_dirichlet_cs_r  .OR.  bc_radiation_cs_r,                          &
+                              bc_dirichlet_cs_s  .OR.  bc_radiation_cs_s )
           ELSE
              CALL advec_s_pw( chem_species(ilsp)%conc )
           ENDIF
@@ -3038,8 +3027,26 @@
        ENDIF
 !
 !--    Diffusion terms  (the last three arguments are zero)
-       CALL diffusion_s( chem_species(ilsp)%conc, surf_top%cssws(ilsp,:), surf_def%cssws(ilsp,:),  &
-                         surf_lsm%cssws(ilsp,:), surf_usm%cssws(ilsp,:) )
+       CALL diffusion_s( chem_species(ilsp)%conc,                                                  &
+            surf_def_h(0)%cssws(ilsp,:),                                                           &
+            surf_def_h(1)%cssws(ilsp,:),                                                           &
+            surf_def_h(2)%cssws(ilsp,:),                                                           &
+            surf_lsm_h(0)%cssws(ilsp,:),                                                           &
+            surf_lsm_h(1)%cssws(ilsp,:),                                                           &
+            surf_usm_h(0)%cssws(ilsp,:),                                                           &
+            surf_usm_h(1)%cssws(ilsp,:),                                                           &
+            surf_def_v(0)%cssws(ilsp,:),                                                           &
+            surf_def_v(1)%cssws(ilsp,:),                                                           &
+            surf_def_v(2)%cssws(ilsp,:),                                                           &
+            surf_def_v(3)%cssws(ilsp,:),                                                           &
+            surf_lsm_v(0)%cssws(ilsp,:),                                                           &
+            surf_lsm_v(1)%cssws(ilsp,:),                                                           &
+            surf_lsm_v(2)%cssws(ilsp,:),                                                           &
+            surf_lsm_v(3)%cssws(ilsp,:),                                                           &
+            surf_usm_v(0)%cssws(ilsp,:),                                                           &
+            surf_usm_v(1)%cssws(ilsp,:),                                                           &
+            surf_usm_v(2)%cssws(ilsp,:),                                                           &
+            surf_usm_v(3)%cssws(ilsp,:) )
 !
 !--    Prognostic equation for chemical species
        DO  i = nxl, nxr
@@ -3055,11 +3062,9 @@
                      - tsc(5) * rdf_sc(k)                                                          &
                      * ( chem_species(ilsp)%conc(k,j,i) - chem_species(ilsp)%conc_pr_init(k) )     &
                      )                                                                             &
-                     * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                     * MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
 
-                IF ( chem_species(ilsp)%conc_p(k,j,i) < 0.0_wp  .AND.                              &
-                     .NOT. allow_negative_scalar_values )                                          &
-                THEN
+                IF ( chem_species(ilsp)%conc_p(k,j,i) < 0.0_wp )  THEN
                    chem_species(ilsp)%conc_p(k,j,i) = 0.1_wp * chem_species(ilsp)%conc(k,j,i)
                 ENDIF
              ENDDO
@@ -3104,6 +3109,7 @@
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE chem_prognostic_equations_ij( i, j, i_omp_start, tn )
 
+
     INTEGER(iwp),INTENT(IN) :: i, j, i_omp_start, tn
 
     INTEGER(iwp) :: ilsp
@@ -3145,8 +3151,17 @@
        ENDIF
 !
 !--    Diffusion terms (the last three arguments are zero)
-       CALL diffusion_s( i, j, chem_species(ilsp)%conc, surf_top%cssws(ilsp,:),                    &
-                         surf_def%cssws(ilsp,:), surf_lsm%cssws(ilsp,:), surf_usm%cssws(ilsp,:) )
+       CALL diffusion_s( i, j, chem_species(ilsp)%conc,                                            &
+            surf_def_h(0)%cssws(ilsp,:), surf_def_h(1)%cssws(ilsp,:),                              &
+            surf_def_h(2)%cssws(ilsp,:),                                                           &
+            surf_lsm_h(0)%cssws(ilsp,:), surf_lsm_h(1)%cssws(ilsp,:),                              &
+            surf_usm_h(0)%cssws(ilsp,:), surf_usm_h(1)%cssws(ilsp,:),                              &
+            surf_def_v(0)%cssws(ilsp,:), surf_def_v(1)%cssws(ilsp,:),                              &
+            surf_def_v(2)%cssws(ilsp,:), surf_def_v(3)%cssws(ilsp,:),                              &
+            surf_lsm_v(0)%cssws(ilsp,:), surf_lsm_v(1)%cssws(ilsp,:),                              &
+            surf_lsm_v(2)%cssws(ilsp,:), surf_lsm_v(3)%cssws(ilsp,:),                              &
+            surf_usm_v(0)%cssws(ilsp,:), surf_usm_v(1)%cssws(ilsp,:),                              &
+            surf_usm_v(2)%cssws(ilsp,:), surf_usm_v(3)%cssws(ilsp,:) )
 !
 !--    Prognostic equation for chem spcs
        DO  k = nzb+1, nzt
@@ -3156,11 +3171,10 @@
                - tsc(5) * rdf_sc(k)                                                                &
                * ( chem_species(ilsp)%conc(k,j,i) - chem_species(ilsp)%conc_pr_init(k) )           &
                )                                                                                   &
-               * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+               * MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 )                      &
+               )
 
-          IF ( chem_species(ilsp)%conc_p(k,j,i) < 0.0_wp  .AND.                                    &
-               .NOT. allow_negative_scalar_values )                                                &
-          THEN
+          IF ( chem_species(ilsp)%conc_p(k,j,i) < 0.0_wp )  THEN
              chem_species(ilsp)%conc_p(k,j,i) = 0.1_wp * chem_species(ilsp)%conc(k,j,i)    !FKS6
           ENDIF
        ENDDO
@@ -3194,7 +3208,6 @@
                                 nyn_on_file, nysf, nysc, nys_on_file, tmp_3d, found )
 
     USE control_parameters
-
 
     INTEGER(iwp) ::  k               !<
     INTEGER(iwp) ::  lsp             !<
@@ -3263,26 +3276,20 @@
 
     LOGICAL      ::  array_found  !<
 
-!
-!-- Restart input of time-averaged quantities is skipped in case of cyclic-fill initialization.
-!-- This case, input of time-averaged data is useless and can lead to faulty averaging.
-    IF ( .NOT. cyclic_fill_initialization )  THEN
 
-       DO  lsp = 1, nspec
+    DO  lsp = 1, nspec
 
-          CALL rrd_mpi_io( TRIM( chem_species(lsp)%name ), chem_species(lsp)%conc )
+       CALL rrd_mpi_io( TRIM( chem_species(lsp)%name ), chem_species(lsp)%conc )
 
-          CALL rd_mpi_io_check_array( TRIM( chem_species(lsp)%name )//'_av' , found = array_found )
-          IF ( array_found )  THEN
-             IF ( .NOT. ALLOCATED( chem_species(lsp)%conc_av ) )  THEN
-                ALLOCATE( chem_species(lsp)%conc_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-             ENDIF
-             CALL rrd_mpi_io( TRIM( chem_species(lsp)%name )//'_av', chem_species(lsp)%conc_av )
+       CALL rd_mpi_io_check_array( TRIM( chem_species(lsp)%name )//'_av' , found = array_found )
+       IF ( array_found )  THEN
+          IF ( .NOT. ALLOCATED( chem_species(lsp)%conc_av ) )  THEN
+             ALLOCATE( chem_species(lsp)%conc_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
           ENDIF
+          CALL rrd_mpi_io( TRIM( chem_species(lsp)%name )//'_av', chem_species(lsp)%conc_av )
+       ENDIF
 
-       ENDDO
-
-    ENDIF
+    ENDDO
 
  END SUBROUTINE chem_rrd_local_mpi
 
@@ -3306,6 +3313,7 @@
     INTEGER(iwp) ::  i                   !< running index on x-axis
     INTEGER(iwp) ::  j                   !< running index on y-axis
     INTEGER(iwp) ::  k                   !< vertical index counter
+    INTEGER(iwp) ::  l                   !< direction index counter
     INTEGER(iwp) ::  lpr                 !< running index chem spcs
     INTEGER(iwp) ::  m                   !< running index for surface elements
 !$  INTEGER(iwp) ::  omp_get_thread_num  !< intrinsic OMP function
@@ -3332,7 +3340,7 @@
                    sums_tmp(k,tn) = sums_tmp(k,tn) +                                               &
                         chem_species(cs_pr_index_sp(lpr))%conc(k,j,i) *                            &
                         rmask(j,i,sr)  *                                                           &
-                        MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 22 ) )
+                        MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 22 ) )
                 ENDDO
              ENDDO
           ENDDO
@@ -3342,7 +3350,7 @@
 !
 !--    Sum-up profiles for vertical fluxes of the the species. Note, in case of WS5 scheme the
 !--    profiles of resolved-scale fluxes have been already summed-up, while resolved-scale fluxes
-!--    need to be calculated in case of PW scheme.
+!--    need to be calculated in case of PW scheme. 
 !--    For summation employ a temporary array.
        !$OMP PARALLEL PRIVATE( i, j, k, tn, lpr, sums_tmp, flag )
        !$ tn = omp_get_thread_num()
@@ -3352,8 +3360,8 @@
           DO  i = nxl, nxr
              DO  j = nys, nyn
                 DO  k = nzb, nzt
-                   flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 23 ) ) *                &
-                          MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 9  ) )
+                   flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 23 ) ) *        &
+                          MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 9  ) )
                    sums_tmp(k,tn) = sums_tmp(k,tn) -                                               &
                         0.5_wp * ( kh(k,j,i) + kh(k+1,j,i) )                                       &
                                * ( chem_species(cs_pr_index_fl_sgs(lpr))%conc(k+1,j,i) -           &
@@ -3362,30 +3370,29 @@
                 ENDDO
 !
 !--             Add surface fluxes (?Is the order mandatory or could it be done in one cycle?)
-!--             Sum up only from upward-facing surfaces.
-                surf_s = surf_def%start_index(j,i)
-                surf_e = surf_def%end_index(j,i)
-                DO  m = surf_s, surf_e
-                   k   = surf_def%k(m) + surf_def%koff(m)
-                   sums_tmp(k,tn) = sums_tmp(k,tn) +                                               &
-                                    MERGE( surf_def%cssws(cs_pr_index_fl_sgs(lpr),m), 0.0_wp,      &
-                                           surf_def%upward(m) )
+                DO l = 0, 1
+                   surf_s = surf_def_h(0)%start_index(j,i)
+                   surf_e = surf_def_h(0)%end_index(j,i)
+                   DO  m = surf_s, surf_e
+                      k   = surf_def_h(0)%k(m) + surf_def_h(0)%koff
+                      sums_tmp(k,tn) = sums_tmp(k,tn) + surf_def_h(0)%cssws(cs_pr_index_fl_sgs(lpr),m)
+                   ENDDO
                 ENDDO
-                surf_s = surf_lsm%start_index(j,i)
-                surf_e = surf_lsm%end_index(j,i)
-                DO  m = surf_s, surf_e
-                   k   = surf_lsm%k(m) + surf_lsm%koff(m)
-                   sums_tmp(k,tn) = sums_tmp(k,tn) +                                               &
-                                    MERGE( surf_lsm%cssws(cs_pr_index_fl_sgs(lpr),m), 0.0_wp,      &
-                                           surf_lsm%upward(m) )
+                DO l = 0, 1
+                   surf_s = surf_lsm_h(0)%start_index(j,i)
+                   surf_e = surf_lsm_h(0)%end_index(j,i)
+                   DO  m = surf_s, surf_e
+                      k   = surf_lsm_h(0)%k(m) + surf_lsm_h(0)%koff
+                      sums_tmp(k,tn) = sums_tmp(k,tn) + surf_lsm_h(0)%cssws(cs_pr_index_fl_sgs(lpr),m)
+                   ENDDO
                 ENDDO
-                surf_s = surf_usm%start_index(j,i)
-                surf_e = surf_usm%end_index(j,i)
-                DO  m = surf_s, surf_e
-                   k   = surf_usm%k(m) + surf_usm%koff(m)
-                   sums_tmp(k,tn) = sums_tmp(k,tn) +                                               &
-                                    MERGE( surf_usm%cssws(cs_pr_index_fl_sgs(lpr),m), 0.0_wp,      &
-                                           surf_usm%upward(m) )
+                DO l = 0, 1
+                   surf_s = surf_usm_h(0)%start_index(j,i)
+                   surf_e = surf_usm_h(0)%end_index(j,i)
+                   DO  m = surf_s, surf_e
+                      k   = surf_usm_h(0)%k(m) + surf_usm_h(0)%koff
+                      sums_tmp(k,tn) = sums_tmp(k,tn) + surf_usm_h(0)%cssws(cs_pr_index_fl_sgs(lpr),m)
+                   ENDDO
                 ENDDO
              ENDDO
           ENDDO
@@ -3399,9 +3406,8 @@
           !$ tn = omp_get_thread_num()
           !$OMP DO
           DO  lpr = 1, cs_pr_count_fl_res
-             sums_l(nzb:nzt+1,hom_index_fl_res(lpr),tn) =                                          &
-                                                    scalarflux_output_conversion(nzb:nzt+1) *      &
-                                                    sums_ws_l(nzb:nzt+1,tn,cs_pr_index_fl_res(lpr))
+             sums_l(nzb:nzt+1,hom_index_fl_res(lpr),tn) =                                           &
+                                                      sums_ws_l(nzb:nzt+1,tn,cs_pr_index_fl_res(lpr))
           ENDDO
           !$OMP END PARALLEL
        ENDIF
@@ -3487,1596 +3493,6 @@
 !> Subroutine to calculate the deposition of gases and PMs. For now deposition only takes place on
 !> lsm and usm horizontal upward faceing surfaces. Default surfaces are NOT considered.
 !> The deposition of particlesis derived following Zhang et al., 2001, gases are deposited using
-!> the DEPAC module (van Zanten et al., 2010).
-!>
-!> @TODO: Consider deposition on vertical surfaces
-!> @TODO: Consider overlaying horizontal surfaces
-!> @TODO: Consider resolved vegetation
-!> @TODO: Check error messages
-!--------------------------------------------------------------------------------------------------!
- SUBROUTINE chem_depo
-
-!
-!-- List of names of possible tracers.
-    CHARACTER(LEN=*), PARAMETER ::  pspecnames(nposp) =                                            &
-                                    (/ 'NO2           ',                       &    !< NO2
-                                       'NO            ',                       &    !< NO
-                                       'O3            ',                       &    !< O3
-                                       'CO            ',                       &    !< CO
-                                       'form          ',                       &    !< FORM
-                                       'ald           ',                       &    !< ALD
-                                       'pan           ',                       &    !< PAN
-                                       'mgly          ',                       &    !< MGLY
-                                       'par           ',                       &    !< PAR
-                                       'ole           ',                       &    !< OLE
-                                       'eth           ',                       &    !< ETH
-                                       'tol           ',                       &    !< TOL
-                                       'cres          ',                       &    !< CRES
-                                       'xyl           ',                       &    !< XYL
-                                       'SO4a_f        ',                       &    !< SO4a_f
-                                       'SO2           ',                       &    !< SO2
-                                       'HNO2          ',                       &    !< HNO2
-                                       'CH4           ',                       &    !< CH4
-                                       'NH3           ',                       &    !< NH3
-                                       'NO3           ',                       &    !< NO3
-                                       'OH            ',                       &    !< OH
-                                       'HO2           ',                       &    !< HO2
-                                       'N2O5          ',                       &    !< N2O5
-                                       'SO4a_c        ',                       &    !< SO4a_c
-                                       'NH4a_f        ',                       &    !< NH4a_f
-                                       'NO3a_f        ',                       &    !< NO3a_f
-                                       'NO3a_c        ',                       &    !< NO3a_c
-                                       'C2O3          ',                       &    !< C2O3
-                                       'XO2           ',                       &    !< XO2
-                                       'XO2N          ',                       &    !< XO2N
-                                       'cro           ',                       &    !< CRO
-                                       'HNO3          ',                       &    !< HNO3
-                                       'H2O2          ',                       &    !< H2O2
-                                       'iso           ',                       &    !< ISO
-                                       'ispd          ',                       &    !< ISPD
-                                       'to2           ',                       &    !< TO2
-                                       'open          ',                       &    !< OPEN
-                                       'terp          ',                       &    !< TERP
-                                       'ec_f          ',                       &    !< EC_f
-                                       'ec_c          ',                       &    !< EC_c
-                                       'pom_f         ',                       &    !< POM_f
-                                       'pom_c         ',                       &    !< POM_c
-                                       'ppm_f         ',                       &    !< PPM_f
-                                       'ppm_c         ',                       &    !< PPM_c
-                                       'na_ff         ',                       &    !< Na_ff
-                                       'na_f          ',                       &    !< Na_f
-                                       'na_c          ',                       &    !< Na_c
-                                       'na_cc         ',                       &    !< Na_cc
-                                       'na_ccc        ',                       &    !< Na_ccc
-                                       'dust_ff       ',                       &    !< dust_ff
-                                       'dust_f        ',                       &    !< dust_f
-                                       'dust_c        ',                       &    !< dust_c
-                                       'dust_cc       ',                       &    !< dust_cc
-                                       'dust_ccc      ',                       &    !< dust_ccc
-                                       'tpm10         ',                       &    !< tpm10
-                                       'tpm25         ',                       &    !< tpm25
-                                       'tss           ',                       &    !< tss
-                                       'tdust         ',                       &    !< tdust
-                                       'tc            ',                       &    !< tc
-                                       'tcg           ',                       &    !< tcg
-                                       'tsoa          ',                       &    !< tsoa
-                                       'tnmvoc        ',                       &    !< tnmvoc
-                                       'SOxa          ',                       &    !< SOxa
-                                       'NOya          ',                       &    !< NOya
-                                       'NHxa          ',                       &    !< NHxa
-                                       'NO2_obs       ',                       &    !< NO2_obs
-                                       'tpm10_biascorr',                       &    !< tpm10_biascorr
-                                       'tpm25_biascorr',                       &    !< tpm25_biascorr
-                                       'O3_biascorr   ' /)                          !< O3_biascorr
-
-    INTEGER(iwp) ::  day_of_year  !< current day of the year
-    INTEGER(iwp) ::  i            !< grid index in x-direction
-    INTEGER(iwp) ::  i_pspec      !< index for matching depac gas component
-    INTEGER(iwp) ::  j            !< grid index in y-direction
-    INTEGER(iwp) ::  k            !< matching k to surface m at i,j
-    INTEGER(iwp) ::  lsp          !< running index for chem spcs.
-    INTEGER(iwp) ::  luv_palm     !< index of PALM LSM vegetation_type at current surface element
-    INTEGER(iwp) ::  lup_palm     !< index of PALM LSM pavement_type at current surface element
-    INTEGER(iwp) ::  luw_palm     !< index of PALM LSM water_type at current surface element
-    INTEGER(iwp) ::  luu_palm     !< index of PALM USM walls/roofs at current surface element
-    INTEGER(iwp) ::  lug_palm     !< index of PALM USM green walls/roofs at current surface element
-    INTEGER(iwp) ::  lud_palm     !< index of PALM USM windows at current surface element
-    INTEGER(iwp) ::  luv_dep      !< matching DEPAC LU to luv_palm
-    INTEGER(iwp) ::  lup_dep      !< matching DEPAC LU to lup_palm
-    INTEGER(iwp) ::  luw_dep      !< matching DEPAC LU to luw_palm
-    INTEGER(iwp) ::  luu_dep      !< matching DEPAC LU to luu_palm
-    INTEGER(iwp) ::  lug_dep      !< matching DEPAC LU to lug_palm
-    INTEGER(iwp) ::  lud_dep      !< matching DEPAC LU to lud_palm
-    INTEGER(iwp) ::  m            !< index for horizontal surfaces
-    INTEGER(iwp) ::  mm           !< running index for horizontal surfaces
-    INTEGER(iwp) ::  pspec        !< running index
-!
-!-- Vegetation (assign PALM classes to DEPAC land use classes).
-    INTEGER(iwp) ::  ind_luv_user = 0             !<  ERROR as no class given in PALM
-    INTEGER(iwp) ::  ind_luv_b_soil = 1           !<  assigned to ilu_desert
-    INTEGER(iwp) ::  ind_luv_mixed_crops = 2      !<  assigned to ilu_arable
-    INTEGER(iwp) ::  ind_luv_s_grass = 3          !<  assigned to ilu_grass
-    INTEGER(iwp) ::  ind_luv_ev_needle_trees = 4  !<  assigned to ilu_coniferous_forest
-    INTEGER(iwp) ::  ind_luv_de_needle_trees = 5  !<  assigned to ilu_coniferous_forest
-    INTEGER(iwp) ::  ind_luv_ev_broad_trees = 6   !<  assigned to ilu_tropical_forest
-    INTEGER(iwp) ::  ind_luv_de_broad_trees = 7   !<  assigned to ilu_deciduous_forest
-    INTEGER(iwp) ::  ind_luv_t_grass = 8          !<  assigned to ilu_grass
-    INTEGER(iwp) ::  ind_luv_desert = 9           !<  assigned to ilu_desert
-    INTEGER(iwp) ::  ind_luv_tundra = 10          !<  assigned to ilu_other
-    INTEGER(iwp) ::  ind_luv_irr_crops = 11       !<  assigned to ilu_arable
-    INTEGER(iwp) ::  ind_luv_semidesert = 12      !<  assigned to ilu_other
-    INTEGER(iwp) ::  ind_luv_ice = 13             !<  assigned to ilu_ice
-    INTEGER(iwp) ::  ind_luv_marsh = 14           !<  assigned to ilu_other
-    INTEGER(iwp) ::  ind_luv_ev_shrubs = 15       !<  assigned to ilu_mediterrean_scrub
-    INTEGER(iwp) ::  ind_luv_de_shrubs = 16       !<  assigned to ilu_mediterrean_scrub
-    INTEGER(iwp) ::  ind_luv_mixed_forest = 17    !<  assigned to ilu_coniferous_forest(ave(decid+conif))
-    INTEGER(iwp) ::  ind_luv_intrup_forest = 18   !<  assigned to ilu_other (ave(other+decid))
-!
-!-- Water.
-    INTEGER(iwp) ::  ind_luw_user = 0             !<  ERROR as no class given in PALM
-    INTEGER(iwp) ::  ind_luw_lake = 1             !<  assigned to ilu_water_inland
-    INTEGER(iwp) ::  ind_luw_river = 2            !<  assigned to ilu_water_inland
-    INTEGER(iwp) ::  ind_luw_ocean = 3            !<  assigned to ilu_water_sea
-    INTEGER(iwp) ::  ind_luw_pond = 4             !<  assigned to ilu_water_inland
-    INTEGER(iwp) ::  ind_luw_fountain = 5         !<  assigned to ilu_water_inland
-!
-!-- Pavement
-    INTEGER(iwp) ::  ind_lup_user = 0             !<  ERROR as no class given in PALM
-    INTEGER(iwp) ::  ind_lup_asph_conc = 1        !<  assigned to ilu_desert
-    INTEGER(iwp) ::  ind_lup_asph = 2             !<  assigned to ilu_desert
-    INTEGER(iwp) ::  ind_lup_conc = 3             !<  assigned to ilu_desert
-    INTEGER(iwp) ::  ind_lup_sett = 4             !<  assigned to ilu_desert
-    INTEGER(iwp) ::  ind_lup_pav_stones = 5       !<  assigned to ilu_desert
-    INTEGER(iwp) ::  ind_lup_cobblest = 6         !<  assigned to ilu_desert
-    INTEGER(iwp) ::  ind_lup_metal = 7            !<  assigned to ilu_desert
-    INTEGER(iwp) ::  ind_lup_wood = 8             !<  assigned to ilu_desert
-    INTEGER(iwp) ::  ind_lup_gravel = 9           !<  assigned to ilu_desert
-    INTEGER(iwp) ::  ind_lup_f_gravel = 10        !<  assigned to ilu_desert
-    INTEGER(iwp) ::  ind_lup_pebblest = 11        !<  assigned to ilu_desert
-    INTEGER(iwp) ::  ind_lup_woodchips = 12       !<  assigned to ilu_desert
-    INTEGER(iwp) ::  ind_lup_tartan = 13          !<  assigned to ilu_desert
-    INTEGER(iwp) ::  ind_lup_art_turf = 14        !<  assigned to ilu_desert
-    INTEGER(iwp) ::  ind_lup_clay = 15            !<  assigned to ilu_desert
-!
-!-- Particle parameters according to the respective aerosol classes (PM25, PM10).
-    INTEGER(iwp) ::  ind_p_size = 1  !< index for partsize in particle_pars
-    INTEGER(iwp) ::  ind_p_dens = 2  !< index for rhopart in particle_pars
-    INTEGER(iwp) ::  ind_p_slip = 3  !< index for slipcor in particle_pars
-    INTEGER(iwp) ::  nwet            !< wetness indicator dor DEPAC; nwet=0 -> dry; nwet=1 -> wet; nwet=9 -> snow
-    INTEGER(iwp) ::  part_type       !< index for particle type (PM10 or PM25) in particle_pars
-
-    INTEGER(iwp), DIMENSION(nys:nyn,nxl:nxr) ::  lup_dep_v   !< lsm
-    INTEGER(iwp), DIMENSION(nys:nyn,nxl:nxr) ::  luv_dep_v   !<
-    INTEGER(iwp), DIMENSION(nys:nyn,nxl:nxr) ::  luw_dep_v   !<
-    INTEGER(iwp), DIMENSION(nys:nyn,nxl:nxr) ::  luu_dep_v   !< usm
-    INTEGER(iwp), DIMENSION(nys:nyn,nxl:nxr) ::  lug_dep_v   !<
-    INTEGER(iwp), DIMENSION(nys:nyn,nxl:nxr) ::  lud_dep_v   !<
-    INTEGER(iwp), DIMENSION(nys:nyn,nxl:nxr) ::  mvec        !< pre-computed index of upward-facing surface
-    INTEGER(iwp), DIMENSION(nys:nyn,nxl:nxr) ::  nwet_v      !<
-
-    LOGICAL ::  match_lsm  !< flag indicating natural-type surface
-    LOGICAL ::  match_usm  !< flag indicating urban-type surface
-
-    LOGICAL, DIMENSION(nys:nyn,nxl:nxr) ::  do_pav_green    !< flag array indicating pavement or greened walls
-    LOGICAL, DIMENSION(nys:nyn,nxl:nxr) ::  do_veg_wall     !< flag array indicating vegetation or walls
-    LOGICAL, DIMENSION(nys:nyn,nxl:nxr) ::  do_wat_win      !< flag array indicating water or windows
-    LOGICAL, DIMENSION(nys:nyn,nxl:nxr) ::  sai_present     !<
-
-    REAL(wp) ::  bud          !< overall budget at current surface element
-    REAL(wp) ::  dens         !< density at layer k at i,j
-    REAL(wp) ::  dh           !< vertical grid size
-    REAL(wp) ::  diffusivity  !< diffusivity
-    REAL(wp) ::  dt_chem      !< length of chem time step
-    REAL(wp) ::  dt_dh        !< dt_chem/dh
-    REAL(wp) ::  inv_dh       !< inverse of vertical grid size
-    REAL(wp) ::  lai          !< leaf area index at current surface element
-    REAL(wp) ::  qv_tmp       !< surface mixing ratio at current surface element
-    REAL(wp) ::  r_aero_surf  !< aerodynamic resistance (s/m) at current surface element
-    REAL(wp) ::  rb           !< quasi-laminar boundary layer resistance (s/m)
-    REAL(wp) ::  rc_tot       !< total canopy resistance (s/m)
-    REAL(wp) ::  rh_surf      !< relative humidity at current surface element
-    REAL(wp) ::  rs           !< Sedimentaion resistance (s/m)
-    REAL(wp) ::  slinnfac     !<
-    REAL(wp) ::  solar_rad    !< solar radiation, direct and diffuse, at current surface element
-    REAL(wp) ::  temp_tmp     !< temperatur at i,j,k
-    REAL(wp) ::  ts           !< surface temperatur in degrees celsius
-    REAL(wp) ::  ustar_surf   !< ustar at current surface element
-    REAL(wp) ::  vd_lu        !< deposition velocity (m/s)
-    REAL(wp) ::  visc         !< Viscosity
-    REAL(wp) ::  vs           !< Sedimentation velocity
-    REAL(wp) ::  z0h_surf     !< roughness length for heat at current surface element
-
-    REAL(wp), DIMENSION(nspec) ::  ccomp_tot  !< total compensation point (ug/m3), for now kept to zero for all species!
-
-    REAL(wp), DIMENSION(nys:nyn,nxl:nxr) ::  dens_v         !<
-    REAL(wp), DIMENSION(nys:nyn,nxl:nxr) ::  inv_dh_v       !<
-    REAL(wp), DIMENSION(nys:nyn,nxl:nxr) ::  lai_v          !<
-    REAL(wp), DIMENSION(nys:nyn,nxl:nxr) ::  rb_v           !<
-    REAL(wp), DIMENSION(nys:nyn,nxl:nxr) ::  rc_tot_v       !<
-    REAL(wp), DIMENSION(nys:nyn,nxl:nxr) ::  rh_surf_v      !<
-    REAL(wp), DIMENSION(nys:nyn,nxl:nxr) ::  r_aero_surf_v  !<
-    REAL(wp), DIMENSION(nys:nyn,nxl:nxr) ::  sai_v          !<
-    REAL(wp), DIMENSION(nys:nyn,nxl:nxr) ::  solar_rad_v    !<
-    REAL(wp), DIMENSION(nys:nyn,nxl:nxr) ::  temp_tmp_v     !<
-    REAL(wp), DIMENSION(nys:nyn,nxl:nxr) ::  ts_v           !<
-    REAL(wp), DIMENSION(nys:nyn,nxl:nxr) ::  ustar_surf_v   !<
-    REAL(wp), DIMENSION(nys:nyn,nxl:nxr) ::  visc_v         !<
-
-    REAL(wp), DIMENSION(nys:nyn,nxl:nxr,nspec) ::  bud_lud_v  !< budget for USM windows at current surface element
-    REAL(wp), DIMENSION(nys:nyn,nxl:nxr,nspec) ::  bud_lug_v  !< budget for USM green surfaces at current surface element
-    REAL(wp), DIMENSION(nys:nyn,nxl:nxr,nspec) ::  bud_lup_v  !< budget for LSM pavement type at current surface element
-    REAL(wp), DIMENSION(nys:nyn,nxl:nxr,nspec) ::  bud_luu_v  !< budget for USM walls/roofs at current surface element
-    REAL(wp), DIMENSION(nys:nyn,nxl:nxr,nspec) ::  bud_luv_v  !< budget for LSM vegetation type at current surface element
-    REAL(wp), DIMENSION(nys:nyn,nxl:nxr,nspec) ::  bud_luw_v  !< budget for LSM water type at current surface element
-!
-!-- Particle parameters (PM10 (1), PM25 (2)) partsize (diameter in m), rhopart (density in kg/m3),
-!-- slipcor (slip correction factor dimensionless, Seinfeld and Pandis 2006, Table 9.3).
-    REAL(wp), DIMENSION(1:3,1:2), PARAMETER ::  particle_pars = RESHAPE( (/                        &
-                                                                   8.0E-6_wp, 1.14E3_wp, 1.016_wp, &
-                                                                   0.7E-6_wp, 1.14E3_wp, 1.082_wp  &
-                                                                         /), (/ 3, 2 /) )
-
-!
-!-- Get current day of the year.
-    CALL get_date_time( time_since_reference_point, day_of_year = day_of_year )
-!
-!-- LSM or USM horizintal upward facing surface present at i,j. Note, default surfaces are not
-!-- considered for deposition.
-!-- First, check if upward-facing LSM surface exist and find its index. If more than one
-!-- upward-facing surface exist, take the last one.
-    mvec = 0
-    DO  i = nxl, nxr
-       DO  j = nys, nyn
-          DO  mm = surf_lsm%start_index(j,i), surf_lsm%end_index(j,i)
-             IF ( surf_lsm%upward(mm) )  mvec(j,i) = mm
-          ENDDO
-       ENDDO
-    ENDDO
-
-    do_veg_wall  = .FALSE.
-    luv_dep_v    = 0
-    do_pav_green = .FALSE.
-    lup_dep_v    = 0
-    do_wat_win   = .FALSE.
-    luw_dep_v    = 0
-    sai_present = .FALSE.
-
-!
-!-- Initialize budgets.
-    bud_luv_v = 0.0_wp
-    bud_lup_v = 0.0_wp
-    bud_luw_v = 0.0_wp
-
-    DO  i = nxl, nxr
-       DO  j = nys, nyn
-          m = mvec(j,i)
-
-          match_lsm = ( m /= 0 )
-!
-!--       For LSM surfaces
-          IF ( match_lsm )  THEN
-
-             k = surf_lsm%k(m)
-!
-!--          Get needed variables for surface element m.
-             ustar_surf  = surf_lsm%us(m)
-             z0h_surf    = surf_lsm%z0h(m)
-             r_aero_surf = surf_lsm%r_a(m)
-             solar_rad   = surf_lsm%rad_sw_dir(m) + surf_lsm%rad_sw_dif(m)
-             solar_rad_v(j,i) = solar_rad
-
-             lai_v(j,i) = surf_lsm%lai(m)
-             sai_v(j,i) = lai + 1
-             sai_present(j,i) = .TRUE.
-!
-!--          For small grid spacing neglect R_a.
-             IF ( dzw(k) <= 1.0 )  THEN
-                r_aero_surf = 0.0_wp
-             ENDIF
-             r_aero_surf_v(j,i) = r_aero_surf
-!
-!--          Initialize lu's
-             luv_palm = 0
-             luv_dep = 0
-             lup_palm = 0
-             lup_dep = 0
-             luw_palm = 0
-             luw_dep = 0
-!
-!--          Get land use for i,j and assign to DEPAC lu.
-             IF ( surf_lsm%frac(m,ind_veg_wall) > 0 )  THEN
-                luv_palm = surf_lsm%vegetation_type(m)
-                IF ( luv_palm == ind_luv_user )  THEN
-                   message_string = 'no lsm-vegetation type defined'
-                   CALL message( 'chem_depo', 'CHM0019', 1, 2, 0, 6, 0 )
-                ELSEIF ( luv_palm == ind_luv_b_soil )  THEN
-                   luv_dep = 9
-                ELSEIF ( luv_palm == ind_luv_mixed_crops )  THEN
-                   luv_dep = 2
-                ELSEIF ( luv_palm == ind_luv_s_grass )  THEN
-                   luv_dep = 1
-                ELSEIF ( luv_palm == ind_luv_ev_needle_trees )  THEN
-                   luv_dep = 4
-                ELSEIF ( luv_palm == ind_luv_de_needle_trees )  THEN
-                   luv_dep = 4
-                ELSEIF ( luv_palm == ind_luv_ev_broad_trees )  THEN
-                   luv_dep = 12
-                ELSEIF ( luv_palm == ind_luv_de_broad_trees )  THEN
-                   luv_dep = 5
-                ELSEIF ( luv_palm == ind_luv_t_grass )  THEN
-                   luv_dep = 1
-                ELSEIF ( luv_palm == ind_luv_desert )  THEN
-                   luv_dep = 9
-                ELSEIF ( luv_palm == ind_luv_tundra )  THEN
-                   luv_dep = 8
-                ELSEIF ( luv_palm == ind_luv_irr_crops )  THEN
-                   luv_dep = 2
-                ELSEIF ( luv_palm == ind_luv_semidesert )  THEN
-                   luv_dep = 8
-                ELSEIF ( luv_palm == ind_luv_ice )  THEN
-                   luv_dep = 10
-                ELSEIF ( luv_palm == ind_luv_marsh )  THEN
-                   luv_dep = 8
-                ELSEIF ( luv_palm == ind_luv_ev_shrubs )  THEN
-                   luv_dep = 14
-                ELSEIF ( luv_palm == ind_luv_de_shrubs )  THEN
-                   luv_dep = 14
-                ELSEIF ( luv_palm == ind_luv_mixed_forest )  THEN
-                   luv_dep = 4
-                ELSEIF ( luv_palm == ind_luv_intrup_forest )  THEN
-                   luv_dep = 8
-                ENDIF
-                do_veg_wall(j,i) = .TRUE.
-             ENDIF
-             luv_dep_v(j,i) = luv_dep
-
-             IF ( surf_lsm%frac(m,ind_pav_green) > 0 )  THEN
-                lup_palm = surf_lsm%pavement_type(m)
-                IF ( lup_palm == ind_lup_user )  THEN
-                   message_string = 'no lsm-pavement type defined'
-                   CALL message( 'chem_depo', 'CHM0019', 1, 2, 0, 6, 0 )
-!
-!--             On Pavement, lup_dep is always 9.
-                ELSEIF ( lup_palm == ind_lup_asph_conc )  THEN
-                   lup_dep = 9
-                ELSEIF ( lup_palm == ind_lup_asph )  THEN
-                   lup_dep = 9
-                ELSEIF ( lup_palm == ind_lup_conc )  THEN
-                   lup_dep = 9
-                ELSEIF ( lup_palm == ind_lup_sett )  THEN
-                   lup_dep = 9
-                ELSEIF ( lup_palm == ind_lup_pav_stones )  THEN
-                   lup_dep = 9
-                ELSEIF ( lup_palm == ind_lup_cobblest )  THEN
-                   lup_dep = 9
-                ELSEIF ( lup_palm == ind_lup_metal )  THEN
-                   lup_dep = 9
-                ELSEIF ( lup_palm == ind_lup_wood )  THEN
-                   lup_dep = 9
-                ELSEIF ( lup_palm == ind_lup_gravel )  THEN
-                   lup_dep = 9
-                ELSEIF ( lup_palm == ind_lup_f_gravel )  THEN
-                   lup_dep = 9
-                ELSEIF ( lup_palm == ind_lup_pebblest )  THEN
-                   lup_dep = 9
-                ELSEIF ( lup_palm == ind_lup_woodchips )  THEN
-                   lup_dep = 9
-                ELSEIF ( lup_palm == ind_lup_tartan )  THEN
-                   lup_dep = 9
-                ELSEIF ( lup_palm == ind_lup_art_turf )  THEN
-                   lup_dep = 9
-                ELSEIF ( lup_palm == ind_lup_clay )  THEN
-                   lup_dep = 9
-                ENDIF
-                do_pav_green(j,i) = .TRUE.
-             ENDIF
-             lup_dep_v(j,i) = lup_dep
-
-             IF ( surf_lsm%frac(m,ind_wat_win) > 0 )  THEN
-                luw_palm = surf_lsm%water_type(m)
-                IF ( luw_palm == ind_luw_user )  THEN
-                   message_string = 'no lsm-water type defined'
-                   CALL message( 'chem_depo', 'CHM0019', 1, 2, 0, 6, 0 )
-                ELSEIF ( luw_palm ==  ind_luw_lake )  THEN
-                   luw_dep = 13
-                ELSEIF ( luw_palm == ind_luw_river )  THEN
-                   luw_dep = 13
-                ELSEIF ( luw_palm == ind_luw_ocean )  THEN
-                   luw_dep = 6
-                ELSEIF ( luw_palm == ind_luw_pond )  THEN
-                   luw_dep = 13
-                ELSEIF ( luw_palm == ind_luw_fountain )  THEN
-                   luw_dep = 13
-                ENDIF
-                do_wat_win(j,i) = .TRUE.
-             ENDIF
-             luw_dep_v(j,i) = luw_dep
-
-!
-!--          Set wetness indicator to dry or wet for lsm vegetation or pavement.
-             IF ( surf_lsm%c_liq(m) > 0 )  THEN
-                nwet = 1
-             ELSE
-                nwet = 0
-             ENDIF
-             nwet_v(j,i) = nwet
-!
-!--          Compute length of time step
-             IF ( call_chem_at_all_substeps )  THEN
-                dt_chem = dt_3d * weight_pres(intermediate_timestep_count)
-             ELSE
-                dt_chem = dt_3d
-             ENDIF
-
-             dh = dzw(k)
-             inv_dh = 1.0_wp / dh
-             dt_dh = dt_chem / dh
-
-!--          Temperature at i,j,k.
-             temp_tmp = pt(k,j,i) * ( hyp(k) / 100000.0_wp )**0.286_wp
-             temp_tmp_v(j,i) = temp_tmp
-
-             ts        = temp_tmp - 273.15_wp  !< in degrees celcius
-             ts_v(j,i) = temp_tmp - 273.15_wp  !< in degrees celcius
-!
-!--          Viscosity of air.
-             visc = 1.496E-6_wp * temp_tmp**1.5_wp / (temp_tmp + 120.0_wp )
-             visc_v(j,i) = visc
-!
-!--          Air density at k.
-             dens = rho_air_zw(k)
-             dens_v(j,i) = dens
-!
-!--          Calculate relative humidity from specific humidity for DEPAC.
-             qv_tmp = MAX( q(k,j,i), 0.0_wp )
-             rh_surf = relativehumidity_from_specifichumidity(qv_tmp, temp_tmp, hyp(k) )
-             rh_surf_v(j,i) = rh_surf
-          ENDIF
-          inv_dh_v(j,i)    = inv_dh
-       ENDDO
-    ENDDO
-!
-!-- Check if surface fraction (vegetation, pavement or water) > 0 and calculate vd and budget
-!-- for each surface fraction. Then derive overall budget taking into account the surface fractions.
-!-- Vegetation treatment.
-    IF ( ANY( do_veg_wall ) )  THEN
-
-       slinnfac = 1.0_wp
-!
-!--    Get deposition velocity vd.
-       DO  lsp = 1, nvar
-!
-!--       Initialize values.
-          vs     = 0.0_wp
-          vd_lu  = 0.0_wp
-          rs     = 0.0_wp
-          rb     = 0.0_wp
-          rc_tot = 0.0_wp
-!
-!--       Particulate matter.
-          IF ( spc_names(lsp) == 'PM10'  .OR.  spc_names(lsp) == 'PM25' )  THEN
-             IF ( spc_names(lsp) == 'PM10' )  THEN
-                part_type = 1
-             ELSEIF ( spc_names(lsp) == 'PM25' )  THEN
-                part_type = 2
-             ENDIF
-
-             DO  i = nxl, nxr
-                DO  j = nys, nyn
-                   m = mvec(j,i)
-
-                   match_lsm = ( m /= 0 )
-
-                   IF ( match_lsm  .AND.  do_veg_wall(j,i) )  THEN
-!
-!--                   Compute sedimentation velocity.
-                      vs = slinnfac * sedimentation_velocity( particle_pars(ind_p_dens, part_type),&
-                                                              particle_pars(ind_p_size, part_type),&
-                                                              particle_pars(ind_p_slip, part_type),&
-                                                              visc_v(j,i))
-
-                      ustar_surf  = surf_lsm%us(m)
-                      r_aero_surf = surf_lsm%r_a(m)
-
-                      CALL drydepo_aero_zhang_vd( vd_lu, rs, vs,                                   &
-                                                  particle_pars(ind_p_size, part_type),            &
-                                                  particle_pars(ind_p_slip, part_type),            &
-                                                  nwet_v(j,i), temp_tmp_v(j,i), dens_v(j,i),       &
-                                                  visc_v(j,i), luv_dep_v(j,i), r_aero_surf,        &
-                                                  ustar_surf )
-
-                      k  = surf_lsm%k(m)
-                      dh = dzw(k)
-                      dt_dh = dt_chem / dh
-                      bud_luv_v(j,i,lsp) = -chem_species(lsp)%conc(k,j,i) *                        &
-                                           ( 1.0_wp - EXP( - vd_lu * dt_dh ) ) * dh
-
-                   ENDIF
-                ENDDO
-             ENDDO
-!
-!--       Gases.
-          ELSE
-!
-!--          Read spc_name of current species for gas parameter.
-             IF ( ANY( pspecnames(:) == spc_names(lsp) ) )  THEN
-                i_pspec = 0
-                DO  pspec = 1, nposp
-                   IF ( pspecnames(pspec) == spc_names(lsp) )  THEN
-                      i_pspec = pspec
-                   ENDIF
-                ENDDO
-
-             ELSE
-!
-!--             For now, other species are not deposited.
-                CYCLE
-             ENDIF
-!
-!--          Diffusivity for DEPAC relevant gases. Use default value.
-             diffusivity = 0.11E-4_wp
-!
-!--          Overwrite with known coefficients of diffusivity from Massman (1998).
-             IF ( spc_names(lsp) == 'NO2' )  diffusivity = 0.136E-4_wp
-             IF ( spc_names(lsp) == 'NO'  )  diffusivity = 0.199E-4_wp
-             IF ( spc_names(lsp) == 'O3'  )  diffusivity = 0.144E-4_wp
-             IF ( spc_names(lsp) == 'CO'  )  diffusivity = 0.176E-4_wp
-             IF ( spc_names(lsp) == 'SO2' )  diffusivity = 0.112E-4_wp
-             IF ( spc_names(lsp) == 'CH4' )  diffusivity = 0.191E-4_wp
-             IF ( spc_names(lsp) == 'NH3' )  diffusivity = 0.191E-4_wp
-
-!
-!--          Get quasi-laminar boundary layer resistance rb:
-             DO  i = nxl, nxr
-                DO  j = nys, nyn
-                   m = mvec(j,i)
-
-                   match_lsm = ( m /= 0 )
-                   IF ( match_lsm  .AND.  do_veg_wall(j,i) )  THEN
-!
-!--                   No vegetation on bare soil, desert or ice.
-                      luv_palm = surf_lsm%vegetation_type(m)
-                      IF ( ( luv_palm == ind_luv_b_soil )  .OR.                                    &
-                           ( luv_palm == ind_luv_desert )  .OR.                                    &
-                           ( luv_palm == ind_luv_ice    ) )  THEN
-
-                         lai_v(j,i) = 0.0_wp
-                         sai_v(j,i) = 0.0_wp
-                         sai_present(j,i) = .FALSE.
-
-                      ENDIF
-                      ustar_surf  = surf_lsm%us(m)
-                      ustar_surf_v(j,i)  = surf_lsm%us(m)
-                      z0h_surf    = surf_lsm%z0h(m)
-                      solar_rad   = surf_lsm%rad_sw_dir(m) + surf_lsm%rad_sw_dif(m)
-                      solar_rad_v(j,i) = solar_rad
-
-!--                   Temperature at i,j,k.
-                      temp_tmp = pt(k,j,i) * ( hyp(k) / 100000.0_wp )**0.286_wp
-                      ts       = temp_tmp - 273.15_wp  ! in degrees celcius
-
-                      luv_dep = luv_dep_v(j,i)
-!
-
-!--                   Get quasi-laminar boundary layer resistance rb.
-                      CALL get_rb_cell( ( luv_dep == ilu_water_sea )  .OR.                         &
-                                        ( luv_dep == ilu_water_inland ), z0h_surf, ustar_surf,     &
-                                        diffusivity, rb_v(j,i) )
-                   ENDIF
-                ENDDO
-             ENDDO
-!
-!--          Get rc_tot.
-             CALL drydepos_gas_depac( spc_names(lsp), mvec, ts_v, ustar_surf_v, sai_present,       &
-                                      solar_rad_v, cos_zenith, rh_surf_v, lai_v, sai_v, nwet_v,    &
-                                      luv_dep_v, 2, rc_tot_v, ccomp_tot(lsp), hyp(nzb),            &
-                                      diffusivity )
-
-             DO  i = nxl, nxr
-                DO  j = nys, nyn
-                   m = mvec(j,i)
-
-                   match_lsm = ( m /= 0 )
-                   IF ( match_lsm  .AND.  do_veg_wall(j,i) )  THEN
-!
-!--                   Calculate budget
-                      IF ( rc_tot_v(j,i) <= 0.0 )  THEN
-                         bud_luv_v(j,i,lsp) = 0.0_wp
-                      ELSE
-                         k  = surf_lsm%k(m)
-                         dh = dzw(k)
-                         dt_dh = dt_chem / dh
-                         vd_lu = 1.0_wp / ( r_aero_surf_v(j,i) + rb_v(j,i) + rc_tot_v(j,i) )
-                         bud_luv_v(j,i,lsp) = -( chem_species(lsp)%conc(k,j,i) - ccomp_tot(lsp) ) *&
-                                               ( 1.0_wp - EXP( -vd_lu * dt_dh ) ) * dh
-                      ENDIF
-
-                   ENDIF
-                ENDDO
-             ENDDO
-
-          ENDIF
-       ENDDO
-    ENDIF
-!
-!-- Pavement.
-    IF ( ANY( do_pav_green ) )  THEN
-!
-!--    No vegetation on pavements:
-       lai_v = 0.0_wp
-       sai_v = 0.0_wp
-       sai_present = .FALSE.
-
-       slinnfac = 1.0_wp
-!
-!--    Get vd.
-       DO  lsp = 1, nvar
-!
-!--       Initialize.
-          vs     = 0.0_wp
-          vd_lu  = 0.0_wp
-          rs     = 0.0_wp
-          rb     = 0.0_wp
-          rc_tot = 0.0_wp
-!
-!--       Particulate matter.
-          IF ( spc_names(lsp) == 'PM10'  .OR.  spc_names(lsp) == 'PM25' )  THEN
-             IF ( spc_names(lsp) == 'PM10' )  THEN
-                part_type = 1
-             ELSEIF ( spc_names(lsp) == 'PM25' )  THEN
-                part_type = 2
-             ENDIF
-
-             DO  i = nxl, nxr
-                DO  j = nys, nyn
-                   m = mvec(j,i)
-
-                   match_lsm = ( m /= 0 )
-                   IF ( match_lsm  .AND.  do_pav_green(j,i) )  THEN
-!
-!--                   Sedimentation velocity.
-                      vs = slinnfac * sedimentation_velocity( particle_pars(ind_p_dens, part_type),&
-                                                              particle_pars(ind_p_size, part_type),&
-                                                              particle_pars(ind_p_slip, part_type),&
-                                                              visc_v(j,i))
-
-                      ustar_surf  = surf_lsm%us(m)
-
-                      CALL drydepo_aero_zhang_vd( vd_lu, rs, vs,                                   &
-                                                  particle_pars(ind_p_size, part_type),            &
-                                                  particle_pars(ind_p_slip, part_type),            &
-                                                  nwet_v(j,i), temp_tmp_v(j,i), dens_v(j,i),       &
-                                                  visc_v(j,i), lup_dep_v(j,i),                     &
-                                                  r_aero_surf_v(j,i), ustar_surf )
-
-                      k  = surf_lsm%k(m)
-                      dh = dzw(k)
-                      dt_dh = dt_chem / dh
-                      bud_lup_v(j,i,lsp) = -chem_species(lsp)%conc(k,j,i) *                        &
-                                           ( 1.0_wp - EXP( -vd_lu * dt_dh ) ) * dh
-
-                   ENDIF
-                ENDDO
-             ENDDO
-!
-!--       Gases.
-          ELSE
-!
-!--          Read spc_name of current species for gas parameter.
-             IF ( ANY( pspecnames(:) == spc_names(lsp) ) )  THEN
-                i_pspec = 0
-                DO  pspec = 1, nposp
-                   IF ( pspecnames(pspec) == spc_names(lsp) )  THEN
-                      i_pspec = pspec
-                   ENDIF
-                ENDDO
-
-             ELSE
-!
-!--             For now, other species are not deposited.
-                CYCLE
-             ENDIF
-!
-!--          Diffusivity for DEPAC relevant gases. Use default value.
-             diffusivity = 0.11E-4_wp
-!
-!--          Overwrite with known coefficients of diffusivity from Massman (1998)
-             IF ( spc_names(lsp) == 'NO2' )  diffusivity = 0.136E-4_wp
-             IF ( spc_names(lsp) == 'NO'  )  diffusivity = 0.199E-4_wp
-             IF ( spc_names(lsp) == 'O3'  )  diffusivity = 0.144E-4_wp
-             IF ( spc_names(lsp) == 'CO'  )  diffusivity = 0.176E-4_wp
-             IF ( spc_names(lsp) == 'SO2' )  diffusivity = 0.112E-4_wp
-             IF ( spc_names(lsp) == 'CH4' )  diffusivity = 0.191E-4_wp
-             IF ( spc_names(lsp) == 'NH3' )  diffusivity = 0.191E-4_wp
-
-             lai_v = 0.0_wp
-             sai_v = 0.0_wp
-             sai_present = .FALSE.
-
-             DO  i = nxl, nxr
-                DO  j = nys, nyn
-                   m = mvec(j,i)
-
-                   match_lsm = ( m /= 0 )
-                   IF ( match_lsm .AND. do_pav_green(j,i) )  THEN
-
-                      ustar_surf  = surf_lsm%us(m)
-                      ustar_surf_v(j,i)  = surf_lsm%us(m)
-                      z0h_surf    = surf_lsm%z0h(m)
-                      solar_rad   = surf_lsm%rad_sw_dir(m) + surf_lsm%rad_sw_dif(m)
-                      solar_rad_v(j,i) = solar_rad
-
-!--                   Temperature at i,j,k.
-                      temp_tmp = pt(k,j,i) * ( hyp(k) / 100000.0_wp )**0.286_wp
-                      ts       = temp_tmp - 273.15_wp  ! in degrees celcius
-
-                      lup_dep = lup_dep_v(j,i)
-!
-!--                   Get quasi-laminar boundary layer resistance rb.
-                      CALL get_rb_cell( ( lup_dep == ilu_water_sea )  .OR.                         &
-                                        ( lup_dep == ilu_water_inland ), z0h_surf, ustar_surf,     &
-                                          diffusivity, rb_v(j,i) )
-                   ENDIF
-                ENDDO
-             ENDDO
-
-!
-!--          Get rc_tot.
-             CALL drydepos_gas_depac( spc_names(lsp), mvec, ts_v, ustar_surf_v, sai_present,       &
-                                      solar_rad_v, cos_zenith, rh_surf_v, lai_v, sai_v, nwet_v,    &
-                                      lup_dep_v, 2, rc_tot_v, ccomp_tot(lsp), hyp(nzb),            &
-                                      diffusivity )
-
-             DO  i = nxl, nxr
-                DO  j = nys, nyn
-                   m = mvec(j,i)
-
-                   match_lsm = ( m /= 0 )
-
-                   IF ( match_lsm  .AND.  do_pav_green(j,i) )  THEN
-!
-!--                   Calculate budget.
-                      IF ( rc_tot_v(j,i) <= 0.0 )  THEN
-                         bud_lup_v(j,i,lsp) = 0.0_wp
-                      ELSE
-                         k  = surf_lsm%k(m)
-                         dh = dzw(k)
-                         dt_dh = dt_chem / dh
-
-                         vd_lu = 1.0_wp / ( r_aero_surf_v(j,i) + rb_v(j,i) + rc_tot_v(j,i) )
-                         bud_lup_v(j,i,lsp) = -( chem_species(lsp)%conc(k,j,i) - ccomp_tot(lsp) ) *&
-                                               ( 1.0_wp - EXP( -vd_lu * dt_dh ) ) * dh
-                      ENDIF
-
-                   ENDIF
-                ENDDO
-             ENDDO
-
-          ENDIF
-       ENDDO
-    ENDIF
-!
-!-- Water.
-    bud_luw_v = 0.0
-    IF ( ANY( do_wat_win ) )  THEN
-!
-!--    No vegetation on water:
-       lai_v = 0.0_wp
-       sai_v = 0.0_wp
-       sai_present = .FALSE.
-
-       slinnfac    = 1.0_wp
-!
-!--    Get vd
-       DO  lsp = 1, nvar
-!
-!--       Initialize
-          vs     = 0.0_wp
-          vd_lu  = 0.0_wp
-          rs     = 0.0_wp
-          rb     = 0.0_wp
-          rc_tot = 0.0_wp
-!
-!--       Particulate matter.
-          IF ( spc_names(lsp) == 'PM10' .OR.  spc_names(lsp) == 'PM25' )  THEN
-             IF ( spc_names(lsp) == 'PM10' )  THEN
-                part_type = 1
-             ELSEIF ( spc_names(lsp) == 'PM25' )  THEN
-                part_type = 2
-             ENDIF
-
-             DO  i = nxl, nxr
-                DO  j = nys, nyn
-                   m = mvec(j,i)
-
-                   match_lsm = ( m /= 0 )
-                   IF ( match_lsm  .AND.  do_wat_win(j,i) )  THEN
-!
-!--                   Sedimentation velocity:
-                      vs = slinnfac * sedimentation_velocity( particle_pars(ind_p_dens, part_type),&
-                                                              particle_pars(ind_p_size, part_type),&
-                                                              particle_pars(ind_p_slip, part_type),&
-                                                              visc_v(j,i))
-
-                      ustar_surf  = surf_lsm%us(m)
-
-                      CALL drydepo_aero_zhang_vd( vd_lu, rs, vs,                                   &
-                                                  particle_pars(ind_p_size, part_type),            &
-                                                  particle_pars(ind_p_slip, part_type),            &
-                                                  nwet_v(j,i), temp_tmp_v(j,i), dens_v(j,i),       &
-                                                  visc_v(j,i), luw_dep_v(j,i),                     &
-                                                  r_aero_surf_v(j,i), ustar_surf )
-
-                      k  = surf_lsm%k(m)
-                      dh = dzw(k)
-                      dt_dh = dt_chem / dh
-                      bud_luw_v(j,i,lsp) = -chem_species(lsp)%conc(k,j,i) *                        &
-                                           ( 1.0_wp - EXP( -vd_lu * dt_dh ) ) * dh
-
-                   ENDIF
-                ENDDO
-             ENDDO
-!
-!--       Gases.
-          ELSE
-!
-!--          Read spc_name of current species for gas PARAMETER.
-             IF ( ANY( pspecnames(:) == spc_names(lsp) ) )  THEN
-                i_pspec = 0
-                DO  pspec = 1, nposp
-                   IF ( pspecnames(pspec) == spc_names(lsp) )  THEN
-                      i_pspec = pspec
-                   ENDIF
-                ENDDO
-
-             ELSE
-!
-!--             For now, other species are not deposited.
-                CYCLE
-             ENDIF
-!
-!--          Diffusivity for DEPAC relevant gases. Use default value.
-             diffusivity = 0.11E-4_wp
-!
-!--          Overwrite with known coefficients of diffusivity from Massman (1998).
-             IF ( spc_names(lsp) == 'NO2' )  diffusivity = 0.136E-4_wp
-             IF ( spc_names(lsp) == 'NO'  )  diffusivity = 0.199E-4_wp
-             IF ( spc_names(lsp) == 'O3'  )  diffusivity = 0.144E-4_wp
-             IF ( spc_names(lsp) == 'CO'  )  diffusivity = 0.176E-4_wp
-             IF ( spc_names(lsp) == 'SO2' )  diffusivity = 0.112E-4_wp
-             IF ( spc_names(lsp) == 'CH4' )  diffusivity = 0.191E-4_wp
-             IF ( spc_names(lsp) == 'NH3' )  diffusivity = 0.191E-4_wp
-
-
-             DO  i = nxl, nxr
-                DO  j = nys, nyn
-                   m = mvec(j,i)
-
-                   match_lsm = ( m /= 0 )
-                   IF ( match_lsm .AND. do_pav_green(j,i) )  THEN
-
-                      ustar_surf  = surf_lsm%us(m)
-                      ustar_surf_v(j,i)  = surf_lsm%us(m)
-                      z0h_surf    = surf_lsm%z0h(m)
-                      solar_rad   = surf_lsm%rad_sw_dir(m) + surf_lsm%rad_sw_dif(m)
-                      solar_rad_v(j,i) = solar_rad
-
-!--                   Temperature at i,j,k.
-                      temp_tmp = pt(k,j,i) * ( hyp(k) / 100000.0_wp )**0.286_wp
-                      ts       = temp_tmp - 273.15_wp  ! in degrees celcius
-
-                      luw_dep = luw_dep_v(j,i)
-!
-!--                   Get quasi-laminar boundary layer resistance rb:
-                      CALL get_rb_cell( ( luw_dep == ilu_water_sea )  .OR.                         &
-                                        ( luw_dep == ilu_water_inland ), z0h_surf, ustar_surf,     &
-                                          diffusivity, rb_v(j,i) )
-                   ENDIF
-                ENDDO
-             ENDDO
-!
-!--          Get rc_tot.
-             CALL drydepos_gas_depac( spc_names(lsp), mvec, ts_v, ustar_surf_v, sai_present,       &
-                                      solar_rad_v, cos_zenith, rh_surf_v, lai_v, sai_v, nwet_v,    &
-                                      luw_dep_v, 2, rc_tot_v, ccomp_tot(lsp), hyp(nzb),            &
-                                      diffusivity )
-
-             DO  i = nxl, nxr
-                DO  j = nys, nyn
-                   m = mvec(j,i)
-
-                   match_lsm = ( m /= 0 )
-                   IF ( match_lsm  .AND.  do_wat_win(j,i) )  THEN
-!
-!--                   Calculate budget.
-                      IF ( rc_tot_v(j,i) <= 0.0 )  THEN
-                         bud_luw_v(j,i,lsp) = 0.0_wp
-                      ELSE
-                         k  = surf_lsm%k(m)
-                         dh = dzw(k)
-                         dt_dh = dt_chem / dh
-
-                         vd_lu = 1.0_wp / ( r_aero_surf_v(j,i) + rb_v(j,i) + rc_tot_v(j,i) )
-                         bud_luw_v(j,i,lsp) = -( chem_species(lsp)%conc(k,j,i) - ccomp_tot(lsp) ) *&
-                                               ( 1.0_wp - EXP( -vd_lu * dt_dh ) ) * dh
-                      ENDIF
-
-                   ENDIF
-                ENDDO
-             ENDDO
-
-          ENDIF
-       ENDDO
-    ENDIF
-!
-!-- Calculate overall budget for surface m and adapt concentration.
-    DO  i = nxl, nxr
-!NEC$ ivdep
-       DO  j = nys, nyn
-          m = mvec(j,i)
-
-          match_lsm = ( m /= 0 )
-!
-!--       For LSM surfaces.
-          IF ( match_lsm )  THEN
-             DO  lsp = 1, nspec
-
-                k  = surf_lsm%k(m)
-
-                bud = surf_lsm%frac(m,ind_veg_wall)  * bud_luv_v(j,i,lsp) +                        &
-                      surf_lsm%frac(m,ind_pav_green) * bud_lup_v(j,i,lsp) +                        &
-                      surf_lsm%frac(m,ind_wat_win)   * bud_luw_v(j,i,lsp)
-!
-!--             Compute new concentration.
-                chem_species(lsp)%conc(k,j,i) = MAX( 0.0_wp, chem_species(lsp)%conc(k,j,i) +       &
-                                                             bud * inv_dh_v(j,i) )
-
-             ENDDO
-
-          ENDIF
-       ENDDO
-    ENDDO
-!
-!-- For USM surfaces.
-!-- First, check if upward-facing USM surface exist and find its index. If more than one
-!-- upward-facing surface exist, take the last one.
-    mvec = 0
-    DO  i = nxl, nxr
-       DO  j = nys, nyn
-          DO  mm = surf_usm%start_index(j,i), surf_usm%end_index(j,i)
-             IF ( surf_usm%upward(mm) )  mvec(j,i) = mm
-          ENDDO
-       ENDDO
-    ENDDO
-
-    do_veg_wall  = .FALSE.
-    luu_dep_v    = 0
-    do_pav_green = .FALSE.
-    lug_dep_v    = 0
-    do_wat_win   = .FALSE.
-    lud_dep_v    = 0
-    sai_present  = .FALSE.
-
-!
-!-- Initialize budgets.
-    bud_luu_v = 0.0_wp
-    bud_lug_v = 0.0_wp
-    bud_lud_v = 0.0_wp
-
-    DO  i = nxl, nxr
-       DO  j = nys, nyn
-          m = mvec(j,i)
-
-          match_usm = ( m /= 0 )
-
-          IF ( match_usm )  THEN
-             k = surf_usm%k(m)
-!
-!--          Get needed variables for surface element m.
-             ustar_surf  = surf_usm%us(m)
-             z0h_surf    = surf_usm%z0h(m)
-             r_aero_surf = surf_usm%r_a(m)
-             solar_rad   = surf_usm%rad_sw_dir(m) + surf_usm%rad_sw_dif(m)
-             solar_rad_v(j,i) = solar_rad
-             lai_v(j,i) = surf_usm%lai(m)
-             sai_v(j,i) = lai + 1
-             sai_present(j,i) = .TRUE.
-
-!--          For small grid spacing neglect r_a.
-             IF ( dzw(k) <= 1.0_wp )  THEN
-                r_aero_surf = 0.0_wp
-             ENDIF
-             r_aero_surf_v(j,i) = r_aero_surf
-!
-!--          Initialize lu's.
-             luu_palm = 0
-             luu_dep  = 0
-             lug_palm = 0
-             lug_dep  = 0
-             lud_palm = 0
-             lud_dep  = 0
-!
-!--          Assign DEPAC lu for green wall surfaces.
-             IF ( surf_usm%frac(m,ind_pav_green) > 0 )  THEN
-!
-!--             For green urban surfaces, i.e. green roofs assume LU short grass.
-                lug_palm = ind_luv_s_grass
-                lug_dep = 1
-                do_pav_green(j,i) = .TRUE.
-             ENDIF
-             lug_dep_v(j,i) = lug_dep
-!
-!--          Wall surfaces.
-             IF ( surf_usm%frac(m,ind_veg_wall) > 0 )  THEN
-!
-!--             For walls in USM assume concrete walls/roofs,
-!--             assumed LU class desert as also assumed for pavements in LSM.
-                luu_palm = ind_lup_conc
-                luu_dep = 9
-                do_veg_wall(j,i) = .TRUE.
-             ENDIF
-             luu_dep_v(j,i) = luu_dep
-!
-!--          Window surfaces.
-             IF ( surf_usm%frac(m,ind_wat_win) > 0 )  THEN
-!
-!--             For windows in USM assume metal as this is as close as we get,
-!--             assumed LU class desert as also assumed for pavements in LSM.
-                lud_palm = ind_lup_metal
-                lud_dep = 9
-                do_wat_win(j,i) = .TRUE.
-             ENDIF
-             lud_dep_v(j,i) = lud_dep
-
-!
-!--          @TODO: Activate these lines as soon as new ebsolver branch is merged:
-!--          Set wetness indicator to dry or wet for usm vegetation or pavement.
-             !IF ( surf_usm%c_liq(m) > 0 )  THEN
-             !   nwet = 1
-             !ELSE
-             nwet = 0
-             !ENDIF
-             nwet_v(j,i) = nwet
-!
-!--          Compute length of time step.
-             IF ( call_chem_at_all_substeps )  THEN
-                dt_chem = dt_3d * weight_pres(intermediate_timestep_count)
-             ELSE
-                dt_chem = dt_3d
-             ENDIF
-
-             dh = dzw(k)
-             inv_dh = 1.0_wp / dh
-             dt_dh = dt_chem / dh
-!
-!--          Temperature at i,j,k
-             temp_tmp = pt(k,j,i) * ( hyp(k) / 100000.0_wp )**0.286_wp
-             temp_tmp_v(j,i) = temp_tmp
-
-             ts       = temp_tmp - 273.15_wp  !< in degrees celcius
-             ts_v(j,i) = temp_tmp - 273.15_wp  !< in degrees celcius
-!
-!--          Viscosity of air
-             visc = 1.496E-6_wp * temp_tmp**1.5_wp / ( temp_tmp + 120.0_wp )
-             visc_v(j,i) = visc
-!
-!--          Air density at k
-             dens = rho_air_zw(k)
-             dens_v(j,i) = dens
-!
-!--          Calculate relative humidity from specific humidity for DEPAC
-             qv_tmp = MAX( q(k,j,i), 0.0_wp )
-             rh_surf = relativehumidity_from_specifichumidity( qv_tmp, temp_tmp, hyp(k) )
-             rh_surf_v(j,i) = rh_surf
-          ENDIF
-          inv_dh_v(j,i) = inv_dh
-       ENDDO
-    ENDDO
-!
-!-- Check if surface fraction (vegetation, pavement or water) > 0 and calculate vd and budget
-!-- for each surface fraction. Then derive overall budget taking into account the surface
-!-- fractions.
-!-- Walls/roofs
-    IF ( ANY( do_veg_wall ) )  THEN
-
-       slinnfac = 1.0_wp
-!
-!--    Get deposition velocity vd.
-       DO  lsp = 1, nvar
-!
-!--       Initialize
-          vs     = 0.0_wp
-          vd_lu  = 0.0_wp
-          rs     = 0.0_wp
-          rb     = 0.0_wp
-          rc_tot = 0.0_wp
-!
-!--       Particulate matter.
-          IF ( spc_names(lsp) == 'PM10'  .OR.  spc_names(lsp) == 'PM25' )  THEN
-             IF ( spc_names(lsp) == 'PM10' )  THEN
-                part_type = 1
-             ELSEIF ( spc_names(lsp) == 'PM25' )  THEN
-                part_type = 2
-             ENDIF
-
-             DO  i = nxl, nxr
-                DO  j = nys, nyn
-                   m = mvec(j,i)
-
-                   match_usm = ( m /= 0 )
-                   IF ( match_usm  .AND.  do_veg_wall(j,i) )  THEN
-!
-!--                   Sedimentation velocity:
-                      vs = slinnfac *                                                              &
-                           sedimentation_velocity( particle_pars(ind_p_dens, part_type),           &
-                                                   particle_pars(ind_p_size, part_type),           &
-                                                   particle_pars(ind_p_slip, part_type),           &
-                                                   visc_v(j,i))
-
-                      ustar_surf  = surf_usm%us(m)
-                      r_aero_surf = surf_usm%r_a(m)
-
-                      CALL drydepo_aero_zhang_vd( vd_lu, rs, vs,                                   &
-                                                  particle_pars(ind_p_size, part_type),            &
-                                                  particle_pars(ind_p_slip, part_type),            &
-                                                  nwet_v(j,i), temp_tmp_v(j,i), dens_v(j,i),       &
-                                                  visc_v(j,i), luu_dep_v(j,i),                     &
-                                                  r_aero_surf, ustar_surf )
-
-                      k  = surf_usm%k(m)
-                      dh = dzw(k)
-                      dt_dh = dt_chem / dh
-                      bud_luu_v(j,i,lsp) = -chem_species(lsp)%conc(k,j,i) *                        &
-                                           ( 1.0_wp - EXP( -vd_lu * dt_dh ) ) * dh
-
-                   ENDIF
-                ENDDO
-             ENDDO
-!
-!--       Gases.
-          ELSE
-!
-!--          Read spc_name of current species for gas parameter.
-             IF ( ANY( pspecnames(:) == spc_names(lsp) ) )  THEN
-                i_pspec = 0
-                DO  pspec = 1, nposp
-                   IF ( pspecnames(pspec) == spc_names(lsp) )  THEN
-                      i_pspec = pspec
-                   ENDIF
-                ENDDO
-             ELSE
-!
-!--             For now, other species are not deposited.
-                CYCLE
-             ENDIF
-!
-!--          Diffusivity for DEPAC relevant gases. Use default value.
-             diffusivity = 0.11E-4_wp
-!
-!--          Overwrite with known coefficients of diffusivity from Massman (1998).
-             IF ( spc_names(lsp) == 'NO2' )  diffusivity = 0.136E-4_wp
-             IF ( spc_names(lsp) == 'NO'  )  diffusivity = 0.199E-4_wp
-             IF ( spc_names(lsp) == 'O3'  )  diffusivity = 0.144E-4_wp
-             IF ( spc_names(lsp) == 'CO'  )  diffusivity = 0.176E-4_wp
-             IF ( spc_names(lsp) == 'SO2' )  diffusivity = 0.112E-4_wp
-             IF ( spc_names(lsp) == 'CH4' )  diffusivity = 0.191E-4_wp
-             IF ( spc_names(lsp) == 'NH3' )  diffusivity = 0.191E-4_wp
-!
-!--          Get quasi-laminar boundary layer resistance rb.
-             DO  i = nxl, nxr
-                DO  j = nys, nyn
-                   m = mvec(j,i)
-
-                   match_usm = ( m /= 0 )
-                   IF ( match_usm  .AND.  do_veg_wall(j,i) )  THEN
-
-                      lai_v(j,i) = 0.0_wp
-                      sai_v(j,i) = 0.0_wp
-                      sai_present(j,i) = .FALSE.
-
-                      ustar_surf  = surf_usm%us(m)
-                      ustar_surf_v(j,i)  = surf_usm%us(m)
-                      z0h_surf    = surf_usm%z0h(m)
-                      solar_rad   = surf_usm%rad_sw_dir(m) + surf_usm%rad_sw_dif(m)
-                      solar_rad_v(j,i) = solar_rad
-!
-!--                   Temperature at i,j,k.
-                      temp_tmp = pt(k,j,i) * ( hyp(k) / 100000.0_wp )**0.286_wp
-                      ts       = temp_tmp - 273.15_wp  ! in degrees celcius
-
-                      luu_dep = luu_dep_v(j,i)
-!
-!--                   Get quasi-laminar boundary layer resistance rb.
-                      CALL get_rb_cell( ( luu_dep == ilu_water_sea )  .OR.                         &
-                                        ( luu_dep == ilu_water_inland ), z0h_surf, ustar_surf,     &
-                                          diffusivity, rb_v(j,i) )
-                   ENDIF
-                ENDDO
-             ENDDO
-!
-!--          Get rc_tot.
-             CALL drydepos_gas_depac( spc_names(lsp), mvec, ts_v, ustar_surf_v, sai_present,       &
-                                      solar_rad_v, cos_zenith, rh_surf_v, lai_v, sai_v, nwet_v,    &
-                                      luu_dep_v, 2, rc_tot_v, ccomp_tot(lsp), hyp(nzb),            &
-                                      diffusivity )
-
-!
-!--          Calculate budget.
-             DO  i = nxl, nxr
-                DO  j = nys, nyn
-                   m = mvec(j,i)
-
-                   match_usm = ( m /= 0 )
-                   IF ( match_usm  .AND.  do_veg_wall(j,i) )  THEN
-!
-!--                   Calculate budget
-                      IF ( rc_tot_v(j,i) <= 0.0_wp )  THEN
-                         bud_luu_v(j,i,lsp) = 0.0_wp
-                      ELSE
-                         k  = surf_usm%k(m)
-                         dh = dzw(k)
-                         dt_dh = dt_chem / dh
-                         vd_lu = 1.0_wp / ( r_aero_surf_v(j,i) + rb_v(j,i) + rc_tot_v(j,i) )
-                         bud_luu_v(j,i,lsp) = -( chem_species(lsp)%conc(k,j,i) - ccomp_tot(lsp) ) *&
-                                               ( 1.0_wp - EXP( -vd_lu * dt_dh ) ) * dh
-                      ENDIF
-
-                   ENDIF
-                ENDDO
-             ENDDO
-
-          ENDIF
-       ENDDO
-    ENDIF
-
-!
-!-- Green usm surfaces.
-    IF ( ANY( do_pav_green ) )  THEN
-
-       slinnfac = 1.0_wp
-!
-!--    Get vd.
-       DO  lsp = 1, nvar
-!
-!--       Initialize.
-          vs     = 0.0_wp
-          vd_lu  = 0.0_wp
-          rs     = 0.0_wp
-          rb     = 0.0_wp
-          rc_tot = 0.0_wp
-!
-!--       Particulate matter.
-          IF ( spc_names(lsp) == 'PM10'  .OR.  spc_names(lsp) == 'PM25')  THEN
-             IF ( spc_names(lsp) == 'PM10' )  THEN
-                part_type = 1
-             ELSEIF ( spc_names(lsp) == 'PM25' )  THEN
-                part_type = 2
-             ENDIF
-
-             DO  i = nxl, nxr
-                DO  j = nys, nyn
-                   m = mvec(j,i)
-
-                   match_usm = ( m /= 0 )
-                   IF ( match_usm  .AND.  do_pav_green(j,i) )  THEN
-!
-!--                   Sedimentation velocity:
-                      vs = slinnfac *                                                              &
-                           sedimentation_velocity( particle_pars(ind_p_dens, part_type),           &
-                                                   particle_pars(ind_p_size, part_type),           &
-                                                   particle_pars(ind_p_slip, part_type),           &
-                                                   visc_v(j,i))
-
-                      ustar_surf  = surf_usm%us(m)
-
-                      CALL drydepo_aero_zhang_vd( vd_lu, rs, vs,                                   &
-                                                  particle_pars(ind_p_size, part_type),            &
-                                                  particle_pars(ind_p_slip, part_type),            &
-                                                  nwet_v(j,i), temp_tmp_v(j,i), dens_v(j,i),       &
-                                                  visc_v(j,i), lug_dep_v(j,i),                     &
-                                                  r_aero_surf_v(j,i), ustar_surf )
-
-                      k  = surf_usm%k(m)
-                      dh = dzw(k)
-                      dt_dh = dt_chem / dh
-                      bud_lug_v(j,i,lsp) = -chem_species(lsp)%conc(k,j,i) *                        &
-                                           ( 1.0_wp - EXP( -vd_lu * dt_dh ) ) * dh
-
-                   ENDIF
-                ENDDO
-             ENDDO
-!
-!--       Gases.
-          ELSE
-!
-!--          Read spc_name of current species for gas parameter.
-             IF ( ANY( pspecnames(:) == spc_names(lsp) ) )  THEN
-                i_pspec = 0
-                DO  pspec = 1, nposp
-                   IF ( pspecnames(pspec) == spc_names(lsp) )  THEN
-                      i_pspec = pspec
-                   ENDIF
-                ENDDO
-             ELSE
-!
-!--             For now, other species are not deposited.
-                CYCLE
-             ENDIF
-!
-!--          Diffusivity for DEPAC relevant gases. Use default value.
-             diffusivity = 0.11E-4_wp
-!
-!--          Overwrite with known coefficients of diffusivity from Massman (1998).
-             IF ( spc_names(lsp) == 'NO2' )  diffusivity = 0.136E-4_wp
-             IF ( spc_names(lsp) == 'NO'  )  diffusivity = 0.199E-4_wp
-             IF ( spc_names(lsp) == 'O3'  )  diffusivity = 0.144E-4_wp
-             IF ( spc_names(lsp) == 'CO'  )  diffusivity = 0.176E-4_wp
-             IF ( spc_names(lsp) == 'SO2' )  diffusivity = 0.112E-4_wp
-             IF ( spc_names(lsp) == 'CH4' )  diffusivity = 0.191E-4_wp
-             IF ( spc_names(lsp) == 'NH3' )  diffusivity = 0.191E-4_wp
-!
-!--          Get quasi-laminar boundary layer resistance rb.
-             DO  i = nxl, nxr
-                DO  j = nys, nyn
-                   m = mvec(j,i)
-
-                   match_usm = ( m /= 0 )
-                   IF ( match_usm  .AND.  do_pav_green(j,i) )  THEN
-
-                      lug_palm = ind_luv_s_grass
-                      IF ( ( lug_palm == ind_luv_b_soil )  .OR.                                    &
-                           ( lug_palm == ind_luv_desert )  .OR.                                    &
-                           ( lug_palm == ind_luv_ice ) ) THEN
-
-                         lai_v(j,i) = 0.0_wp
-                         sai_v(j,i) = 0.0_wp
-                         sai_present(j,i) = .FALSE.
-
-                      ENDIF
-
-                      ustar_surf  = surf_usm%us(m)
-                      ustar_surf_v(j,i)  = surf_usm%us(m)
-                      z0h_surf    = surf_usm%z0h(m)
-                      solar_rad   = surf_usm%rad_sw_dir(m) + surf_usm%rad_sw_dif(m)
-                      solar_rad_v(j,i) = solar_rad
-
-!--                   Temperature at i,j,k.
-                      temp_tmp = pt(k,j,i) * ( hyp(k) / 100000.0_wp )**0.286_wp
-                      ts       = temp_tmp - 273.15_wp  ! in degrees celcius
-
-                      lug_dep = lug_dep_v(j,i)
-!
-!--                   Get quasi-laminar boundary layer resistance rb.
-                      CALL get_rb_cell( ( lug_dep == ilu_water_sea )  .OR.                         &
-                                        ( lug_dep == ilu_water_inland ), z0h_surf, ustar_surf,     &
-                                          diffusivity, rb_v(j,i) )
-                   ENDIF
-                ENDDO
-             ENDDO
-!
-!--          Get rc_tot
-             CALL drydepos_gas_depac( spc_names(lsp), mvec, ts_v, ustar_surf_v, sai_present,       &
-                                      solar_rad_v, cos_zenith, rh_surf_v, lai_v, sai_v, nwet_v,    &
-                                      lug_dep_v, 2, rc_tot_v, ccomp_tot(lsp), hyp(nzb),            &
-                                      diffusivity )
-
-             DO  i = nxl, nxr
-                DO  j = nys, nyn
-                   m = mvec(j,i)
-
-                   match_usm = ( m /= 0 )
-                   IF ( match_usm  .AND.  do_pav_green(j,i) )  THEN
-!
-!--                   Calculate budget.
-                      IF ( rc_tot_v(j,i) <= 0.0_wp )  THEN
-                         bud_lug_v(j,i,lsp) = 0.0_wp
-                      ELSE
-                         k  = surf_usm%k(m)
-                         dh = dzw(k)
-                         dt_dh = dt_chem / dh
-
-                         vd_lu = 1.0_wp / ( r_aero_surf_v(j,i) + rb_v(j,i) + rc_tot_v(j,i) )
-                         bud_lug_v(j,i,lsp) = -( chem_species(lsp)%conc(k,j,i) - ccomp_tot(lsp) ) *&
-                                               ( 1.0_wp - EXP( -vd_lu * dt_dh ) ) * dh
-                      ENDIF
-
-                   ENDIF
-                ENDDO
-             ENDDO
-
-          ENDIF
-       ENDDO
-    ENDIF
-!
-!-- Windows.
-    IF ( ANY( do_wat_win) )  THEN
-
-       slinnfac = 1.0_wp
-!
-!--    Get vd.
-       DO  lsp = 1, nvar
-!
-!--       Initialize.
-          vs     = 0.0_wp
-          vd_lu  = 0.0_wp
-          rs     = 0.0_wp
-          rb     = 0.0_wp
-          rc_tot = 0.0_wp
-!
-!--       Particulate matter.
-          IF ( spc_names(lsp) == 'PM10'  .OR.  spc_names(lsp) == 'PM25')  THEN
-             IF ( spc_names(lsp) == 'PM10' )  THEN
-                part_type = 1
-             ELSEIF ( spc_names(lsp) == 'PM25' )  THEN
-                part_type = 2
-             ENDIF
-
-             DO  i = nxl, nxr
-                DO  j = nys, nyn
-                   m = mvec(j,i)
-
-                   match_usm = ( m /= 0 )
-                   IF ( match_usm  .AND.  do_wat_win(j,i) )  THEN
-!
-!--                   Sedimentation velocity.
-                      vs = slinnfac *                                                              &
-                           sedimentation_velocity( particle_pars(ind_p_dens, part_type),           &
-                                                   particle_pars(ind_p_size, part_type),           &
-                                                   particle_pars(ind_p_slip, part_type),           &
-                                                   visc_v(j,i))
-
-                      ustar_surf  = surf_usm%us(m)
-
-                      CALL drydepo_aero_zhang_vd( vd_lu, rs,                                       &
-                                                  vs,                                              &
-                                                  particle_pars(ind_p_size, part_type),            &
-                                                  particle_pars(ind_p_slip, part_type),            &
-                                                  nwet_v(j,i), temp_tmp_v(j,i), dens_v(j,i),       &
-                                                  visc_v(j,i), lud_dep_v(j,i),                     &
-                                                  r_aero_surf_v(j,i), ustar_surf )
-
-                      k  = surf_usm%k(m)
-                      dh = dzw(k)
-                      dt_dh = dt_chem / dh
-                      bud_lud_v(j,i,lsp) = -chem_species(lsp)%conc(k,j,i) *                        &
-                                           ( 1.0_wp - EXP( -vd_lu * dt_dh ) ) * dh
-
-                   ENDIF
-                ENDDO
-             ENDDO
-!
-!--       Gases.
-          ELSE
-!
-!--          Read spc_name of current species for gas PARAMETER.
-             IF ( ANY( pspecnames(:) == spc_names(lsp) ) )  THEN
-                i_pspec = 0
-                DO  pspec = 1, nposp
-                   IF ( pspecnames(pspec) == spc_names(lsp) )  THEN
-                      i_pspec = pspec
-                   END IF
-                ENDDO
-             ELSE
-!
-!--             For now, other species are not deposited.
-                CYCLE
-             ENDIF
-!
-!--          Diffusivity for DEPAC relevant gases. Use default value.
-             diffusivity = 0.11E-4_wp
-!
-!--          Overwrite with known coefficients of diffusivity from Massman (1998).
-             IF ( spc_names(lsp) == 'NO2' )  diffusivity = 0.136E-4_wp
-             IF ( spc_names(lsp) == 'NO'  )  diffusivity = 0.199E-4_wp
-             IF ( spc_names(lsp) == 'O3'  )  diffusivity = 0.144E-4_wp
-             IF ( spc_names(lsp) == 'CO'  )  diffusivity = 0.176E-4_wp
-             IF ( spc_names(lsp) == 'SO2' )  diffusivity = 0.112E-4_wp
-             IF ( spc_names(lsp) == 'CH4' )  diffusivity = 0.191E-4_wp
-             IF ( spc_names(lsp) == 'NH3' )  diffusivity = 0.191E-4_wp
-!
-!--          Get quasi-laminar boundary layer resistance rb,
-             DO  i = nxl, nxr
-                DO  j = nys, nyn
-                   m = mvec(j,i)
-
-                   match_usm = ( m /= 0 )
-                   IF ( match_usm  .AND.  do_wat_win(j,i) )  THEN
-!
-!--                   No vegetation on water.
-                      lai_v(j,i) = 0.0_wp
-                      sai_v(j,i) = 0.0_wp
-                      sai_present(j,i) = .FALSE.
-
-                      ustar_surf  = surf_usm%us(m)
-                      ustar_surf_v(j,i)  = surf_usm%us(m)
-                      z0h_surf    = surf_usm%z0h(m)
-                      solar_rad   = surf_usm%rad_sw_dir(m) + surf_usm%rad_sw_dif(m)
-                      solar_rad_v(j,i) = solar_rad
-
-!--                   Temperature at i,j,k
-                      temp_tmp = pt(k,j,i) * ( hyp(k) / 100000.0_wp )**0.286_wp
-                      ts       = temp_tmp - 273.15_wp  ! in degrees celcius
-
-                      lud_dep = lud_dep_v(j,i)
-!
-!--                   Get quasi-laminar boundary layer resistance rb.
-                      CALL get_rb_cell( ( lud_dep == ilu_water_sea )  .OR.                         &
-                                        ( lud_dep == ilu_water_inland ), z0h_surf, ustar_surf,     &
-                                          diffusivity, rb_v(j,i) )
-                   ENDIF
-                ENDDO
-             ENDDO
-!
-!--          Get rc_tot.
-             CALL drydepos_gas_depac( spc_names(lsp), mvec, ts_v, ustar_surf_v, sai_present,       &
-                                      solar_rad_v, cos_zenith, rh_surf_v, lai_v, sai_v, nwet_v,    &
-                                      lud_dep_v, 2, rc_tot_v, ccomp_tot(lsp), hyp(nzb),            &
-                                      diffusivity )
-
-             DO  i = nxl, nxr
-                DO  j = nys, nyn
-                   m = mvec(j,i)
-
-                   match_usm = ( m /= 0 )
-                   IF ( match_usm .AND. do_wat_win(j,i) )  THEN
-!
-!--                   Calculate budget.
-                      IF ( rc_tot_v(j,i) <= 0.0 )  THEN
-                         bud_lud_v(j,i,lsp) = 0.0_wp
-                      ELSE
-                         k  = surf_usm%k(m)
-                         dh = dzw(k)
-                         dt_dh = dt_chem/dh
-
-                         vd_lu = 1.0_wp / ( r_aero_surf_v(j,i) + rb_v(j,i) + rc_tot_v(j,i) )
-                         bud_lud_v(j,i,lsp) = -( chem_species(lsp)%conc(k,j,i) - ccomp_tot(lsp) ) *&
-                                               ( 1.0_wp - EXP( -vd_lu * dt_dh ) ) * dh
-                      ENDIF
-
-                   ENDIF
-                ENDDO
-             ENDDO
-
-          ENDIF
-       ENDDO
-    ENDIF
-!
-!-- Calculate overall budget for surface m and adapt concentration.
-    DO  i = nxl, nxr
-!NEC$ ivdep
-       DO  j = nys, nyn
-          m = mvec(j,i)
-
-          match_usm = ( m /= 0 )
-!
-!--       For USM surfaces.
-          IF ( match_usm )  THEN
-
-             DO  lsp = 1, nspec
-                k  = surf_usm%k(m)
-
-                bud = surf_usm%frac(m,ind_veg_wall)  * bud_luu_v(j,i,lsp) +                        &
-                      surf_usm%frac(m,ind_pav_green) * bud_lug_v(j,i,lsp) +                        &
-                      surf_usm%frac(m,ind_wat_win)   * bud_lud_v(j,i,lsp)
-!
-!--             Compute new concentration.
-                chem_species(lsp)%conc(k,j,i) = MAX( 0.0_wp, chem_species(lsp)%conc(k,j,i) +       &
-                                                             bud * inv_dh_v(j,i) )
-
-             ENDDO
-          ENDIF
-       ENDDO
-    ENDDO
-
- END SUBROUTINE chem_depo
-
-
-!--------------------------------------------------------------------------------------------------!
-! Description:
-! ------------
-!> Subroutine to calculate the deposition of gases and PMs. For now deposition only takes place on
-!> lsm and usm horizontal upward faceing surfaces. Default surfaces are NOT considered.
-!> The deposition of particlesis derived following Zhang et al., 2001, gases are deposited using
 !>  the DEPAC module (van Zanten et al., 2010).
 !>
 !> @TODO: Consider deposition on vertical surfaces
@@ -5084,226 +3500,334 @@
 !> @TODO: Consider resolved vegetation
 !> @TODO: Check error messages
 !--------------------------------------------------------------------------------------------------!
- SUBROUTINE chem_depo_ij( i, j )
+ SUBROUTINE chem_depo( i, j )
 
-!
-!-- List of names of possible tracers
-    CHARACTER(LEN=*), PARAMETER ::  pspecnames(nposp) =                                            &
-                                    (/ 'NO2           ',                       &    !< NO2
-                                       'NO            ',                       &    !< NO
-                                       'O3            ',                       &    !< O3
-                                       'CO            ',                       &    !< CO
-                                       'form          ',                       &    !< FORM
-                                       'ald           ',                       &    !< ALD
-                                       'pan           ',                       &    !< PAN
-                                       'mgly          ',                       &    !< MGLY
-                                       'par           ',                       &    !< PAR
-                                       'ole           ',                       &    !< OLE
-                                       'eth           ',                       &    !< ETH
-                                       'tol           ',                       &    !< TOL
-                                       'cres          ',                       &    !< CRES
-                                       'xyl           ',                       &    !< XYL
-                                       'SO4a_f        ',                       &    !< SO4a_f
-                                       'SO2           ',                       &    !< SO2
-                                       'HNO2          ',                       &    !< HNO2
-                                       'CH4           ',                       &    !< CH4
-                                       'NH3           ',                       &    !< NH3
-                                       'NO3           ',                       &    !< NO3
-                                       'OH            ',                       &    !< OH
-                                       'HO2           ',                       &    !< HO2
-                                       'N2O5          ',                       &    !< N2O5
-                                       'SO4a_c        ',                       &    !< SO4a_c
-                                       'NH4a_f        ',                       &    !< NH4a_f
-                                       'NO3a_f        ',                       &    !< NO3a_f
-                                       'NO3a_c        ',                       &    !< NO3a_c
-                                       'C2O3          ',                       &    !< C2O3
-                                       'XO2           ',                       &    !< XO2
-                                       'XO2N          ',                       &    !< XO2N
-                                       'cro           ',                       &    !< CRO
-                                       'HNO3          ',                       &    !< HNO3
-                                       'H2O2          ',                       &    !< H2O2
-                                       'iso           ',                       &    !< ISO
-                                       'ispd          ',                       &    !< ISPD
-                                       'to2           ',                       &    !< TO2
-                                       'open          ',                       &    !< OPEN
-                                       'terp          ',                       &    !< TERP
-                                       'ec_f          ',                       &    !< EC_f
-                                       'ec_c          ',                       &    !< EC_c
-                                       'pom_f         ',                       &    !< POM_f
-                                       'pom_c         ',                       &    !< POM_c
-                                       'ppm_f         ',                       &    !< PPM_f
-                                       'ppm_c         ',                       &    !< PPM_c
-                                       'na_ff         ',                       &    !< Na_ff
-                                       'na_f          ',                       &    !< Na_f
-                                       'na_c          ',                       &    !< Na_c
-                                       'na_cc         ',                       &    !< Na_cc
-                                       'na_ccc        ',                       &    !< Na_ccc
-                                       'dust_ff       ',                       &    !< dust_ff
-                                       'dust_f        ',                       &    !< dust_f
-                                       'dust_c        ',                       &    !< dust_c
-                                       'dust_cc       ',                       &    !< dust_cc
-                                       'dust_ccc      ',                       &    !< dust_ccc
-                                       'tpm10         ',                       &    !< tpm10
-                                       'tpm25         ',                       &    !< tpm25
-                                       'tss           ',                       &    !< tss
-                                       'tdust         ',                       &    !< tdust
-                                       'tc            ',                       &    !< tc
-                                       'tcg           ',                       &    !< tcg
-                                       'tsoa          ',                       &    !< tsoa
-                                       'tnmvoc        ',                       &    !< tnmvoc
-                                       'SOxa          ',                       &    !< SOxa
-                                       'NOya          ',                       &    !< NOya
-                                       'NHxa          ',                       &    !< NHxa
-                                       'NO2_obs       ',                       &    !< NO2_obs
-                                       'tpm10_biascorr',                       &    !< tpm10_biascorr
-                                       'tpm25_biascorr',                       &    !< tpm25_biascorr
-                                       'O3_biascorr   ' /)                          !< O3_biascorr
+    USE control_parameters,                                                                        &
+         ONLY:  dt_3d, intermediate_timestep_count, latitude, time_since_reference_point
 
-    INTEGER(iwp) ::  i            !< grid index in x-direction
-    INTEGER(iwp) ::  i_pspec      !< index for matching depac gas component
-    INTEGER(iwp) ::  j            !< grid index in y-direction
-    INTEGER(iwp) ::  k            !< matching k to surface m at i,j
-    INTEGER(iwp) ::  lsp          !< running index for chem spcs.
-    INTEGER(iwp) ::  luv_palm     !< index of PALM LSM vegetation_type at current surface element
-    INTEGER(iwp) ::  lup_palm     !< index of PALM LSM pavement_type at current surface element
-    INTEGER(iwp) ::  luw_palm     !< index of PALM LSM water_type at current surface element
-    INTEGER(iwp) ::  luu_palm     !< index of PALM USM walls/roofs at current surface element
-    INTEGER(iwp) ::  lug_palm     !< index of PALM USM green walls/roofs at current surface element
-    INTEGER(iwp) ::  lud_palm     !< index of PALM USM windows at current surface element
-    INTEGER(iwp) ::  luv_dep      !< matching DEPAC LU to luv_palm
-    INTEGER(iwp) ::  lup_dep      !< matching DEPAC LU to lup_palm
-    INTEGER(iwp) ::  luw_dep      !< matching DEPAC LU to luw_palm
-    INTEGER(iwp) ::  luu_dep      !< matching DEPAC LU to luu_palm
-    INTEGER(iwp) ::  lug_dep      !< matching DEPAC LU to lug_palm
-    INTEGER(iwp) ::  lud_dep      !< matching DEPAC LU to lud_palm
-    INTEGER(iwp) ::  m            !< index for horizontal surfaces
-    INTEGER(iwp) ::  mm           !< running index for horizontal surfaces
-    INTEGER(iwp) ::  pspec        !< running index
-!
-!-- Vegetation.
-!.. Assign PALM classes to DEPAC land use classes.
-    INTEGER(iwp) ::  ind_luv_user = 0             !<  ERROR as no class given in PALM
-    INTEGER(iwp) ::  ind_luv_b_soil = 1           !<  assigned to ilu_desert
-    INTEGER(iwp) ::  ind_luv_mixed_crops = 2      !<  assigned to ilu_arable
-    INTEGER(iwp) ::  ind_luv_s_grass = 3          !<  assigned to ilu_grass
-    INTEGER(iwp) ::  ind_luv_ev_needle_trees = 4  !<  assigned to ilu_coniferous_forest
-    INTEGER(iwp) ::  ind_luv_de_needle_trees = 5  !<  assigned to ilu_coniferous_forest
-    INTEGER(iwp) ::  ind_luv_ev_broad_trees = 6   !<  assigned to ilu_tropical_forest
-    INTEGER(iwp) ::  ind_luv_de_broad_trees = 7   !<  assigned to ilu_deciduous_forest
-    INTEGER(iwp) ::  ind_luv_t_grass = 8          !<  assigned to ilu_grass
-    INTEGER(iwp) ::  ind_luv_desert = 9           !<  assigned to ilu_desert
-    INTEGER(iwp) ::  ind_luv_tundra = 10          !<  assigned to ilu_other
-    INTEGER(iwp) ::  ind_luv_irr_crops = 11       !<  assigned to ilu_arable
-    INTEGER(iwp) ::  ind_luv_semidesert = 12      !<  assigned to ilu_other
-    INTEGER(iwp) ::  ind_luv_ice = 13             !<  assigned to ilu_ice
-    INTEGER(iwp) ::  ind_luv_marsh = 14           !<  assigned to ilu_other
-    INTEGER(iwp) ::  ind_luv_ev_shrubs = 15       !<  assigned to ilu_mediterrean_scrub
-    INTEGER(iwp) ::  ind_luv_de_shrubs = 16       !<  assigned to ilu_mediterrean_scrub
-    INTEGER(iwp) ::  ind_luv_mixed_forest = 17    !<  assigned to ilu_coniferous_forest(ave(decid+conif))
-    INTEGER(iwp) ::  ind_luv_intrup_forest = 18   !<  assigned to ilu_other (ave(other+decid))
-!
-!-- Water.
-    INTEGER(iwp) ::  ind_luw_user = 0             !<  ERROR as no class given in PALM
-    INTEGER(iwp) ::  ind_luw_lake = 1             !<  assigned to ilu_water_inland
-    INTEGER(iwp) ::  ind_luw_river = 2            !<  assigned to ilu_water_inland
-    INTEGER(iwp) ::  ind_luw_ocean = 3            !<  assigned to ilu_water_sea
-    INTEGER(iwp) ::  ind_luw_pond = 4             !<  assigned to ilu_water_inland
-    INTEGER(iwp) ::  ind_luw_fountain = 5         !<  assigned to ilu_water_inland
-!
-!-- Pavement.
-    INTEGER(iwp) ::  ind_lup_user = 0             !<  ERROR as no class given in PALM
-    INTEGER(iwp) ::  ind_lup_asph_conc = 1        !<  assigned to ilu_desert
-    INTEGER(iwp) ::  ind_lup_asph = 2             !<  assigned to ilu_desert
-    INTEGER(iwp) ::  ind_lup_conc = 3             !<  assigned to ilu_desert
-    INTEGER(iwp) ::  ind_lup_sett = 4             !<  assigned to ilu_desert
-    INTEGER(iwp) ::  ind_lup_pav_stones = 5       !<  assigned to ilu_desert
-    INTEGER(iwp) ::  ind_lup_cobblest = 6         !<  assigned to ilu_desert
-    INTEGER(iwp) ::  ind_lup_metal = 7            !<  assigned to ilu_desert
-    INTEGER(iwp) ::  ind_lup_wood = 8             !<  assigned to ilu_desert
-    INTEGER(iwp) ::  ind_lup_gravel = 9           !<  assigned to ilu_desert
-    INTEGER(iwp) ::  ind_lup_f_gravel = 10        !<  assigned to ilu_desert
-    INTEGER(iwp) ::  ind_lup_pebblest = 11        !<  assigned to ilu_desert
-    INTEGER(iwp) ::  ind_lup_woodchips = 12       !<  assigned to ilu_desert
-    INTEGER(iwp) ::  ind_lup_tartan = 13          !<  assigned to ilu_desert
-    INTEGER(iwp) ::  ind_lup_art_turf = 14        !<  assigned to ilu_desert
-    INTEGER(iwp) ::  ind_lup_clay = 15            !<  assigned to ilu_desert
-!
-!-- Particle parameters according to the respective aerosol classes (PM25, PM10).
-    INTEGER(iwp) ::  ind_p_size = 1  !< index for partsize in particle_pars
-    INTEGER(iwp) ::  ind_p_dens = 2  !< index for rhopart in particle_pars
-    INTEGER(iwp) ::  ind_p_slip = 3  !< index for slipcor in particle_pars
-    INTEGER(iwp) ::  nwet            !< wetness indicator dor DEPAC; nwet=0 -> dry; nwet=1 -> wet; nwet=9 -> snow
-    INTEGER(iwp) ::  part_type       !< index for particle type (PM10 or PM25) in particle_pars
+    USE arrays_3d,                                                                                 &
+         ONLY:  dzw, rho_air_zw
 
-    LOGICAL ::  match_lsm  !< flag indicating natural-type surface
-    LOGICAL ::  match_usm  !< flag indicating urban-type surface
+    USE palm_date_time_mod,                                                                        &
+         ONLY:  get_date_time
 
-    REAL(wp) ::  dens           !< density at layer k at i,j
-    REAL(wp) ::  dh             !< vertical grid size
-    REAL(wp) ::  diffusivity    !< diffusivity
-    REAL(wp) ::  dt_chem        !< length of chem time step
-    REAL(wp) ::  dt_dh          !< dt_chem/dh
-    REAL(wp) ::  inv_dh         !< inverse of vertical grid size
-    REAL(wp) ::  lai            !< leaf area index at current surface element
-    REAL(wp) ::  ppm2ugm3       !< conversion factor from ppm to ug/m3
-    REAL(wp) ::  qv_tmp         !< surface mixing ratio at current surface element
-    REAL(wp) ::  r_aero_surf    !< aerodynamic resistance (s/m) at current surface element
-    REAL(wp) ::  rb             !< quasi-laminar boundary layer resistance (s/m)
-    REAL(wp) ::  rc_tot         !< total canopy resistance (s/m)
-    REAL(wp) ::  rh_surf        !< relative humidity at current surface element
-    REAL(wp) ::  rs             !< Sedimentaion resistance (s/m)
-    REAL(wp) ::  sai            !< surface area index at current surface element assumed to be lai + 1
-    REAL(wp) ::  slinnfac       !<
-    REAL(wp) ::  solar_rad      !< solar radiation, direct and diffuse, at current surface element
-    REAL(wp) ::  temp_tmp       !< temperatur at i,j,k
-    REAL(wp) ::  ts             !< surface temperatur in degrees celsius
-    REAL(wp) ::  ustar_surf     !< ustar at current surface element
-    REAL(wp) ::  vd_lu          !< deposition velocity (m/s)
-    REAL(wp) ::  visc           !< Viscosity
-    REAL(wp) ::  vs             !< Sedimentation velocity
-    REAL(wp) ::  z0h_surf       !< roughness length for heat at current surface element
+    USE surface_mod,                                                                               &
+         ONLY:  ind_pav_green, ind_veg_wall, ind_wat_win, surf_lsm_h, surf_type, surf_usm_h
 
-    REAL(wp), DIMENSION(nspec) ::  bud       !< overall budget at current surface element
-    REAL(wp), DIMENSION(nspec) ::  bud_lud   !< budget for USM windows at current surface element
-    REAL(wp), DIMENSION(nspec) ::  bud_lug   !< budget for USM green surfaces at current surface element
-    REAL(wp), DIMENSION(nspec) ::  bud_lup   !< budget for LSM pavement type at current surface element
-    REAL(wp), DIMENSION(nspec) ::  bud_luu   !< budget for USM walls/roofs at current surface element
-    REAL(wp), DIMENSION(nspec) ::  bud_luv   !< budget for LSM vegetation type at current surface element
-    REAL(wp), DIMENSION(nspec) ::  bud_luw   !< budget for LSM water type at current surface element
-    REAL(wp), DIMENSION(nspec) ::  ccomp_tot !< total compensation point (ug/m3), for now kept to zero for all species!
-    REAL(wp), DIMENSION(nspec) ::  conc_ijk  !< concentration at i,j,k
+    USE radiation_model_mod,                                                                       &
+         ONLY:  cos_zenith
+
+
+    INTEGER(iwp) ::  day_of_year                   !< current day of the year
+    INTEGER(iwp), INTENT(IN) ::  i
+    INTEGER(iwp) ::  i_pspec                       !< index for matching depac gas component
+    INTEGER(iwp), INTENT(IN) ::  j
+    INTEGER(iwp) ::  k                             !< matching k to surface m at i,j
+    INTEGER(iwp) ::  lsp                           !< running index for chem spcs.
+    INTEGER(iwp) ::  luv_palm                      !< index of PALM LSM vegetation_type at current
+                                                   !< surface element
+    INTEGER(iwp) ::  lup_palm                      !< index of PALM LSM pavement_type at current
+                                                   !< surface element
+    INTEGER(iwp) ::  luw_palm                      !< index of PALM LSM water_type at current
+                                                   !< surface element
+    INTEGER(iwp) ::  luu_palm                      !< index of PALM USM walls/roofs at current
+                                                   !< surface element
+    INTEGER(iwp) ::  lug_palm                      !< index of PALM USM green walls/roofs at current
+                                                   !< surface element
+    INTEGER(iwp) ::  lud_palm                      !< index of PALM USM windows at current surface
+                                                   !< element
+    INTEGER(iwp) ::  luv_dep                       !< matching DEPAC LU to luv_palm
+    INTEGER(iwp) ::  lup_dep                       !< matching DEPAC LU to lup_palm
+    INTEGER(iwp) ::  luw_dep                       !< matching DEPAC LU to luw_palm
+    INTEGER(iwp) ::  luu_dep                       !< matching DEPAC LU to luu_palm
+    INTEGER(iwp) ::  lug_dep                       !< matching DEPAC LU to lug_palm
+    INTEGER(iwp) ::  lud_dep                       !< matching DEPAC LU to lud_palm
+    INTEGER(iwp) ::  m                             !< index for horizontal surfaces
+    INTEGER(iwp) ::  pspec                         !< running index
+!
+!-- Vegetation                                               !<  Assign PALM classes to DEPAC land
+                                                             !<  use classes
+    INTEGER(iwp) ::  ind_luv_user = 0                        !<  ERROR as no class given in PALM
+    INTEGER(iwp) ::  ind_luv_b_soil = 1                      !<  assigned to ilu_desert
+    INTEGER(iwp) ::  ind_luv_mixed_crops = 2                 !<  assigned to ilu_arable
+    INTEGER(iwp) ::  ind_luv_s_grass = 3                     !<  assigned to ilu_grass
+    INTEGER(iwp) ::  ind_luv_ev_needle_trees = 4             !<  assigned to ilu_coniferous_forest
+    INTEGER(iwp) ::  ind_luv_de_needle_trees = 5             !<  assigned to ilu_coniferous_forest
+    INTEGER(iwp) ::  ind_luv_ev_broad_trees = 6              !<  assigned to ilu_tropical_forest
+    INTEGER(iwp) ::  ind_luv_de_broad_trees = 7              !<  assigned to ilu_deciduous_forest
+    INTEGER(iwp) ::  ind_luv_t_grass = 8                     !<  assigned to ilu_grass
+    INTEGER(iwp) ::  ind_luv_desert = 9                      !<  assigned to ilu_desert
+    INTEGER(iwp) ::  ind_luv_tundra = 10                     !<  assigned to ilu_other
+    INTEGER(iwp) ::  ind_luv_irr_crops = 11                  !<  assigned to ilu_arable
+    INTEGER(iwp) ::  ind_luv_semidesert = 12                 !<  assigned to ilu_other
+    INTEGER(iwp) ::  ind_luv_ice = 13                        !<  assigned to ilu_ice
+    INTEGER(iwp) ::  ind_luv_marsh = 14                      !<  assigned to ilu_other
+    INTEGER(iwp) ::  ind_luv_ev_shrubs = 15                  !<  assigned to ilu_mediterrean_scrub
+    INTEGER(iwp) ::  ind_luv_de_shrubs = 16                  !<  assigned to ilu_mediterrean_scrub
+    INTEGER(iwp) ::  ind_luv_mixed_forest = 17               !<  assigned to ilu_coniferous_forest(ave(decid+conif))
+    INTEGER(iwp) ::  ind_luv_intrup_forest = 18              !<  assigned to ilu_other (ave(other+decid))
+!
+!-- Water
+    INTEGER(iwp) ::  ind_luw_user = 0                        !<  ERROR as no class given in PALM
+    INTEGER(iwp) ::  ind_luw_lake = 1                        !<  assigned to ilu_water_inland
+    INTEGER(iwp) ::  ind_luw_river = 2                       !<  assigned to ilu_water_inland
+    INTEGER(iwp) ::  ind_luw_ocean = 3                       !<  assigned to ilu_water_sea
+    INTEGER(iwp) ::  ind_luw_pond = 4                        !<  assigned to ilu_water_inland
+    INTEGER(iwp) ::  ind_luw_fountain = 5                    !<  assigned to ilu_water_inland
+!
+!-- Pavement
+    INTEGER(iwp) ::  ind_lup_user = 0                        !<  ERROR as no class given in PALM
+    INTEGER(iwp) ::  ind_lup_asph_conc = 1                   !<  assigned to ilu_desert
+    INTEGER(iwp) ::  ind_lup_asph = 2                        !<  assigned to ilu_desert
+    INTEGER(iwp) ::  ind_lup_conc = 3                        !<  assigned to ilu_desert
+    INTEGER(iwp) ::  ind_lup_sett = 4                        !<  assigned to ilu_desert
+    INTEGER(iwp) ::  ind_lup_pav_stones = 5                  !<  assigned to ilu_desert
+    INTEGER(iwp) ::  ind_lup_cobblest = 6                    !<  assigned to ilu_desert
+    INTEGER(iwp) ::  ind_lup_metal = 7                       !<  assigned to ilu_desert
+    INTEGER(iwp) ::  ind_lup_wood = 8                        !<  assigned to ilu_desert
+    INTEGER(iwp) ::  ind_lup_gravel = 9                      !<  assigned to ilu_desert
+    INTEGER(iwp) ::  ind_lup_f_gravel = 10                   !<  assigned to ilu_desert
+    INTEGER(iwp) ::  ind_lup_pebblest = 11                   !<  assigned to ilu_desert
+    INTEGER(iwp) ::  ind_lup_woodchips = 12                  !<  assigned to ilu_desert
+    INTEGER(iwp) ::  ind_lup_tartan = 13                     !<  assigned to ilu_desert
+    INTEGER(iwp) ::  ind_lup_art_turf = 14                   !<  assigned to ilu_desert
+    INTEGER(iwp) ::  ind_lup_clay = 15                       !<  assigned to ilu_desert
+!
+!-- Particle parameters according to the respective aerosol classes (PM25, PM10)
+    INTEGER(iwp) ::  ind_p_size = 1     !< index for partsize in particle_pars
+    INTEGER(iwp) ::  ind_p_dens = 2     !< index for rhopart in particle_pars
+    INTEGER(iwp) ::  ind_p_slip = 3     !< index for slipcor in particle_pars
+    INTEGER(iwp) ::  nwet               !< wetness indicator dor DEPAC; nwet=0 -> dry; nwet=1 -> wet; nwet=9 -> snow
+    INTEGER(iwp) ::  part_type          !< index for particle type (PM10 or PM25) in particle_pars
+
+
+    REAL(wp) ::  conc_ijk_ugm3     !< concentration at i, j, k in ug/m3
+    REAL(wp) ::  dens              !< density at layer k at i,j
+    REAL(wp) ::  dh                !< vertical grid size
+    REAL(wp) ::  diffusivity       !< diffusivity
+    REAL(wp) ::  dt_chem           !< length of chem time step
+    REAL(wp) ::  dt_dh             !< dt_chem/dh
+    REAL(wp) ::  inv_dh            !< inverse of vertical grid size
+    REAL(wp) ::  lai               !< leaf area index at current surface element
+    REAL(wp) ::  ppm2ugm3          !< conversion factor from ppm to ug/m3
+    REAL(wp) ::  qv_tmp            !< surface mixing ratio at current surface element
+    REAL(wp) ::  r_aero_surf       !< aerodynamic resistance (s/m) at current surface element
+    REAL(wp) ::  rb                !< quasi-laminar boundary layer resistance (s/m)
+    REAL(wp) ::  rc_tot            !< total canopy resistance (s/m)
+    REAL(wp) ::  rh_surf           !< relative humidity at current surface element
+    REAL(wp) ::  rs                !< Sedimentaion resistance (s/m)
+    REAL(wp) ::  sai               !< surface area index at current surface element assumed to be
+                                   !< lai + 1
+    REAL(wp) ::  slinnfac
+    REAL(wp) ::  solar_rad         !< solar radiation, direct and diffuse, at current surface
+                                   !< element
+    REAL(wp) ::  temp_tmp          !< temperatur at i,j,k
+    REAL(wp) ::  ts                !< surface temperatur in degrees celsius
+    REAL(wp) ::  ustar_surf        !< ustar at current surface element
+    REAL(wp) ::  vd_lu             !< deposition velocity (m/s)
+    REAL(wp) ::  visc              !< Viscosity
+    REAL(wp) ::  vs                !< Sedimentation velocity
+    REAL(wp) ::  z0h_surf          !< roughness length for heat at current surface element
+
+    REAL(wp), DIMENSION(nspec) ::  bud          !< overall budget at current surface element
+    REAL(wp), DIMENSION(nspec) ::  bud_lud      !< budget for USM windows at current surface element
+    REAL(wp), DIMENSION(nspec) ::  bud_lug      !< budget for USM green surfaces at current surface
+                                                !< element
+    REAL(wp), DIMENSION(nspec) ::  bud_lup      !< budget for LSM pavement type at current surface
+                                                !< element
+    REAL(wp), DIMENSION(nspec) ::  bud_luu      !< budget for USM walls/roofs at current surface
+                                                !< element
+    REAL(wp), DIMENSION(nspec) ::  bud_luv      !< budget for LSM vegetation type at current surface
+                                                !< element
+    REAL(wp), DIMENSION(nspec) ::  bud_luw      !< budget for LSM water type at current surface
+                                                !< element
+    REAL(wp), DIMENSION(nspec) ::  ccomp_tot    !< total compensation point (ug/m3), for now kept to
+                                                !< zero for all species!
+    REAL(wp), DIMENSION(nspec) ::  conc_ijk     !< concentration at i,j,k
+
 
 !
 !-- Particle parameters (PM10 (1), PM25 (2)) partsize (diameter in m), rhopart (density in kg/m3),
-!-- slipcor (slip correction factor dimensionless, Seinfeld and Pandis 2006, Table 9.3).
+!-- slipcor (slip correction factor dimensionless, Seinfeld and Pandis 2006, Table 9.3)
     REAL(wp), DIMENSION(1:3,1:2), PARAMETER ::  particle_pars = RESHAPE( (/                        &
-                                                         8.0e-6_wp, 1.14e3_wp, 1.016_wp,           &   !<  1
-                                                         0.7e-6_wp, 1.14e3_wp, 1.082_wp            &   !<  2
-                                                                        /), (/ 3, 2 /) )!
+                                                         8.0e-6_wp, 1.14e3_wp, 1.016_wp, &   !<  1
+                                                         0.7e-6_wp, 1.14e3_wp, 1.082_wp  &   !<  2
+                                                         /), (/ 3, 2 /) )
+
+    LOGICAL ::  match_lsm     !< flag indicating natural-type surface
+    LOGICAL ::  match_usm     !< flag indicating urban-type surface
 
 !
-!-- LSM or USM horizintal upward facing surface present at i,j. Note, default surfaces are not
-!-- considered for deposition.
-!-- First, check if upward-facing LSM surface exist and find its index. If more than one
-!-- upward-facing surface exist, take the last one.
+!-- List of names of possible tracers
+    CHARACTER(LEN=*), PARAMETER ::  pspecnames(nposp) = (/                                         &
+         'NO2           ', &    !< NO2
+         'NO            ', &    !< NO
+         'O3            ', &    !< O3
+         'CO            ', &    !< CO
+         'form          ', &    !< FORM
+         'ald           ', &    !< ALD
+         'pan           ', &    !< PAN
+         'mgly          ', &    !< MGLY
+         'par           ', &    !< PAR
+         'ole           ', &    !< OLE
+         'eth           ', &    !< ETH
+         'tol           ', &    !< TOL
+         'cres          ', &    !< CRES
+         'xyl           ', &    !< XYL
+         'SO4a_f        ', &    !< SO4a_f
+         'SO2           ', &    !< SO2
+         'HNO2          ', &    !< HNO2
+         'CH4           ', &    !< CH4
+         'NH3           ', &    !< NH3
+         'NO3           ', &    !< NO3
+         'OH            ', &    !< OH
+         'HO2           ', &    !< HO2
+         'N2O5          ', &    !< N2O5
+         'SO4a_c        ', &    !< SO4a_c
+         'NH4a_f        ', &    !< NH4a_f
+         'NO3a_f        ', &    !< NO3a_f
+         'NO3a_c        ', &    !< NO3a_c
+         'C2O3          ', &    !< C2O3
+         'XO2           ', &    !< XO2
+         'XO2N          ', &    !< XO2N
+         'cro           ', &    !< CRO
+         'HNO3          ', &    !< HNO3
+         'H2O2          ', &    !< H2O2
+         'iso           ', &    !< ISO
+         'ispd          ', &    !< ISPD
+         'to2           ', &    !< TO2
+         'open          ', &    !< OPEN
+         'terp          ', &    !< TERP
+         'ec_f          ', &    !< EC_f
+         'ec_c          ', &    !< EC_c
+         'pom_f         ', &    !< POM_f
+         'pom_c         ', &    !< POM_c
+         'ppm_f         ', &    !< PPM_f
+         'ppm_c         ', &    !< PPM_c
+         'na_ff         ', &    !< Na_ff
+         'na_f          ', &    !< Na_f
+         'na_c          ', &    !< Na_c
+         'na_cc         ', &    !< Na_cc
+         'na_ccc        ', &    !< Na_ccc
+         'dust_ff       ', &    !< dust_ff
+         'dust_f        ', &    !< dust_f
+         'dust_c        ', &    !< dust_c
+         'dust_cc       ', &    !< dust_cc
+         'dust_ccc      ', &    !< dust_ccc
+         'tpm10         ', &    !< tpm10
+         'tpm25         ', &    !< tpm25
+         'tss           ', &    !< tss
+         'tdust         ', &    !< tdust
+         'tc            ', &    !< tc
+         'tcg           ', &    !< tcg
+         'tsoa          ', &    !< tsoa
+         'tnmvoc        ', &    !< tnmvoc
+         'SOxa          ', &    !< SOxa
+         'NOya          ', &    !< NOya
+         'NHxa          ', &    !< NHxa
+         'NO2_obs       ', &    !< NO2_obs
+         'tpm10_biascorr', &    !< tpm10_biascorr
+         'tpm25_biascorr', &    !< tpm25_biascorr
+         'O3_biascorr   ' /)    !< o3_biascorr
+!
+!-- Tracer mole mass:
+    REAL(wp), PARAMETER ::  specmolm(nposp) = (/                                                   &
+         xm_O * 2 + xm_N, &                         !< NO2
+         xm_O + xm_N, &                             !< NO
+         xm_O * 3, &                                !< O3
+         xm_C + xm_O, &                             !< CO
+         xm_H * 2 + xm_C + xm_O, &                  !< FORM
+         xm_H * 3 + xm_C * 2 + xm_O, &              !< ALD
+         xm_H * 3 + xm_C * 2 + xm_O * 5 + xm_N, &   !< PAN
+         xm_H * 4 + xm_C * 3 + xm_O * 2, &          !< MGLY
+         xm_H * 3 + xm_C, &                         !< PAR
+         xm_H * 3 + xm_C * 2, &                     !< OLE
+         xm_H * 4 + xm_C * 2, &                     !< ETH
+         xm_H * 8 + xm_C * 7, &                     !< TOL
+         xm_H * 8 + xm_C * 7 + xm_O, &              !< CRES
+         xm_H * 10 + xm_C * 8, &                    !< XYL
+         xm_S + xm_O * 4, &                         !< SO4a_f
+         xm_S + xm_O * 2, &                         !< SO2
+         xm_H + xm_O * 2 + xm_N, &                  !< HNO2
+         xm_H * 4 + xm_C, &                         !< CH4
+         xm_H * 3 + xm_N, &                         !< NH3
+         xm_O * 3 + xm_N, &                         !< NO3
+         xm_H + xm_O, &                             !< OH
+         xm_H + xm_O * 2, &                         !< HO2
+         xm_O * 5 + xm_N * 2, &                     !< N2O5
+         xm_S + xm_O * 4, &                         !< SO4a_c
+         xm_H * 4 + xm_N, &                         !< NH4a_f
+         xm_O * 3 + xm_N, &                         !< NO3a_f
+         xm_O * 3 + xm_N, &                         !< NO3a_c
+         xm_C * 2 + xm_O * 3, &                     !< C2O3
+         xm_dummy, &                                !< XO2
+         xm_dummy, &                                !< XO2N
+         xm_dummy, &                                !< CRO
+         xm_H + xm_O * 3 + xm_N, &                  !< HNO3
+         xm_H * 2 + xm_O * 2, &                     !< H2O2
+         xm_H * 8 + xm_C * 5, &                     !< ISO
+         xm_dummy, &                                !< ISPD
+         xm_dummy, &                                !< TO2
+         xm_dummy, &                                !< OPEN
+         xm_H * 16 + xm_C * 10, &                   !< TERP
+         xm_dummy, &                                !< EC_f
+         xm_dummy, &                                !< EC_c
+         xm_dummy, &                                !< POM_f
+         xm_dummy, &                                !< POM_c
+         xm_dummy, &                                !< PPM_f
+         xm_dummy, &                                !< PPM_c
+         xm_Na, &                                   !< Na_ff
+         xm_Na, &                                   !< Na_f
+         xm_Na, &                                   !< Na_c
+         xm_Na, &                                   !< Na_cc
+         xm_Na, &                                   !< Na_ccc
+         xm_dummy, &                                !< dust_ff
+         xm_dummy, &                                !< dust_f
+         xm_dummy, &                                !< dust_c
+         xm_dummy, &                                !< dust_cc
+         xm_dummy, &                                !< dust_ccc
+         xm_dummy, &                                !< tpm10
+         xm_dummy, &                                !< tpm25
+         xm_dummy, &                                !< tss
+         xm_dummy, &                                !< tdust
+         xm_dummy, &                                !< tc
+         xm_dummy, &                                !< tcg
+         xm_dummy, &                                !< tsoa
+         xm_dummy, &                                !< tnmvoc
+         xm_dummy, &                                !< SOxa
+         xm_dummy, &                                !< NOya
+         xm_dummy, &                                !< NHxa
+         xm_O * 2 + xm_N, &                         !< NO2_obs
+         xm_dummy, &                                !< tpm10_biascorr
+         xm_dummy, &                                !< tpm25_biascorr
+         xm_O * 3 /)                                !< o3_biascorr
+!
+!-- Get current day of the year
+    CALL get_date_time( time_since_reference_point, day_of_year = day_of_year )
+!
+!-- Initialize surface element m
     m = 0
-    DO  mm = surf_lsm%start_index(j,i), surf_lsm%end_index(j,i)
-       IF ( surf_lsm%upward(mm) )  m = mm
-    ENDDO
-    match_lsm = ( m /= 0 )
+    k = 0
 !
-!-- For LSM surfaces
+!-- LSM or USM horizintal upward facing surface present at i,j:
+!-- Default surfaces are NOT considered for deposition
+    match_lsm = surf_lsm_h(0)%start_index(j,i) <= surf_lsm_h(0)%end_index(j,i)
+    match_usm = surf_usm_h(0)%start_index(j,i) <= surf_usm_h(0)%end_index(j,i)
+!
+!--For LSM surfaces
     IF ( match_lsm )  THEN
-
-       k = surf_lsm%k(m)
+!
+!--    Get surface element information at i,j:
+       m = surf_lsm_h(0)%start_index(j,i)
+       k = surf_lsm_h(0)%k(m)
 !
 !--    Get needed variables for surface element m
-       ustar_surf  = surf_lsm%us(m)
-       z0h_surf    = surf_lsm%z0h(m)
-       r_aero_surf = surf_lsm%r_a(m)
-       solar_rad   = surf_lsm%rad_sw_dir(m) + surf_lsm%rad_sw_dif(m)
+       ustar_surf  = surf_lsm_h(0)%us(m)
+       z0h_surf    = surf_lsm_h(0)%z0h(m)
+       r_aero_surf = surf_lsm_h(0)%r_a(m)
+       solar_rad   = surf_lsm_h(0)%rad_sw_dir(m) + surf_lsm_h(0)%rad_sw_dif(m)
 
-       lai = surf_lsm%lai(m)
+       lai = surf_lsm_h(0)%lai(m)
        sai = lai + 1
 !
 !--    For small grid spacing neglect R_a
@@ -5325,11 +3849,11 @@
        bud_luw = 0.0_wp
 !
 !--    Get land use for i,j and assign to DEPAC lu
-       IF ( surf_lsm%frac(m,ind_veg_wall) > 0 )  THEN
-          luv_palm = surf_lsm%vegetation_type(m)
+       IF ( surf_lsm_h(0)%frac(m,ind_veg_wall) > 0 )  THEN
+          luv_palm = surf_lsm_h(0)%vegetation_type(m)
           IF ( luv_palm == ind_luv_user )  THEN
-             message_string = 'no lsm-vegetation type defined'
-             CALL message( 'chem_depo_ij', 'CHM0019', 1, 2, 0, 6, 0 )
+             message_string = 'No vegetation type defined. Please define vegetation type to enable deposition calculation'
+             CALL message( 'chem_depo', 'CM0451', 1, 2, 0, 6, 0 )
           ELSEIF ( luv_palm == ind_luv_b_soil )  THEN
              luv_dep = 9
           ELSEIF ( luv_palm == ind_luv_mixed_crops )  THEN
@@ -5369,11 +3893,11 @@
           ENDIF
        ENDIF
 
-       IF ( surf_lsm%frac(m,ind_pav_green) > 0 )  THEN
-          lup_palm = surf_lsm%pavement_type(m)
+       IF ( surf_lsm_h(0)%frac(m,ind_pav_green) > 0 )  THEN
+          lup_palm = surf_lsm_h(0)%pavement_type(m)
           IF ( lup_palm == ind_lup_user )  THEN
-             message_string = 'no lsm-pavement type defined'
-             CALL message( 'chem_depo_ij', 'CHM0019', 1, 2, 0, 6, 0 )
+             message_string = 'No pavement type defined. Please define pavement type to enable deposition calculation'
+             CALL message( 'chem_depo', 'CM0452', 1, 2, 0, 6, 0 )
           ELSEIF ( lup_palm == ind_lup_asph_conc )  THEN
              lup_dep = 9
           ELSEIF ( lup_palm == ind_lup_asph )  THEN
@@ -5407,11 +3931,11 @@
           ENDIF
        ENDIF
 
-       IF ( surf_lsm%frac(m,ind_wat_win) > 0 )  THEN
-          luw_palm = surf_lsm%water_type(m)
+       IF ( surf_lsm_h(0)%frac(m,ind_wat_win) > 0 )  THEN
+          luw_palm = surf_lsm_h(0)%water_type(m)
           IF ( luw_palm == ind_luw_user )  THEN
-             message_string = 'no lsm-water type defined'
-             CALL message( 'chem_depo_ij', 'CHM0019', 1, 2, 0, 6, 0 )
+             message_string = 'No water type defined. Please define water type to enable deposition calculation'
+             CALL message( 'chem_depo', 'CM0453', 1, 2, 0, 6, 0 )
           ELSEIF ( luw_palm ==  ind_luw_lake )  THEN
              luw_dep = 13
           ELSEIF ( luw_palm == ind_luw_river )  THEN
@@ -5426,7 +3950,7 @@
        ENDIF
 !
 !--    Set wetness indicator to dry or wet for lsm vegetation or pavement
-       IF ( surf_lsm%c_liq(m) > 0 )  THEN
+       IF ( surf_lsm_h(0)%c_liq(m) > 0 )  THEN
           nwet = 1
        ELSE
           nwet = 0
@@ -5461,18 +3985,18 @@
 !
 !--    Calculate relative humidity from specific humidity for DEPAC
        qv_tmp = MAX( q(k,j,i), 0.0_wp)
-       rh_surf = relativehumidity_from_specifichumidity( qv_tmp, temp_tmp, hyp(k) )
+       rh_surf = relativehumidity_from_specifichumidity(qv_tmp, temp_tmp, hyp(k) )
 !
 !-- Check if surface fraction (vegetation, pavement or water) > 0 and calculate vd and budget
 !-- for each surface fraction. Then derive overall budget taking into account the surface fractions.
 !
 !--    Vegetation
-       IF ( surf_lsm%frac(m,ind_veg_wall) > 0 )  THEN
+       IF ( surf_lsm_h(0)%frac(m,ind_veg_wall) > 0 )  THEN
 
 !
 !--       No vegetation on bare soil, desert or ice:
           IF ( ( luv_palm == ind_luv_b_soil )  .OR.  ( luv_palm == ind_luv_desert )  .OR.          &
-               ( luv_palm == ind_luv_ice ) )  THEN
+               ( luv_palm == ind_luv_ice ) ) THEN
 
              lai = 0.0_wp
              sai = 0.0_wp
@@ -5507,7 +4031,7 @@
                                             luv_dep,                                               &
                                             r_aero_surf, ustar_surf )
 
-                bud_luv(lsp) = - conc_ijk(lsp) * ( 1.0_wp - EXP( -vd_lu * dt_dh ) ) * dh
+                bud_luv(lsp) = - conc_ijk(lsp) * ( 1.0_wp - EXP( - vd_lu * dt_dh ) ) * dh
 
 
              ELSEIF ( spc_names(lsp) == 'PM25' )  THEN
@@ -5519,14 +4043,15 @@
                                                         particle_pars(ind_p_slip, part_type),      &
                                                         visc)
 
-                CALL drydepo_aero_zhang_vd( vd_lu, rs, vs,                                         &
+                CALL drydepo_aero_zhang_vd( vd_lu, rs,                                             &
+                                            vs,                                                    &
                                             particle_pars(ind_p_size, part_type),                  &
                                             particle_pars(ind_p_slip, part_type),                  &
                                             nwet, temp_tmp, dens, visc,                            &
                                             luv_dep ,                                              &
                                             r_aero_surf, ustar_surf )
 
-                bud_luv(lsp) = - conc_ijk(lsp) * ( 1.0_wp - EXP( -vd_lu * dt_dh ) ) * dh
+                bud_luv(lsp) = - conc_ijk(lsp) * ( 1.0_wp - EXP( - vd_lu * dt_dh ) ) * dh
 
              ELSE !< GASES
 !
@@ -5554,6 +4079,10 @@
 !--             Use density at k:
                 ppm2ugm3 =  (dens/xm_air) * 0.001_wp  !< (mole air)/m3
 !
+!--             Atmospheric concentration in DEPAC is requested in ug/m3:
+                !   ug/m3              ppm          (ug/m3)/ppm/(kg/mole)     kg/mole
+                conc_ijk_ugm3 = conc_ijk(lsp)         * ppm2ugm3 *   specmolm(i_pspec)  ! in ug/m3
+!
 !--             Diffusivity for DEPAC relevant gases
 !--             Use default value
                 diffusivity            = 0.11e-4
@@ -5573,9 +4102,10 @@
                                   diffusivity, rb )
 !
 !--             Get rc_tot
-                CALL drydepos_gas_depac_ij( spc_names(lsp), ts, ustar_surf, solar_rad, cos_zenith, &
-                                            rh_surf, lai, sai, nwet, luv_dep, 2,                   &
-                                            rc_tot, ccomp_tot(lsp), hyp(nzb), diffusivity )
+                CALL drydepos_gas_depac( spc_names(lsp), day_of_year, latitude, ts, ustar_surf,    &
+                                         solar_rad, cos_zenith, rh_surf, lai, sai, nwet, luv_dep,  &
+                                         2, rc_tot, ccomp_tot(lsp), hyp(nzb), conc_ijk_ugm3,       &
+                                         diffusivity, r_aero_surf , rb )
 !
 !--             Calculate budget
                 IF ( rc_tot <= 0.0 )  THEN
@@ -5595,7 +4125,7 @@
        ENDIF
 !
 !--    Pavement
-       IF ( surf_lsm%frac(m,ind_pav_green) > 0 )  THEN
+       IF ( surf_lsm_h(0)%frac(m,ind_pav_green) > 0 )  THEN
 !
 !--       No vegetation on pavements:
           lai = 0.0_wp
@@ -5621,13 +4151,15 @@
                                                         particle_pars(ind_p_slip, part_type),      &
                                                         visc)
 
-                CALL drydepo_aero_zhang_vd( vd_lu, rs, vs,                                         &
+                CALL drydepo_aero_zhang_vd( vd_lu, rs,                                             &
+                                            vs,                                                    &
                                             particle_pars(ind_p_size, part_type),                  &
                                             particle_pars(ind_p_slip, part_type),                  &
-                                            nwet, temp_tmp, dens, visc, lup_dep,                   &
+                                            nwet, temp_tmp, dens, visc,                            &
+                                            lup_dep,                                               &
                                             r_aero_surf, ustar_surf )
 
-                bud_lup(lsp) = - conc_ijk(lsp) * ( 1.0_wp - EXP( -vd_lu * dt_dh ) ) * dh
+                bud_lup(lsp) = - conc_ijk(lsp) * ( 1.0_wp - EXP( - vd_lu * dt_dh ) ) * dh
 
 
              ELSEIF ( spc_names(lsp) == 'PM25' )  THEN
@@ -5639,13 +4171,15 @@
                                                         particle_pars(ind_p_slip, part_type),      &
                                                         visc)
 
-                CALL drydepo_aero_zhang_vd( vd_lu, rs, vs,                                         &
+                CALL drydepo_aero_zhang_vd( vd_lu, rs,                                             &
+                                            vs,                                                    &
                                             particle_pars(ind_p_size, part_type),                  &
                                             particle_pars(ind_p_slip, part_type),                  &
-                                            nwet, temp_tmp, dens, visc, lup_dep,                   &
+                                            nwet, temp_tmp, dens, visc,                            &
+                                            lup_dep,                                               &
                                             r_aero_surf, ustar_surf )
 
-                bud_lup(lsp) = - conc_ijk(lsp) * ( 1.0_wp - EXP( -vd_lu * dt_dh ) ) * dh
+                bud_lup(lsp) = - conc_ijk(lsp) * ( 1.0_wp - EXP( - vd_lu * dt_dh ) ) * dh
 
              ELSE  !<GASES
 !
@@ -5671,30 +4205,35 @@
 !--             thus:
 !--                 c_in_ppb * xm_tracer * [ dens / xm_air ] = c_in_ugm3
 !--             Use density at lowest layer:
-                ppm2ugm3 = ( dens / xm_air ) * 0.001_wp  !< (mole air)/m3
+                ppm2ugm3 =  (dens/xm_air) * 0.001_wp  !< (mole air)/m3
+!
+!--             Atmospheric concentration in DEPAC is requested in ug/m3:
+                !   ug/m3              ppm          (ug/m3)/ppm/(kg/mole)     kg/mole
+                conc_ijk_ugm3 = conc_ijk(lsp)         * ppm2ugm3 *   specmolm(i_pspec)  ! in ug/m3
 !
 !--             Diffusivity for DEPAC relevant gases
 !--             Use default value
-                diffusivity = 0.11E-4
+                diffusivity            = 0.11e-4
 !
-!--             Overwrite with known coefficients of diffusivity from Massman (1998).
-                IF ( spc_names(lsp) == 'NO2' )  diffusivity = 0.136E-4
-                IF ( spc_names(lsp) == 'NO'  )  diffusivity = 0.199E-4
-                IF ( spc_names(lsp) == 'O3'  )  diffusivity = 0.144E-4
-                IF ( spc_names(lsp) == 'CO'  )  diffusivity = 0.176E-4
-                IF ( spc_names(lsp) == 'SO2' )  diffusivity = 0.112E-4
-                IF ( spc_names(lsp) == 'CH4' )  diffusivity = 0.191E-4
-                IF ( spc_names(lsp) == 'NH3' )  diffusivity = 0.191E-4
+!--             Overwrite with known coefficients of diffusivity from Massman (1998)
+                IF ( spc_names(lsp) == 'NO2' ) diffusivity = 0.136e-4
+                IF ( spc_names(lsp) == 'NO'  ) diffusivity = 0.199e-4
+                IF ( spc_names(lsp) == 'O3'  ) diffusivity = 0.144e-4
+                IF ( spc_names(lsp) == 'CO'  ) diffusivity = 0.176e-4
+                IF ( spc_names(lsp) == 'SO2' ) diffusivity = 0.112e-4
+                IF ( spc_names(lsp) == 'CH4' ) diffusivity = 0.191e-4
+                IF ( spc_names(lsp) == 'NH3' ) diffusivity = 0.191e-4
 !
 !--             Get quasi-laminar boundary layer resistance rb:
-                CALL get_rb_cell( ( luv_dep == ilu_water_sea )  .OR.                               &
-                                  ( luv_dep == ilu_water_inland ), z0h_surf, ustar_surf,           &
-                                  diffusivity, rb )
+                CALL get_rb_cell( ( lup_dep == ilu_water_sea )  .OR.                               &
+                                  ( lup_dep == ilu_water_inland ), z0h_surf, ustar_surf,           &
+                                    diffusivity, rb )
 !
 !--             Get rc_tot
-                CALL drydepos_gas_depac_ij( spc_names(lsp), ts, ustar_surf, solar_rad, cos_zenith, &
-                                            rh_surf, lai, sai, nwet, lup_dep,2, rc_tot,            &
-                                            ccomp_tot(lsp), hyp(nzb), diffusivity )
+                CALL drydepos_gas_depac( spc_names(lsp), day_of_year, latitude, ts, ustar_surf,    &
+                                         solar_rad, cos_zenith, rh_surf, lai, sai, nwet, lup_dep,  &
+                                         2, rc_tot, ccomp_tot(lsp), hyp(nzb), conc_ijk_ugm3,       &
+                                         diffusivity, r_aero_surf , rb )
 !
 !--             Calculate budget
                 IF ( rc_tot <= 0.0 )  THEN
@@ -5710,7 +4249,7 @@
        ENDIF
 !
 !--    Water
-       IF ( surf_lsm%frac(m,ind_wat_win) > 0 )  THEN
+       IF ( surf_lsm_h(0)%frac(m,ind_wat_win) > 0 )  THEN
 !
 !--       No vegetation on water:
           lai = 0.0_wp
@@ -5735,13 +4274,15 @@
                                                         particle_pars(ind_p_slip, part_type),      &
                                                         visc)
 
-                CALL drydepo_aero_zhang_vd( vd_lu, rs, vs,                                         &
+                CALL drydepo_aero_zhang_vd( vd_lu, rs,                                             &
+                                            vs,                                                    &
                                             particle_pars(ind_p_size, part_type),                  &
                                             particle_pars(ind_p_slip, part_type),                  &
-                                            nwet, temp_tmp, dens, visc, luw_dep,                   &
+                                            nwet, temp_tmp, dens, visc,                            &
+                                            luw_dep,                                               &
                                             r_aero_surf, ustar_surf )
 
-                bud_luw(lsp) = - conc_ijk(lsp) * ( 1.0_wp - EXP( -vd_lu * dt_dh ) ) * dh
+                bud_luw(lsp) = - conc_ijk(lsp) * ( 1.0_wp - EXP( - vd_lu * dt_dh ) ) * dh
 
              ELSEIF ( spc_names(lsp) == 'PM25' )  THEN
                 part_type = 2
@@ -5752,13 +4293,15 @@
                                                         particle_pars(ind_p_slip, part_type), &
                                                         visc)
 
-                CALL drydepo_aero_zhang_vd( vd_lu, rs, vs,                                         &
+                CALL drydepo_aero_zhang_vd( vd_lu, rs,                                             &
+                                            vs,                                                    &
                                             particle_pars(ind_p_size, part_type),                  &
                                             particle_pars(ind_p_slip, part_type),                  &
-                                            nwet, temp_tmp, dens, visc, luw_dep,                   &
+                                            nwet, temp_tmp, dens, visc,                            &
+                                            luw_dep,                                               &
                                             r_aero_surf, ustar_surf )
 
-                bud_luw(lsp) = - conc_ijk(lsp) * ( 1.0_wp - EXP( -vd_lu * dt_dh ) ) * dh
+                bud_luw(lsp) = - conc_ijk(lsp) * ( 1.0_wp - EXP( - vd_lu * dt_dh ) ) * dh
 
              ELSE  !<GASES
 !
@@ -5786,6 +4329,10 @@
 !--             Use density at lowest layer:
                 ppm2ugm3 = (dens/xm_air) * 0.001_wp  !< (mole air)/m3
 !
+!--             Atmospheric concentration in DEPAC is requested in ug/m3:
+!--                 ug/m3        ppm          (ug/m3)/ppm/(kg/mole)     kg/mole
+                conc_ijk_ugm3 = conc_ijk(lsp) * ppm2ugm3 *  specmolm(i_pspec)  ! in ug/m3
+!
 !--             Diffusivity for DEPAC relevant gases
 !--             Use default value
                 diffusivity            = 0.11e-4
@@ -5805,9 +4352,10 @@
                                     diffusivity, rb )
 
 !--             Get rc_tot
-                CALL drydepos_gas_depac_ij( spc_names(lsp), ts, ustar_surf, solar_rad, cos_zenith, &
-                                            rh_surf, lai, sai, nwet, luw_dep,                      &
-                                            2, rc_tot, ccomp_tot(lsp), hyp(nzb), diffusivity )
+                CALL drydepos_gas_depac( spc_names(lsp), day_of_year, latitude, ts, ustar_surf,    &
+                                         solar_rad, cos_zenith, rh_surf, lai, sai, nwet, luw_dep,  &
+                                         2, rc_tot, ccomp_tot(lsp), hyp(nzb), conc_ijk_ugm3,       &
+                                         diffusivity, r_aero_surf , rb )
 !
 !--             Calculate budget
                 IF ( rc_tot <= 0.0 )  THEN
@@ -5832,9 +4380,9 @@
 !--    Calculate overall budget for surface m and adapt concentration
        DO  lsp = 1, nspec
 
-          bud(lsp) = surf_lsm%frac(m,ind_veg_wall)  * bud_luv(lsp) +                               &
-                     surf_lsm%frac(m,ind_pav_green) * bud_lup(lsp) +                               &
-                     surf_lsm%frac(m,ind_wat_win)   * bud_luw(lsp)
+          bud(lsp) = surf_lsm_h(0)%frac(m,ind_veg_wall)  * bud_luv(lsp) +                             &
+                     surf_lsm_h(0)%frac(m,ind_pav_green) * bud_lup(lsp) +                             &
+                     surf_lsm_h(0)%frac(m,ind_wat_win)   * bud_luw(lsp)
 !
 !--       Compute new concentration:
           conc_ijk(lsp) = conc_ijk(lsp) + bud(lsp) * inv_dh
@@ -5846,23 +4394,18 @@
     ENDIF
 !
 !-- For USM surfaces
-!-- First, check if upward-facing USM surface exist and find its index. If more than one
-!-- upward-facing surface exist, take the last one.
-    m = 0
-    DO  mm = surf_usm%start_index(j,i), surf_usm%end_index(j,i)
-       IF ( surf_usm%upward(mm) )  m = mm
-    ENDDO
-    match_usm = ( m /= 0 )
-
     IF ( match_usm )  THEN
-       k = surf_usm%k(m)
+!
+!--    Get surface element information at i,j:
+       m = surf_usm_h(0)%start_index(j,i)
+       k = surf_usm_h(0)%k(m)
 !
 !--    Get needed variables for surface element m
-       ustar_surf  = surf_usm%us(m)
-       z0h_surf    = surf_usm%z0h(m)
-       r_aero_surf = surf_usm%r_a(m)
-       solar_rad   = surf_usm%rad_sw_dir(m) + surf_usm%rad_sw_dif(m)
-       lai = surf_usm%lai(m)
+       ustar_surf  = surf_usm_h(0)%us(m)
+       z0h_surf    = surf_usm_h(0)%z0h(m)
+       r_aero_surf = surf_usm_h(0)%r_a(m)
+       solar_rad   = surf_usm_h(0)%rad_sw_dir(m) + surf_usm_h(0)%rad_sw_dif(m)
+       lai = surf_usm_h(0)%lai(m)
        sai = lai + 1
 !
 !--    For small grid spacing neglect R_a
@@ -5884,32 +4427,137 @@
        bud_lud = 0.0_wp
 !
 !--    Get land use for i,j and assign to DEPAC lu
-       IF ( surf_usm%frac(m,ind_pav_green) > 0 )  THEN
+       IF ( surf_usm_h(0)%frac(m,ind_pav_green) > 0 )  THEN
 !
 !--       For green urban surfaces (e.g. green roofs assume LU short grass
           lug_palm = ind_luv_s_grass
-          lug_dep = 1
+          IF ( lug_palm == ind_luv_user )  THEN
+             message_string = 'No vegetation type defined. Please define vegetation type to enable deposition calculation'
+             CALL message( 'chem_depo', 'CM0454', 1, 2, 0, 6, 0 )
+          ELSEIF ( lug_palm == ind_luv_b_soil )  THEN
+             lug_dep = 9
+          ELSEIF ( lug_palm == ind_luv_mixed_crops )  THEN
+             lug_dep = 2
+          ELSEIF ( lug_palm == ind_luv_s_grass )  THEN
+             lug_dep = 1
+          ELSEIF ( lug_palm == ind_luv_ev_needle_trees )  THEN
+             lug_dep = 4
+          ELSEIF ( lug_palm == ind_luv_de_needle_trees )  THEN
+             lug_dep = 4
+          ELSEIF ( lug_palm == ind_luv_ev_broad_trees )  THEN
+             lug_dep = 12
+          ELSEIF ( lug_palm == ind_luv_de_broad_trees )  THEN
+             lug_dep = 5
+          ELSEIF ( lug_palm == ind_luv_t_grass )  THEN
+             lug_dep = 1
+          ELSEIF ( lug_palm == ind_luv_desert )  THEN
+             lug_dep = 9
+          ELSEIF ( lug_palm == ind_luv_tundra  )  THEN
+             lug_dep = 8
+          ELSEIF ( lug_palm == ind_luv_irr_crops )  THEN
+             lug_dep = 2
+          ELSEIF ( lug_palm == ind_luv_semidesert )  THEN
+             lug_dep = 8
+          ELSEIF ( lug_palm == ind_luv_ice )  THEN
+             lug_dep = 10
+          ELSEIF ( lug_palm == ind_luv_marsh )  THEN
+             lug_dep = 8
+          ELSEIF ( lug_palm == ind_luv_ev_shrubs )  THEN
+             lug_dep = 14
+          ELSEIF ( lug_palm == ind_luv_de_shrubs  )  THEN
+             lug_dep = 14
+          ELSEIF ( lug_palm == ind_luv_mixed_forest )  THEN
+             lug_dep = 4
+          ELSEIF ( lug_palm == ind_luv_intrup_forest )  THEN
+             lug_dep = 8
+          ENDIF
        ENDIF
 
-       IF ( surf_usm%frac(m,ind_veg_wall) > 0 )  THEN
+       IF ( surf_usm_h(0)%frac(m,ind_veg_wall) > 0 )  THEN
 !
 !--       For walls in USM assume concrete walls/roofs,
 !--       assumed LU class desert as also assumed for pavements in LSM
           luu_palm = ind_lup_conc
-          luu_dep = 9
+          IF ( luu_palm == ind_lup_user )  THEN
+             message_string = 'No pavement type defined. Please define pavement type to enable deposition calculation'
+             CALL message( 'chem_depo', 'CM0455', 1, 2, 0, 6, 0 )
+          ELSEIF ( luu_palm == ind_lup_asph_conc )  THEN
+             luu_dep = 9
+          ELSEIF ( luu_palm == ind_lup_asph )  THEN
+             luu_dep = 9
+          ELSEIF ( luu_palm ==  ind_lup_conc )  THEN
+             luu_dep = 9
+          ELSEIF ( luu_palm ==  ind_lup_sett )  THEN
+             luu_dep = 9
+          ELSEIF ( luu_palm == ind_lup_pav_stones )  THEN
+             luu_dep = 9
+          ELSEIF ( luu_palm == ind_lup_cobblest )  THEN
+             luu_dep = 9
+          ELSEIF ( luu_palm == ind_lup_metal )  THEN
+             luu_dep = 9
+          ELSEIF ( luu_palm == ind_lup_wood )  THEN
+             luu_dep = 9
+          ELSEIF ( luu_palm == ind_lup_gravel )  THEN
+             luu_dep = 9
+          ELSEIF ( luu_palm == ind_lup_f_gravel )  THEN
+             luu_dep = 9
+          ELSEIF ( luu_palm == ind_lup_pebblest )  THEN
+             luu_dep = 9
+          ELSEIF ( luu_palm == ind_lup_woodchips )  THEN
+             luu_dep = 9
+          ELSEIF ( luu_palm == ind_lup_tartan )  THEN
+             luu_dep = 9
+          ELSEIF ( luu_palm == ind_lup_art_turf )  THEN
+             luu_dep = 9
+          ELSEIF ( luu_palm == ind_lup_clay )  THEN
+             luu_dep = 9
+          ENDIF
        ENDIF
 
-       IF ( surf_usm%frac(m,ind_wat_win) > 0 )  THEN
+       IF ( surf_usm_h(0)%frac(m,ind_wat_win) > 0 )  THEN
 !
 !--       For windows in USM assume metal as this is as close as we get, assumed LU class desert as
 !--       also assumed for pavements in LSM.
           lud_palm = ind_lup_metal
-          lud_dep = 9
+          IF ( lud_palm == ind_lup_user )  THEN
+             message_string = 'No pavement type defined. Please define pavement type to enable deposition calculation'
+             CALL message( 'chem_depo', 'CM0456', 1, 2, 0, 6, 0 )
+          ELSEIF ( lud_palm == ind_lup_asph_conc )  THEN
+             lud_dep = 9
+          ELSEIF ( lud_palm == ind_lup_asph )  THEN
+             lud_dep = 9
+          ELSEIF ( lud_palm ==  ind_lup_conc )  THEN
+             lud_dep = 9
+          ELSEIF ( lud_palm ==  ind_lup_sett )  THEN
+             lud_dep = 9
+          ELSEIF ( lud_palm == ind_lup_pav_stones )  THEN
+             lud_dep = 9
+          ELSEIF ( lud_palm == ind_lup_cobblest )  THEN
+             lud_dep = 9
+          ELSEIF ( lud_palm == ind_lup_metal )  THEN
+             lud_dep = 9
+          ELSEIF ( lud_palm == ind_lup_wood )  THEN
+             lud_dep = 9
+          ELSEIF ( lud_palm == ind_lup_gravel )  THEN
+             lud_dep = 9
+          ELSEIF ( lud_palm == ind_lup_f_gravel )  THEN
+             lud_dep = 9
+          ELSEIF ( lud_palm == ind_lup_pebblest )  THEN
+             lud_dep = 9
+          ELSEIF ( lud_palm == ind_lup_woodchips )  THEN
+             lud_dep = 9
+          ELSEIF ( lud_palm == ind_lup_tartan )  THEN
+             lud_dep = 9
+          ELSEIF ( lud_palm == ind_lup_art_turf )  THEN
+             lud_dep = 9
+          ELSEIF ( lud_palm == ind_lup_clay )  THEN
+             lud_dep = 9
+          ENDIF
        ENDIF
 !
 !--    @TODO: Activate these lines as soon as new ebsolver branch is merged:
 !--    Set wetness indicator to dry or wet for usm vegetation or pavement
-       !IF ( surf_usm%c_liq(m) > 0 )  THEN
+       !IF ( surf_usm_h(0)%c_liq(m) > 0 )  THEN
        !   nwet = 1
        !ELSE
        nwet = 0
@@ -5950,7 +4598,7 @@
 !--    each surface fraction. Then derive overall budget taking into account the surface fractions.
 
 !--    Walls/roofs
-       IF ( surf_usm%frac(m,ind_veg_wall) > 0 )  THEN
+       IF ( surf_usm_h(0)%frac(m,ind_veg_wall) > 0 )  THEN
 !
 !--       No vegetation on non-green walls:
           lai = 0.0_wp
@@ -5976,10 +4624,12 @@
                                                         particle_pars(ind_p_slip, part_type),      &
                                                         visc)
 
-                CALL drydepo_aero_zhang_vd( vd_lu, rs, vs,                                         &
+                CALL drydepo_aero_zhang_vd( vd_lu, rs,                                             &
+                                            vs,                                                    &
                                             particle_pars(ind_p_size, part_type),                  &
                                             particle_pars(ind_p_slip, part_type),                  &
-                                            nwet, temp_tmp, dens, visc, luu_dep,                   &
+                                            nwet, temp_tmp, dens, visc,                            &
+                                            luu_dep,                                               &
                                             r_aero_surf, ustar_surf )
 
                 bud_luu(lsp) = - conc_ijk(lsp) * ( 1.0_wp - EXP( - vd_lu * dt_dh ) ) * dh
@@ -5993,10 +4643,12 @@
                                                         particle_pars(ind_p_slip, part_type),      &
                                                         visc)
 
-                CALL drydepo_aero_zhang_vd( vd_lu, rs, vs,                                         &
+                CALL drydepo_aero_zhang_vd( vd_lu, rs,                                             &
+                                            vs,                                                    &
                                             particle_pars(ind_p_size, part_type),                  &
                                             particle_pars(ind_p_slip, part_type),                  &
-                                            nwet, temp_tmp, dens, visc, luu_dep ,                  &
+                                            nwet, temp_tmp, dens, visc,                            &
+                                            luu_dep ,                                              &
                                             r_aero_surf, ustar_surf )
 
                 bud_luu(lsp) = - conc_ijk(lsp) * ( 1.0_wp - EXP( - vd_lu * dt_dh ) ) * dh
@@ -6025,6 +4677,11 @@
 !--                 c_in_ppb * xm_tracer * [ dens / xm_air ] = c_in_ugm3
 !--             Use density at k:
                 ppm2ugm3 =  (dens/xm_air) * 0.001_wp  !< (mole air)/m3
+
+                !
+!--             Atmospheric concentration in DEPAC is requested in ug/m3:
+!--                 ug/m3              ppm          (ug/m3)/ppm/(kg/mole)     kg/mole
+                conc_ijk_ugm3 = conc_ijk(lsp)         * ppm2ugm3 *   specmolm(i_pspec)  ! in ug/m3
 !
 !--             Diffusivity for DEPAC relevant gases
 !--             Use default value
@@ -6045,9 +4702,10 @@
                                     diffusivity, rb )
 !
 !--             Get rc_tot
-                CALL drydepos_gas_depac_ij( spc_names(lsp), ts, ustar_surf, solar_rad, cos_zenith, &
-                                            rh_surf, lai, sai, nwet, luu_dep,                      &
-                                            2, rc_tot, ccomp_tot(lsp), hyp(nzb), diffusivity )
+                CALL drydepos_gas_depac( spc_names(lsp), day_of_year, latitude, ts, ustar_surf,    &
+                                         solar_rad, cos_zenith, rh_surf, lai, sai, nwet, luu_dep,  &
+                                         2, rc_tot, ccomp_tot(lsp), hyp(nzb), conc_ijk_ugm3,       &
+                                         diffusivity, r_aero_surf, rb )
 !
 !--             Calculate budget
                 IF ( rc_tot <= 0.0 )  THEN
@@ -6059,7 +4717,7 @@
                    vd_lu = 1.0_wp / (r_aero_surf + rb + rc_tot )
 
                    bud_luu(lsp) = - ( conc_ijk(lsp) - ccomp_tot(lsp) ) *                           &
-                                  ( 1.0_wp - EXP( -vd_lu * dt_dh ) ) * dh
+                                  ( 1.0_wp - EXP( - vd_lu * dt_dh ) ) * dh
                 ENDIF
 
              ENDIF
@@ -6067,7 +4725,7 @@
        ENDIF
 !
 !--    Green usm surfaces
-       IF ( surf_usm%frac(m,ind_pav_green) > 0 )  THEN
+       IF ( surf_usm_h(0)%frac(m,ind_pav_green) > 0 )  THEN
 
 !
 !--       No vegetation on bare soil, desert or ice:
@@ -6100,13 +4758,15 @@
                                                         particle_pars(ind_p_slip, part_type),      &
                                                         visc)
 
-                CALL drydepo_aero_zhang_vd( vd_lu, rs, vs,                                         &
+                CALL drydepo_aero_zhang_vd( vd_lu, rs,                                             &
+                                            vs,                                                    &
                                             particle_pars(ind_p_size, part_type),                  &
                                             particle_pars(ind_p_slip, part_type),                  &
-                                            nwet, temp_tmp, dens, visc, lug_dep,                   &
+                                            nwet, temp_tmp, dens, visc,                            &
+                                            lug_dep,                                               &
                                             r_aero_surf, ustar_surf )
 
-                bud_lug(lsp) = - conc_ijk(lsp) * ( 1.0_wp - EXP( -vd_lu * dt_dh ) ) * dh
+                bud_lug(lsp) = - conc_ijk(lsp) * ( 1.0_wp - EXP( - vd_lu * dt_dh ) ) * dh
 
              ELSEIF ( spc_names(lsp) == 'PM25' )  THEN
                 part_type = 2
@@ -6117,13 +4777,15 @@
                                                         particle_pars(ind_p_slip, part_type),      &
                                                         visc)
 
-                CALL drydepo_aero_zhang_vd( vd_lu, rs, vs,                                         &
+                CALL drydepo_aero_zhang_vd( vd_lu, rs,                                             &
+                                            vs,                                                    &
                                             particle_pars(ind_p_size, part_type),                  &
                                             particle_pars(ind_p_slip, part_type),                  &
-                                            nwet, temp_tmp, dens, visc, lug_dep,                   &
+                                            nwet, temp_tmp, dens, visc,                            &
+                                            lug_dep,                                               &
                                             r_aero_surf, ustar_surf )
 
-                bud_lug(lsp) = - conc_ijk(lsp) * ( 1.0_wp - EXP( -vd_lu * dt_dh ) ) * dh
+                bud_lug(lsp) = - conc_ijk(lsp) * ( 1.0_wp - EXP( - vd_lu * dt_dh ) ) * dh
 
              ELSE  !< GASES
 !
@@ -6150,6 +4812,10 @@
 !--             Use density at k:
                 ppm2ugm3 =  (dens/xm_air) * 0.001_wp  ! (mole air)/m3
 !
+!--             Atmospheric concentration in DEPAC is requested in ug/m3:
+                !   ug/m3              ppm          (ug/m3)/ppm/(kg/mole)     kg/mole
+                conc_ijk_ugm3 = conc_ijk(lsp)         * ppm2ugm3 *   specmolm(i_pspec)  ! in ug/m3
+!
 !--             Diffusivity for DEPAC relevant gases
 !--             Use default value
                 diffusivity            = 0.11e-4
@@ -6169,9 +4835,10 @@
                                     diffusivity, rb )
 !
 !--             Get rc_tot
-                CALL drydepos_gas_depac_ij( spc_names(lsp), ts, ustar_surf, solar_rad, cos_zenith, &
-                                            rh_surf, lai, sai, nwet, lug_dep,                      &
-                                            2, rc_tot, ccomp_tot(lsp), hyp(nzb), diffusivity )
+                CALL drydepos_gas_depac( spc_names(lsp), day_of_year, latitude, ts, ustar_surf,    &
+                                         solar_rad, cos_zenith, rh_surf, lai, sai, nwet, lug_dep,  &
+                                         2, rc_tot, ccomp_tot(lsp), hyp(nzb), conc_ijk_ugm3,       &
+                                         diffusivity, r_aero_surf , rb )
 !
 !--             Calculate budget
                 IF ( rc_tot <= 0.0 )  THEN
@@ -6183,7 +4850,7 @@
                    vd_lu = 1.0_wp / ( r_aero_surf + rb + rc_tot )
 
                    bud_lug(lsp) = - ( conc_ijk(lsp) - ccomp_tot(lsp) ) *                           &
-                                  ( 1.0_wp - EXP( -vd_lu * dt_dh ) )  * dh
+                                  ( 1.0_wp - EXP( - vd_lu * dt_dh ) )  * dh
                 ENDIF
 
              ENDIF
@@ -6191,7 +4858,7 @@
        ENDIF
 !
 !--    Windows
-       IF ( surf_usm%frac(m,ind_wat_win) > 0 )  THEN
+       IF ( surf_usm_h(0)%frac(m,ind_wat_win) > 0 )  THEN
 !
 !--       No vegetation on windows:
           lai = 0.0_wp
@@ -6237,7 +4904,8 @@
                 CALL drydepo_aero_zhang_vd( vd_lu, rs, vs,                                         &
                                             particle_pars(ind_p_size, part_type),                  &
                                             particle_pars(ind_p_slip, part_type),                  &
-                                            nwet, temp_tmp, dens, visc, lud_dep,                   &
+                                            nwet, temp_tmp, dens, visc,                            &
+                                            lud_dep,                                               &
                                             r_aero_surf, ustar_surf )
 
                 bud_lud(lsp) = - conc_ijk(lsp) * ( 1.0_wp - EXP( - vd_lu * dt_dh ) ) * dh
@@ -6268,6 +4936,10 @@
 
                 ppm2ugm3 =  (dens/xm_air) * 0.001_wp  ! (mole air)/m3
 !
+!--             Atmospheric concentration in DEPAC is requested in ug/m3:
+!--                 ug/m3              ppm          (ug/m3)/ppm/(kg/mole)     kg/mole
+                conc_ijk_ugm3 = conc_ijk(lsp)         * ppm2ugm3 *   specmolm(i_pspec)  ! in ug/m3
+!
 !--             Diffusivity for DEPAC relevant gases
 !--             Use default value
                 diffusivity = 0.11e-4
@@ -6287,9 +4959,10 @@
                                     diffusivity, rb )
 !
 !--             Get rc_tot
-                CALL drydepos_gas_depac_ij( spc_names(lsp), ts, ustar_surf, solar_rad, cos_zenith, &
-                                            rh_surf, lai, sai, nwet, lud_dep,                      &
-                                            2, rc_tot, ccomp_tot(lsp), hyp(nzb), diffusivity )
+                CALL drydepos_gas_depac( spc_names(lsp), day_of_year, latitude, ts, ustar_surf,    &
+                                         solar_rad, cos_zenith, rh_surf, lai, sai, nwet, lud_dep,  &
+                                         2, rc_tot, ccomp_tot(lsp), hyp(nzb), conc_ijk_ugm3,       &
+                                         diffusivity, r_aero_surf , rb )
 !
 !--             Calculate budget
                 IF ( rc_tot <= 0.0 )  THEN
@@ -6301,7 +4974,7 @@
                    vd_lu = 1.0_wp / (r_aero_surf + rb + rc_tot )
 
                    bud_lud(lsp) = - ( conc_ijk(lsp) - ccomp_tot(lsp) ) *                           &
-                                  ( 1.0_wp - EXP( -vd_lu * dt_dh ) )  * dh
+                                  ( 1.0_wp - EXP( - vd_lu * dt_dh ) )  * dh
                 ENDIF
 
              ENDIF
@@ -6314,9 +4987,10 @@
 !--    Calculate overall budget for surface m and adapt concentration
        DO  lsp = 1, nspec
 
-          bud(lsp) = surf_usm%frac(m,ind_veg_wall)  * bud_luu(lsp) +                             &
-                     surf_usm%frac(m,ind_pav_green) * bud_lug(lsp) +                             &
-                     surf_usm%frac(m,ind_wat_win)   * bud_lud(lsp)
+
+          bud(lsp) = surf_usm_h(0)%frac(m,ind_veg_wall)  * bud_luu(lsp) +                             &
+                     surf_usm_h(0)%frac(m,ind_pav_green) * bud_lug(lsp) +                             &
+                     surf_usm_h(0)%frac(m,ind_wat_win)   * bud_lud(lsp)
 !
 !--       Compute new concentration
           conc_ijk(lsp) = conc_ijk(lsp) + bud(lsp) * inv_dh
@@ -6328,388 +5002,23 @@
     ENDIF
 
 
- END SUBROUTINE chem_depo_ij
+ END SUBROUTINE chem_depo
 
 
 !--------------------------------------------------------------------------------------------------!
 ! Description:
 ! ------------
-!> Subroutine to compute total canopy (or surface) resistance Rc for gases.
-!> Vector-optimized version. (For further documentation, please see drydepos_gas_depac_ij.
+!> Subroutine to compute total canopy (or surface) resistance Rc for gases
 !>
 !> DEPAC:
 !> Code of the DEPAC routine and corresponding subroutines below from the DEPAC module of the
-!> LOTOS-EUROS model (Manders et al., 2017).
+!> LOTOS-EUROS model (Manders et al., 2017)
 !>
 !> Original DEPAC routines by RIVM and TNO (2015), for Documentation see van Zanten et al., 2010.
 !--------------------------------------------------------------------------------------------------!
- SUBROUTINE drydepos_gas_depac( compnam, mvec, t, ust, sai_present, solar_rad, sinphi, rh, lai,    &
-                                sai, nwet, lu, iratns, rc_tot, ccomp_tot, p, diffusivity )
-
-    CHARACTER(LEN=*), INTENT(IN) ::  compnam  !< component name: 'HNO3','NO','NO2','O3','SO2','NH3'
-
-    INTEGER                  ::  i              !< grid index in x-direction
-    INTEGER(iwp)             ::  icmp           !< component number taken from component name, paramteres matched with include files
-    INTEGER(iwp), PARAMETER  ::  icmp_o3   = 1  !< o3
-    INTEGER(iwp), PARAMETER  ::  icmp_so2  = 2  !< so2
-    INTEGER(iwp), PARAMETER  ::  icmp_no2  = 3  !< no2
-    INTEGER(iwp), PARAMETER  ::  icmp_no   = 4  !< no
-    INTEGER(iwp), PARAMETER  ::  icmp_nh3  = 5  !< nh3
-    INTEGER(iwp), PARAMETER  ::  icmp_co   = 6  !< co
-    INTEGER(iwp), PARAMETER  ::  icmp_no3  = 7  !< no3
-    INTEGER(iwp), PARAMETER  ::  icmp_hno3 = 8  !< hno3
-    INTEGER(iwp), PARAMETER  ::  icmp_n2o5 = 9  !< n2o5
-    INTEGER(iwp), PARAMETER  ::  icmp_h2o2 = 10 !< h2o2
-    INTEGER(iwp), INTENT(IN) ::  iratns         !< index for NH3/SO2 ratio used for SO2:
-                                                !< iratns = 1: low NH3/SO2
-                                                !< iratns = 2: high NH3/SO2
-                                                !< iratns = 3: very low NH3/SO2
-    INTEGER                  ::  j              !< grid index in y-direction
-    INTEGER                  ::  m              !< surface index
-
-
-    INTEGER(iwp), INTENT(IN), DIMENSION(nys:nyn,nxl:nxr) ::  mvec    !< pre-calculated upward-facing surface index
-    INTEGER(iwp), INTENT(IN), DIMENSION(nys:nyn,nxl:nxr) ::  lu      !< land use type, lu = 1,...,nlu
-    INTEGER(iwp), INTENT(IN), DIMENSION(nys:nyn,nxl:nxr) ::  nwet    !< wetness indicator; nwet=0 -> dry; nwet=1 -> wet; nwet=9 -> snow
-
-    LOGICAL      :: match_lsm      !< flag indicating LSM surface at given j,i
-    LOGICAL      :: do_rw_constant
-
-    LOGICAL, DIMENSION(nys:nyn,nxl:nxr)              ::  ready       !< Rc has been set:
-                                                                     !< = 1 -> constant Rc
-                                                                     !< = 2 -> temperature dependent Rc
-    LOGICAL, INTENT(IN), DIMENSION(nys:nyn,nxl:nxr)  ::  sai_present !< vegetation is present for current land use
-
-    REAL(wp), INTENT(OUT) ::  ccomp_tot        !< total compensation point (ug/m3) (= 0 for species that don't have a compensation)
-    REAL(wp)              ::  csoil            !< soil compensation point (ug/m3)
-    REAL(wp)              ::  cstom            !< stomatal compensation point (ug/m3)
-    REAL(wp)              ::  cw               !< external leaf surface compensation point
-    REAL(wp)              ::  const_val        !< Input value for rw_constant (ug/m3)
-    REAL(wp), PARAMETER   ::  dO3 = 0.13E-4_wp !< diffusion coefficient of ozon (m2/s)
-    REAL(wp), INTENT(IN)  ::  diffusivity      !< diffusivity
-    REAL(wp), INTENT(IN)  ::  p                !< pressure (Pa)
-    REAL(wp)              ::  rsoil_eff        !< effective soil resistance
-    REAL(wp), INTENT(IN)  ::  sinphi           !< sin of solar elevation angle
-    REAL(wp)              ::  vpd
-    REAL(wp)              ::  wet_soil         !< wet soil resistance
-
-
-    REAL(wp), DIMENSION(nlu_dep) ::  dry_soil1
-    REAL(wp), DIMENSION(nys:nyn) ::  dry_soil2
-    REAL(wp), DIMENSION(nys:nyn) ::  rinc
-
-    REAL(wp), DIMENSION(nys:nyn,nxl:nxr) ::               gc_tot     !< total canopy conductance (m/s)
-    REAL(wp), DIMENSION(nys:nyn,nxl:nxr) ::               gsoil_eff  !< effective soil conductance (m/s)
-    REAL(wp), DIMENSION(nys:nyn,nxl:nxr) ::               gstom      !< stomatal conductance (m/s)
-    REAL(wp), DIMENSION(nys:nyn,nxl:nxr) ::               gw         !< external leaf conductance (m/s)
-
-    REAL(wp), INTENT(IN), DIMENSION(nys:nyn,nxl:nxr)  ::  lai        !< one-sided leaf area index (-)
-                                                                     !< hemisphere not possible)
-    REAL(wp), INTENT(IN), DIMENSION(nys:nyn,nxl:nxr)  ::  rh         !< relative humidity (%)
-
-
-    REAL(wp), INTENT(IN), DIMENSION(nys:nyn,nxl:nxr)  ::  sai        !< surface area index (-) (lai + branches and stems)
-
-    REAL(wp), INTENT(IN), DIMENSION(nys:nyn,nxl:nxr)  ::  solar_rad  !< solar radiation, dirict+diffuse (W/m2)
-    REAL(wp), INTENT(IN), DIMENSION(nys:nyn,nxl:nxr)  ::  t          !< temperature (C)
-    REAL(wp), INTENT(IN), DIMENSION(nys:nyn,nxl:nxr)  ::  ust        !< friction velocity (m/s)
-    REAL(wp), INTENT(OUT), DIMENSION(nys:nyn,nxl:nxr) ::  rc_tot     !< total canopy resistance Rc (s/m)
-
-!
-!-- Define component number.
-    SELECT CASE ( TRIM( compnam ) )
-
-    CASE ( 'O3', 'o3' )
-       icmp = icmp_o3
-
-    CASE ( 'SO2', 'so2' )
-       icmp = icmp_so2
-
-    CASE ( 'NO2', 'no2' )
-       icmp = icmp_no2
-
-    CASE ( 'NO', 'no' )
-       icmp = icmp_no
-
-    CASE ( 'NH3', 'nh3' )
-       icmp = icmp_nh3
-
-    CASE ( 'CO', 'co' )
-       icmp = icmp_co
-
-    CASE ( 'NO3', 'no3' )
-       icmp = icmp_no3
-
-    CASE ( 'HNO3', 'hno3' )
-       icmp = icmp_hno3
-
-    CASE ( 'N2O5', 'n2o5' )
-       icmp = icmp_n2o5
-
-    CASE ( 'H2O2', 'h2o2' )
-       icmp = icmp_h2o2
-
-    CASE DEFAULT
-!
-!--    Component not part of DEPAC --> not deposited.
-       RETURN
-
-    END SELECT
-
-!
-!-- Inititalize
-    gw        = 0.0_wp
-    gstom     = 0.0_wp
-    gsoil_eff = 0.0_wp
-    gc_tot    = 0.0_wp
-    cw        = 0.0_wp
-    cstom     = 0.0_wp
-    csoil     = 0.0_wp
-    rc_tot    = 0.0_wp
-    ccomp_tot = 0.0_wp
-    ready = .FALSE.
-!
-!-- Set Rc (i.e. rc_tot) in special cases.
-!-- Next statements substitute CALL rc_special( icmp, compnam, lu, t, nwet, rc_tot, ready,
-!-- ccomp_tot ).
-    SELECT CASE ( TRIM( compnam ) )
-       CASE( 'HNO3', 'N2O5', 'NO3', 'H2O2' )
-!
-!--       No separate resistances for HNO3; just one total canopy resistance.
-!--       No snow (nwet == 9)
-          rc_tot = 10.0_wp
-          ready = .TRUE.
-
-       CASE( 'NO', 'CO' )
-          WHERE ( lu == ilu_water_sea  .OR.  lu == ilu_water_inland )      ! water
-             rc_tot = 2000.0_wp
-             ready = .TRUE.
-          ELSE WHERE ( nwet == 1 )   ! wet
-             rc_tot = 2000.0_wp
-             ready = .TRUE.
-          END WHERE
-
-       CASE( 'NO2', 'O3', 'SO2', 'NH3' )
-!         No Snow
-
-       CASE DEFAULT
-          message_string = 'component "'// TRIM( compnam ) // '" not supported'
-          CALL message( 'drydepos_gas_depac', 'CHM0020', 1, 2, 0, 6, 0 )
-    END SELECT
-!
-!--    External conductance.
-!       CALL rc_gw( compnam, iratns, t, rh, nwet, sai_present, sai,gw )
-
-    do_rw_constant = .FALSE.
-
-    IF ( TRIM( compnam ) == 'NO2' )  THEN
-       const_val = 2000.0
-       do_rw_constant = .TRUE.
-    ENDIF
-
-    IF ( TRIM( compnam ) == 'NO'  .OR.  TRIM( compnam ) == 'CO' ) THEN
-       const_val = -9999.0
-       do_rw_constant = .TRUE.
-    ENDIF
-
-    IF ( TRIM( compnam ) == 'O3' )  THEN
-       const_val = 2500.0
-       do_rw_constant = .TRUE.
-    ENDIF
-
-    IF ( do_rw_constant )  THEN
-       DO  i = nxl, nxr
-          DO  j = nys, nyn
-             m = mvec(j,i)
-
-             match_lsm = ( m /= 0 )
-
-             IF ( match_lsm  .AND.  .NOT. ready(j,i) )  THEN
-                CALL rw_constant( const_val, sai_present(j,i), gw(j,i) )
-             ENDIF
-          ENDDO
-       ENDDO
-    ENDIF
-!
-!-- SO2 and NH3 are not part of chemical phsatp setup.
-!-- The following IF block is not tested yet.
-    IF ( TRIM( compnam ) == 'SO2' ) THEN
-       DO  i = nxl, nxr
-          DO  j = nys, nyn
-             m = mvec(j,i)
-
-             match_lsm = ( m /= 0 )
-
-             IF ( match_lsm .AND. .NOT. ready(j,i) )  THEN
-                CALL rw_so2( t(j,i), nwet(j,i), rh(j,i), iratns, sai_present(j,i), gw(j,i) )
-             ENDIF
-          ENDDO
-       ENDDO
-    ELSEIF ( TRIM(compnam) == 'NH3' )  THEN
-       DO  i = nxl, nxr
-          DO  j = nys, nyn
-             m = mvec(j,i)
-
-             match_lsm = ( m /= 0 )
-
-             IF ( match_lsm  .AND.  .NOT. ready(j,i) )  THEN
-                CALL rw_nh3_sutton( t(j,i), rh(j,i), sai_present(j,i), gw(j,i) )
-                gw(j,i) = sai(j,i) * gw(j,i)
-             ENDIF
-          ENDDO
-       ENDDO
-    ENDIF
-!
-!--    Stomatal conductance.
-!       CALL rc_gstom( icmp, compnam, lu, lai_present, lai, solar_rad, sinphi, t, rh, diffusivity,  &
-!                      gstom, p )
-
-    SELECT CASE ( TRIM( compnam ) )
-
-       CASE( 'NO', 'CO' )
-!
-!--       For no stomatal uptake is neglected:
-          gstom = 0.0_wp
-
-       CASE( 'NO2', 'O3', 'SO2', 'NH3' )
-!
-!--       If vegetation present:
-          IF ( ANY(sai_present) )  THEN
-
-             IF ( ANY(solar_rad > 0.0_wp) )  THEN
-                DO  i = nxl, nxr
-                   DO  j = nys, nyn
-                      m = mvec(j,i)
-
-                      match_lsm = ( m /= 0 )
-
-                      IF ( match_lsm  .AND.  .NOT. ready(j,i) )  THEN
-                         CALL rc_get_vpd( t(j,i), rh(j,i), vpd )
-                         CALL rc_gstom_emb( lu(j,i), solar_rad(j,i), t(j,i), vpd, sai_present(j,i),&
-                                            lai(j,i), sinphi, gstom(j,i), p )
-                      ENDIF
-                   ENDDO
-                ENDDO
-                gstom = gstom * diffusivity / dO3       !< Gstom of Emberson is derived for ozone
-             ELSE
-                gstom = 0.0_wp
-             ENDIF
-          ELSE
-!
-!--          No vegetation; zero conductance (infinite resistance):
-             gstom = 0.0_wp
-          ENDIF
-
-       CASE DEFAULT
-          message_string = 'component "'// TRIM( compnam ) // '" not supported'
-          CALL message( 'drydeo_gas_depac', 'CHM0020', 1, 2, 0, 6, 0 )
-
-    END SELECT
-!
-!-- Effective soil conductance
-!    CALL rc_gsoil_eff( icmp, lu, sai, ust, nwet, t, gsoil_eff )
-!
-!-- rc_gsoil_eff contains a two-fold indirect addressing. This does not vectorize.
-!-- Introducing temporaray arrays and precompute values avoids indirect addressing.
-!-- The following block vectorizes completely-
-    DO  i = nxl, nxr
-       dry_soil1(:) = rsoil( :, icmp )
-
-       DO  j = nys, nyn
-!
-!--       Compute in canopy (in crop) resistance.
-          CALL rc_rinc( lu(j,i), sai(j,i), ust(j,i), rinc(j) )
-!
-!--       Check for missing deposition path.
-          IF ( missing( rinc(j) ) )   THEN
-             gsoil_eff(j,i) = 0.0_wp
-             ready(j,i) = .TRUE.
-          ENDIF
-       ENDDO
-
-
-       DO  j = nys, nyn
-!
-!--       Non-frozen soil - dry.
-          IF ( missing( dry_soil1( lu(j,i)) ) )  THEN
-             dry_soil2( j) = -9999.0_wp
-          ELSE
-             dry_soil2( j) = dry_soil1( lu(j,i) ) + rinc(j)
-          ENDIF
-       ENDDO
-
-       IF ( missing( rsoil_wet( icmp ) ) )  THEN
-          wet_soil = -9999.0_wp
-       ELSE
-          wet_soil = rsoil_wet( icmp ) + rinc(j)
-       ENDIF
-
-       DO  j = nys, nyn
-          m = mvec(j,i)
-
-          match_lsm = ( m /= 0 )
-
-          IF ( match_lsm  .AND.  .NOT. ready(j,i) )  THEN
-!
-!--          Frozen soil (temperature below 0).
-             IF ( t(j,i) < 0.0_wp )  THEN
-                IF ( missing( rsoil_frozen( icmp ) ) )  THEN
-                   rsoil_eff = -9999.0_wp
-                ELSE
-                   rsoil_eff = rsoil_frozen( icmp ) + rinc(j)
-                ENDIF
-             ELSE
-!
-!--             Non-frozen soil - wet.
-                IF ( nwet(j,i) == 0 )  THEN
-
-                   rsoil_eff = dry_soil2( j )
-                ELSE
-                   rsoil_eff = wet_soil
-                ENDIF
-             ENDIF
-!
-!--          Compute conductance.
-             IF ( rsoil_eff > 0.0_wp )  THEN
-                gsoil_eff(j,i) = 1.0_wp / rsoil_eff
-             ELSE
-                gsoil_eff(j,i) = 0.0_wp
-             ENDIF
-          ENDIF
-       ENDDO
-    ENDDO
-
-!
-!-- Total canopy conductance (gc_tot) and resistance Rc (rc_tot).
-    DO  i = nxl, nxr
-       DO  j = nys, nyn
-          m = mvec(j,i)
-
-          match_lsm = ( m /= 0 )
-
-          IF ( match_lsm  .AND.  .NOT. ready(j,i) )  THEN
-              CALL rc_rctot( gstom(j,i), gsoil_eff(j,i), gw(j,i), gc_tot(j,i), rc_tot(j,i) )
-          ENDIF
-       ENDDO
-    ENDDO
-
- END SUBROUTINE drydepos_gas_depac
-
-
-!--------------------------------------------------------------------------------------------------!
-! Description:
-! ------------
-!> Subroutine to compute total canopy (or surface) resistance Rc for gases.
-!> Call for each i,j (cache-optimized version).
-!>
-!> DEPAC:
-!> Code of the DEPAC routine and corresponding subroutines below from the DEPAC module of the
-!> LOTOS-EUROS model (Manders et al., 2017).
-!>
-!> Original DEPAC routines by RIVM and TNO (2015), for Documentation see van Zanten et al., 2010.
-!--------------------------------------------------------------------------------------------------!
- SUBROUTINE drydepos_gas_depac_ij( compnam, t, ust, solar_rad, sinphi, rh, lai, sai,               &
-                                   nwet, lu, iratns, rc_tot, ccomp_tot, p, diffusivity )
+ SUBROUTINE drydepos_gas_depac( compnam, day_of_year, lat, t, ust, solar_rad, sinphi, rh, lai, sai,&
+                                nwet, lu, iratns, rc_tot, ccomp_tot, p, conc_ijk_ugm3, diffusivity,&
+                                ra, rb )
 !
 !--   Some of depac arguments are OPTIONAL:
 !--    A. compute Rc_tot without compensation points (ccomp_tot will be zero):
@@ -6737,6 +5046,7 @@
 
     CHARACTER(LEN=*), INTENT(IN) ::  compnam         !< component name
                                                      !< 'HNO3','NO','NO2','O3','SO2','NH3'
+    INTEGER(iwp), INTENT(IN) ::  day_of_year         !< day of year, 1 ... 365 (366)
     INTEGER(iwp), INTENT(IN) ::  iratns              !< index for NH3/SO2 ratio used for SO2:
                                                      !< iratns = 1: low NH3/SO2
                                                      !< iratns = 2: high NH3/SO2
@@ -6744,9 +5054,15 @@
     INTEGER(iwp), INTENT(IN) ::  lu                  !< land use type, lu = 1,...,nlu
     INTEGER(iwp), INTENT(IN) ::  nwet                !< wetness indicator; nwet=0 -> dry; nwet=1 -> wet; nwet=9 -> snow
 
+    REAL(wp), INTENT(IN) ::  conc_ijk_ugm3           !< actual atmospheric concentration (ug/m3), in
+                                                     !< DEPAC=Catm
     REAL(wp), INTENT(IN) ::  diffusivity             !< diffusivity
     REAL(wp), INTENT(IN) ::  lai                     !< one-sidedleaf area index (-)
+    REAL(wp), INTENT(IN) ::  lat                     !< latitude Northern hemisphere (degrees) (S.
+                                                     !< hemisphere not possible)
     REAL(wp), INTENT(IN) ::  p                       !< pressure (Pa)
+    REAL(wp), INTENT(IN) ::  ra                      !< aerodynamic resistance (s/m)
+    REAL(wp), INTENT(IN) ::  rb                      !< boundary layer resistance (s/m)
     REAL(wp), INTENT(IN) ::  rh                      !< relative humidity (%)
     REAL(wp), INTENT(IN) ::  sai                     !< surface area index (-) (lai + branches and
                                                      !< stems)
@@ -6756,7 +5072,7 @@
     REAL(wp), INTENT(IN) ::  ust                     !< friction velocity (m/s)
 
     REAL(wp), INTENT(OUT) ::  ccomp_tot              !< total compensation point (ug/m3)
-                                                     !< [= 0 for species that don't have a compensation
+!                                                    !< [= 0 for species that don't have a compensation
     REAL(wp), INTENT(OUT) ::  rc_tot                 !< total canopy resistance Rc (s/m)
 
 !-- Local variables:
@@ -6794,6 +5110,9 @@
     REAL(wp) ::  gstom                               !< stomatal conductance (m/s)
     REAL(wp) ::  gw                                  !< external leaf conductance (m/s)
 !    REAL(wp) ::  laimax                              !< maximum leaf area index (-)
+!
+!-- Next statement is just to avoid compiler warning about unused variable
+    IF ( day_of_year == 0  .OR.  ( conc_ijk_ugm3 + lat + ra + rb ) > 0.0_wp )  CONTINUE
 !
 !-- Define component number
     SELECT CASE ( TRIM( compnam ) )
@@ -6867,10 +5186,31 @@
 !
 !--    Total canopy conductance (gc_tot) and resistance Rc (rc_tot):
        CALL rc_rctot( gstom, gsoil_eff, gw, gc_tot, rc_tot )
-
+!
+!--    Needed to include compensation point for NH3
+!--    Compensation points (always returns ccomp_tot; currently ccomp_tot != 0 only for NH3):
+!--    CALL rc_comp_point( compnam,lu,day_of_year,t,gw,gstom,gsoil_eff,gc_tot,&
+!--          lai_present, sai_present, &
+!--          ccomp_tot, &
+!--          conc_ijk_ugm3=conc_ijk_ugm3,c_ave_prev_nh3=c_ave_prev_nh3, &
+!--          c_ave_prev_so2=c_ave_prev_so2,gamma_soil_water=gamma_soil_water, &
+!--          tsea=tsea,cw=cw,cstom=cstom,csoil=csoil )
+!
+!--    Effective Rc based on compensation points:
+!--        IF ( PRESENT( rc_eff ) )  THEN
+!--          check on required arguments:
+!--           IF ( ( .NOT. PRESENT( conc_ijk_ugm3 ) )  .OR.  ( .NOT. PRESENT( ra ) )  .OR.         &
+!--                ( .NOT. PRESENT( rb ) ) )  THEN
+!--              STOP 'output argument rc_eff requires input arguments conc_ijk_ugm3, ra and rb'
+!--           ENDIF
+!
+!--           Compute rc_eff :
+!--           CALL rc_comp_point_rc_eff(ccomp_tot,conc_ijk_ugm3,ra,rb,rc_tot,rc_eff)
+!--        ENDIF
     ENDIF
 
- END SUBROUTINE drydepos_gas_depac_ij
+ END SUBROUTINE drydepos_gas_depac
+
 
 !--------------------------------------------------------------------------------------------------!
 ! Description:
@@ -6937,8 +5277,8 @@
           ready = .TRUE.
        ENDIF
     CASE default
-       message_string = 'component "'// TRIM( compnam ) // '" not supported'
-       CALL message( 'rc_special', 'CHM0020', 1, 2, 0, 6, 0 )
+       message_string = 'Component '// TRIM( compnam ) // ' not supported'
+       CALL message( 'rc_special', 'CM0457', 1, 2, 0, 6, 0 )
     END SELECT
 
  END SUBROUTINE rc_special
@@ -6990,8 +5330,8 @@
        gw = sai * gw
 
     CASE default
-       message_string = 'component "'// TRIM( compnam ) // '" not supported'
-       CALL message( 'rc_gw', 'CHM0020', 1, 2, 0, 6, 0 )
+       message_string = 'Component '// TRIM( compnam ) // ' not supported'
+       CALL message( 'rc_gw', 'CM0458', 1, 2, 0, 6, 0 )
     END SELECT
 
  END SUBROUTINE rc_gw
@@ -7203,8 +5543,8 @@
        ENDIF
 
     CASE default
-       message_string = 'component "'// TRIM( compnam ) // '" not supported'
-       CALL message( 'rc_gstom', 'CHM0020', 1, 2, 0, 6, 0 )
+       message_string = 'Component '// TRIM( compnam ) // ' not supported'
+       CALL message( 'rc_gstom', 'CM0459', 1, 2, 0, 6, 0 )
     END SELECT
 
  END SUBROUTINE rc_gstom
@@ -7507,6 +5847,25 @@
     REAL(wp) ::  rinc                          !< in canopy resistance  (s/m)
     REAL(wp) ::  rsoil_eff                     !< effective soil resistance (s/m)
 !
+!-- Soil resistance (numbers matched with lu_classes and component numbers)
+    !     grs    ara    crp    cnf    dec    wat    urb   oth    des    ice    sav    trf    wai    med    sem
+    REAL(wp), PARAMETER ::  rsoil(nlu_dep,ncmp) = RESHAPE( (/                                      &
+         1000.,  200.,  200.,  200.,  200., 2000.,  400., 1000., 2000., 2000., 1000.,  200., 2000.,  200.,  400., &    !< O3
+         1000., 1000., 1000., 1000., 1000.,   10., 1000., 1000., 1000.,  500., 1000., 1000.,   10., 1000., 1000., &    !< SO2
+         1000., 1000., 1000., 1000., 1000., 2000., 1000., 1000., 1000., 2000., 1000., 1000., 2000., 1000., 1000., &    !< NO2
+         -999., -999., -999., -999., -999., 2000., 1000., -999., 2000., 2000., -999., -999., 2000., -999., -999., &    !< NO
+         100.,  100.,  100.,  100.,  100.,   10.,  100.,  100.,  100., 1000.,  100.,  100.,   10.,  100.,  100.,  &    !< NH3
+         -999., -999., -999., -999., -999., 2000., 1000., -999., 2000., 2000., -999., -999., 2000., -999., -999., &    !< CO
+         -999., -999., -999., -999., -999., -999., -999., -999., -999., -999., -999., -999., -999., -999., -999., &    !< NO3
+         -999., -999., -999., -999., -999., -999., -999., -999., -999., -999., -999., -999., -999., -999., -999., &    !< HNO3
+         -999., -999., -999., -999., -999., -999., -999., -999., -999., -999., -999., -999., -999., -999., -999., &    !< N2O5
+         -999., -999., -999., -999., -999., -999., -999., -999., -999., -999., -999., -999., -999., -999., -999. /),&  !< H2O2
+         (/nlu_dep,ncmp/) )
+!
+!-- For                                          o3    so2   no2     no    nh3     co     no3    hno3   n2o5   h2o2
+    REAL(wp), PARAMETER ::  rsoil_frozen(ncmp) = (/ 2000., 500., 2000., -999., 1000., -999., -999., -999., -999., -999. /)
+    REAL(wp), PARAMETER ::  rsoil_wet(ncmp)    = (/ 2000., 10. , 2000., -999., 10.  , -999., -999., -999., -999., -999. /)
+!
 !-- Compute in canopy (in crop) resistance:
     CALL rc_rinc( lu, sai, ust, rinc )
 !
@@ -7540,8 +5899,8 @@
                 rsoil_eff = rsoil_wet( icmp ) + rinc
              ENDIF
           ELSE
-             WRITE( message_string, * ) 'illegal nwet = ', nwet
-             CALL message( 'rc_gsoil_eff', 'CHM0021', 1, 2, 0, 6, 0 )
+             message_string = 'nwet can only be 0 or 1'
+             CALL message( 'rc_gsoil_eff', 'CM0460', 1, 2, 0, 6, 0 )
           ENDIF
        ENDIF
     ENDIF
@@ -7626,10 +5985,110 @@
 
 
 !--------------------------------------------------------------------------------------------------!
+!> rc_comp_point_rc_eff: calculate the effective resistance Rc
+!> based on one or more compensation points
+!--------------------------------------------------------------------------------------------------!
+!> NH3rc (see depac v3.6 is based on Avero workshop Marc Sutton. p. 173. Sutton 1998 AE 473-480)
+!>
+!> Documentation by Ferd Sauter, 2008; see also documentation block in header of depac subroutine.
+!> FS 2009-01-29: variable names made consistent with DEPAC
+!> FS 2009-03-04: use total compensation point
+!>
+!> C: with total compensation point   ! D: approximation of C
+!>                                    !    with classical approach
+!>  zr --------- Catm                 !  zr --------- Catm
+!>         |                          !         |
+!>         Ra                         !         Ra
+!>         |                          !         |
+!>         Rb                         !         Rb
+!>         |                          !         |
+!>  z0 --------- Cc                   !  z0 --------- Cc
+!>         |                          !         |
+!>        Rc                          !        Rc_eff
+!>         |                          !         |
+!>     --------- Ccomp_tot            !     --------- C=0
+!>
+!>
+!> The effective Rc is defined such that instead of using
+!>
+!>   F = -vd*[Catm - Ccomp_tot]                                    (1)
+!>
+!> we can use the 'normal' flux formula
+!>
+!>   F = -vd'*Catm,                                                (2)
+!>
+!> with vd' = 1/(Ra + Rb + Rc')                                    (3)
+!>
+!> and Rc' the effective Rc (rc_eff).
+!>                                                (Catm - Ccomp_tot)
+!> vd'*Catm = vd*(Catm - Ccomp_tot) <=> vd' = vd* ------------------
+!>                                                      Catm
+!>
+!>                                        (Catm - Ccomp_tot)
+!> 1/(Ra + Rb + Rc') = (1/Ra + Rb + Rc) * ------------------
+!>                                              Catm
+!>
+!>                                          Catm
+!> (Ra + Rb + Rc') = (Ra + Rb + Rc) * ------------------
+!>                                     (Catm - Ccomp_tot)
+!>
+!>                              Catm
+!> Rc' = (Ra + Rb + Rc) * ------------------ - Ra - Rb
+!>                        (Catm - Ccomp_tot)
+!>
+!>                        Catm                           Catm
+!> Rc' = (Ra + Rb) [------------------ - 1 ] + Rc * ------------------
+!>                  (Catm - Ccomp_tot)              (Catm - Ccomp_tot)
+!>
+!> Rc' = [(Ra + Rb)*Ccomp_tot + Rc*Catm ] / (Catm - Ccomp_tot)
+!>
+! -------------------------------------------------------------------------------------------
+! SUBROUTINE rc_comp_point_rc_eff( ccomp_tot, conc_ijk_ugm3, ra, rb, rc_tot, rc_eff )
+!
+!
+!!-- Input/output variables:
+!    REAL(wp), INTENT(IN) ::  ccomp_tot     !< total compensation point (weighed average of separate compensation points) (ug/m3)
+!    REAL(wp), INTENT(IN) ::  conc_ijk_ugm3 !< atmospheric concentration (ug/m3) above Catm
+!    REAL(wp), INTENT(IN) ::  ra            !< aerodynamic resistance (s/m)
+!    REAL(wp), INTENT(IN) ::  rb            !< boundary layer resistance (s/m)
+!    REAL(wp), INTENT(IN) ::  rc_tot        !< total canopy resistance (s/m)
+!
+!    REAL(wp), INTENT(OUT) ::  rc_eff       !< effective total canopy resistance (s/m)
+!
+!    !
+!!-- Compute effective resistance:
+!    IF ( ccomp_tot == 0.0_wp )  THEN
+!       !
+!!--    Trace with no compensiation point ( or compensation point equal to zero)
+!       rc_eff = rc_tot
+!
+!    ELSE IF ( ccomp_tot > 0.0_wp  .AND.  ( abs( conc_ijk_ugm3 - ccomp_tot ) < 1.e-8 ) )  THEN
+!       !
+!!--   Surface concentration (almost) equal to atmospheric concentration
+!!--    no exchange between surface and atmosphere, infinite RC --> vd=0
+!       rc_eff = 9999999999.0_wp
+!
+!    ELSE IF ( ccomp_tot > 0.0_wp )  THEN
+!       !
+!!--    Compensation point available, calculate effective resistance
+!       rc_eff = ( ( ra + rb ) * ccomp_tot + rc_tot * conc_ijk_ugm3 ) / ( conc_ijk_ugm3 - ccomp_tot )
+!
+!    ELSE
+!       rc_eff = -999.0_wp
+!       message_string = 'This should not be possible, check ccomp_tot'
+!       CALL message( 'rc_comp_point_rc_eff', 'CM0461', 1, 2, 0, 6, 0 )
+!    ENDIF
+!
+!    RETURN
+!
+! END SUBROUTINE rc_comp_point_rc_eff
+
+
+!--------------------------------------------------------------------------------------------------!
 !> missing: check for data that correspond with a missing deposition path this data is represented
 !>          by -999
 !--------------------------------------------------------------------------------------------------!
- LOGICAL FUNCTION missing( x )
+ LOGICAL function missing( x )
 
     REAL(wp), INTENT(IN) ::  x
 
@@ -7639,7 +6098,7 @@
 
     missing = ( ABS( x + 999.0_wp ) <= eps )
 
- END FUNCTION missing
+ END function missing
 
 
  ELEMENTAL FUNCTION sedimentation_velocity( rhopart, partsize, slipcor, visc ) RESULT( vs )

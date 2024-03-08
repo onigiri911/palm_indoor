@@ -14,10 +14,50 @@ MODULE pmc_child
 ! You should have received a copy of the GNU General Public License along with PALM. If not, see
 ! <http://www.gnu.org/licenses/>.
 !
-! Copyright 1997-2021 Leibniz Universitaet Hannover
+! Copyright 1997-2020 Leibniz Universitaet Hannover
 !--------------------------------------------------------------------------------------------------!
 !
 !
+! Current revisions:
+! -----------------
+!
+!
+! Former revisions:
+! -----------------
+! $Id: pmc_child_mod.f90 4649 2020-08-25 12:11:17Z raasch $
+! File re-formatted to follow the PALM coding standard
+!
+!
+! 4629 2020-07-29 09:37:56Z raasch
+! Support for MPI Fortran77 interface (mpif.h) removed
+!
+! 4360 2020-01-07 11:25:50Z suehring
+!
+!
+! 4182 2019-08-22 15:20:23Z scharf
+! Corrected "Former revisions" section
+!
+! 3964 2019-05-09 09:48:32Z suehring
+! Remove unused variable
+!
+! 3963 2019-05-08 20:09:11Z suehring
+! Bugfixes in initial settings of child and parent communication patterns.
+!
+! 3945 2019-05-02 11:29:27Z raasch
+!
+! 3932 2019-04-24 17:31:34Z suehring
+! Typo removed
+!
+! 2019-02-25 15:31:42Z raasch
+! Statement added to avoid compiler warning
+!
+! 3655 2019-01-07 16:51:22Z knoop
+! Explicit kind settings
+!
+! 1762 2016-02-25 12:31:13Z hellstea
+! Initial revision by K. Ketelsen
+!
+!--------------------------------------------------------------------------------------------------!
 ! Description:
 ! ------------
 !> Child part of Palm Model Coupler
@@ -57,6 +97,7 @@ MODULE pmc_child
 
     IMPLICIT NONE
 
+
     PRIVATE
     SAVE
 
@@ -73,10 +114,6 @@ MODULE pmc_child
     INTERFACE pmc_c_clear_next_array_list
         MODULE PROCEDURE pmc_c_clear_next_array_list
     END INTERFACE pmc_c_clear_next_array_list
-
-    INTERFACE pmc_c_finalize
-        MODULE PROCEDURE pmc_c_finalize
-    END INTERFACE pmc_c_finalize
 
     INTERFACE pmc_c_getbuffer
         MODULE PROCEDURE pmc_c_getbuffer
@@ -109,9 +146,9 @@ MODULE pmc_child
         MODULE PROCEDURE pmc_set_dataarray_name_lastentry
     END INTERFACE pmc_set_dataarray_name
 
+
     PUBLIC pmc_childinit,                                                                          &
            pmc_c_clear_next_array_list,                                                            &
-           pmc_c_finalize,                                                                         &
            pmc_c_getbuffer,                                                                        &
            pmc_c_getnextarray,                                                                     &
            pmc_c_putbuffer,                                                                        &
@@ -775,6 +812,7 @@ MODULE pmc_child
 !-- The parent side (in pmc_s_fillbuffer) is filling the buffer in the MPI RMA window. When the
 !-- filling is complet, a MPI_BARRIER is called. The child is not allowd to access the parent-buffer
 !-- before it is completely filled. Therefore the following barrier is required.
+
     CALL MPI_BARRIER( me%intra_comm, ierr )
 
     DO  ip = 1, me%inter_npes
@@ -798,13 +836,14 @@ MODULE pmc_child
              CALL C_F_POINTER( ar%recvbuf, buf, buf_shape )
           ENDIF
 !
-!--       MPI passive target RMA.
-!--       One data array is fetchted from MPI RMA window on parent.
+!--       MPI passive target RMA
+!--       One data array is fetchted from MPI RMA window on parent
+
           IF ( nr > 0 )  THEN
              target_disp = ar%recvindex - 1
              CALL MPI_WIN_LOCK( MPI_LOCK_SHARED , ip-1, 0, me%win_parent_child, ierr )
              IF ( lo_ptrans )  THEN
-                CALL MPI_GET( ibuf, nr*8, MPI_BYTE, ip-1, target_disp, nr*8, MPI_BYTE,             &
+                CALL MPI_GET( ibuf, nr*8, MPI_BYTE, ip-1, target_disp, nr*8, MPI_BYTE, &  !There is no MPI_INTEGER8 datatype
                               me%win_parent_child, ierr )
              ELSE
                 CALL MPI_GET( buf, nr, MPI_REAL, ip-1, target_disp, nr, MPI_REAL,                  &
@@ -940,20 +979,5 @@ MODULE pmc_child
 
  END SUBROUTINE pmc_c_putbuffer
 
-
-!--------------------------------------------------------------------------------------------------!
-! Description:
-! ------------
-!> free MPI window of pmc data buffer
-!--------------------------------------------------------------------------------------------------!
- SUBROUTINE pmc_c_finalize
-
-    INTEGER(iwp) ::  ierr
-
-
-    CALL MPI_WIN_FREE( me%win_parent_child, ierr )
-
- END SUBROUTINE pmc_c_finalize
 #endif
-
  END MODULE pmc_child

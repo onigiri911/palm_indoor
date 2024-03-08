@@ -13,8 +13,124 @@
 ! You should have received a copy of the GNU General Public License along with PALM. If not, see
 ! <http://www.gnu.org/licenses/>.
 !
-! Copyright 1997-2021 Leibniz Universitaet Hannover
+! Copyright 1997-2020 Leibniz Universitaet Hannover
 !--------------------------------------------------------------------------------------------------!
+!
+! Current revisions:
+! ------------------
+!
+!
+! Former revisions:
+! -----------------
+! $Id: bulk_cloud_model_mod.f90 4768 2020-11-02 19:11:23Z suehring $
+! Enable 3D data output also with 64-bit precision
+!
+! 4755 2020-10-21 15:09:15Z schwenkel
+! Minor reformatting
+!
+! 4742 2020-10-14 15:11:02Z schwenkel
+! Implement snow and graupel (bulk microphysics)
+!
+! 4731 2020-10-07 13:25:11Z schwenkel
+! Move exchange_horiz from time_integration to modules
+!
+! 4671 2020-09-09 20:27:58Z pavelkrc
+! Implementation of downward facing USM and LSM surfaces
+! 
+! 4577 2020-06-25 09:53:58Z raasch
+! further re-formatting concerning Fortran parameter variables
+!
+! 4542 2020-05-19 15:45:12Z raasch
+! file re-formatted to follow the PALM coding standard
+!
+! 4535 2020-05-15 12:07:23Z raasch
+! bugfix for restart data format query
+!
+! 4533 2020-05-14 14:46:46Z schwenkel
+! Reformat intrinsic function
+!
+! 4532 2020-05-14 13:41:35Z schwenkel
+! Calculate mean droplet radius assuming gamma distibution for condensation
+!
+! 4521 2020-05-06 11:39:49Z schwenkel
+! Rename variable
+!
+! 4517 2020-05-03 14:29:30Z raasch
+! added restart with MPI-IO for reading local arrays
+!
+! 4506 2020-04-21 10:57:45Z schwenkel
+! Use correct magnus formula for liquid water temperature
+!
+! 4502 2020-04-17 16:14:16Z schwenkel
+! Implementation of ice microphysics
+!
+! 4495 2020-04-13 20:11:20Z raasch
+! restart data handling with MPI-IO added
+!
+! 4457 2020-03-11 14:20:43Z raasch
+! use statement for exchange horiz added
+!
+! 4418 2020-02-21 09:41:13Z raasch
+! bugfix for raindrop number adjustment
+!
+! 4370 2020-01-10 14:00:44Z raasch
+! vector directives added to force vectorization on Intel19 compiler
+!
+! 4360 2020-01-07 11:25:50Z suehring
+! Introduction of wall_flags_total_0, which currently sets bits based on static
+! topography information used in wall_flags_static_0
+!
+! 4329 2019-12-10 15:46:36Z motisi
+! Renamed wall_flags_0 to wall_flags_static_0
+!
+! 4289 2019-11-05 14:33:41Z knoop
+! Removed parameters precipitation and precipitation_amount_interval from namelist
+!
+! 4268 2019-10-17 11:29:38Z schwenkel
+! Introducing bcm_boundary_conditions
+!
+! 4182 2019-08-22 15:20:23Z scharf
+! Corrected "Former revisions" section
+!
+! 4168 2019-08-16 13:50:17Z suehring
+! Replace function get_topography_top_index by topo_top_ind
+!
+! 4110 2019-07-22 17:05:21Z suehring
+! Pass integer flag array as well as boundary flags to WS scalar advection
+! routine
+!
+! 4109 2019-07-22 17:00:34Z suehring
+! Added microphyics scheme 'morrision_no_rain'
+!
+! 3931 2019-04-24 16:34:28Z schwenkel
+! Added bcm_exchange_horiz which is called after non_transport_physics
+!
+! 3885 2019-04-11 11:29:34Z kanani
+! Changes related to global restructuring of location messages and introduction
+! of additional debug messages
+!
+! 3874 2019-04-08 16:53:48Z knoop
+! Implemented non_transport_physics module interfaces
+!
+! 3870 2019-04-08 13:44:34Z knoop
+! Moving prognostic equations of bcm into bulk_cloud_model_mod
+!
+! 3869 2019-04-08 11:54:20Z knoop
+! moving the furniture around ;-)
+!
+! 3786 2019-03-06 16:58:03Z raasch
+! unsed variables removed
+!
+! 3767 2019-02-27 08:18:02Z raasch
+! unused variable for file index removed from rrd-subroutines parameter list
+!
+! 3724 2019-02-06 16:28:23Z kanani
+! Correct double-used log_point_s unit
+!
+! 3700 2019-01-26 17:03:42Z knoop
+! nopointer option removed
+! 1053 2012-11-13 17:11:03Z hoffmann
+! initial revision
 !
 ! Description:
 ! ------------
@@ -36,185 +152,43 @@
         ONLY:  advec_s_ws
 
     USE arrays_3d,                                                                                 &
-        ONLY:  ddzu,                                                                               &
-               d_exner,                                                                            &
-               diss,                                                                               &
-               diss_l_nc,                                                                          &
-               diss_l_ng,                                                                          &
-               diss_l_ni,                                                                          &
-               diss_l_nr,                                                                          &
-               diss_l_ns,                                                                          &
-               diss_l_qc,                                                                          &
-               diss_l_qg,                                                                          &
-               diss_l_qi,                                                                          &
-               diss_l_qr,                                                                          &
-               diss_l_qs,                                                                          &
-               diss_s_qc,                                                                          &
-               diss_s_qg,                                                                          &
-               diss_s_qi,                                                                          &
-               diss_s_qr,                                                                          &
-               diss_s_qs,                                                                          &
-               diss_s_nc,                                                                          &
-               diss_s_ng,                                                                          &
-               diss_s_ni,                                                                          &
-               diss_s_nr,                                                                          &
-               diss_s_ns,                                                                          &
-               dzu,                                                                                &
-               dzw,                                                                                &
-               exner,                                                                              &
-               flux_l_nc,                                                                          &
-               flux_l_ng,                                                                          &
-               flux_l_ni,                                                                          &
-               flux_l_nr,                                                                          &
-               flux_l_ns,                                                                          &
-               flux_l_qc,                                                                          &
-               flux_l_qg,                                                                          &
-               flux_l_qi,                                                                          &
-               flux_l_qr,                                                                          &
-               flux_l_qs,                                                                          &
-               flux_s_nc,                                                                          &
-               flux_s_ng,                                                                          &
-               flux_s_ni,                                                                          &
-               flux_s_nr,                                                                          &
-               flux_s_ns,                                                                          &
-               flux_s_qc,                                                                          &
-               flux_s_qg,                                                                          &
-               flux_s_qi,                                                                          &
-               flux_s_qr,                                                                          &
-               flux_s_qs
+        ONLY:  diss_s_qc, diss_s_qr, diss_s_nc, diss_s_nr,                                         &
+               diss_l_qc, diss_l_qr, diss_l_nc, diss_l_nr,                                         &
+               diss_l_qi, diss_l_ni, diss_s_qi, diss_s_ni,                                         &
+               diss_l_qg, diss_l_ng, diss_s_qg, diss_s_ng,                                         &
+               diss_l_qs, diss_l_ns, diss_s_qs, diss_s_ns,                                         &
+               ddzu, diss, dzu, dzw, hyp, hyrho,                                                   &
+               exner, zu, tnc_m, tnr_m, tqc_m, tqr_m, tend, rdf_sc,                                &
+               flux_l_qc, flux_l_qr, flux_l_nc, flux_l_nr,                                         &
+               flux_l_qi, flux_l_ni, flux_s_qi, flux_s_ni,                                         &
+               flux_l_qg, flux_l_ng, flux_s_qg, flux_s_ng,                                         &
+               flux_l_qs, flux_l_ns, flux_s_qs, flux_s_ns,                                         &
+               flux_s_qc, flux_s_qr, flux_s_nc, flux_s_nr,                                         &
+               nc, nc_1, nc_2, nc_3, nc_p, nr, nr_1, nr_2, nr_3, nr_p,                             &
+               ni, ni_1, ni_2, ni_3, ni_p, tni_m,                                                  &
+               ng, ng_1, ng_2, ng_3, ng_p, tng_m,                                                  &
+               ns, ns_1, ns_2, ns_3, ns_p, tns_m,                                                  &
+               precipitation_amount, prr, pt, d_exner, pt_init, q, qf, qf_1, ql, ql_1,             &
+               qc, qc_1, qc_2, qc_3, qc_p, qr, qr_1, qr_2, qr_3, qr_p,                             &
+               qi, qi_1, qi_2, qi_3, qi_p, tqi_m,                                                  &
+               qg, qg_1, qg_2, qg_3, qg_p, tqg_m,                                                  &
+               qs, qs_1, qs_2, qs_3, qs_p, tqs_m
 
-    USE arrays_3d,                                                                                 &
-        ONLY:  hyp,                                                                                &
-               hyrho,                                                                              &
-               nc,                                                                                 &
-               nc_p,                                                                               &
-               nc_1,                                                                               &
-               nc_2,                                                                               &
-               nc_3,                                                                               &
-               ng,                                                                                 &
-               ng_p,                                                                               &
-               ng_1,                                                                               &
-               ng_2,                                                                               &
-               ng_3,                                                                               &
-               ni,                                                                                 &
-               ni_p,                                                                               &
-               ni_1,                                                                               &
-               ni_2,                                                                               &
-               ni_3,                                                                               &
-               nr,                                                                                 &
-               nr_p,                                                                               &
-               nr_1,                                                                               &
-               nr_2,                                                                               &
-               nr_3,                                                                               &
-               ns,                                                                                 &
-               ns_p,                                                                               &
-               ns_1,                                                                               &
-               ns_2,                                                                               &
-               ns_3,                                                                               &
-               precipitation_amount,                                                               &
-               prr,                                                                                &
-               prr_cloud,                                                                          &
-               prr_graupel,                                                                        &
-               prr_ice,                                                                            &
-               prr_rain,                                                                           &
-               prr_snow,                                                                           &
-               pt,                                                                                 &
-               pt_init,                                                                            &
-               q,                                                                                  &
-               qc,                                                                                 &
-               qc_p,                                                                               &
-               qc_1,                                                                               &
-               qc_2,                                                                               &
-               qc_3,                                                                               &
-               qf,                                                                                 &
-               qf_1,                                                                               &
-               qg,                                                                                 &
-               qg_p,                                                                               &
-               qg_1,                                                                               &
-               qg_2,                                                                               &
-               qg_3,                                                                               &
-               ql,                                                                                 &
-               ql_1,                                                                               &
-               qi,                                                                                 &
-               qi_p,                                                                               &
-               qi_1,                                                                               &
-               qi_2,                                                                               &
-               qi_3,                                                                               &
-               qr,                                                                                 &
-               qr_p,                                                                               &
-               qr_1,                                                                               &
-               qr_2,                                                                               &
-               qr_3,                                                                               &
-               qs,                                                                                 &
-               qs_p,                                                                               &
-               qs_1,                                                                               &
-               qs_2,                                                                               &
-               qs_3,                                                                               &
-               rdf_sc,                                                                             &
-               tend,                                                                               &
-               tnc_m,                                                                              &
-               tng_m,                                                                              &
-               tni_m,                                                                              &
-               tnr_m,                                                                              &
-               tns_m,                                                                              &
-               tqc_m,                                                                              &
-               tqg_m,                                                                              &
-               tqi_m,                                                                              &
-               tqr_m,                                                                              &
-               tqs_m,                                                                              &
-               zu
+
 
     USE averaging,                                                                                 &
-        ONLY:  nc_av,                                                                              &
-               ng_av,                                                                              &
-               ni_av,                                                                              &
-               nr_av,                                                                              &
-               ns_av,                                                                              &
-               prr_av,                                                                             &
-               prr_cloud_av,                                                                       &
-               prr_graupel_av,                                                                     &
-               prr_ice_av,                                                                         &
-               prr_rain_av,                                                                        &
-               prr_snow_av,                                                                        &
-               qc_av,                                                                              &
-               qg_av,                                                                              &
-               qi_av,                                                                              &
-               ql_av,                                                                              &
-               qr_av,                                                                              &
-               qs_av
+        ONLY:  nc_av, ng_av, ni_av, nr_av, ns_av, prr_av, qc_av, ql_av, qg_av, qi_av, qr_av, qs_av
 
     USE basic_constants_and_equations_mod,                                                         &
-        ONLY:  barometric_formula,                                                                 &
-               c_p,                                                                                &
-               c_w,                                                                                &
-               exner_function,                                                                     &
-               exner_function_invers,                                                              &
-               g,                                                                                  &
-               ideal_gas_law_rho,                                                                  &
-               ideal_gas_law_rho_pt,                                                               &
-               lv_d_cp,                                                                            &
-               lv_d_rd,                                                                            &
-               l_m,                                                                                &
-               l_v,                                                                                &
-               magnus,                                                                             &
-               magnus_ice,                                                                         &
-               magnus_tl,                                                                          &
-               rd_d_rv,                                                                            &
-               l_s,                                                                                &
+        ONLY:  c_p, c_w, g, lv_d_cp, lv_d_rd, l_m, l_v, magnus, magnus_ice, magnus_tl,             &
+               exner_function, exner_function_invers, ideal_gas_law_rho,                           &
+               ideal_gas_law_rho_pt, barometric_formula, rd_d_rv, l_s,                             &
                ls_d_cp,                                                                            &
                molecular_weight_of_solute,                                                         &
-               molecular_weight_of_water,                                                          &
-               pi,                                                                                 &
-               rho_i,                                                                              &
-               rho_l,                                                                              &
-               rho_s,                                                                              &
-               r_d,                                                                                &
-               r_v,                                                                                &
-               vanthoff
+               molecular_weight_of_water, pi, rho_i, rho_l, rho_s, r_d, r_v, vanthoff
 
     USE control_parameters,                                                                        &
-        ONLY:  advanced_div_correction,                                                            &
-               bc_dirichlet_l,                                                                     &
+        ONLY:  bc_dirichlet_l,                                                                     &
                bc_dirichlet_n,                                                                     &
                bc_dirichlet_r,                                                                     &
                bc_dirichlet_s,                                                                     &
@@ -222,62 +196,29 @@
                bc_radiation_n,                                                                     &
                bc_radiation_r,                                                                     &
                bc_radiation_s,                                                                     &
-               cloud_droplets,                                                                     &
-               cyclic_fill_initialization,                                                         &
                debug_output,                                                                       &
-               dt_do2d_xy,                                                                         &
-               dt_3d,                                                                              &
-               humidity,                                                                           &
-               initializing_actions,                                                               &
-               intermediate_timestep_count,                                                        &
-               intermediate_timestep_count_max,                                                    &
-               large_scale_forcing,                                                                &
-               loop_optimization,                                                                  &
-               lsf_surf,                                                                           &
-               mask_i,                                                                             &
-               mask_j,                                                                             &
-               mask_k,                                                                             &
-               mask_size_l,                                                                        &
-               mask_surface,                                                                       &
-               message_string,                                                                     &
-               pt_surface,                                                                         &
-               restart_data_format_output,                                                         &
-               rho_surface,                                                                        &
-               scalar_advec,                                                                       &
-               simulated_time,                                                                     &
+               dt_3d, dt_do2d_xy, intermediate_timestep_count,                                     &
+               intermediate_timestep_count_max, large_scale_forcing,                               &
+               loop_optimization, simulated_time,                                                  &
+               lsf_surf, pt_surface, restart_data_format_output, rho_surface,                      &
                surface_pressure,                                                                   &
-               timestep_scheme,                                                                    &
-               time_do2d_xy,                                                                       &
-               tsc,                                                                                &
-               ws_scheme_sca
+               time_do2d_xy, message_string, initializing_actions,                                 &
+               ws_scheme_sca, scalar_advec, timestep_scheme, tsc
 
     USE cpulog,                                                                                    &
-        ONLY:  cpu_log,                                                                            &
-               log_point,                                                                          &
-               log_point_s
+        ONLY:  cpu_log, log_point, log_point_s
 
     USE diffusion_s_mod,                                                                           &
         ONLY:  diffusion_s
 
     USE grid_variables,                                                                            &
-        ONLY:  dx,                                                                                 &
-               dy
+        ONLY:  dx, dy
 
     USE indices,                                                                                   &
         ONLY:  advc_flags_s,                                                                       &
-               nbgp,                                                                               &
-               nxl,                                                                                &
-               nxlg,                                                                               &
-               nxr,                                                                                &
-               nxrg,                                                                               &
-               nyn,                                                                                &
-               nyng,                                                                               &
-               nys,                                                                                &
-               nysg,                                                                               &
-               nzb,                                                                                &
-               nzt,                                                                                &
+               nbgp, nxl, nxlg, nxr, nxrg, nys, nysg, nyn, nyng, nzb, nzt,                         &
                topo_top_ind,                                                                       &
-               topo_flags
+               wall_flags_total_0
 
     USE kinds
 
@@ -285,43 +226,25 @@
         ONLY:  threads_per_task
 
     USE restart_data_mpi_io_mod,                                                                   &
-        ONLY:  rd_mpi_io_check_array,                                                              &
-               rrd_mpi_io,                                                                         &
-               wrd_mpi_io
+        ONLY:  rd_mpi_io_check_array, rrd_mpi_io, wrd_mpi_io
 
     USE statistics,                                                                                &
-        ONLY:  hom,                                                                                &
-               sums_wsncs_ws_l,                                                                    &
-               sums_wsngs_ws_l,                                                                    &
-               sums_wsnis_ws_l,                                                                    &
-               sums_wsnrs_ws_l,                                                                    &
-               sums_wsnss_ws_l,                                                                    &
-               sums_wsqcs_ws_l,                                                                    &
-               sums_wsqgs_ws_l,                                                                    &
-               sums_wsqis_ws_l,                                                                    &
-               sums_wsqrs_ws_l,                                                                    &
-               sums_wsqss_ws_l,                                                                    &
-               ts_value,                                                                           &
-               weight_pres,                                                                        &
-               weight_substep
+        ONLY:  sums_wsncs_ws_l, sums_wsngs_ws_l, sums_wsnis_ws_l, sums_wsnrs_ws_l, sums_wsnss_ws_l,&
+               sums_wsqcs_ws_l, sums_wsqgs_ws_l, sums_wsqis_ws_l, sums_wsqrs_ws_l, sums_wsqss_ws_l,&
+               weight_pres, weight_substep
 
     USE surface_mod,                                                                               &
-        ONLY:   bc_hv,                                                                             &
+        ONLY :  bc_h,                                                                              &
                 surf_bulk_cloud_model,                                                             &
-                surf_def,                                                                          &
-                surf_lsm,                                                                          &
+                surf_microphysics_morrison, surf_microphysics_seifert,                             &
                 surf_microphysics_ice_phase,                                                       &
-                surf_microphysics_morrison,                                                        &
-                surf_microphysics_seifert,                                                         &
-                surf_top,                                                                          &
-                surf_usm
+                surf_def_h, surf_def_v, surf_lsm_h, surf_lsm_v, surf_usm_h,                        &
+                surf_usm_v
 
     IMPLICIT NONE
 
     CHARACTER (LEN=20)   ::  aerosol_bulk = 'nacl'                        !< namelist parameter
     CHARACTER (LEN=20)   ::  cloud_scheme = 'saturation_adjust'           !< namelist parameter
-
-    INTEGER(iwp) ::  dots_start_index_bcm !< start index for time series of this module
 
     LOGICAL ::  aerosol_nacl =.TRUE.                         !< nacl aerosol for bulk scheme
     LOGICAL ::  aerosol_c3h4o4 =.FALSE.                      !< malonic acid aerosol for bulk scheme
@@ -600,38 +523,34 @@
 
     PRIVATE
 
-    PUBLIC bcm_actions,                                                                            &
-           bcm_boundary_conditions,                                                                &
+    PUBLIC bcm_parin,                                                                              &
+           bcm_check_parameters,                                                                   &
            bcm_check_data_output,                                                                  &
            bcm_check_data_output_pr,                                                               &
-           bcm_check_data_output_ts,                                                               &
-           bcm_check_parameters,                                                                   &
-           bcm_data_output_mask,                                                                   &
+           bcm_init_arrays,                                                                        &
+           bcm_init,                                                                               &
+           bcm_header,                                                                             &
+           bcm_actions,                                                                            &
+           bcm_non_advective_processes,                                                            &
+           bcm_exchange_horiz,                                                                     &
+           bcm_prognostic_equations,                                                               &
+           bcm_boundary_conditions,                                                                &
+           bcm_3d_data_averaging,                                                                  &
            bcm_data_output_2d,                                                                     &
            bcm_data_output_3d,                                                                     &
-           bcm_exchange_horiz,                                                                     &
-           bcm_header,                                                                             &
-           bcm_init,                                                                               &
-           bcm_init_arrays,                                                                        &
-           bcm_non_advective_processes,                                                            &
-           bcm_parin,                                                                              &
-           bcm_prognostic_equations,                                                               &
+           bcm_swap_timelevel,                                                                     &
            bcm_rrd_global,                                                                         &
            bcm_rrd_local,                                                                          &
-           bcm_statistics,                                                                         &
-           bcm_swap_timelevel,                                                                     &
            bcm_wrd_global,                                                                         &
            bcm_wrd_local,                                                                          &
-           bcm_3d_data_averaging
+           calc_liquid_water_content
 
     PUBLIC bulk_cloud_model,                                                                       &
-           calc_liquid_water_content,                                                              &
            call_microphysics_at_all_substeps,                                                      &
-           cloud_scheme,                                                                           &
            cloud_water_sedimentation,                                                              &
+           cloud_scheme,                                                                           &
            collision_turbulence,                                                                   &
            dt_precipitation,                                                                       &
-           graupel,                                                                                &
            ice_crystal_sedimentation,                                                              &
            in_init,                                                                                &
            microphysics_morrison,                                                                  &
@@ -639,21 +558,21 @@
            microphysics_sat_adjust,                                                                &
            microphysics_seifert,                                                                   &
            microphysics_ice_phase,                                                                 &
-           nc_const,                                                                               &
            na_init,                                                                                &
+           nc_const,                                                                               &
            precipitation,                                                                          &
            sigma_gc,                                                                               &
            snow,                                                                                   &
+           graupel,                                                                                &
            start_ice_microphysics
 
-    INTERFACE bcm_actions
-       MODULE PROCEDURE bcm_actions
-       MODULE PROCEDURE bcm_actions_ij
-    END INTERFACE bcm_actions
+    INTERFACE bcm_parin
+       MODULE PROCEDURE bcm_parin
+    END INTERFACE bcm_parin
 
-    INTERFACE bcm_boundary_conditions
-       MODULE PROCEDURE bcm_boundary_conditions
-    END INTERFACE bcm_boundary_conditions
+    INTERFACE bcm_check_parameters
+       MODULE PROCEDURE bcm_check_parameters
+    END INTERFACE bcm_check_parameters
 
     INTERFACE bcm_check_data_output
        MODULE PROCEDURE bcm_check_data_output
@@ -663,17 +582,48 @@
        MODULE PROCEDURE bcm_check_data_output_pr
     END INTERFACE bcm_check_data_output_pr
 
-    INTERFACE bcm_check_data_output_ts
-       MODULE PROCEDURE bcm_check_data_output_ts
-    END INTERFACE bcm_check_data_output_ts
+    INTERFACE bcm_init_arrays
+       MODULE PROCEDURE bcm_init_arrays
+    END INTERFACE bcm_init_arrays
 
-    INTERFACE bcm_check_parameters
-       MODULE PROCEDURE bcm_check_parameters
-    END INTERFACE bcm_check_parameters
+    INTERFACE bcm_init
+       MODULE PROCEDURE bcm_init
+    END INTERFACE bcm_init
 
-    INTERFACE bcm_data_output_mask
-       MODULE PROCEDURE bcm_data_output_mask
-    END INTERFACE bcm_data_output_mask
+    INTERFACE bcm_header
+       MODULE PROCEDURE bcm_header
+    END INTERFACE bcm_header
+
+    INTERFACE bcm_actions
+       MODULE PROCEDURE bcm_actions
+       MODULE PROCEDURE bcm_actions_ij
+    END INTERFACE bcm_actions
+
+    INTERFACE bcm_non_advective_processes
+       MODULE PROCEDURE bcm_non_advective_processes
+       MODULE PROCEDURE bcm_non_advective_processes_ij
+    END INTERFACE bcm_non_advective_processes
+
+    INTERFACE bcm_exchange_horiz
+       MODULE PROCEDURE bcm_exchange_horiz
+    END INTERFACE bcm_exchange_horiz
+
+    INTERFACE bcm_prognostic_equations
+       MODULE PROCEDURE bcm_prognostic_equations
+       MODULE PROCEDURE bcm_prognostic_equations_ij
+    END INTERFACE bcm_prognostic_equations
+
+    INTERFACE bcm_boundary_conditions
+       MODULE PROCEDURE bcm_boundary_conditions
+    END INTERFACE bcm_boundary_conditions
+
+    INTERFACE bcm_swap_timelevel
+       MODULE PROCEDURE bcm_swap_timelevel
+    END INTERFACE bcm_swap_timelevel
+
+    INTERFACE bcm_3d_data_averaging
+       MODULE PROCEDURE bcm_3d_data_averaging
+    END INTERFACE bcm_3d_data_averaging
 
     INTERFACE bcm_data_output_2d
        MODULE PROCEDURE bcm_data_output_2d
@@ -682,36 +632,6 @@
     INTERFACE bcm_data_output_3d
        MODULE PROCEDURE bcm_data_output_3d
     END INTERFACE bcm_data_output_3d
-
-    INTERFACE bcm_exchange_horiz
-       MODULE PROCEDURE bcm_exchange_horiz
-    END INTERFACE bcm_exchange_horiz
-
-    INTERFACE bcm_header
-       MODULE PROCEDURE bcm_header
-    END INTERFACE bcm_header
-
-    INTERFACE bcm_init
-       MODULE PROCEDURE bcm_init
-    END INTERFACE bcm_init
-
-    INTERFACE bcm_init_arrays
-       MODULE PROCEDURE bcm_init_arrays
-    END INTERFACE bcm_init_arrays
-
-    INTERFACE bcm_non_advective_processes
-       MODULE PROCEDURE bcm_non_advective_processes
-       MODULE PROCEDURE bcm_non_advective_processes_ij
-    END INTERFACE bcm_non_advective_processes
-
-    INTERFACE bcm_parin
-       MODULE PROCEDURE bcm_parin
-    END INTERFACE bcm_parin
-
-    INTERFACE bcm_prognostic_equations
-       MODULE PROCEDURE bcm_prognostic_equations
-       MODULE PROCEDURE bcm_prognostic_equations_ij
-    END INTERFACE bcm_prognostic_equations
 
     INTERFACE bcm_rrd_global
        MODULE PROCEDURE bcm_rrd_global_ftn
@@ -723,14 +643,6 @@
        MODULE PROCEDURE bcm_rrd_local_mpi
     END INTERFACE bcm_rrd_local
 
-    INTERFACE bcm_swap_timelevel
-       MODULE PROCEDURE bcm_swap_timelevel
-    END INTERFACE bcm_swap_timelevel
-
-    INTERFACE bcm_statistics
-       MODULE PROCEDURE bcm_statistics
-    END INTERFACE bcm_statistics
-
     INTERFACE bcm_wrd_global
        MODULE PROCEDURE bcm_wrd_global
     END INTERFACE bcm_wrd_global
@@ -738,10 +650,6 @@
     INTERFACE bcm_wrd_local
        MODULE PROCEDURE bcm_wrd_local
     END INTERFACE bcm_wrd_local
-
-    INTERFACE bcm_3d_data_averaging
-       MODULE PROCEDURE bcm_3d_data_averaging
-    END INTERFACE bcm_3d_data_averaging
 
     INTERFACE calc_liquid_water_content
        MODULE PROCEDURE calc_liquid_water_content
@@ -755,66 +663,56 @@
 ! ------------
 !> Parin for &bulk_cloud_parameters for the bulk cloud module
 !--------------------------------------------------------------------------------------------------!
- SUBROUTINE bcm_parin
+    SUBROUTINE bcm_parin
 
 
-    IMPLICIT NONE
+       IMPLICIT NONE
 
-    CHARACTER(LEN=100)  ::  line  !< Dummy string that contains the current line of the parameter
-                                  !< file
+       CHARACTER (LEN=80)  ::  line  !< dummy string that contains the current line of the parameter
+                                     !< file
 
-    INTEGER(iwp)  ::  io_status   !< Status after reading the namelist file
+       NAMELIST /bulk_cloud_parameters/                                                            &
+          aerosol_bulk,                                                                            &
+          bulk_cloud_model,                                                                        &
+          c_sedimentation,                                                                         &
+          call_microphysics_at_all_substeps,                                                       &
+          cloud_scheme,                                                                            &
+          cloud_water_sedimentation,                                                               &
+          collision_turbulence,                                                                    &
+          curvature_solution_effects_bulk,                                                         &
+          dry_aerosol_radius,                                                                      &
+          graupel,                                                                                 &
+          ice_crystal_sedimentation,                                                               &
+          in_init,                                                                                 &
+          limiter_sedimentation,                                                                   &
+          microphysics_ice_phase,                                                                  &
+          na_init,                                                                                 &
+          nc_const,                                                                                &
+          sigma_bulk,                                                                              &
+          snow,                                                                                    &
+          start_ice_microphysics,                                                                  &
+          ventilation_effect
 
-    LOGICAL ::  switch_off_module = .FALSE.  !< local namelist parameter to switch off the module
-                                             !< although the respective module namelist appears in
-                                             !< the namelist file
-
-    NAMELIST /bulk_cloud_parameters/                                                               &
-       aerosol_bulk,                                                                               &
-       c_sedimentation,                                                                            &
-       call_microphysics_at_all_substeps,                                                          &
-       cloud_scheme,                                                                               &
-       cloud_water_sedimentation,                                                                  &
-       collision_turbulence,                                                                       &
-       curvature_solution_effects_bulk,                                                            &
-       dry_aerosol_radius,                                                                         &
-       graupel,                                                                                    &
-       ice_crystal_sedimentation,                                                                  &
-       in_init,                                                                                    &
-       limiter_sedimentation,                                                                      &
-       microphysics_ice_phase,                                                                     &
-       na_init,                                                                                    &
-       nc_const,                                                                                   &
-       precipitation_amount_interval,                                                              &
-       sigma_bulk,                                                                                 &
-       snow,                                                                                       &
-       start_ice_microphysics,                                                                     &
-       switch_off_module,                                                                          &
-       ventilation_effect
-
+       line = ' '
 !
-!-- Move to the beginning of the namelist file and try to find and read the namelist.
-    REWIND( 11 )
-    READ( 11, bulk_cloud_parameters, IOSTAT=io_status )
+!--    Try to find bulk cloud module namelist
+       REWIND ( 11 )
+       line = ' '
+       DO   WHILE ( INDEX( line, '&bulk_cloud_parameters' ) == 0 )
+          READ ( 11, '(A)', END=10 )  line
+       ENDDO
+       BACKSPACE ( 11 )
 !
-!-- Action depending on the READ status
-    IF ( io_status == 0 )  THEN
+!--    Read user-defined namelist
+       READ ( 11, bulk_cloud_parameters )
 !
-!--    bulk_cloud_parameters namelist was found and read correctly. Set flag that
-!--    bulk_cloud_model_mod is switched on.
-       IF ( .NOT. switch_off_module )  bulk_cloud_model = .TRUE.
+!--    Set flag that indicates that the bulk cloud module is switched on
+       !bulk_cloud_model = .TRUE.
 
-    ELSEIF ( io_status > 0 )  THEN
-!
-!--    bulk_cloud_parameters namelist was found, but contained errors. Print an error message
-!--    containing the line that caused the problem.
-       BACKSPACE( 11 )
-       READ( 11 , '(A)') line
-       CALL parin_fail_message( 'bulk_cloud_parameters', line )
+10     CONTINUE
 
-    ENDIF
 
- END SUBROUTINE bcm_parin
+    END SUBROUTINE bcm_parin
 
 
 !--------------------------------------------------------------------------------------------------!
@@ -822,148 +720,131 @@
 ! ------------
 !> Check parameters routine for bulk cloud module
 !--------------------------------------------------------------------------------------------------!
- SUBROUTINE bcm_check_parameters
+    SUBROUTINE bcm_check_parameters
 
 
-    IMPLICIT NONE
-
-
+       IMPLICIT NONE
 !
-!-- BCM and LCM can not be used simultaneously.
-    IF ( bulk_cloud_model  .AND.  cloud_droplets )  THEN
-       message_string = 'bulk_cloud_model = .TRUE. is not allowed with cloud_droplets = .TRUE.'
-       CALL message( 'check_parameters', 'BCM0010', 1, 2, 0, 6, 0 )
-    ENDIF
-
-    IF ( bulk_cloud_model  .AND.  .NOT. humidity )  THEN
-       WRITE( message_string, * ) 'bulk_cloud_model = ', bulk_cloud_model,                         &
-                                  ' is not allowed with humidity = .FALSE.'
-       CALL message( 'check_parameters', 'BCM0011', 1, 2, 0, 6, 0 )
-    ENDIF
-
+!--    Check cloud scheme
+!--    This scheme considers only saturation adjustment, i.e. water vapor surplus is converted into
+!--    liquid water. No other microphysical processes are considered.
+       IF ( cloud_scheme == 'saturation_adjust' )  THEN
+          microphysics_sat_adjust = .TRUE.
+          microphysics_seifert    = .FALSE.
+          microphysics_kessler    = .FALSE.
+          precipitation           = .FALSE.
+          microphysics_morrison_no_rain = .FALSE.
 !
-!-- Check cloud scheme
-!-- This scheme considers only saturation adjustment, i.e. water vapor surplus is converted into
-!-- liquid water. No other microphysical processes are considered.
-    IF ( cloud_scheme == 'saturation_adjust' )  THEN
-       microphysics_sat_adjust = .TRUE.
-       microphysics_seifert    = .FALSE.
-       microphysics_kessler    = .FALSE.
-       precipitation           = .FALSE.
-       microphysics_morrison_no_rain = .FALSE.
+!--    This scheme includes all process of the seifert beheng scheme (2001,2006). Especially rain
+!--    processes are considered with prognostic quantities of qr and nr.
+!--    Cloud droplet concentration is assumed to be constant and qc is diagnostic.
+!--    Technical remark: The switch 'microphysics_seifert' allocates fields of qr and nr and enables
+!--    all rain processes.
+       ELSEIF ( cloud_scheme == 'seifert_beheng' )  THEN
+          microphysics_sat_adjust = .FALSE.
+          microphysics_seifert    = .TRUE.
+          microphysics_kessler    = .FALSE.
+          microphysics_morrison  = .FALSE.
+          precipitation           = .TRUE.
+          microphysics_morrison_no_rain = .FALSE.
 !
-!-- This scheme includes all process of the seifert beheng scheme (2001,2006). Especially rain
-!-- processes are considered with prognostic quantities of qr and nr.
-!-- Cloud droplet concentration is assumed to be constant and qc is diagnostic.
-!-- Technical remark: The switch 'microphysics_seifert' allocates fields of qr and nr and enables
-!-- all rain processes.
-    ELSEIF ( cloud_scheme == 'seifert_beheng' )  THEN
-       microphysics_sat_adjust = .FALSE.
-       microphysics_seifert    = .TRUE.
-       microphysics_kessler    = .FALSE.
-       microphysics_morrison  = .FALSE.
-       precipitation           = .TRUE.
-       microphysics_morrison_no_rain = .FALSE.
+!--    The kessler scheme is a simplified scheme without any prognostic quantities for microphyical
+!--    variables but considering autoconversion.
+       ELSEIF ( cloud_scheme == 'kessler' )  THEN
+          microphysics_sat_adjust = .FALSE.
+          microphysics_seifert    = .FALSE.
+          microphysics_kessler    = .TRUE.
+          microphysics_morrison   = .FALSE.
+          precipitation           = .TRUE.
+          microphysics_morrison_no_rain = .FALSE.
 !
-!-- The kessler scheme is a simplified scheme without any prognostic quantities for microphyical
-!-- variables but considering autoconversion.
-    ELSEIF ( cloud_scheme == 'kessler' )  THEN
-       microphysics_sat_adjust = .FALSE.
-       microphysics_seifert    = .FALSE.
-       microphysics_kessler    = .TRUE.
-       microphysics_morrison   = .FALSE.
-       precipitation           = .TRUE.
-       microphysics_morrison_no_rain = .FALSE.
+!--    The morrison scheme is an extension of the seifer beheng scheme including also relevant
+!--    processes for cloud droplet size particles such as activation and an diagnostic mehtod for
+!--    diffusional growth.
+!--    I.e. here all processes of Seifert and Beheng as well as of the morrision scheme are used.
+!--    Therefore, ztis includes prognostic quantities for qc and nc.
+!--    Technical remark: The switch 'microphysics_morrison' allocates fields of qc and nc and
+!--    enables diagnostic diffusional growth and activation.
+       ELSEIF ( cloud_scheme == 'morrison' )  THEN
+          microphysics_sat_adjust = .FALSE.
+          microphysics_seifert    = .TRUE.
+          microphysics_kessler    = .FALSE.
+          microphysics_morrison   = .TRUE.
+          precipitation           = .TRUE.
+          microphysics_morrison_no_rain = .FALSE.
 !
-!-- The morrison scheme is an extension of the seifer beheng scheme including also relevant
-!-- processes for cloud droplet size particles such as activation and an diagnostic mehtod for
-!-- diffusional growth.
-!-- I.e. here all processes of Seifert and Beheng as well as of the morrision scheme are used.
-!-- Therefore, ztis includes prognostic quantities for qc and nc.
-!-- Technical remark: The switch 'microphysics_morrison' allocates fields of qc and nc and
-!-- enables diagnostic diffusional growth and activation.
-    ELSEIF ( cloud_scheme == 'morrison' )  THEN
-       microphysics_sat_adjust = .FALSE.
-       microphysics_seifert    = .TRUE.
-       microphysics_kessler    = .FALSE.
-       microphysics_morrison   = .TRUE.
-       precipitation           = .TRUE.
-       microphysics_morrison_no_rain = .FALSE.
-!
-!-- The 'morrision_no_rain' scheme includes only processes of morrision scheme without the rain
-!-- processes of seifert beheng. Therfore, the prog. quantities of qr and nr remain unallocated.
-!-- This might be appropiate for cloud in which the size distribution is narrow, e.g. fog.
-    ELSEIF ( cloud_scheme == 'morrison_no_rain' )  THEN
-       microphysics_sat_adjust = .FALSE.
-       microphysics_seifert    = .FALSE.
-       microphysics_kessler    = .FALSE.
-       microphysics_morrison   = .TRUE.
-       microphysics_morrison_no_rain = .TRUE.
-       precipitation           = .FALSE.
-    ELSE
-       message_string = 'unknown cloud microphysics scheme cloud_scheme ="' //                     &
-                        TRIM( cloud_scheme ) // '"'
-       CALL message( 'check_parameters', 'BCM0001', 1, 2, 0, 6, 0 )
-    ENDIF
-!
-!-- The use of snow and graupel are only implemented together
-    IF ( snow  .AND.  .NOT. graupel  .OR.  .NOT.  snow  .AND. graupel )  THEN
-       message_string = 'snow and graupel must be both switched on or off'
-       CALL message( 'check_parameters', 'BCM0002', 1, 2, 0, 6, 0 )
-    ENDIF
-!
-!-- Mixed phase microphysics can only be used with the cloud scheme 'seifert_beheng' or 'morrison'.
-    IF ( microphysics_ice_phase  .AND.  cloud_scheme == 'saturation_adjust'  .OR.                  &
-         microphysics_ice_phase  .AND.  cloud_scheme == 'kessler'            .OR.                  &
-         microphysics_ice_phase  .AND.  cloud_scheme == 'morrison_no_rain' )                       &
-    THEN
-       message_string = 'cloud scheme = "' // TRIM( cloud_scheme ) // '" does not work for' //     &
-                        'microphysics_ice_phase = .TRUE.'
-       CALL message( 'check_parameters', 'BCM0003', 1, 2, 0, 6, 0 )
-    ENDIF
-
-!
-!-- Set the default value for the integration interval of precipitation amount
-    IF ( microphysics_seifert  .OR.  microphysics_kessler )  THEN
-       IF ( precipitation_amount_interval == 9999999.9_wp )  THEN
-          precipitation_amount_interval = dt_do2d_xy
+!--    The 'morrision_no_rain' scheme includes only processes of morrision scheme without the rain
+!--    processes of seifert beheng. Therfore, the prog. quantities of qr and nr remain unallocated.
+!--    This might be appropiate for cloud in which the size distribution is narrow, e.g. fog.
+       ELSEIF ( cloud_scheme == 'morrison_no_rain' )  THEN
+          microphysics_sat_adjust = .FALSE.
+          microphysics_seifert    = .FALSE.
+          microphysics_kessler    = .FALSE.
+          microphysics_morrison   = .TRUE.
+          microphysics_morrison_no_rain = .TRUE.
+          precipitation           = .FALSE.
        ELSE
-          IF ( precipitation_amount_interval > dt_do2d_xy )  THEN
-             WRITE( message_string, * )  'precipitation_amount_interval = ',                       &
-                precipitation_amount_interval, ' must not be larger than ',                        &
-                'dt_do2d_xy = ', dt_do2d_xy
-             CALL message( 'check_parameters', 'BCM0004', 1, 2, 0, 6, 0 )
+          message_string = 'unknown cloud microphysics scheme cloud_scheme ="' //                  &
+                           TRIM( cloud_scheme ) // '"'
+          CALL message( 'check_parameters', 'PA0357', 1, 2, 0, 6, 0 )
+       ENDIF
+!
+!--    The use of snow and graupel are only implemented together
+       IF ( snow  .AND.  .NOT. graupel  .OR.  .NOT.  snow  .AND. graupel )  THEN
+          message_string = 'either snow and graupel must be both turned on or both switched off'
+          CALL message( 'check_parameters', 'PA0399', 1, 2, 0, 6, 0 )
+       ENDIF
+!
+!--    Mixed phase microphysics can be steered with the cloud scheme 'seifert_beheng' or 'morrison'
+       IF ( microphysics_ice_phase  .AND.  cloud_scheme == 'saturation_adjust'  .OR.               &
+            microphysics_ice_phase  .AND.  cloud_scheme == 'kessler'            .OR.               &
+            microphysics_ice_phase  .AND.  cloud_scheme == 'morrison_no_rain' )  THEN
+          message_string = 'Mixed phase microphysics can be steered with the cloud scheme ' //     &
+                           '"seifert_beheng" and "morrison" '
+          CALL message( 'check_parameters', 'PA0399', 1, 2, 0, 6, 0 )
+       ENDIF
+
+!
+!--    Set the default value for the integration interval of precipitation amount
+       IF ( microphysics_seifert  .OR.  microphysics_kessler )  THEN
+          IF ( precipitation_amount_interval == 9999999.9_wp )  THEN
+             precipitation_amount_interval = dt_do2d_xy
+          ELSE
+             IF ( precipitation_amount_interval > dt_do2d_xy )  THEN
+                WRITE( message_string, * )  'precipitation_amount_interval = ',                    &
+                   precipitation_amount_interval, ' must not be larger than ',                     &
+                   'dt_do2d_xy = ', dt_do2d_xy
+                CALL message( 'check_parameters', 'PA0090', 1, 2, 0, 6, 0 )
+             ENDIF
           ENDIF
        ENDIF
-    ENDIF
 
-    ! TODO: find better solution for circular dependency problem
-    surf_bulk_cloud_model = bulk_cloud_model
-    surf_microphysics_morrison = microphysics_morrison
-    surf_microphysics_seifert = microphysics_seifert
-    surf_microphysics_ice_phase = microphysics_ice_phase
+       ! TODO: find better solution for circular dependency problem
+       surf_bulk_cloud_model = bulk_cloud_model
+       surf_microphysics_morrison = microphysics_morrison
+       surf_microphysics_seifert = microphysics_seifert
+       surf_microphysics_ice_phase = microphysics_ice_phase
 !
-!-- Check aerosol
-    IF ( aerosol_bulk == 'nacl' )  THEN
-       aerosol_nacl   = .TRUE.
-       aerosol_c3h4o4 = .FALSE.
-       aerosol_nh4no3 = .FALSE.
-    ELSEIF ( aerosol_bulk == 'c3h4o4' )  THEN
-       aerosol_nacl   = .FALSE.
-       aerosol_c3h4o4 = .TRUE.
-       aerosol_nh4no3 = .FALSE.
-    ELSEIF ( aerosol_bulk == 'nh4no3' )  THEN
-       aerosol_nacl   = .FALSE.
-       aerosol_c3h4o4 = .FALSE.
-       aerosol_nh4no3 = .TRUE.
-    ELSE
-       message_string = 'unknown aerosol species "' // TRIM( aerosol_bulk ) // '" for bulk ' //    &
-                        'microphysics'
-       CALL message( 'check_parameters', 'BCM0005', 1, 2, 0, 6, 0 )
-    ENDIF
+!--    Check aerosol
+       IF ( aerosol_bulk == 'nacl' )  THEN
+          aerosol_nacl   = .TRUE.
+          aerosol_c3h4o4 = .FALSE.
+          aerosol_nh4no3 = .FALSE.
+       ELSEIF ( aerosol_bulk == 'c3h4o4' )  THEN
+          aerosol_nacl   = .FALSE.
+          aerosol_c3h4o4 = .TRUE.
+          aerosol_nh4no3 = .FALSE.
+       ELSEIF ( aerosol_bulk == 'nh4no3' )  THEN
+          aerosol_nacl   = .FALSE.
+          aerosol_c3h4o4 = .FALSE.
+          aerosol_nh4no3 = .TRUE.
+       ELSE
+          message_string = 'unknown aerosol = "' // TRIM( aerosol_bulk ) // '"'
+          CALL message( 'check_parameters', 'PA0469', 1, 2, 0, 6, 0 )
+       ENDIF
 
- END SUBROUTINE bcm_check_parameters
 
+    END SUBROUTINE bcm_check_parameters
 
 !--------------------------------------------------------------------------------------------------!
 ! Description:
@@ -983,7 +864,7 @@
              IF ( .NOT.  microphysics_morrison )  THEN
                 message_string = 'output of "' // TRIM( var ) // '" ' // 'requires ' //            &
                                  'cloud_scheme = "morrison"'
-                CALL message( 'check_parameters', 'BCM0006', 1, 2, 0, 6, 0 )
+                CALL message( 'check_parameters', 'PA0359', 1, 2, 0, 6, 0 )
              ENDIF
              unit = '1/m3'
 
@@ -991,7 +872,7 @@
              IF ( .NOT.  microphysics_ice_phase  .OR.  .NOT.  graupel )  THEN
                 message_string = 'output of "' // TRIM( var ) // '" ' // 'requires ' //            &
                                  'microphysics_ice_phase = ".TRUE."'
-                CALL message( 'check_parameters', 'BCM0006', 1, 2, 0, 6, 0 )
+                CALL message( 'check_parameters', 'PA0359', 1, 2, 0, 6, 0 )
              ENDIF
              unit = '1/m3'
 
@@ -999,7 +880,7 @@
              IF ( .NOT.  microphysics_ice_phase )  THEN
                 message_string = 'output of "' // TRIM( var ) // '" ' // 'requires ' //            &
                                  'microphysics_ice_phase = ".TRUE."'
-                CALL message( 'check_parameters', 'BCM0006', 1, 2, 0, 6, 0 )
+                CALL message( 'check_parameters', 'PA0359', 1, 2, 0, 6, 0 )
              ENDIF
              unit = '1/m3'
 
@@ -1007,7 +888,7 @@
              IF ( .NOT.  microphysics_seifert )  THEN
                 message_string = 'output of "' // TRIM( var ) // '" ' // 'requires ' //            &
                                  'cloud_scheme = "seifert_beheng"'
-                CALL message( 'check_parameters', 'BCM0006', 1, 2, 0, 6, 0 )
+                CALL message( 'check_parameters', 'PA0359', 1, 2, 0, 6, 0 )
              ENDIF
              unit = '1/m3'
 
@@ -1015,69 +896,15 @@
              IF ( .NOT.  microphysics_ice_phase  .OR.  .NOT. snow )  THEN
                 message_string = 'output of "' // TRIM( var ) // '" ' // 'requires ' //            &
                                  'microphysics_ice_phase = ".TRUE."'
-                CALL message( 'check_parameters', 'BCM0006', 1, 2, 0, 6, 0 )
+                CALL message( 'check_parameters', 'PA0359', 1, 2, 0, 6, 0 )
              ENDIF
              unit = '1/m3'
-
-          CASE ( 'pra*' )
-             IF ( .NOT. microphysics_kessler  .AND.  .NOT. microphysics_seifert )  THEN
-                message_string = 'output of "' // TRIM( var ) // '" ' // 'requires ' //            &
-                                 'cloud_scheme = "kessler" or "seifert_beheng"'
-                CALL message( 'check_parameters', 'BCM0006', 1, 2, 0, 6, 0 )
-             ENDIF
-! TODO: find solution (maybe connected to flow_statistics redesign?)
-!             IF ( j == 1 )  THEN
-!                message_string = 'temporal averaging of precipitation ' //                        &
-!                                 'amount "' // TRIM( var ) // '" is not possible'
-!                CALL message( 'check_parameters', 'BCM0113', 1, 2, 0, 6, 0 )
-!             ENDIF
-             unit = 'mm'
 
           CASE ( 'prr' )
              IF ( microphysics_sat_adjust )  THEN
                 message_string = 'output of "' // TRIM( var ) // '" ' // 'is not available for ' //&
                                  'cloud_scheme = "saturation_adjust"'
-                CALL message( 'check_parameters', 'BCM0007', 1, 2, 0, 6, 0 )
-             ENDIF
-             unit = 'kg/kg m/s'
-
-          CASE ( 'prr_cloud' )
-             IF ( microphysics_sat_adjust )  THEN
-                message_string = 'output of "' // TRIM( var ) // '" ' // 'is not available for ' //&
-                                 'cloud_scheme = "saturation_adjust"'
-                CALL message( 'check_parameters', 'BCM0007', 1, 2, 0, 6, 0 )
-             ENDIF
-             unit = 'kg/kg m/s'
-
-          CASE ( 'prr_graupel' )
-             IF ( microphysics_sat_adjust )  THEN
-                message_string = 'output of "' // TRIM( var ) // '" ' // 'is not available for ' //&
-                                 'cloud_scheme = "saturation_adjust"'
-                CALL message( 'check_parameters', 'BCM0007', 1, 2, 0, 6, 0 )
-             ENDIF
-             unit = 'kg/kg m/s'
-
-          CASE ( 'prr_ice' )
-             IF ( microphysics_sat_adjust )  THEN
-                message_string = 'output of "' // TRIM( var ) // '" ' // 'is not available for ' //&
-                                 'cloud_scheme = "saturation_adjust"'
-                CALL message( 'check_parameters', 'BCM0007', 1, 2, 0, 6, 0 )
-             ENDIF
-             unit = 'kg/kg m/s'
-
-          CASE ( 'prr_rain' )
-             IF ( microphysics_sat_adjust )  THEN
-                message_string = 'output of "' // TRIM( var ) // '" ' // 'is not available for ' //&
-                                 'cloud_scheme = "saturation_adjust"'
-                CALL message( 'check_parameters', 'BCM0007', 1, 2, 0, 6, 0 )
-             ENDIF
-             unit = 'kg/kg m/s'
-
-          CASE ( 'prr_snow' )
-             IF ( microphysics_sat_adjust )  THEN
-                message_string = 'output of "' // TRIM( var ) // '" ' // 'is not available for ' //&
-                                 'cloud_scheme = "saturation_adjust"'
-                CALL message( 'check_parameters', 'BCM0007', 1, 2, 0, 6, 0 )
+                CALL message( 'check_parameters', 'PA0423', 1, 2, 0, 6, 0 )
              ENDIF
              unit = 'kg/kg m/s'
 
@@ -1088,7 +915,7 @@
              IF ( .NOT.  microphysics_ice_phase  .OR.  .NOT.  graupel  ) THEN
                 message_string = 'output of "' // TRIM( var ) // '" ' // 'requires ' //            &
                                  'microphysics_ice_phase = ".TRUE."'
-                CALL message( 'check_parameters', 'BCM0006', 1, 2, 0, 6, 0 )
+                CALL message( 'check_parameters', 'PA0359', 1, 2, 0, 6, 0 )
              ENDIF
              unit = 'kg/kg'
 
@@ -1096,7 +923,7 @@
              IF ( .NOT.  microphysics_ice_phase ) THEN
                 message_string = 'output of "' // TRIM( var ) // '" ' // 'requires ' //            &
                                  'microphysics_ice_phase = ".TRUE."'
-                CALL message( 'check_parameters', 'BCM0006', 1, 2, 0, 6, 0 )
+                CALL message( 'check_parameters', 'PA0359', 1, 2, 0, 6, 0 )
              ENDIF
              unit = 'kg/kg'
 
@@ -1104,7 +931,7 @@
              IF ( .NOT.  microphysics_seifert ) THEN
                 message_string = 'output of "' // TRIM( var ) // '" ' // 'requires ' //            &
                                  'cloud_scheme = "seifert_beheng"'
-                CALL message( 'check_parameters', 'BCM0006', 1, 2, 0, 6, 0 )
+                CALL message( 'check_parameters', 'PA0359', 1, 2, 0, 6, 0 )
              ENDIF
              unit = 'kg/kg'
 
@@ -1112,9 +939,32 @@
              IF ( .NOT.  microphysics_ice_phase  .OR.  .NOT. snow ) THEN
                 message_string = 'output of "' // TRIM( var ) // '" ' // 'requires ' //            &
                                  'microphysics_ice_phase = ".TRUE."'
-                CALL message( 'check_parameters', 'BCM0006', 1, 2, 0, 6, 0 )
+                CALL message( 'check_parameters', 'PA0359', 1, 2, 0, 6, 0 )
              ENDIF
              unit = 'kg/kg'
+
+
+          CASE ( 'pra*' )
+             IF ( .NOT. microphysics_kessler  .AND.  .NOT. microphysics_seifert )  THEN
+                message_string = 'output of "' // TRIM( var ) // '" ' // 'requires ' //            &
+                                 'cloud_scheme = "kessler" or "seifert_beheng"'
+                CALL message( 'check_parameters', 'PA0112', 1, 2, 0, 6, 0 )
+             ENDIF
+! TODO: find sollution (maybe connected to flow_statistics redesign?)
+!             IF ( j == 1 )  THEN
+!                message_string = 'temporal averaging of precipitation ' //                        &
+!                                 'amount "' // TRIM( var ) // '" is not possible'
+!                CALL message( 'check_parameters', 'PA0113', 1, 2, 0, 6, 0 )
+!             ENDIF
+             unit = 'mm'
+
+          CASE ( 'prr*' )
+             IF ( .NOT. microphysics_kessler  .AND.  .NOT. microphysics_seifert )  THEN
+                message_string = 'output of "' // TRIM( var ) // '"' // ' requires' //             &
+                                 ' cloud_scheme = "kessler" or "seifert_beheng"'
+                CALL message( 'check_parameters', 'PA0112', 1, 2, 0, 6, 0 )
+             ENDIF
+             unit = 'mm/s'
 
           CASE DEFAULT
              unit = 'illegal'
@@ -1142,8 +992,7 @@
            ONLY: dopr_index
 
        USE statistics,                                                                             &
-           ONLY: hom,                                                                              &
-                 statistic_regions
+           ONLY: hom, statistic_regions
 
        IMPLICIT NONE
 
@@ -1162,7 +1011,7 @@
              IF ( .NOT.  microphysics_morrison )  THEN
                 message_string = 'data_output_pr = ' // TRIM( data_output_pr(var_count) ) //       &
                                  ' is not implemented for' // ' cloud_scheme /= morrison'
-                CALL message( 'check_parameters', 'BCM0008', 1, 2, 0, 6, 0 )
+                CALL message( 'check_parameters', 'PA0358', 1, 2, 0, 6, 0 )
              ENDIF
              pr_index = 123
              dopr_index(var_count) = pr_index
@@ -1174,7 +1023,7 @@
              IF ( .NOT.  microphysics_ice_phase )  THEN
                 message_string = 'data_output_pr = ' // TRIM( data_output_pr(var_count) ) //       &
                                  ' is not implemented for' // ' microphysics_ice_phase = ".F."'
-                CALL message( 'check_parameters', 'BCM0008', 1, 2, 0, 6, 0 )
+                CALL message( 'check_parameters', 'PA0358', 1, 2, 0, 6, 0 )
              ENDIF
              pr_index = 124
              dopr_index(var_count) = pr_index
@@ -1187,7 +1036,7 @@
                 message_string = 'data_output_pr = ' // TRIM( data_output_pr(var_count) ) //       &
                                  ' is not implemented for' // ' microphysics_ice_phase = ".F."' // &
                                  ' or graupel = ".F." '
-                CALL message( 'check_parameters', 'BCM0008', 1, 2, 0, 6, 0 )
+                CALL message( 'check_parameters', 'PA0358', 1, 2, 0, 6, 0 )
              ENDIF
              pr_index = 126
              dopr_index(var_count) = pr_index
@@ -1200,7 +1049,7 @@
                 message_string = 'data_output_pr = ' // TRIM( data_output_pr(var_count) ) //       &
                                  ' is not implemented for' // ' microphysics_ice_phase = ".F."' // &
                                  ' or snow = ".F." '
-                CALL message( 'check_parameters', 'BCM0008', 1, 2, 0, 6, 0 )
+                CALL message( 'check_parameters', 'PA0358', 1, 2, 0, 6, 0 )
              ENDIF
              pr_index = 128
              dopr_index(var_count) = pr_index
@@ -1212,7 +1061,7 @@
              IF ( .NOT.  microphysics_seifert )  THEN
                 message_string = 'data_output_pr = ' // TRIM( data_output_pr(var_count) ) //       &
                                  ' is not implemented for' // ' cloud_scheme /= seifert_beheng'
-                CALL message( 'check_parameters', 'BCM0008', 1, 2, 0, 6, 0 )
+                CALL message( 'check_parameters', 'PA0358', 1, 2, 0, 6, 0 )
              ENDIF
              pr_index = 73
              dopr_index(var_count) = pr_index
@@ -1224,69 +1073,9 @@
              IF ( microphysics_sat_adjust )  THEN
                 message_string = 'data_output_pr = ' // TRIM( data_output_pr(var_count) ) //       &
                                  ' is not available for' // ' cloud_scheme = saturation_adjust'
-                CALL message( 'check_parameters', 'BCM0009', 1, 2, 0, 6, 0 )
+                CALL message( 'check_parameters', 'PA0422', 1, 2, 0, 6, 0 )
              ENDIF
              pr_index = 76
-             dopr_index(var_count) = pr_index
-             dopr_unit     = 'kg/kg m/s'
-             unit = dopr_unit
-             hom(:,2,pr_index,:)  = SPREAD( zu, 2, statistic_regions+1 )
-
-          CASE ( 'prr_cloud' )
-             IF ( microphysics_sat_adjust )  THEN
-                message_string = 'data_output_pr = ' // TRIM( data_output_pr(var_count) ) //       &
-                                 ' is not available for' // ' cloud_scheme = saturation_adjust'
-                CALL message( 'check_parameters', 'BCM0009', 1, 2, 0, 6, 0 )
-             ENDIF
-             pr_index = 131
-             dopr_index(var_count) = pr_index
-             dopr_unit     = 'kg/kg m/s'
-             unit = dopr_unit
-             hom(:,2,pr_index,:)  = SPREAD( zu, 2, statistic_regions+1 )
-
-          CASE ( 'prr_graupel' )
-             IF ( microphysics_sat_adjust )  THEN
-                message_string = 'data_output_pr = ' // TRIM( data_output_pr(var_count) ) //       &
-                                 ' is not available for' // ' cloud_scheme = saturation_adjust'
-                CALL message( 'check_parameters', 'BCM0009', 1, 2, 0, 6, 0 )
-             ENDIF
-             pr_index = 132
-             dopr_index(var_count) = pr_index
-             dopr_unit     = 'kg/kg m/s'
-             unit = dopr_unit
-             hom(:,2,pr_index,:)  = SPREAD( zu, 2, statistic_regions+1 )
-
-          CASE ( 'prr_ice' )
-             IF ( microphysics_sat_adjust )  THEN
-                message_string = 'data_output_pr = ' // TRIM( data_output_pr(var_count) ) //       &
-                                 ' is not available for' // ' cloud_scheme = saturation_adjust'
-                CALL message( 'check_parameters', 'BCM0009', 1, 2, 0, 6, 0 )
-             ENDIF
-             pr_index = 133
-             dopr_index(var_count) = pr_index
-             dopr_unit     = 'kg/kg m/s'
-             unit = dopr_unit
-             hom(:,2,pr_index,:)  = SPREAD( zu, 2, statistic_regions+1 )
-
-          CASE ( 'prr_rain' )
-             IF ( microphysics_sat_adjust )  THEN
-                message_string = 'data_output_pr = ' // TRIM( data_output_pr(var_count) ) //       &
-                                 ' is not available for' // ' cloud_scheme = saturation_adjust'
-                CALL message( 'check_parameters', 'BCM0009', 1, 2, 0, 6, 0 )
-             ENDIF
-             pr_index = 134
-             dopr_index(var_count) = pr_index
-             dopr_unit     = 'kg/kg m/s'
-             unit = dopr_unit
-             hom(:,2,pr_index,:)  = SPREAD( zu, 2, statistic_regions+1 )
-
-          CASE ( 'prr_snow' )
-             IF ( microphysics_sat_adjust )  THEN
-                message_string = 'data_output_pr = ' // TRIM( data_output_pr(var_count) ) //       &
-                                 ' is not available for' // ' cloud_scheme = saturation_adjust'
-                CALL message( 'check_parameters', 'BCM0009', 1, 2, 0, 6, 0 )
-             ENDIF
-             pr_index = 135
              dopr_index(var_count) = pr_index
              dopr_unit     = 'kg/kg m/s'
              unit = dopr_unit
@@ -1303,7 +1092,7 @@
              IF ( .NOT.  microphysics_ice_phase )  THEN
                 message_string = 'data_output_pr = ' //  TRIM( data_output_pr(var_count) ) //      &
                                  ' is not implemented for' // ' microphysics_ice_phase = ".F."'
-                CALL message( 'check_parameters', 'BCM0008', 1, 2, 0, 6, 0 )
+                CALL message( 'check_parameters', 'PA0358', 1, 2, 0, 6, 0 )
              ENDIF
              pr_index = 125
              dopr_index(var_count) = pr_index
@@ -1316,7 +1105,7 @@
                 message_string = 'data_output_pr = ' //  TRIM( data_output_pr(var_count) ) //      &
                                  ' is not implemented for' // ' microphysics_ice_phase = ".F."' // &
                                  ' or graupel = ".F." '
-                CALL message( 'check_parameters', 'BCM0008', 1, 2, 0, 6, 0 )
+                CALL message( 'check_parameters', 'PA0358', 1, 2, 0, 6, 0 )
              ENDIF
              pr_index = 127
              dopr_index(var_count) = pr_index
@@ -1329,7 +1118,7 @@
                 message_string = 'data_output_pr = ' //  TRIM( data_output_pr(var_count) ) //      &
                                  ' is not implemented for' // ' microphysics_ice_phase = ".F."' // &
                                  ' or snow = ".F." '
-                CALL message( 'check_parameters', 'BCM0008', 1, 2, 0, 6, 0 )
+                CALL message( 'check_parameters', 'PA0358', 1, 2, 0, 6, 0 )
              ENDIF
              pr_index = 129
              dopr_index(var_count) = pr_index
@@ -1341,7 +1130,7 @@
              IF ( .NOT.  microphysics_seifert )  THEN
                 message_string = 'data_output_pr = ' // TRIM( data_output_pr(var_count) ) //       &
                                  ' is not implemented for' // ' cloud_scheme /= seifert_beheng'
-                CALL message( 'check_parameters', 'BCM0008', 1, 2, 0, 6, 0 )
+                CALL message( 'check_parameters', 'PA0358', 1, 2, 0, 6, 0 )
              ENDIF
              pr_index = 74
              dopr_index(var_count) = pr_index
@@ -1360,70 +1149,13 @@
 !--------------------------------------------------------------------------------------------------!
 ! Description:
 ! ------------
-!> Check data output of timeseries for bulk cloud module
-!--------------------------------------------------------------------------------------------------!
- SUBROUTINE bcm_check_data_output_ts( dots_max, dots_num, dots_label, dots_unit )
-
-    INTEGER(iwp),      INTENT(IN)     ::  dots_max  !<
-    INTEGER(iwp),      INTENT(INOUT)  ::  dots_num  !<
-
-    CHARACTER(LEN=*), DIMENSION(dots_max), INTENT(INOUT)  ::  dots_label  !<
-    CHARACTER(LEN=*), DIMENSION(dots_max), INTENT(INOUT)  ::  dots_unit   !<
-
-
-!
-!-- Next line is to avoid compiler warning about unused variables. Please remove.
-    IF ( dots_num == 0  .OR.  dots_label(1)(1:1) == ' '  .OR.  dots_unit(1)(1:1) == ' ' )  CONTINUE
-
-!
-!-- Sample for user-defined time series:
-!-- For each time series quantity you have to give a label and a unit, which will be used for the
-!-- NetCDF file. They must not contain more than seven characters. The value of dots_num has to be
-!-- increased by the number of new time series quantities. The start index for BCM time series is
-!-- stored in dots_start_index_bcm and later used to address the module specific time series values.
-
-    dots_start_index_bcm = dots_num + 1
-
-    dots_num = dots_num + 1
-    dots_label(dots_num) = 'lwp'
-    dots_unit(dots_num)  = 'g/m2'
-
-    dots_num = dots_num + 1
-    dots_label(dots_num) = 'cwp'
-    dots_unit(dots_num)  = 'g/m2'
-
-    IF ( microphysics_seifert )  THEN
-       dots_num = dots_num + 1
-       dots_label(dots_num) = 'rwp'
-       dots_unit(dots_num)  = 'g/m2'
-    ENDIF
-
-    IF ( microphysics_ice_phase )  THEN
-       dots_num = dots_num + 1
-       dots_label(dots_num) = 'iwp'
-       dots_unit(dots_num)  = 'g/m2'
-
-       IF ( snow  .AND.  graupel )  THEN
-          dots_num = dots_num + 1
-          dots_label(dots_num) = 'gwp'
-          dots_unit(dots_num)  = 'g/m2'
-
-          dots_num = dots_num + 1
-          dots_label(dots_num) = 'swp'
-          dots_unit(dots_num)  = 'g/m2'
-       ENDIF
-
-    ENDIF
-
- END SUBROUTINE bcm_check_data_output_ts
-
-
-!--------------------------------------------------------------------------------------------------!
-! Description:
-! ------------
 !> Allocate bulk cloud module arrays and define pointers
 !--------------------------------------------------------------------------------------------------!
     SUBROUTINE bcm_init_arrays
+
+       USE indices,                                                                                &
+           ONLY:  nxlg, nxrg, nysg, nyng, nzb, nzt
+
 
        IMPLICIT NONE
 
@@ -1445,12 +1177,6 @@
 !
 !--    3d-precipitation rate
        ALLOCATE( prr(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-       ALLOCATE( prr_cloud(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-       ALLOCATE( prr_graupel(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-       ALLOCATE( prr_ice(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-       ALLOCATE( prr_rain(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-       ALLOCATE( prr_snow(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-
 
        IF ( microphysics_morrison )  THEN
 !
@@ -1709,11 +1435,6 @@
              qc = 0.0_wp
              precipitation_amount = 0.0_wp
              prr = 0.0_wp
-             prr_cloud = 0.0_wp
-             prr_graupel = 0.0_wp
-             prr_ice = 0.0_wp
-             prr_rain = 0.0_wp
-             prr_snow = 0.0_wp
 !
 !--          Initialize old and new time levels.
              IF ( microphysics_morrison )  THEN
@@ -2004,14 +1725,7 @@
           ENDIF
 !
 !--       Reset precipitation rate
-          IF ( intermediate_timestep_count == 1 )  THEN
-             prr = 0.0_wp
-             prr_cloud = 0.0_wp
-             prr_graupel = 0.0_wp
-             prr_ice = 0.0_wp
-             prr_rain = 0.0_wp
-             prr_snow = 0.0_wp
-          ENDIF
+          IF ( intermediate_timestep_count == 1 )  prr = 0.0_wp
 !
 !--       Compute cloud physics.
 !--       Here the the simple kessler scheme is used.
@@ -2164,14 +1878,7 @@
           ENDIF
 !
 !--       Reset precipitation rate
-          IF ( intermediate_timestep_count == 1 )  THEN
-             prr(:,j,i) = 0.0_wp
-             prr_cloud(:,j,i) = 0.0_wp
-             prr_graupel(:,j,i) = 0.0_wp
-             prr_ice(:,j,i) = 0.0_wp
-             prr_rain(:,j,i) = 0.0_wp
-             prr_snow(:,j,i) = 0.0_wp
-          ENDIF
+          IF ( intermediate_timestep_count == 1 )  prr(:,j,i) = 0.0_wp
 !
 !--       Compute cloud physics
 !--       Here the the simple kessler scheme is used.
@@ -2416,20 +2123,11 @@
              tend = 0.0_wp
              IF ( timestep_scheme(1:5) == 'runge' )  THEN
                 IF ( ws_scheme_sca )  THEN
-                   IF ( .NOT. advanced_div_correction )  THEN
-                      CALL advec_s_ws( advc_flags_s, qc, 'qc',                                     &
-                                       bc_dirichlet_l  .OR.  bc_radiation_l,                       &
-                                       bc_dirichlet_n  .OR.  bc_radiation_n,                       &
-                                       bc_dirichlet_r  .OR.  bc_radiation_r,                       &
-                                       bc_dirichlet_s  .OR.  bc_radiation_s )
-                   ELSE
-                      CALL advec_s_ws( advc_flags_s, qc, 'qc',                                     &
-                                       bc_dirichlet_l  .OR.  bc_radiation_l,                       &
-                                       bc_dirichlet_n  .OR.  bc_radiation_n,                       &
-                                       bc_dirichlet_r  .OR.  bc_radiation_r,                       &
-                                       bc_dirichlet_s  .OR.  bc_radiation_s,                       &
-                                       advanced_div_correction )
-                   ENDIF
+                   CALL advec_s_ws( advc_flags_s, qc, 'qc',                                        &
+                                    bc_dirichlet_l  .OR.  bc_radiation_l,                          &
+                                    bc_dirichlet_n  .OR.  bc_radiation_n,                          &
+                                    bc_dirichlet_r  .OR.  bc_radiation_r,                          &
+                                    bc_dirichlet_s  .OR.  bc_radiation_s )
                 ELSE
                    CALL advec_s_pw( qc )
                 ENDIF
@@ -2438,7 +2136,17 @@
              ENDIF
           ENDIF
 
-          CALL diffusion_s( qc, surf_top%qcsws, surf_def%qcsws, surf_lsm%qcsws, surf_usm%qcsws )
+          CALL diffusion_s( qc,                                                                    &
+                            surf_def_h(0)%qcsws, surf_def_h(1)%qcsws,                              &
+                            surf_def_h(2)%qcsws,                                                   &
+                            surf_lsm_h(0)%qcsws, surf_lsm_h(1)%qcsws,                              &
+                            surf_usm_h(0)%qcsws, surf_usm_h(1)%qcsws,                              &
+                            surf_def_v(0)%qcsws, surf_def_v(1)%qcsws,                              &
+                            surf_def_v(2)%qcsws, surf_def_v(3)%qcsws,                              &
+                            surf_lsm_v(0)%qcsws, surf_lsm_v(1)%qcsws,                              &
+                            surf_lsm_v(2)%qcsws, surf_lsm_v(3)%qcsws,                              &
+                            surf_usm_v(0)%qcsws, surf_usm_v(1)%qcsws,                              &
+                            surf_usm_v(2)%qcsws, surf_usm_v(3)%qcsws )
 
 !
 !--       Prognostic equation for cloud water content
@@ -2448,10 +2156,12 @@
                 !DIR$ IVDEP
                 DO  k = nzb+1, nzt
                    qc_p(k,j,i) = qc(k,j,i) + ( dt_3d * ( sbt * tend(k,j,i) +                       &
-                                                         tsc(3) * tqc_m(k,j,i) )                   &
-                                               - tsc(5) * rdf_sc(k) * qc(k,j,i)                    &
+                                                      tsc(3) * tqc_m(k,j,i) )                      &
+                                                    - tsc(5) * rdf_sc(k) *                         &
+                                                               qc(k,j,i)                           &
                                              )                                                     &
-                                           * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                                  * MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 )   &
+                                         )
                    IF ( qc_p(k,j,i) < 0.0_wp )  qc_p(k,j,i) = 0.0_wp
                 ENDDO
              ENDDO
@@ -2500,20 +2210,11 @@
              tend = 0.0_wp
              IF ( timestep_scheme(1:5) == 'runge' )  THEN
                 IF ( ws_scheme_sca )  THEN
-                   IF ( .NOT. advanced_div_correction )  THEN
-                      CALL advec_s_ws( advc_flags_s, nc, 'nc',                                     &
-                                       bc_dirichlet_l  .OR.  bc_radiation_l,                       &
-                                       bc_dirichlet_n  .OR.  bc_radiation_n,                       &
-                                       bc_dirichlet_r  .OR.  bc_radiation_r,                       &
-                                       bc_dirichlet_s  .OR.  bc_radiation_s )
-                   ELSE
-                      CALL advec_s_ws( advc_flags_s, nc, 'nc',                                     &
-                                       bc_dirichlet_l  .OR.  bc_radiation_l,                       &
-                                       bc_dirichlet_n  .OR.  bc_radiation_n,                       &
-                                       bc_dirichlet_r  .OR.  bc_radiation_r,                       &
-                                       bc_dirichlet_s  .OR.  bc_radiation_s,                       &
-                                       advanced_div_correction )
-                   ENDIF
+                   CALL advec_s_ws( advc_flags_s, nc, 'nc',                                        &
+                                    bc_dirichlet_l  .OR.  bc_radiation_l,                          &
+                                    bc_dirichlet_n  .OR.  bc_radiation_n,                          &
+                                    bc_dirichlet_r  .OR.  bc_radiation_r,                          &
+                                    bc_dirichlet_s  .OR.  bc_radiation_s )
                 ELSE
                    CALL advec_s_pw( nc )
                 ENDIF
@@ -2522,7 +2223,18 @@
              ENDIF
           ENDIF
 
-          CALL diffusion_s( nc, surf_top%ncsws, surf_def%ncsws, surf_lsm%ncsws, surf_usm%ncsws )
+          CALL diffusion_s( nc,                                                                    &
+                            surf_def_h(0)%ncsws, surf_def_h(1)%ncsws,                              &
+                            surf_def_h(2)%ncsws,                                                   &
+                            surf_lsm_h(0)%ncsws, surf_lsm_h(1)%ncsws,                              &
+                            surf_usm_h(0)%ncsws, surf_usm_h(1)%ncsws,                              &
+                            surf_def_v(0)%ncsws, surf_def_v(1)%ncsws,                              &
+                            surf_def_v(2)%ncsws, surf_def_v(3)%ncsws,                              &
+                            surf_lsm_v(0)%ncsws, surf_lsm_v(1)%ncsws,                              &
+                            surf_lsm_v(2)%ncsws, surf_lsm_v(3)%ncsws,                              &
+                            surf_usm_v(0)%ncsws, surf_usm_v(1)%ncsws,                              &
+                            surf_usm_v(2)%ncsws, surf_usm_v(3)%ncsws )
+
 !
 !--       Prognostic equation for cloud drop concentration
           DO  i = nxl, nxr
@@ -2531,10 +2243,12 @@
                 !DIR$ IVDEP
                 DO  k = nzb+1, nzt
                    nc_p(k,j,i) = nc(k,j,i) + ( dt_3d * ( sbt * tend(k,j,i) +                       &
-                                                         tsc(3) * tnc_m(k,j,i) )                   &
-                                               - tsc(5) * rdf_sc(k) * nc(k,j,i)                    &
+                                                      tsc(3) * tnc_m(k,j,i) )                      &
+                                                    - tsc(5) * rdf_sc(k) *                         &
+                                                               nc(k,j,i)                           &
                                              )                                                     &
-                                           * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                                   * MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 )  &
+                                          )
                    IF ( nc_p(k,j,i) < 0.0_wp )  nc_p(k,j,i) = 0.0_wp
                 ENDDO
              ENDDO
@@ -2589,20 +2303,11 @@
              tend = 0.0_wp
              IF ( timestep_scheme(1:5) == 'runge' )  THEN
                 IF ( ws_scheme_sca )  THEN
-                   IF ( .NOT. advanced_div_correction )  THEN
-                      CALL advec_s_ws( advc_flags_s, qi, 'qi',                                     &
-                                       bc_dirichlet_l  .OR.  bc_radiation_l,                       &
-                                       bc_dirichlet_n  .OR.  bc_radiation_n,                       &
-                                       bc_dirichlet_r  .OR.  bc_radiation_r,                       &
-                                       bc_dirichlet_s  .OR.  bc_radiation_s )
-                   ELSE
-                      CALL advec_s_ws( advc_flags_s, qi, 'qi',                                     &
-                                       bc_dirichlet_l  .OR.  bc_radiation_l,                       &
-                                       bc_dirichlet_n  .OR.  bc_radiation_n,                       &
-                                       bc_dirichlet_r  .OR.  bc_radiation_r,                       &
-                                       bc_dirichlet_s  .OR.  bc_radiation_s,                       &
-                                       advanced_div_correction )
-                   ENDIF
+                   CALL advec_s_ws( advc_flags_s, qi, 'qi',                                        &
+                                    bc_dirichlet_l  .OR.  bc_radiation_l,                          &
+                                    bc_dirichlet_n  .OR.  bc_radiation_n,                          &
+                                    bc_dirichlet_r  .OR.  bc_radiation_r,                          &
+                                    bc_dirichlet_s  .OR.  bc_radiation_s )
                 ELSE
                    CALL advec_s_pw( qi )
                 ENDIF
@@ -2611,7 +2316,18 @@
              ENDIF
           ENDIF
 
-          CALL diffusion_s( qi, surf_top%qisws, surf_def%qisws, surf_lsm%qisws, surf_usm%qisws )
+          CALL diffusion_s( qi,                                                                    &
+                            surf_def_h(0)%qisws, surf_def_h(1)%qisws,                              &
+                            surf_def_h(2)%qisws,                                                   &
+                            surf_lsm_h(0)%qisws, surf_lsm_h(1)%qisws,                              &
+                            surf_usm_h(0)%qisws, surf_usm_h(1)%qisws,                              &
+                            surf_def_v(0)%qisws, surf_def_v(1)%qisws,                              &
+                            surf_def_v(2)%qisws, surf_def_v(3)%qisws,                              &
+                            surf_lsm_v(0)%qisws, surf_lsm_v(1)%qisws,                              &
+                            surf_lsm_v(2)%qisws, surf_lsm_v(3)%qisws,                              &
+                            surf_usm_v(0)%qisws, surf_usm_v(1)%qisws,                              &
+                            surf_usm_v(2)%qisws, surf_usm_v(3)%qisws )
+
 !
 !--       Prognostic equation for ice crystal mixing ratio
           DO  i = nxl, nxr
@@ -2620,10 +2336,12 @@
                 !DIR$ IVDEP
                 DO  k = nzb+1, nzt
                    qi_p(k,j,i) = qi(k,j,i) + ( dt_3d * ( sbt * tend(k,j,i) +                       &
-                                                         tsc(3) * tqi_m(k,j,i) )                   &
-                                               - tsc(5) * rdf_sc(k) * qi(k,j,i)                    &
+                                                      tsc(3) * tqi_m(k,j,i) )                      &
+                                                    - tsc(5) * rdf_sc(k) *                         &
+                                                               qi(k,j,i)                           &
                                              )                                                     &
-                                           * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                                    * MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) &
+                                          )
                    IF ( qi_p(k,j,i) < 0.0_wp )  qi_p(k,j,i) = 0.0_wp
                 ENDDO
              ENDDO
@@ -2672,20 +2390,11 @@
              tend = 0.0_wp
              IF ( timestep_scheme(1:5) == 'runge' )  THEN
                 IF ( ws_scheme_sca )  THEN
-                   IF ( .NOT. advanced_div_correction )  THEN
-                      CALL advec_s_ws( advc_flags_s, ni, 'ni',                                     &
-                                       bc_dirichlet_l  .OR.  bc_radiation_l,                       &
-                                       bc_dirichlet_n  .OR.  bc_radiation_n,                       &
-                                       bc_dirichlet_r  .OR.  bc_radiation_r,                       &
-                                       bc_dirichlet_s  .OR.  bc_radiation_s )
-                   ELSE
-                      CALL advec_s_ws( advc_flags_s, ni, 'ni',                                     &
-                                       bc_dirichlet_l  .OR.  bc_radiation_l,                       &
-                                       bc_dirichlet_n  .OR.  bc_radiation_n,                       &
-                                       bc_dirichlet_r  .OR.  bc_radiation_r,                       &
-                                       bc_dirichlet_s  .OR.  bc_radiation_s,                       &
-                                       advanced_div_correction )
-                   ENDIF
+                   CALL advec_s_ws( advc_flags_s, ni, 'ni',                                        &
+                                    bc_dirichlet_l  .OR.  bc_radiation_l,                          &
+                                    bc_dirichlet_n  .OR.  bc_radiation_n,                          &
+                                    bc_dirichlet_r  .OR.  bc_radiation_r,                          &
+                                    bc_dirichlet_s  .OR.  bc_radiation_s )
                 ELSE
                    CALL advec_s_pw( ni )
                 ENDIF
@@ -2694,7 +2403,18 @@
              ENDIF
           ENDIF
 
-          CALL diffusion_s( ni, surf_top%nisws, surf_def%nisws, surf_lsm%nisws, surf_usm%nisws )
+          CALL diffusion_s( ni,                                                                    &
+                            surf_def_h(0)%nisws, surf_def_h(1)%nisws,                              &
+                            surf_def_h(2)%nisws,                                                   &
+                            surf_lsm_h(0)%nisws, surf_lsm_h(1)%nisws,                              &
+                            surf_usm_h(0)%nisws, surf_usm_h(1)%nisws,                              &
+                            surf_def_v(0)%nisws, surf_def_v(1)%nisws,                              &
+                            surf_def_v(2)%nisws, surf_def_v(3)%nisws,                              &
+                            surf_lsm_v(0)%nisws, surf_lsm_v(1)%nisws,                              &
+                            surf_lsm_v(2)%nisws, surf_lsm_v(3)%nisws,                              &
+                            surf_usm_v(0)%nisws, surf_usm_v(1)%nisws,                              &
+                            surf_usm_v(2)%nisws, surf_usm_v(3)%nisws )
+
 !
 !--       Prognostic equation for ice crystal concentration
           DO  i = nxl, nxr
@@ -2703,10 +2423,12 @@
                 !DIR$ IVDEP
                 DO  k = nzb+1, nzt
                    ni_p(k,j,i) = ni(k,j,i) + ( dt_3d * ( sbt * tend(k,j,i) +                       &
-                                                         tsc(3) * tni_m(k,j,i) )                   &
-                                               - tsc(5) * rdf_sc(k) * ni(k,j,i)                    &
+                                                      tsc(3) * tni_m(k,j,i) )                      &
+                                                    - tsc(5) * rdf_sc(k) *                         &
+                                                               ni(k,j,i)                           &
                                              )                                                     &
-                                           * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                                   * MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 )  &
+                                          )
                    IF ( ni_p(k,j,i) < 0.0_wp )  ni_p(k,j,i) = 0.0_wp
                 ENDDO
              ENDDO
@@ -2762,20 +2484,11 @@
              tend = 0.0_wp
              IF ( timestep_scheme(1:5) == 'runge' )  THEN
                 IF ( ws_scheme_sca )  THEN
-                   IF ( .NOT. advanced_div_correction )  THEN
-                      CALL advec_s_ws( advc_flags_s, qs, 'qs',                                     &
-                                       bc_dirichlet_l  .OR.  bc_radiation_l,                       &
-                                       bc_dirichlet_n  .OR.  bc_radiation_n,                       &
-                                       bc_dirichlet_r  .OR.  bc_radiation_r,                       &
-                                       bc_dirichlet_s  .OR.  bc_radiation_s )
-                   ELSE
-                      CALL advec_s_ws( advc_flags_s, qs, 'qs',                                     &
-                                       bc_dirichlet_l  .OR.  bc_radiation_l,                       &
-                                       bc_dirichlet_n  .OR.  bc_radiation_n,                       &
-                                       bc_dirichlet_r  .OR.  bc_radiation_r,                       &
-                                       bc_dirichlet_s  .OR.  bc_radiation_s,                       &
-                                       advanced_div_correction )
-                   ENDIF
+                   CALL advec_s_ws( advc_flags_s, qs, 'qs',                                        &
+                                    bc_dirichlet_l  .OR.  bc_radiation_l,                          &
+                                    bc_dirichlet_n  .OR.  bc_radiation_n,                          &
+                                    bc_dirichlet_r  .OR.  bc_radiation_r,                          &
+                                    bc_dirichlet_s  .OR.  bc_radiation_s )
                 ELSE
                    CALL advec_s_pw( qs )
                 ENDIF
@@ -2784,7 +2497,18 @@
              ENDIF
           ENDIF
 
-          CALL diffusion_s( qs, surf_top%qisws, surf_def%qisws, surf_lsm%qisws, surf_usm%qisws )
+          CALL diffusion_s( qs,                                                                    &
+                            surf_def_h(0)%qisws, surf_def_h(1)%qisws,                              &
+                            surf_def_h(2)%qisws,                                                   &
+                            surf_lsm_h(0)%qisws, surf_lsm_h(1)%qisws,                              &
+                            surf_usm_h(0)%qisws, surf_usm_h(1)%qisws,                              &
+                            surf_def_v(0)%qisws, surf_def_v(1)%qisws,                              &
+                            surf_def_v(2)%qisws, surf_def_v(3)%qisws,                              &
+                            surf_lsm_v(0)%qisws, surf_lsm_v(1)%qisws,                              &
+                            surf_lsm_v(2)%qisws, surf_lsm_v(3)%qisws,                              &
+                            surf_usm_v(0)%qisws, surf_usm_v(1)%qisws,                              &
+                            surf_usm_v(2)%qisws, surf_usm_v(3)%qisws )
+
 !
 !--       Prognostic equation for snow mixing ratio
           DO  i = nxl, nxr
@@ -2793,10 +2517,12 @@
                 !DIR$ IVDEP
                 DO  k = nzb+1, nzt
                    qs_p(k,j,i) = qs(k,j,i) + ( dt_3d * ( sbt * tend(k,j,i) +                       &
-                                                         tsc(3) * tqs_m(k,j,i) )                   &
-                                               - tsc(5) * rdf_sc(k) * qs(k,j,i)                    &
+                                                      tsc(3) * tqs_m(k,j,i) )                      &
+                                                    - tsc(5) * rdf_sc(k) *                         &
+                                                               qs(k,j,i)                           &
                                              )                                                     &
-                                           * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                                    * MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) &
+                                          )
                    IF ( qs_p(k,j,i) < 0.0_wp )  qs_p(k,j,i) = 0.0_wp
                 ENDDO
              ENDDO
@@ -2845,20 +2571,11 @@
              tend = 0.0_wp
              IF ( timestep_scheme(1:5) == 'runge' )  THEN
                 IF ( ws_scheme_sca )  THEN
-                   IF ( .NOT. advanced_div_correction )  THEN
-                      CALL advec_s_ws( advc_flags_s, ns, 'ns',                                     &
-                                       bc_dirichlet_l  .OR.  bc_radiation_l,                       &
-                                       bc_dirichlet_n  .OR.  bc_radiation_n,                       &
-                                       bc_dirichlet_r  .OR.  bc_radiation_r,                       &
-                                       bc_dirichlet_s  .OR.  bc_radiation_s )
-                   ELSE
-                      CALL advec_s_ws( advc_flags_s, ns, 'ns',                                     &
-                                       bc_dirichlet_l  .OR.  bc_radiation_l,                       &
-                                       bc_dirichlet_n  .OR.  bc_radiation_n,                       &
-                                       bc_dirichlet_r  .OR.  bc_radiation_r,                       &
-                                       bc_dirichlet_s  .OR.  bc_radiation_s,                       &
-                                       advanced_div_correction )
-                   ENDIF
+                   CALL advec_s_ws( advc_flags_s, ns, 'ns',                                        &
+                                    bc_dirichlet_l  .OR.  bc_radiation_l,                          &
+                                    bc_dirichlet_n  .OR.  bc_radiation_n,                          &
+                                    bc_dirichlet_r  .OR.  bc_radiation_r,                          &
+                                    bc_dirichlet_s  .OR.  bc_radiation_s )
                 ELSE
                    CALL advec_s_pw( ns )
                 ENDIF
@@ -2867,7 +2584,18 @@
              ENDIF
           ENDIF
 
-          CALL diffusion_s( ns, surf_top%nisws, surf_def%nisws, surf_lsm%nisws, surf_usm%nisws )
+          CALL diffusion_s( ns,                                                                    &
+                            surf_def_h(0)%nisws, surf_def_h(1)%nisws,                              &
+                            surf_def_h(2)%nisws,                                                   &
+                            surf_lsm_h(0)%nisws, surf_lsm_h(1)%nisws,                              &
+                            surf_usm_h(0)%nisws, surf_usm_h(1)%nisws,                              &
+                            surf_def_v(0)%nisws, surf_def_v(1)%nisws,                              &
+                            surf_def_v(2)%nisws, surf_def_v(3)%nisws,                              &
+                            surf_lsm_v(0)%nisws, surf_lsm_v(1)%nisws,                              &
+                            surf_lsm_v(2)%nisws, surf_lsm_v(3)%nisws,                              &
+                            surf_usm_v(0)%nisws, surf_usm_v(1)%nisws,                              &
+                            surf_usm_v(2)%nisws, surf_usm_v(3)%nisws )
+
 !
 !--       Prognostic equation for snow number concentration
           DO  i = nxl, nxr
@@ -2876,10 +2604,12 @@
                 !DIR$ IVDEP
                 DO  k = nzb+1, nzt
                    ns_p(k,j,i) = ns(k,j,i) + ( dt_3d * ( sbt * tend(k,j,i) +                       &
-                                                         tsc(3) * tns_m(k,j,i) )                   &
-                                               - tsc(5) * rdf_sc(k) * ns(k,j,i)                    &
+                                                      tsc(3) * tns_m(k,j,i) )                      &
+                                                    - tsc(5) * rdf_sc(k) *                         &
+                                                               ns(k,j,i)                           &
                                              )                                                     &
-                                           * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                                   * MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 )  &
+                                          )
                    IF ( ns_p(k,j,i) < 0.0_wp )  ns_p(k,j,i) = 0.0_wp
                 ENDDO
              ENDDO
@@ -2934,20 +2664,11 @@
              tend = 0.0_wp
              IF ( timestep_scheme(1:5) == 'runge' )  THEN
                 IF ( ws_scheme_sca )  THEN
-                   IF ( .NOT. advanced_div_correction )  THEN
-                      CALL advec_s_ws( advc_flags_s, qg, 'qg',                                     &
-                                       bc_dirichlet_l  .OR.  bc_radiation_l,                       &
-                                       bc_dirichlet_n  .OR.  bc_radiation_n,                       &
-                                       bc_dirichlet_r  .OR.  bc_radiation_r,                       &
-                                       bc_dirichlet_s  .OR.  bc_radiation_s )
-                   ELSE
-                      CALL advec_s_ws( advc_flags_s, qg, 'qg',                                     &
-                                       bc_dirichlet_l  .OR.  bc_radiation_l,                       &
-                                       bc_dirichlet_n  .OR.  bc_radiation_n,                       &
-                                       bc_dirichlet_r  .OR.  bc_radiation_r,                       &
-                                       bc_dirichlet_s  .OR.  bc_radiation_s,                       &
-                                       advanced_div_correction )
-                   ENDIF
+                   CALL advec_s_ws( advc_flags_s, qg, 'qg',                                        &
+                                    bc_dirichlet_l  .OR.  bc_radiation_l,                          &
+                                    bc_dirichlet_n  .OR.  bc_radiation_n,                          &
+                                    bc_dirichlet_r  .OR.  bc_radiation_r,                          &
+                                    bc_dirichlet_s  .OR.  bc_radiation_s )
                 ELSE
                    CALL advec_s_pw( qg )
                 ENDIF
@@ -2956,7 +2677,18 @@
              ENDIF
           ENDIF
 
-          CALL diffusion_s( qg, surf_top%qisws, surf_def%qisws, surf_lsm%qisws, surf_usm%qisws )
+          CALL diffusion_s( qg,                                                                    &
+                            surf_def_h(0)%qisws, surf_def_h(1)%qisws,                              &
+                            surf_def_h(2)%qisws,                                                   &
+                            surf_lsm_h(0)%qisws, surf_lsm_h(1)%qisws,                              &
+                            surf_usm_h(0)%qisws, surf_usm_h(1)%qisws,                              &
+                            surf_def_v(0)%qisws, surf_def_v(1)%qisws,                              &
+                            surf_def_v(2)%qisws, surf_def_v(3)%qisws,                              &
+                            surf_lsm_v(0)%qisws, surf_lsm_v(1)%qisws,                              &
+                            surf_lsm_v(2)%qisws, surf_lsm_v(3)%qisws,                              &
+                            surf_usm_v(0)%qisws, surf_usm_v(1)%qisws,                              &
+                            surf_usm_v(2)%qisws, surf_usm_v(3)%qisws )
+
 !
 !--       Prognostic equation for graupel mixing ratio
           DO  i = nxl, nxr
@@ -2965,10 +2697,12 @@
                 !DIR$ IVDEP
                 DO  k = nzb+1, nzt
                    qg_p(k,j,i) = qg(k,j,i) + ( dt_3d * ( sbt * tend(k,j,i) +                       &
-                                                         tsc(3) * tqg_m(k,j,i) )                   &
-                                               - tsc(5) * rdf_sc(k) * qg(k,j,i)                    &
+                                                      tsc(3) * tqg_m(k,j,i) )                      &
+                                                    - tsc(5) * rdf_sc(k) *                         &
+                                                               qg(k,j,i)                           &
                                              )                                                     &
-                                           * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                                    * MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) &
+                                          )
                    IF ( qg_p(k,j,i) < 0.0_wp )  qg_p(k,j,i) = 0.0_wp
                 ENDDO
              ENDDO
@@ -3017,20 +2751,11 @@
              tend = 0.0_wp
              IF ( timestep_scheme(1:5) == 'runge' )  THEN
                 IF ( ws_scheme_sca )  THEN
-                   IF ( .NOT. advanced_div_correction )  THEN
-                      CALL advec_s_ws( advc_flags_s, ng, 'ng',                                     &
-                                       bc_dirichlet_l  .OR.  bc_radiation_l,                       &
-                                       bc_dirichlet_n  .OR.  bc_radiation_n,                       &
-                                       bc_dirichlet_r  .OR.  bc_radiation_r,                       &
-                                       bc_dirichlet_s  .OR.  bc_radiation_s )
-                   ELSE
-                      CALL advec_s_ws( advc_flags_s, ng, 'ng',                                     &
-                                       bc_dirichlet_l  .OR.  bc_radiation_l,                       &
-                                       bc_dirichlet_n  .OR.  bc_radiation_n,                       &
-                                       bc_dirichlet_r  .OR.  bc_radiation_r,                       &
-                                       bc_dirichlet_s  .OR.  bc_radiation_s,                       &
-                                       advanced_div_correction )
-                   ENDIF
+                   CALL advec_s_ws( advc_flags_s, ng, 'ng',                                        &
+                                    bc_dirichlet_l  .OR.  bc_radiation_l,                          &
+                                    bc_dirichlet_n  .OR.  bc_radiation_n,                          &
+                                    bc_dirichlet_r  .OR.  bc_radiation_r,                          &
+                                    bc_dirichlet_s  .OR.  bc_radiation_s )
                 ELSE
                    CALL advec_s_pw( ng )
                 ENDIF
@@ -3039,7 +2764,18 @@
              ENDIF
           ENDIF
 
-          CALL diffusion_s( ng, surf_top%nisws, surf_def%nisws, surf_lsm%nisws, surf_usm%nisws )
+          CALL diffusion_s( ng,                                                                    &
+                            surf_def_h(0)%nisws, surf_def_h(1)%nisws,                              &
+                            surf_def_h(2)%nisws,                                                   &
+                            surf_lsm_h(0)%nisws, surf_lsm_h(1)%nisws,                              &
+                            surf_usm_h(0)%nisws, surf_usm_h(1)%nisws,                              &
+                            surf_def_v(0)%nisws, surf_def_v(1)%nisws,                              &
+                            surf_def_v(2)%nisws, surf_def_v(3)%nisws,                              &
+                            surf_lsm_v(0)%nisws, surf_lsm_v(1)%nisws,                              &
+                            surf_lsm_v(2)%nisws, surf_lsm_v(3)%nisws,                              &
+                            surf_usm_v(0)%nisws, surf_usm_v(1)%nisws,                              &
+                            surf_usm_v(2)%nisws, surf_usm_v(3)%nisws )
+
 !
 !--       Prognostic equation for ice crystal concentration
           DO  i = nxl, nxr
@@ -3048,10 +2784,12 @@
                 !DIR$ IVDEP
                 DO  k = nzb+1, nzt
                    ng_p(k,j,i) = ng(k,j,i) + ( dt_3d * ( sbt * tend(k,j,i) +                       &
-                                                         tsc(3) * tng_m(k,j,i) )                   &
-                                               - tsc(5) * rdf_sc(k) * ng(k,j,i)                    &
+                                                      tsc(3) * tng_m(k,j,i) )                      &
+                                                    - tsc(5) * rdf_sc(k) *                         &
+                                                               ng(k,j,i)                           &
                                              )                                                     &
-                                           * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                                   * MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 )  &
+                                          )
                    IF ( ng_p(k,j,i) < 0.0_wp )  ng_p(k,j,i) = 0.0_wp
                 ENDDO
              ENDDO
@@ -3107,20 +2845,11 @@
              tend = 0.0_wp
              IF ( timestep_scheme(1:5) == 'runge' )  THEN
                 IF ( ws_scheme_sca )  THEN
-                   IF ( .NOT. advanced_div_correction )  THEN
-                      CALL advec_s_ws( advc_flags_s, qr, 'qr',                                     &
-                                       bc_dirichlet_l  .OR.  bc_radiation_l,                       &
-                                       bc_dirichlet_n  .OR.  bc_radiation_n,                       &
-                                       bc_dirichlet_r  .OR.  bc_radiation_r,                       &
-                                       bc_dirichlet_s  .OR.  bc_radiation_s )
-                   ELSE
-                      CALL advec_s_ws( advc_flags_s, qr, 'qr',                                     &
-                                       bc_dirichlet_l  .OR.  bc_radiation_l,                       &
-                                       bc_dirichlet_n  .OR.  bc_radiation_n,                       &
-                                       bc_dirichlet_r  .OR.  bc_radiation_r,                       &
-                                       bc_dirichlet_s  .OR.  bc_radiation_s,                       &
-                                       advanced_div_correction )
-                   ENDIF
+                   CALL advec_s_ws( advc_flags_s, qr, 'qr',                                        &
+                                    bc_dirichlet_l  .OR.  bc_radiation_l,                          &
+                                    bc_dirichlet_n  .OR.  bc_radiation_n,                          &
+                                    bc_dirichlet_r  .OR.  bc_radiation_r,                          &
+                                    bc_dirichlet_s  .OR.  bc_radiation_s )
                 ELSE
                    CALL advec_s_pw( qr )
                 ENDIF
@@ -3129,7 +2858,18 @@
              ENDIF
           ENDIF
 
-          CALL diffusion_s( qr, surf_top%qrsws, surf_def%qrsws, surf_lsm%qrsws, surf_usm%qrsws )
+          CALL diffusion_s( qr,                                                                    &
+                            surf_def_h(0)%qrsws, surf_def_h(1)%qrsws,                              &
+                            surf_def_h(2)%qrsws,                                                   &
+                            surf_lsm_h(0)%qrsws, surf_lsm_h(1)%qrsws,                              &
+                            surf_usm_h(0)%qrsws, surf_usm_h(1)%qrsws,                              &
+                            surf_def_v(0)%qrsws, surf_def_v(1)%qrsws,                              &
+                            surf_def_v(2)%qrsws, surf_def_v(3)%qrsws,                              &
+                            surf_lsm_v(0)%qrsws, surf_lsm_v(1)%qrsws,                              &
+                            surf_lsm_v(2)%qrsws, surf_lsm_v(3)%qrsws,                              &
+                            surf_usm_v(0)%qrsws, surf_usm_v(1)%qrsws,                              &
+                            surf_usm_v(2)%qrsws, surf_usm_v(3)%qrsws )
+
 !
 !--       Prognostic equation for rain water content
           DO  i = nxl, nxr
@@ -3138,10 +2878,12 @@
                 !DIR$ IVDEP
                 DO  k = nzb+1, nzt
                    qr_p(k,j,i) = qr(k,j,i) + ( dt_3d * ( sbt * tend(k,j,i) +                       &
-                                                         tsc(3) * tqr_m(k,j,i) )                   &
-                                               - tsc(5) * rdf_sc(k) * qr(k,j,i)                    &
+                                                      tsc(3) * tqr_m(k,j,i) )                      &
+                                                    - tsc(5) * rdf_sc(k) *                         &
+                                                               qr(k,j,i)                           &
                                              )                                                     &
-                                           * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                                    * MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) &
+                                          )
                    IF ( qr_p(k,j,i) < 0.0_wp )  qr_p(k,j,i) = 0.0_wp
                 ENDDO
              ENDDO
@@ -3190,20 +2932,11 @@
              tend = 0.0_wp
              IF ( timestep_scheme(1:5) == 'runge' )  THEN
                 IF ( ws_scheme_sca )  THEN
-                   IF ( .NOT. advanced_div_correction )  THEN
-                      CALL advec_s_ws( advc_flags_s, nr, 'nr',                                     &
-                                       bc_dirichlet_l  .OR.  bc_radiation_l,                       &
-                                       bc_dirichlet_n  .OR.  bc_radiation_n,                       &
-                                       bc_dirichlet_r  .OR.  bc_radiation_r,                       &
-                                       bc_dirichlet_s  .OR.  bc_radiation_s )
-                   ELSE
-                      CALL advec_s_ws( advc_flags_s, nr, 'nr',                                     &
-                                       bc_dirichlet_l  .OR.  bc_radiation_l,                       &
-                                       bc_dirichlet_n  .OR.  bc_radiation_n,                       &
-                                       bc_dirichlet_r  .OR.  bc_radiation_r,                       &
-                                       bc_dirichlet_s  .OR.  bc_radiation_s,                       &
-                                       advanced_div_correction )
-                   ENDIF
+                   CALL advec_s_ws( advc_flags_s, nr, 'nr',                                        &
+                                    bc_dirichlet_l  .OR.  bc_radiation_l,                          &
+                                    bc_dirichlet_n  .OR.  bc_radiation_n,                          &
+                                    bc_dirichlet_r  .OR.  bc_radiation_r,                          &
+                                    bc_dirichlet_s  .OR.  bc_radiation_s )
                 ELSE
                    CALL advec_s_pw( nr )
                 ENDIF
@@ -3212,7 +2945,18 @@
              ENDIF
           ENDIF
 
-          CALL diffusion_s( nr, surf_top%nrsws, surf_def%nrsws, surf_lsm%nrsws, surf_usm%nrsws )
+          CALL diffusion_s( nr,                                                                    &
+                            surf_def_h(0)%nrsws, surf_def_h(1)%nrsws,                              &
+                            surf_def_h(2)%nrsws,                                                   &
+                            surf_lsm_h(0)%nrsws, surf_lsm_h(1)%nrsws,                              &
+                            surf_usm_h(0)%nrsws, surf_usm_h(1)%nrsws,                              &
+                            surf_def_v(0)%nrsws, surf_def_v(1)%nrsws,                              &
+                            surf_def_v(2)%nrsws, surf_def_v(3)%nrsws,                              &
+                            surf_lsm_v(0)%nrsws, surf_lsm_v(1)%nrsws,                              &
+                            surf_lsm_v(2)%nrsws, surf_lsm_v(3)%nrsws,                              &
+                            surf_usm_v(0)%nrsws, surf_usm_v(1)%nrsws,                              &
+                            surf_usm_v(2)%nrsws, surf_usm_v(3)%nrsws )
+
 !
 !--       Prognostic equation for rain drop concentration
           DO  i = nxl, nxr
@@ -3221,10 +2965,12 @@
                 !DIR$ IVDEP
                 DO  k = nzb+1, nzt
                    nr_p(k,j,i) = nr(k,j,i) + ( dt_3d * ( sbt * tend(k,j,i) +                       &
-                                                         tsc(3) * tnr_m(k,j,i) )                   &
-                                               - tsc(5) * rdf_sc(k) * nr(k,j,i)                    &
+                                                      tsc(3) * tnr_m(k,j,i) )                      &
+                                                    - tsc(5) * rdf_sc(k) *                         &
+                                                               nr(k,j,i)                           &
                                              )                                                     &
-                                           * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                                   * MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 )  &
+                                          )
                    IF ( nr_p(k,j,i) < 0.0_wp )  nr_p(k,j,i) = 0.0_wp
                 ENDDO
              ENDDO
@@ -3282,7 +3028,8 @@
 !
 !--       Calculate prognostic equation for cloud water content
           tend(:,j,i) = 0.0_wp
-          IF ( timestep_scheme(1:5) == 'runge' )  THEN
+          IF ( timestep_scheme(1:5) == 'runge' ) &
+          THEN
              IF ( ws_scheme_sca )  THEN
                 CALL advec_s_ws( advc_flags_s, i, j, qc, 'qc', flux_s_qc,                          &
                                  diss_s_qc, flux_l_qc, diss_l_qc,                                  &
@@ -3297,14 +3044,29 @@
           ELSE
              CALL advec_s_up( i, j, qc )
           ENDIF
-          CALL diffusion_s( i, j, qc, surf_top%qcsws, surf_def%qcsws, surf_lsm%qcsws,              &
-                            surf_usm%qcsws )
+          CALL diffusion_s( i, j, qc,                                                              &
+                            surf_def_h(0)%qcsws, surf_def_h(1)%qcsws,                              &
+                            surf_def_h(2)%qcsws,                                                   &
+                            surf_lsm_h(0)%qcsws, surf_lsm_h(1)%qcsws,                              &
+                            surf_usm_h(0)%qcsws, surf_usm_h(1)%qcsws,                              &
+                            surf_def_v(0)%qcsws, surf_def_v(1)%qcsws,                              &
+                            surf_def_v(2)%qcsws, surf_def_v(3)%qcsws,                              &
+                            surf_lsm_v(0)%qcsws, surf_lsm_v(1)%qcsws,                              &
+                            surf_lsm_v(2)%qcsws, surf_lsm_v(3)%qcsws,                              &
+                            surf_usm_v(0)%qcsws, surf_usm_v(1)%qcsws,                              &
+                            surf_usm_v(2)%qcsws, surf_usm_v(3)%qcsws )
+
 !
 !--       Prognostic equation for cloud water content
           DO  k = nzb+1, nzt
-             qc_p(k,j,i) = qc(k,j,i) + ( dt_3d * ( tsc(2) * tend(k,j,i) + tsc(3) * tqc_m(k,j,i) )  &
-                                         - tsc(5) * rdf_sc(k) * qc(k,j,i)                          &
-                                       ) * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+             qc_p(k,j,i) = qc(k,j,i) + ( dt_3d *                                                   &
+                                                ( tsc(2) * tend(k,j,i) +                           &
+                                                  tsc(3) * tqc_m(k,j,i) )                          &
+                                                - tsc(5) * rdf_sc(k)                               &
+                                                         * qc(k,j,i)                               &
+                                       )                                                           &
+                                 * MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 )    &
+                                        )
              IF ( qc_p(k,j,i) < 0.0_wp )  qc_p(k,j,i) = 0.0_wp
           ENDDO
 !
@@ -3340,14 +3102,29 @@
           ELSE
              CALL advec_s_up( i, j, nc )
           ENDIF
-          CALL diffusion_s( i, j, nc, surf_top%ncsws, surf_def%ncsws, surf_lsm%ncsws,              &
-                            surf_usm%ncsws )
+          CALL diffusion_s( i, j, nc,                                                              &
+                            surf_def_h(0)%ncsws, surf_def_h(1)%ncsws,                              &
+                            surf_def_h(2)%ncsws,                                                   &
+                            surf_lsm_h(0)%ncsws, surf_lsm_h(1)%ncsws,                              &
+                            surf_usm_h(0)%ncsws, surf_usm_h(1)%ncsws,                              &
+                            surf_def_v(0)%ncsws, surf_def_v(1)%ncsws,                              &
+                            surf_def_v(2)%ncsws, surf_def_v(3)%ncsws,                              &
+                            surf_lsm_v(0)%ncsws, surf_lsm_v(1)%ncsws,                              &
+                            surf_lsm_v(2)%ncsws, surf_lsm_v(3)%ncsws,                              &
+                            surf_usm_v(0)%ncsws, surf_usm_v(1)%ncsws,                              &
+                            surf_usm_v(2)%ncsws, surf_usm_v(3)%ncsws )
+
 !
 !--       Prognostic equation for cloud drop concentration
           DO  k = nzb+1, nzt
-             nc_p(k,j,i) = nc(k,j,i) + ( dt_3d * ( tsc(2) * tend(k,j,i) + tsc(3) * tnc_m(k,j,i) )  &
-                                         - tsc(5) * rdf_sc(k) * nc(k,j,i)                          &
-                                       ) * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+             nc_p(k,j,i) = nc(k,j,i) + ( dt_3d *                                                   &
+                                                ( tsc(2) * tend(k,j,i) +                           &
+                                                  tsc(3) * tnc_m(k,j,i) )                          &
+                                                - tsc(5) * rdf_sc(k)                               &
+                                                         * nc(k,j,i)                               &
+                                       )                                                           &
+                                 * MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 )    &
+                                        )
              IF ( nc_p(k,j,i) < 0.0_wp )  nc_p(k,j,i) = 0.0_wp
           ENDDO
 !
@@ -3374,7 +3151,8 @@
 !
 !--       Calculate prognostic equation for ice crystal mixing ratio
           tend(:,j,i) = 0.0_wp
-          IF ( timestep_scheme(1:5) == 'runge' )  THEN
+          IF ( timestep_scheme(1:5) == 'runge' ) &
+          THEN
              IF ( ws_scheme_sca )  THEN
                 CALL advec_s_ws( advc_flags_s, i, j, qi, 'qi', flux_s_qi,                          &
                                  diss_s_qi, flux_l_qi, diss_l_qi,                                  &
@@ -3389,14 +3167,29 @@
           ELSE
              CALL advec_s_up( i, j, qi )
           ENDIF
-          CALL diffusion_s( i, j, qi, surf_top%qisws, surf_def%qisws, surf_lsm%qisws,              &
-                            surf_usm%qisws )
+          CALL diffusion_s( i, j, qi,                                                              &
+                            surf_def_h(0)%qisws, surf_def_h(1)%qisws,                              &
+                            surf_def_h(2)%qisws,                                                   &
+                            surf_lsm_h(0)%qisws, surf_lsm_h(1)%qisws,                              &
+                            surf_usm_h(0)%qisws, surf_usm_h(1)%qisws,                              &
+                            surf_def_v(0)%qisws, surf_def_v(1)%qisws,                              &
+                            surf_def_v(2)%qisws, surf_def_v(3)%qisws,                              &
+                            surf_lsm_v(0)%qisws, surf_lsm_v(1)%qisws,                              &
+                            surf_lsm_v(2)%qisws, surf_lsm_v(3)%qisws,                              &
+                            surf_usm_v(0)%qisws, surf_usm_v(1)%qisws,                              &
+                            surf_usm_v(2)%qisws, surf_usm_v(3)%qisws )
+
 !
 !--       Prognostic equation for ice crystal mixing ratio
           DO  k = nzb+1, nzt
-             qi_p(k,j,i) = qi(k,j,i) + ( dt_3d * ( tsc(2) * tend(k,j,i) + tsc(3) * tqi_m(k,j,i) )  &
-                                         - tsc(5) * rdf_sc(k) * qi(k,j,i)                          &
-                                       ) * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+             qi_p(k,j,i) = qi(k,j,i) + ( dt_3d *                                                   &
+                                                ( tsc(2) * tend(k,j,i) +                           &
+                                                  tsc(3) * tqi_m(k,j,i) )                          &
+                                                - tsc(5) * rdf_sc(k)                               &
+                                                         * qi(k,j,i)                               &
+                                       )                                                           &
+                                 * MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 )    &
+                                        )
              IF ( qi_p(k,j,i) < 0.0_wp )  qi_p(k,j,i) = 0.0_wp
           ENDDO
 !
@@ -3432,14 +3225,29 @@
           ELSE
              CALL advec_s_up( i, j, ni )
           ENDIF
-          CALL diffusion_s( i, j, ni, surf_top%nisws, surf_def%nisws, surf_lsm%nisws,              &
-                            surf_usm%nisws )
+          CALL diffusion_s( i, j, ni,                                                              &
+                            surf_def_h(0)%nisws, surf_def_h(1)%nisws,                              &
+                            surf_def_h(2)%nisws,                                                   &
+                            surf_lsm_h(0)%nisws, surf_lsm_h(1)%nisws,                              &
+                            surf_usm_h(0)%nisws, surf_usm_h(1)%nisws,                              &
+                            surf_def_v(0)%nisws, surf_def_v(1)%nisws,                              &
+                            surf_def_v(2)%nisws, surf_def_v(3)%nisws,                              &
+                            surf_lsm_v(0)%nisws, surf_lsm_v(1)%nisws,                              &
+                            surf_lsm_v(2)%nisws, surf_lsm_v(3)%nisws,                              &
+                            surf_usm_v(0)%nisws, surf_usm_v(1)%nisws,                              &
+                            surf_usm_v(2)%nisws, surf_usm_v(3)%nisws )
+
 !
 !--       Prognostic equation for ice crystal concentration
           DO  k = nzb+1, nzt
-             ni_p(k,j,i) = ni(k,j,i) + ( dt_3d * ( tsc(2) * tend(k,j,i) + tsc(3) * tni_m(k,j,i) )  &
-                                         - tsc(5) * rdf_sc(k) * ni(k,j,i)                          &
-                                       ) * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+             ni_p(k,j,i) = ni(k,j,i) + ( dt_3d *                                                   &
+                                                ( tsc(2) * tend(k,j,i) +                           &
+                                                  tsc(3) * tni_m(k,j,i) )                          &
+                                                - tsc(5) * rdf_sc(k)                               &
+                                                         * ni(k,j,i)                               &
+                                       )                                                           &
+                                 * MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 )    &
+                                        )
              IF ( ni_p(k,j,i) < 0.0_wp )  ni_p(k,j,i) = 0.0_wp
           ENDDO
 !
@@ -3466,7 +3274,8 @@
 !
 !--       Calculate prognostic equation for ice crystal mixing ratio
           tend(:,j,i) = 0.0_wp
-          IF ( timestep_scheme(1:5) == 'runge' )  THEN
+          IF ( timestep_scheme(1:5) == 'runge' ) &
+          THEN
              IF ( ws_scheme_sca )  THEN
                 CALL advec_s_ws( advc_flags_s, i, j, qs, 'qs', flux_s_qs,                          &
                                  diss_s_qs, flux_l_qs, diss_l_qs,                                  &
@@ -3481,14 +3290,29 @@
           ELSE
              CALL advec_s_up( i, j, qs )
           ENDIF
-          CALL diffusion_s( i, j, qs, surf_top%qisws, surf_def%qisws, surf_lsm%qisws,              &
-                            surf_usm%qisws )
+          CALL diffusion_s( i, j, qs,                                                              &
+                            surf_def_h(0)%qisws, surf_def_h(1)%qisws,                              &
+                            surf_def_h(2)%qisws,                                                   &
+                            surf_lsm_h(0)%qisws, surf_lsm_h(1)%qisws,                              &
+                            surf_usm_h(0)%qisws, surf_usm_h(1)%qisws,                              &
+                            surf_def_v(0)%qisws, surf_def_v(1)%qisws,                              &
+                            surf_def_v(2)%qisws, surf_def_v(3)%qisws,                              &
+                            surf_lsm_v(0)%qisws, surf_lsm_v(1)%qisws,                              &
+                            surf_lsm_v(2)%qisws, surf_lsm_v(3)%qisws,                              &
+                            surf_usm_v(0)%qisws, surf_usm_v(1)%qisws,                              &
+                            surf_usm_v(2)%qisws, surf_usm_v(3)%qisws )
+
 !
 !--       Prognostic equation for snow  mixing ratio
           DO  k = nzb+1, nzt
-             qs_p(k,j,i) = qs(k,j,i) + ( dt_3d * ( tsc(2) * tend(k,j,i) + tsc(3) * tqs_m(k,j,i) )  &
-                                         - tsc(5) * rdf_sc(k) * qs(k,j,i)                          &
-                                       ) * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+             qs_p(k,j,i) = qs(k,j,i) + ( dt_3d *                                                   &
+                                                ( tsc(2) * tend(k,j,i) +                           &
+                                                  tsc(3) * tqs_m(k,j,i) )                          &
+                                                - tsc(5) * rdf_sc(k)                               &
+                                                         * qs(k,j,i)                               &
+                                       )                                                           &
+                                 * MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 )    &
+                                        )
              IF ( qs_p(k,j,i) < 0.0_wp )  qs_p(k,j,i) = 0.0_wp
           ENDDO
 !
@@ -3524,14 +3348,29 @@
           ELSE
              CALL advec_s_up( i, j, ns )
           ENDIF
-          CALL diffusion_s( i, j, ns, surf_top%nisws, surf_def%nisws, surf_lsm%nisws,              &
-                            surf_usm%nisws )
+          CALL diffusion_s( i, j, ns,                                                              &
+                            surf_def_h(0)%nisws, surf_def_h(1)%nisws,                              &
+                            surf_def_h(2)%nisws,                                                   &
+                            surf_lsm_h(0)%nisws, surf_lsm_h(1)%nisws,                              &
+                            surf_usm_h(0)%nisws, surf_usm_h(1)%nisws,                              &
+                            surf_def_v(0)%nisws, surf_def_v(1)%nisws,                              &
+                            surf_def_v(2)%nisws, surf_def_v(3)%nisws,                              &
+                            surf_lsm_v(0)%nisws, surf_lsm_v(1)%nisws,                              &
+                            surf_lsm_v(2)%nisws, surf_lsm_v(3)%nisws,                              &
+                            surf_usm_v(0)%nisws, surf_usm_v(1)%nisws,                              &
+                            surf_usm_v(2)%nisws, surf_usm_v(3)%nisws )
+
 !
 !--       Prognostic equation for snow number concentration
           DO  k = nzb+1, nzt
-             ns_p(k,j,i) = ns(k,j,i) + ( dt_3d * ( tsc(2) * tend(k,j,i) + tsc(3) * tns_m(k,j,i) )  &
-                                         - tsc(5) * rdf_sc(k) * ns(k,j,i)                          &
-                                       ) * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+             ns_p(k,j,i) = ns(k,j,i) + ( dt_3d *                                                   &
+                                                ( tsc(2) * tend(k,j,i) +                           &
+                                                  tsc(3) * tns_m(k,j,i) )                          &
+                                                - tsc(5) * rdf_sc(k)                               &
+                                                         * ns(k,j,i)                               &
+                                       )                                                           &
+                                 * MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 )    &
+                                        )
              IF ( ns_p(k,j,i) < 0.0_wp )  ns_p(k,j,i) = 0.0_wp
           ENDDO
 !
@@ -3558,7 +3397,8 @@
 !
 !--       Calculate prognostic equation for graupel mixing ratio
           tend(:,j,i) = 0.0_wp
-          IF ( timestep_scheme(1:5) == 'runge' )  THEN
+          IF ( timestep_scheme(1:5) == 'runge' ) &
+          THEN
              IF ( ws_scheme_sca )  THEN
                 CALL advec_s_ws( advc_flags_s, i, j, qg, 'qg', flux_s_qg,                          &
                                  diss_s_qg, flux_l_qg, diss_l_qg,                                  &
@@ -3573,14 +3413,29 @@
           ELSE
              CALL advec_s_up( i, j, qg )
           ENDIF
-          CALL diffusion_s( i, j, qg, surf_top%qisws, surf_def%qisws, surf_lsm%qisws,              &
-                            surf_usm%qisws )
+          CALL diffusion_s( i, j, qg,                                                              &
+                            surf_def_h(0)%qisws, surf_def_h(1)%qisws,                              &
+                            surf_def_h(2)%qisws,                                                   &
+                            surf_lsm_h(0)%qisws, surf_lsm_h(1)%qisws,                              &
+                            surf_usm_h(0)%qisws, surf_usm_h(1)%qisws,                              &
+                            surf_def_v(0)%qisws, surf_def_v(1)%qisws,                              &
+                            surf_def_v(2)%qisws, surf_def_v(3)%qisws,                              &
+                            surf_lsm_v(0)%qisws, surf_lsm_v(1)%qisws,                              &
+                            surf_lsm_v(2)%qisws, surf_lsm_v(3)%qisws,                              &
+                            surf_usm_v(0)%qisws, surf_usm_v(1)%qisws,                              &
+                            surf_usm_v(2)%qisws, surf_usm_v(3)%qisws )
+
 !
 !--       Prognostic equation for ice crystal mixing ratio
           DO  k = nzb+1, nzt
-             qg_p(k,j,i) = qg(k,j,i) + ( dt_3d * ( tsc(2) * tend(k,j,i) + tsc(3) * tqg_m(k,j,i) )  &
-                                         - tsc(5) * rdf_sc(k) * qg(k,j,i)                          &
-                                       ) * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+             qg_p(k,j,i) = qg(k,j,i) + ( dt_3d *                                                   &
+                                                ( tsc(2) * tend(k,j,i) +                           &
+                                                  tsc(3) * tqg_m(k,j,i) )                          &
+                                                - tsc(5) * rdf_sc(k)                               &
+                                                         * qg(k,j,i)                               &
+                                       )                                                           &
+                                 * MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 )    &
+                                        )
              IF ( qg_p(k,j,i) < 0.0_wp )  qg_p(k,j,i) = 0.0_wp
           ENDDO
 !
@@ -3616,14 +3471,29 @@
           ELSE
              CALL advec_s_up( i, j, ng )
           ENDIF
-          CALL diffusion_s( i, j, ng, surf_top%nisws, surf_def%nisws, surf_lsm%nisws,              &
-                            surf_usm%nisws )
+          CALL diffusion_s( i, j, ng,                                                              &
+                            surf_def_h(0)%nisws, surf_def_h(1)%nisws,                              &
+                            surf_def_h(2)%nisws,                                                   &
+                            surf_lsm_h(0)%nisws, surf_lsm_h(1)%nisws,                              &
+                            surf_usm_h(0)%nisws, surf_usm_h(1)%nisws,                              &
+                            surf_def_v(0)%nisws, surf_def_v(1)%nisws,                              &
+                            surf_def_v(2)%nisws, surf_def_v(3)%nisws,                              &
+                            surf_lsm_v(0)%nisws, surf_lsm_v(1)%nisws,                              &
+                            surf_lsm_v(2)%nisws, surf_lsm_v(3)%nisws,                              &
+                            surf_usm_v(0)%nisws, surf_usm_v(1)%nisws,                              &
+                            surf_usm_v(2)%nisws, surf_usm_v(3)%nisws )
+
 !
 !--       Prognostic equation for graupel number concentration
           DO  k = nzb+1, nzt
-             ng_p(k,j,i) = ng(k,j,i) + ( dt_3d * ( tsc(2) * tend(k,j,i) + tsc(3) * tng_m(k,j,i) )  &
-                                         - tsc(5) * rdf_sc(k) * ng(k,j,i)                          &
-                                       ) * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+             ng_p(k,j,i) = ng(k,j,i) + ( dt_3d *                                                   &
+                                                ( tsc(2) * tend(k,j,i) +                           &
+                                                  tsc(3) * tng_m(k,j,i) )                          &
+                                                - tsc(5) * rdf_sc(k)                               &
+                                                         * ng(k,j,i)                               &
+                                       )                                                           &
+                                 * MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 )    &
+                                        )
              IF ( ng_p(k,j,i) < 0.0_wp )  ng_p(k,j,i) = 0.0_wp
           ENDDO
 !
@@ -3650,7 +3520,8 @@
 !
 !--       Calculate prognostic equation for rain water content
           tend(:,j,i) = 0.0_wp
-          IF ( timestep_scheme(1:5) == 'runge' )  THEN
+          IF ( timestep_scheme(1:5) == 'runge' ) &
+          THEN
              IF ( ws_scheme_sca )  THEN
                 CALL advec_s_ws( advc_flags_s, i, j, qr, 'qr', flux_s_qr,                          &
                                  diss_s_qr, flux_l_qr, diss_l_qr,                                  &
@@ -3665,14 +3536,29 @@
           ELSE
              CALL advec_s_up( i, j, qr )
           ENDIF
-          CALL diffusion_s( i, j, qr, surf_top%qrsws, surf_def%qrsws, surf_lsm%qrsws,              &
-                            surf_usm%qrsws )
+          CALL diffusion_s( i, j, qr,                                                              &
+                            surf_def_h(0)%qrsws, surf_def_h(1)%qrsws,                              &
+                            surf_def_h(2)%qrsws,                                                   &
+                            surf_lsm_h(0)%qrsws, surf_lsm_h(1)%qrsws,                              &
+                            surf_usm_h(0)%qrsws, surf_usm_h(1)%qrsws,                              &
+                            surf_def_v(0)%qrsws, surf_def_v(1)%qrsws,                              &
+                            surf_def_v(2)%qrsws, surf_def_v(3)%qrsws,                              &
+                            surf_lsm_v(0)%qrsws, surf_lsm_v(1)%qrsws,                              &
+                            surf_lsm_v(2)%qrsws, surf_lsm_v(3)%qrsws,                              &
+                            surf_usm_v(0)%qrsws, surf_usm_v(1)%qrsws,                              &
+                            surf_usm_v(2)%qrsws, surf_usm_v(3)%qrsws )
+
 !
 !--       Prognostic equation for rain water content
           DO  k = nzb+1, nzt
-             qr_p(k,j,i) = qr(k,j,i) + ( dt_3d * ( tsc(2) * tend(k,j,i) + tsc(3) * tqr_m(k,j,i) )  &
-                                         - tsc(5) * rdf_sc(k) * qr(k,j,i)                          &
-                                       ) * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+             qr_p(k,j,i) = qr(k,j,i) + ( dt_3d *                                                   &
+                                                ( tsc(2) * tend(k,j,i) +                           &
+                                                  tsc(3) * tqr_m(k,j,i) )                          &
+                                                - tsc(5) * rdf_sc(k)                               &
+                                                         * qr(k,j,i)                               &
+                                       )                                                           &
+                                 * MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 )    &
+                                        )
              IF ( qr_p(k,j,i) < 0.0_wp )  qr_p(k,j,i) = 0.0_wp
           ENDDO
 !
@@ -3708,14 +3594,29 @@
           ELSE
              CALL advec_s_up( i, j, nr )
           ENDIF
-          CALL diffusion_s( i, j, nr, surf_top%nrsws, surf_def%nrsws, surf_lsm%nrsws,              &
-                            surf_usm%nrsws )
+          CALL diffusion_s( i, j, nr,                                                              &
+                            surf_def_h(0)%nrsws, surf_def_h(1)%nrsws,                              &
+                            surf_def_h(2)%nrsws,                                                   &
+                            surf_lsm_h(0)%nrsws, surf_lsm_h(1)%nrsws,                              &
+                            surf_usm_h(0)%nrsws, surf_usm_h(1)%nrsws,                              &
+                            surf_def_v(0)%nrsws, surf_def_v(1)%nrsws,                              &
+                            surf_def_v(2)%nrsws, surf_def_v(3)%nrsws,                              &
+                            surf_lsm_v(0)%nrsws, surf_lsm_v(1)%nrsws,                              &
+                            surf_lsm_v(2)%nrsws, surf_lsm_v(3)%nrsws,                              &
+                            surf_usm_v(0)%nrsws, surf_usm_v(1)%nrsws,                              &
+                            surf_usm_v(2)%nrsws, surf_usm_v(3)%nrsws )
+
 !
 !--       Prognostic equation for rain drop concentration
           DO  k = nzb+1, nzt
-             nr_p(k,j,i) = nr(k,j,i) + ( dt_3d * ( tsc(2) * tend(k,j,i) + tsc(3) * tnr_m(k,j,i) )  &
-                                         - tsc(5) * rdf_sc(k) * nr(k,j,i)                          &
-                                       ) * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+             nr_p(k,j,i) = nr(k,j,i) + ( dt_3d *                                                   &
+                                                ( tsc(2) * tend(k,j,i) +                           &
+                                                  tsc(3) * tnr_m(k,j,i) )                          &
+                                                - tsc(5) * rdf_sc(k)                               &
+                                                         * nr(k,j,i)                               &
+                                       )                                                           &
+                                 * MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 )    &
+                                        )
              IF ( nr_p(k,j,i) < 0.0_wp )  nr_p(k,j,i) = 0.0_wp
           ENDDO
 !
@@ -3819,20 +3720,23 @@
        INTEGER(iwp) ::  j !<
        INTEGER(iwp) ::  k !<
        INTEGER(iwp) ::  m !<
+       INTEGER(iwp) ::  l !<
 
        IF ( microphysics_morrison )  THEN
 !
 !--       Surface conditions cloud water (Dirichlet).
-!--       Run loop over all non-natural and natural walls. Note, in wall-datatype the i,j,k coordinates
-!--       belong to the atmospheric grid point, therefore, set qr_p and nr_p at
-!--       (k+koff,j+joff,i+ioff) walls.
+!--       Run loop over all non-natural and natural walls. Note, in wall-datatype the k coordinate
+!--       belongs to the atmospheric grid point, therefore, set qr_p and nr_p at upward (k-1) and
+!--       downward-facing (k+1) walls.
+          DO  l = 0, 1
           !$OMP PARALLEL DO PRIVATE( i, j, k )
-          DO  m = 1, bc_hv%ns
-             i = bc_hv%i(m)
-             j = bc_hv%j(m)
-             k = bc_hv%k(m)
-             qc_p(k+bc_hv%koff(m),j+bc_hv%joff(m),i+bc_hv%ioff(m)) = 0.0_wp
-             nc_p(k+bc_hv%koff(m),j+bc_hv%joff(m),i+bc_hv%ioff(m)) = 0.0_wp
+             DO  m = 1, bc_h(l)%ns
+                i = bc_h(l)%i(m)
+                j = bc_h(l)%j(m)
+                k = bc_h(l)%k(m)
+                qc_p(k+bc_h(l)%koff,j,i) = 0.0_wp
+                nc_p(k+bc_h(l)%koff,j,i) = 0.0_wp
+             ENDDO
           ENDDO
 !
 !--       Top boundary condition for cloud water (Dirichlet)
@@ -3844,16 +3748,18 @@
        IF ( microphysics_ice_phase )  THEN
 !
 !--       Surface conditions ice crysral, snow and graupel (Dirichlet).
-!--       Run loop over all non-natural and natural walls. Note, in wall-datatype the i,j,k coordinates
-!--       belong to the atmospheric grid point, therefore, set qr_p and nr_p at
-!--       (k+koff,j+joff,i+ioff) walls.
+!--       Run loop over all non-natural and natural walls. Note, in wall-datatype the k coordinate
+!--       belongs to the atmospheric grid point, therefore, set q*_p and n*_p at upward (k-1) and
+!--       downward-facing (k+1) walls
+          DO  l = 0, 1
           !$OMP PARALLEL DO PRIVATE( i, j, k )
-          DO  m = 1, bc_hv%ns
-             i = bc_hv%i(m)
-             j = bc_hv%j(m)
-             k = bc_hv%k(m)
-             qi_p(k+bc_hv%koff(m),j+bc_hv%joff(m),i+bc_hv%ioff(m)) = 0.0_wp
-             ni_p(k+bc_hv%koff(m),j+bc_hv%joff(m),i+bc_hv%ioff(m)) = 0.0_wp
+             DO  m = 1, bc_h(l)%ns
+                i = bc_h(l)%i(m)
+                j = bc_h(l)%j(m)
+                k = bc_h(l)%k(m)
+                qi_p(k+bc_h(l)%koff,j,i) = 0.0_wp
+                ni_p(k+bc_h(l)%koff,j,i) = 0.0_wp
+             ENDDO
           ENDDO
 !
 !--       Top boundary condition for ice crystal (Dirichlet)
@@ -3861,13 +3767,15 @@
           ni_p(nzt+1,:,:) = 0.0_wp
 
           IF ( snow )  THEN
+             DO  l = 0, 1
              !$OMP PARALLEL DO PRIVATE( i, j, k )
-             DO  m = 1, bc_hv%ns
-                i = bc_hv%i(m)
-                j = bc_hv%j(m)
-                k = bc_hv%k(m)
-                qs_p(k+bc_hv%koff(m),j+bc_hv%joff(m),i+bc_hv%ioff(m)) = 0.0_wp
-                ns_p(k+bc_hv%koff(m),j+bc_hv%joff(m),i+bc_hv%ioff(m)) = 0.0_wp
+                DO  m = 1, bc_h(l)%ns
+                   i = bc_h(l)%i(m)
+                   j = bc_h(l)%j(m)
+                   k = bc_h(l)%k(m)
+                   qs_p(k+bc_h(l)%koff,j,i) = 0.0_wp
+                   ns_p(k+bc_h(l)%koff,j,i) = 0.0_wp
+                ENDDO
              ENDDO
 !
 !--          Top boundary condition for snow (Dirichlet)
@@ -3875,13 +3783,19 @@
              ns_p(nzt+1,:,:) = 0.0_wp
           ENDIF
           IF ( graupel )  THEN
+!
+!--       Top boundary condition for ice crystal (Dirichlet)
+          qg_p(nzt+1,:,:) = 0.0_wp
+          ng_p(nzt+1,:,:) = 0.0_wp
+             DO  l = 0, 1
              !$OMP PARALLEL DO PRIVATE( i, j, k )
-             DO  m = 1, bc_hv%ns
-                i = bc_hv%i(m)
-                j = bc_hv%j(m)
-                k = bc_hv%k(m)
-                qg_p(k+bc_hv%koff(m),j+bc_hv%joff(m),i+bc_hv%ioff(m)) = 0.0_wp
-                ng_p(k+bc_hv%koff(m),j+bc_hv%joff(m),i+bc_hv%ioff(m)) = 0.0_wp
+                DO  m = 1, bc_h(l)%ns
+                   i = bc_h(l)%i(m)
+                   j = bc_h(l)%j(m)
+                   k = bc_h(l)%k(m)
+                   qg_p(k+bc_h(l)%koff,j,i) = 0.0_wp
+                   ng_p(k+bc_h(l)%koff,j,i) = 0.0_wp
+                ENDDO
              ENDDO
 !
 !--          Top boundary condition for snow (Dirichlet)
@@ -3894,16 +3808,18 @@
        IF ( microphysics_seifert )  THEN
 !
 !--       Surface conditions rain water (Dirichlet).
-!--       Run loop over all non-natural and natural walls. Note, in wall-datatype the i,j,k coordinates
-!--       belong to the atmospheric grid point, therefore, set qr_p and nr_p at
-!--       (k+koff,j+joff,i+ioff) walls.
+!--       Run loop over all non-natural and natural walls. Note, in wall-datatype the k coordinate
+!--       belongs to the atmospheric grid point, therefore, set qr_p and nr_p at upward (k-1) and
+!--       downward-facing (k+1) walls
+          DO  l = 0, 1
           !$OMP PARALLEL DO PRIVATE( i, j, k )
-          DO  m = 1, bc_hv%ns
-             i = bc_hv%i(m)
-             j = bc_hv%j(m)
-             k = bc_hv%k(m)
-             qr_p(k+bc_hv%koff(m),j+bc_hv%joff(m),i+bc_hv%ioff(m)) = 0.0_wp
-             nr_p(k+bc_hv%koff(m),j+bc_hv%joff(m),i+bc_hv%ioff(m)) = 0.0_wp
+             DO  m = 1, bc_h(l)%ns
+                i = bc_h(l)%i(m)
+                j = bc_h(l)%j(m)
+                k = bc_h(l)%k(m)
+                qr_p(k+bc_h(l)%koff,j,i) = 0.0_wp
+                nr_p(k+bc_h(l)%koff,j,i) = 0.0_wp
+             ENDDO
           ENDDO
 !
 !--       Top boundary condition for rain water (Dirichlet)
@@ -4063,36 +3979,6 @@
                 ENDIF
                 prr_av = 0.0_wp
 
-             CASE ( 'prr_cloud' )
-                IF ( .NOT. ALLOCATED( prr_cloud_av ) )  THEN
-                   ALLOCATE( prr_cloud_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-                ENDIF
-                prr_cloud_av = 0.0_wp
-
-             CASE ( 'prr_graupel' )
-                IF ( .NOT. ALLOCATED( prr_graupel_av ) )  THEN
-                   ALLOCATE( prr_graupel_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-                ENDIF
-                prr_graupel_av = 0.0_wp
-
-             CASE ( 'prr_ice' )
-                IF ( .NOT. ALLOCATED( prr_ice_av ) )  THEN
-                   ALLOCATE( prr_ice_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-                ENDIF
-                prr_ice_av = 0.0_wp
-
-             CASE ( 'prr_rain' )
-                IF ( .NOT. ALLOCATED( prr_rain_av ) )  THEN
-                   ALLOCATE( prr_rain_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-                ENDIF
-                prr_rain_av = 0.0_wp
-
-             CASE ( 'prr_snow' )
-                IF ( .NOT. ALLOCATED( prr_snow_av ) )  THEN
-                   ALLOCATE( prr_snow_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-                ENDIF
-                prr_snow_av = 0.0_wp
-
              CASE ( 'qc' )
                 IF ( .NOT. ALLOCATED( qc_av ) )  THEN
                    ALLOCATE( qc_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
@@ -4199,61 +4085,6 @@
                       DO  j = nysg, nyng
                          DO  k = nzb, nzt+1
                             prr_av(k,j,i) = prr_av(k,j,i) + prr(k,j,i)
-                         ENDDO
-                      ENDDO
-                   ENDDO
-                ENDIF
-
-             CASE ( 'prr_cloud' )
-                IF ( ALLOCATED( prr_cloud_av ) )  THEN
-                   DO  i = nxlg, nxrg
-                      DO  j = nysg, nyng
-                         DO  k = nzb, nzt+1
-                            prr_cloud_av(k,j,i) = prr_cloud_av(k,j,i) + prr_cloud(k,j,i)
-                         ENDDO
-                      ENDDO
-                   ENDDO
-                ENDIF
-
-             CASE ( 'prr_graupel' )
-                IF ( ALLOCATED( prr_graupel_av ) )  THEN
-                   DO  i = nxlg, nxrg
-                      DO  j = nysg, nyng
-                         DO  k = nzb, nzt+1
-                            prr_graupel_av(k,j,i) = prr_graupel_av(k,j,i) + prr_graupel(k,j,i)
-                         ENDDO
-                      ENDDO
-                   ENDDO
-                ENDIF
-
-             CASE ( 'prr_ice' )
-                IF ( ALLOCATED( prr_ice_av ) )  THEN
-                   DO  i = nxlg, nxrg
-                      DO  j = nysg, nyng
-                         DO  k = nzb, nzt+1
-                            prr_ice_av(k,j,i) = prr_ice_av(k,j,i) + prr_ice(k,j,i)
-                         ENDDO
-                      ENDDO
-                   ENDDO
-                ENDIF
-
-             CASE ( 'prr_rain' )
-                IF ( ALLOCATED( prr_rain_av ) )  THEN
-                   DO  i = nxlg, nxrg
-                      DO  j = nysg, nyng
-                         DO  k = nzb, nzt+1
-                            prr_rain_av(k,j,i) = prr_rain_av(k,j,i) + prr_rain(k,j,i)
-                         ENDDO
-                      ENDDO
-                   ENDDO
-                ENDIF
-
-             CASE ( 'prr_snow' )
-                IF ( ALLOCATED( prr_snow_av ) )  THEN
-                   DO  i = nxlg, nxrg
-                      DO  j = nysg, nyng
-                         DO  k = nzb, nzt+1
-                            prr_snow_av(k,j,i) = prr_snow_av(k,j,i) + prr_snow(k,j,i)
                          ENDDO
                       ENDDO
                    ENDDO
@@ -4400,66 +4231,6 @@
                    ENDDO
                 ENDIF
 
-             CASE ( 'prr_cloud' )
-                IF ( ALLOCATED( prr_cloud_av ) )  THEN
-                   DO  i = nxlg, nxrg
-                      DO  j = nysg, nyng
-                         DO  k = nzb, nzt+1
-                            prr_cloud_av(k,j,i) = prr_cloud_av(k,j,i)                              &
-                                                  / REAL( average_count_3d, KIND = wp )
-                         ENDDO
-                      ENDDO
-                   ENDDO
-                ENDIF
-
-             CASE ( 'prr_graupel' )
-                IF ( ALLOCATED( prr_graupel_av ) )  THEN
-                   DO  i = nxlg, nxrg
-                      DO  j = nysg, nyng
-                         DO  k = nzb, nzt+1
-                            prr_graupel_av(k,j,i) = prr_graupel_av(k,j,i)                          &
-                                                  / REAL( average_count_3d, KIND = wp )
-                         ENDDO
-                      ENDDO
-                   ENDDO
-                ENDIF
-
-             CASE ( 'prr_ice' )
-                IF ( ALLOCATED( prr_ice_av ) )  THEN
-                   DO  i = nxlg, nxrg
-                      DO  j = nysg, nyng
-                         DO  k = nzb, nzt+1
-                            prr_ice_av(k,j,i) = prr_ice_av(k,j,i)                                  &
-                                                  / REAL( average_count_3d, KIND = wp )
-                         ENDDO
-                      ENDDO
-                   ENDDO
-                ENDIF
-
-             CASE ( 'prr_rain' )
-                IF ( ALLOCATED( prr_rain_av ) )  THEN
-                   DO  i = nxlg, nxrg
-                      DO  j = nysg, nyng
-                         DO  k = nzb, nzt+1
-                            prr_rain_av(k,j,i) = prr_rain_av(k,j,i)                                &
-                                                  / REAL( average_count_3d, KIND = wp )
-                         ENDDO
-                      ENDDO
-                   ENDDO
-                ENDIF
-
-             CASE ( 'prr_snow' )
-                IF ( ALLOCATED( prr_snow_av ) )  THEN
-                   DO  i = nxlg, nxrg
-                      DO  j = nysg, nyng
-                         DO  k = nzb, nzt+1
-                            prr_snow_av(k,j,i) = prr_snow_av(k,j,i)                                &
-                                                  / REAL( average_count_3d, KIND = wp )
-                         ENDDO
-                      ENDDO
-                   ENDDO
-                ENDIF
-
              CASE ( 'qc' )
                 IF ( ALLOCATED( qc_av ) )  THEN
                    DO  i = nxlg, nxrg
@@ -4566,15 +4337,16 @@
     LOGICAL, INTENT(INOUT) ::  two_d   !< flag parameter that indicates 2D variables
                                        !<  (horizontal cross sections)
 
+
+    REAL(wp), PARAMETER ::  fill_value = -999.0_wp  !< value for the _FillValue attribute
+
     REAL(wp), DIMENSION(nxl:nxr,nys:nyn,nzb_do:nzt_do), INTENT(INOUT) ::  local_pf !< local
                                                         !< array to which output data is resorted to
 
     REAL(wp), DIMENSION(:,:,:), POINTER ::  to_be_resorted  !< points to selected output variable
 
-
     found = .TRUE.
     resorted = .FALSE.
-
 !
 !-- Set masking flag for topography for not resorted arrays
     flag_nr = 0    ! 0 = scalar, 1 = u, 2 = v, 3 = w
@@ -4587,7 +4359,7 @@
           ELSE
              IF ( .NOT. ALLOCATED( nc_av ) )  THEN
                 ALLOCATE( nc_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-                nc_av = 0.0_wp
+                nc_av = REAL( fill_value, KIND = wp )
              ENDIF
              to_be_resorted => nc_av
           ENDIF
@@ -4599,7 +4371,7 @@
           ELSE
              IF ( .NOT. ALLOCATED( ng_av ) )  THEN
                 ALLOCATE( ng_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-                ng_av = 0.0_wp
+                ng_av = REAL( fill_value, KIND = wp )
              ENDIF
              to_be_resorted => ng_av
           ENDIF
@@ -4611,7 +4383,7 @@
           ELSE
              IF ( .NOT. ALLOCATED( ni_av ) )  THEN
                 ALLOCATE( ni_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-                ni_av = 0.0_wp
+                ni_av = REAL( fill_value, KIND = wp )
              ENDIF
              to_be_resorted => ni_av
           ENDIF
@@ -4623,7 +4395,7 @@
           ELSE
              IF ( .NOT. ALLOCATED( nr_av ) )  THEN
                 ALLOCATE( nr_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-                nr_av = 0.0_wp
+                nr_av = REAL( fill_value, KIND = wp )
              ENDIF
              to_be_resorted => nr_av
           ENDIF
@@ -4635,7 +4407,7 @@
           ELSE
              IF ( .NOT. ALLOCATED( ns_av ) )  THEN
                 ALLOCATE( ns_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-                ns_av = 0.0_wp
+                ns_av = REAL( fill_value, KIND = wp )
              ENDIF
              to_be_resorted => ns_av
           ENDIF
@@ -4643,6 +4415,7 @@
 
 
        CASE ( 'pra*_xy' )        ! 2d-array / integral quantity => no av
+!                CALL exchange_horiz_2d( precipitation_amount )
           DO  i = nxl, nxr
              DO  j = nys, nyn
                 local_pf(i,j,nzb+1) =  precipitation_amount(j,i)
@@ -4655,6 +4428,7 @@
 
        CASE ( 'prr_xy', 'prr_xz', 'prr_yz' )
           IF ( av == 0 )  THEN
+!                   CALL exchange_horiz( prr, nbgp )
              DO  i = nxl, nxr
                 DO  j = nys, nyn
                    DO  k = nzb, nzt+1
@@ -4665,137 +4439,13 @@
           ELSE
              IF ( .NOT. ALLOCATED( prr_av ) )  THEN
                 ALLOCATE( prr_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-                prr_av = 0.0_wp
+                prr_av = REAL( fill_value, KIND = wp )
              ENDIF
+!                   CALL exchange_horiz( prr_av, nbgp )
              DO  i = nxl, nxr
                 DO  j = nys, nyn
                    DO  k = nzb, nzt+1
                       local_pf(i,j,k) = prr_av(k,j,i) * hyrho(nzb+1)
-                   ENDDO
-                ENDDO
-             ENDDO
-          ENDIF
-          resorted = .TRUE.
-          IF ( mode == 'xy' ) grid = 'zu'
-
-       CASE ( 'prr_cloud_xy', 'prr_cloud_xz', 'prr_cloud_yz' )
-          IF ( av == 0 )  THEN
-             DO  i = nxl, nxr
-                DO  j = nys, nyn
-                   DO  k = nzb, nzt+1
-                      local_pf(i,j,k) = prr_cloud(k,j,i) * hyrho(nzb+1)
-                   ENDDO
-                ENDDO
-             ENDDO
-          ELSE
-             IF ( .NOT. ALLOCATED( prr_cloud_av ) )  THEN
-                ALLOCATE( prr_cloud_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-                prr_cloud_av = 0.0_wp
-             ENDIF
-             DO  i = nxl, nxr
-                DO  j = nys, nyn
-                   DO  k = nzb, nzt+1
-                      local_pf(i,j,k) = prr_cloud_av(k,j,i) * hyrho(nzb+1)
-                   ENDDO
-                ENDDO
-             ENDDO
-          ENDIF
-          resorted = .TRUE.
-          IF ( mode == 'xy' ) grid = 'zu'
-
-       CASE ( 'prr_graupel_xy', 'prr_graupel_xz', 'prr_graupel_yz' )
-          IF ( av == 0 )  THEN
-             DO  i = nxl, nxr
-                DO  j = nys, nyn
-                   DO  k = nzb, nzt+1
-                      local_pf(i,j,k) = prr_graupel(k,j,i) * hyrho(nzb+1)
-                   ENDDO
-                ENDDO
-             ENDDO
-          ELSE
-             IF ( .NOT. ALLOCATED( prr_graupel_av ) )  THEN
-                ALLOCATE( prr_graupel_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-                prr_graupel_av = 0.0_wp
-             ENDIF
-             DO  i = nxl, nxr
-                DO  j = nys, nyn
-                   DO  k = nzb, nzt+1
-                      local_pf(i,j,k) = prr_graupel_av(k,j,i) * hyrho(nzb+1)
-                   ENDDO
-                ENDDO
-             ENDDO
-          ENDIF
-          resorted = .TRUE.
-          IF ( mode == 'xy' ) grid = 'zu'
-
-       CASE ( 'prr_ice_xy', 'prr_ice_xz', 'prr_ice_yz' )
-          IF ( av == 0 )  THEN
-             DO  i = nxl, nxr
-                DO  j = nys, nyn
-                   DO  k = nzb, nzt+1
-                      local_pf(i,j,k) = prr_ice(k,j,i) * hyrho(nzb+1)
-                   ENDDO
-                ENDDO
-             ENDDO
-          ELSE
-             IF ( .NOT. ALLOCATED( prr_ice_av ) )  THEN
-                ALLOCATE( prr_ice_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-                prr_ice_av = 0.0_wp
-             ENDIF
-             DO  i = nxl, nxr
-                DO  j = nys, nyn
-                   DO  k = nzb, nzt+1
-                      local_pf(i,j,k) = prr_ice_av(k,j,i) * hyrho(nzb+1)
-                   ENDDO
-                ENDDO
-             ENDDO
-          ENDIF
-          resorted = .TRUE.
-          IF ( mode == 'xy' ) grid = 'zu'
-
-       CASE ( 'prr_rain_xy', 'prr_rain_xz', 'prr_rain_yz' )
-          IF ( av == 0 )  THEN
-             DO  i = nxl, nxr
-                DO  j = nys, nyn
-                   DO  k = nzb, nzt+1
-                      local_pf(i,j,k) = prr_rain(k,j,i) * hyrho(nzb+1)
-                   ENDDO
-                ENDDO
-             ENDDO
-          ELSE
-             IF ( .NOT. ALLOCATED( prr_rain_av ) )  THEN
-                ALLOCATE( prr_rain_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-                prr_rain_av = 0.0_wp
-             ENDIF
-             DO  i = nxl, nxr
-                DO  j = nys, nyn
-                   DO  k = nzb, nzt+1
-                      local_pf(i,j,k) = prr_rain_av(k,j,i) * hyrho(nzb+1)
-                   ENDDO
-                ENDDO
-             ENDDO
-          ENDIF
-          resorted = .TRUE.
-          IF ( mode == 'xy' ) grid = 'zu'
-
-       CASE ( 'prr_snow_xy', 'prr_snow_xz', 'prr_snow_yz' )
-          IF ( av == 0 )  THEN
-             DO  i = nxl, nxr
-                DO  j = nys, nyn
-                   DO  k = nzb, nzt+1
-                      local_pf(i,j,k) = prr_snow(k,j,i) * hyrho(nzb+1)
-                   ENDDO
-                ENDDO
-             ENDDO
-          ELSE
-             IF ( .NOT. ALLOCATED( prr_snow_av ) )  THEN
-                ALLOCATE( prr_snow_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-                prr_snow_av = 0.0_wp
-             ENDIF
-             DO  i = nxl, nxr
-                DO  j = nys, nyn
-                   DO  k = nzb, nzt+1
-                      local_pf(i,j,k) = prr_snow_av(k,j,i) * hyrho(nzb+1)
                    ENDDO
                 ENDDO
              ENDDO
@@ -4809,7 +4459,7 @@
           ELSE
              IF ( .NOT. ALLOCATED( qc_av ) )  THEN
                 ALLOCATE( qc_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-                qc_av = 0.0_wp
+                qc_av = REAL( fill_value, KIND = wp )
              ENDIF
              to_be_resorted => qc_av
           ENDIF
@@ -4821,7 +4471,7 @@
           ELSE
              IF ( .NOT. ALLOCATED( qg_av ) )  THEN
                 ALLOCATE( qg_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-                qg_av = 0.0_wp
+                qg_av = REAL( fill_value, KIND = wp )
              ENDIF
              to_be_resorted => qg_av
           ENDIF
@@ -4833,7 +4483,7 @@
           ELSE
              IF ( .NOT. ALLOCATED( qi_av ) )  THEN
                 ALLOCATE( qi_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-                qi_av = 0.0_wp
+                qi_av = REAL( fill_value, KIND = wp )
              ENDIF
              to_be_resorted => qi_av
           ENDIF
@@ -4845,7 +4495,7 @@
           ELSE
              IF ( .NOT. ALLOCATED( ql_av ) )  THEN
                 ALLOCATE( ql_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-                ql_av = 0.0_wp
+                ql_av = REAL( fill_value, KIND = wp )
              ENDIF
              to_be_resorted => ql_av
           ENDIF
@@ -4857,7 +4507,7 @@
           ELSE
              IF ( .NOT. ALLOCATED( qr_av ) )  THEN
                 ALLOCATE( qr_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-                qr_av = 0.0_wp
+                qr_av = REAL( fill_value, KIND = wp )
              ENDIF
              to_be_resorted => qr_av
           ENDIF
@@ -4869,7 +4519,7 @@
           ELSE
              IF ( .NOT. ALLOCATED( qs_av ) )  THEN
                 ALLOCATE( qs_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-                qs_av = 0.0_wp
+                qs_av = REAL( fill_value, KIND = wp )
              ENDIF
              to_be_resorted => qs_av
           ENDIF
@@ -4885,7 +4535,11 @@
        DO  i = nxl, nxr
           DO  j = nys, nyn
              DO  k = nzb_do, nzt_do
-                IF ( BTEST( topo_flags(k,j,i), flag_nr ) )  local_pf(i,j,k) = to_be_resorted(k,j,i)
+                local_pf(i,j,k) = MERGE(                                                           &
+                                         to_be_resorted(k,j,i),                                    &
+                                         REAL( fill_value, KIND = wp ),                            &
+                                         BTEST( wall_flags_total_0(k,j,i), flag_nr )               &
+                                       )
              ENDDO
           ENDDO
        ENDDO
@@ -4920,15 +4574,15 @@
 
     LOGICAL, INTENT(INOUT) ::  found     !< flag if output variable is found
 
+    REAL(wp) ::  fill_value = -999.0_wp  !< value for the _FillValue attribute
+
     REAL(wp), DIMENSION(nxl:nxr,nys:nyn,nzb_do:nzt_do), INTENT(INOUT) ::  local_pf   !< local
                                                         !< array to which output data is resorted to
 
     REAL(wp), DIMENSION(:,:,:), POINTER ::  to_be_resorted  !< points to selected output variable
 
-
     found = .TRUE.
     resorted = .FALSE.
-
 !
 !-- Set masking flag for topography for not resorted arrays
     flag_nr = 0    ! 0 = scalar, 1 = u, 2 = v, 3 = w
@@ -4941,7 +4595,7 @@
           ELSE
              IF ( .NOT. ALLOCATED( nc_av ) ) THEN
                 ALLOCATE( nc_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-                nc_av = 0.0_wp
+                nc_av = REAL( fill_value, KIND = wp )
              ENDIF
              to_be_resorted => nc_av
           ENDIF
@@ -4952,7 +4606,7 @@
           ELSE
              IF ( .NOT. ALLOCATED( ng_av ) )  THEN
                 ALLOCATE( ng_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-                ng_av = 0.0_wp
+                ng_av = REAL( fill_value, KIND = wp )
              ENDIF
              to_be_resorted => ng_av
           ENDIF
@@ -4963,7 +4617,7 @@
           ELSE
              IF ( .NOT. ALLOCATED( ni_av ) )  THEN
                 ALLOCATE( ni_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-                ni_av = 0.0_wp
+                ni_av = REAL( fill_value, KIND = wp )
              ENDIF
              to_be_resorted => ni_av
           ENDIF
@@ -4974,7 +4628,7 @@
           ELSE
              IF ( .NOT. ALLOCATED( nr_av ) )  THEN
                 ALLOCATE( nr_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-                nr_av = 0.0_wp
+                nr_av = REAL( fill_value, KIND = wp )
              ENDIF
              to_be_resorted => nr_av
           ENDIF
@@ -4985,7 +4639,7 @@
           ELSE
              IF ( .NOT. ALLOCATED( ns_av ) )  THEN
                 ALLOCATE( ns_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-                ns_av = 0.0_wp
+                ns_av = REAL( fill_value, KIND = wp )
              ENDIF
              to_be_resorted => ns_av
           ENDIF
@@ -5002,132 +4656,12 @@
           ELSE
              IF ( .NOT. ALLOCATED( prr_av ) )  THEN
                 ALLOCATE( prr_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-                prr_av = 0.0_wp
+                prr_av = REAL( fill_value, KIND = wp )
              ENDIF
              DO  i = nxl, nxr
                 DO  j = nys, nyn
                    DO  k = nzb_do, nzt_do
                       local_pf(i,j,k) = prr_av(k,j,i)
-                   ENDDO
-                ENDDO
-             ENDDO
-          ENDIF
-          resorted = .TRUE.
-
-       CASE ( 'prr_cloud' )
-          IF ( av == 0 )  THEN
-             DO  i = nxl, nxr
-                DO  j = nys, nyn
-                   DO  k = nzb_do, nzt_do
-                      local_pf(i,j,k) = prr_cloud(k,j,i)
-                   ENDDO
-                ENDDO
-             ENDDO
-          ELSE
-             IF ( .NOT. ALLOCATED( prr_cloud_av ) )  THEN
-                ALLOCATE( prr_cloud_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-                prr_cloud_av = 0.0_wp
-             ENDIF
-             DO  i = nxl, nxr
-                DO  j = nys, nyn
-                   DO  k = nzb_do, nzt_do
-                      local_pf(i,j,k) = prr_cloud_av(k,j,i)
-                   ENDDO
-                ENDDO
-             ENDDO
-          ENDIF
-          resorted = .TRUE.
-
-       CASE ( 'prr_graupel' )
-          IF ( av == 0 )  THEN
-             DO  i = nxl, nxr
-                DO  j = nys, nyn
-                   DO  k = nzb_do, nzt_do
-                      local_pf(i,j,k) = prr_graupel(k,j,i)
-                   ENDDO
-                ENDDO
-             ENDDO
-          ELSE
-             IF ( .NOT. ALLOCATED( prr_graupel_av ) )  THEN
-                ALLOCATE( prr_graupel_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-                prr_graupel_av = 0.0_wp
-             ENDIF
-             DO  i = nxl, nxr
-                DO  j = nys, nyn
-                   DO  k = nzb_do, nzt_do
-                      local_pf(i,j,k) = prr_graupel_av(k,j,i)
-                   ENDDO
-                ENDDO
-             ENDDO
-          ENDIF
-          resorted = .TRUE.
-
-       CASE ( 'prr_ice' )
-          IF ( av == 0 )  THEN
-             DO  i = nxl, nxr
-                DO  j = nys, nyn
-                   DO  k = nzb_do, nzt_do
-                      local_pf(i,j,k) = prr_ice(k,j,i)
-                   ENDDO
-                ENDDO
-             ENDDO
-          ELSE
-             IF ( .NOT. ALLOCATED( prr_ice_av ) )  THEN
-                ALLOCATE( prr_ice_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-                prr_ice_av = 0.0_wp
-             ENDIF
-             DO  i = nxl, nxr
-                DO  j = nys, nyn
-                   DO  k = nzb_do, nzt_do
-                      local_pf(i,j,k) = prr_ice_av(k,j,i)
-                   ENDDO
-                ENDDO
-             ENDDO
-          ENDIF
-          resorted = .TRUE.
-
-       CASE ( 'prr_rain' )
-          IF ( av == 0 )  THEN
-             DO  i = nxl, nxr
-                DO  j = nys, nyn
-                   DO  k = nzb_do, nzt_do
-                      local_pf(i,j,k) = prr_rain(k,j,i)
-                   ENDDO
-                ENDDO
-             ENDDO
-          ELSE
-             IF ( .NOT. ALLOCATED( prr_rain_av ) )  THEN
-                ALLOCATE( prr_rain_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-                prr_rain_av = 0.0_wp
-             ENDIF
-             DO  i = nxl, nxr
-                DO  j = nys, nyn
-                   DO  k = nzb_do, nzt_do
-                      local_pf(i,j,k) = prr_rain_av(k,j,i)
-                   ENDDO
-                ENDDO
-             ENDDO
-          ENDIF
-          resorted = .TRUE.
-
-       CASE ( 'prr_snow' )
-          IF ( av == 0 )  THEN
-             DO  i = nxl, nxr
-                DO  j = nys, nyn
-                   DO  k = nzb_do, nzt_do
-                      local_pf(i,j,k) = prr_snow(k,j,i)
-                   ENDDO
-                ENDDO
-             ENDDO
-          ELSE
-             IF ( .NOT. ALLOCATED( prr_snow_av ) )  THEN
-                ALLOCATE( prr_snow_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-                prr_snow_av = 0.0_wp
-             ENDIF
-             DO  i = nxl, nxr
-                DO  j = nys, nyn
-                   DO  k = nzb_do, nzt_do
-                      local_pf(i,j,k) = prr_snow_av(k,j,i)
                    ENDDO
                 ENDDO
              ENDDO
@@ -5140,7 +4674,7 @@
           ELSE
              IF ( .NOT. ALLOCATED( qc_av ) )  THEN
                 ALLOCATE( qc_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-                qc_av = 0.0_wp
+                qc_av = REAL( fill_value, KIND = wp )
              ENDIF
              to_be_resorted => qc_av
           ENDIF
@@ -5151,7 +4685,7 @@
           ELSE
              IF ( .NOT. ALLOCATED( qg_av ) )  THEN
                 ALLOCATE( qg_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-                qg_av = 0.0_wp
+                qg_av = REAL( fill_value, KIND = wp )
              ENDIF
              to_be_resorted => qg_av
           ENDIF
@@ -5162,7 +4696,7 @@
           ELSE
              IF ( .NOT. ALLOCATED( qi_av ) )  THEN
                 ALLOCATE( qi_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-                qi_av = 0.0_wp
+                qi_av = REAL( fill_value, KIND = wp )
              ENDIF
              to_be_resorted => qi_av
           ENDIF
@@ -5173,7 +4707,7 @@
           ELSE
              IF ( .NOT. ALLOCATED( ql_av ) )  THEN
                 ALLOCATE( ql_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-                ql_av = 0.0_wp
+                ql_av = REAL( fill_value, KIND = wp )
              ENDIF
              to_be_resorted => ql_av
           ENDIF
@@ -5184,7 +4718,7 @@
           ELSE
              IF ( .NOT. ALLOCATED( qr_av ) )  THEN
                 ALLOCATE( qr_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-                qr_av = 0.0_wp
+                qr_av = REAL( fill_value, KIND = wp )
              ENDIF
              to_be_resorted => qr_av
           ENDIF
@@ -5195,7 +4729,7 @@
           ELSE
              IF ( .NOT. ALLOCATED( qs_av ) )  THEN
                 ALLOCATE( qs_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-                qs_av = 0.0_wp
+                qs_av = REAL( fill_value, KIND = wp )
              ENDIF
              to_be_resorted => qs_av
           ENDIF
@@ -5211,238 +4745,17 @@
        DO  i = nxl, nxr
           DO  j = nys, nyn
              DO  k = nzb_do, nzt_do
-                IF ( BTEST( topo_flags(k,j,i), flag_nr ) )  local_pf(i,j,k) = to_be_resorted(k,j,i)
+                local_pf(i,j,k) = MERGE(                                                           &
+                                     to_be_resorted(k,j,i),                                        &
+                                     REAL( fill_value, KIND = wp ),                                &
+                                     BTEST( wall_flags_total_0(k,j,i), flag_nr )                   &
+                                       )
              ENDDO
           ENDDO
        ENDDO
     ENDIF
 
  END SUBROUTINE bcm_data_output_3d
-
-
-!--------------------------------------------------------------------------------------------------!
-!
-! Description:
-! ------------
-!> Subroutine defining masked data output
-!--------------------------------------------------------------------------------------------------!
- SUBROUTINE bcm_data_output_mask( av, variable, found, local_pf, mid )
-
-    CHARACTER(LEN=5) ::  grid  !< flag to distinquish between staggered grids
-    CHARACTER(LEN=*) ::  variable  !<
-
-    INTEGER(iwp) ::  av              !<
-    INTEGER(iwp) ::  i               !<
-    INTEGER(iwp) ::  j               !<
-    INTEGER(iwp) ::  k               !<
-    INTEGER(iwp) ::  mid             !< masked output running index
-    INTEGER(iwp) ::  topo_top_index  !< k index of highest horizontal surface
-
-    LOGICAL ::  found     !< true if output array was found
-    LOGICAL ::  resorted  !< true if array is resorted
-
-    REAL(wp), DIMENSION(mask_size_l(mid,1),mask_size_l(mid,2),mask_size_l(mid,3)) ::  local_pf  !<
-
-    REAL(wp), DIMENSION(:,:,:), POINTER ::  to_be_resorted  !< points to array which needs to be resorted for output
-
-
-    found    = .TRUE.
-    grid     = 's'
-    resorted = .FALSE.
-
-    SELECT CASE ( TRIM( variable ) )
-
-          CASE ( 'nc' )
-             IF ( av == 0 )  THEN
-                to_be_resorted => nc
-             ELSE
-                to_be_resorted => nc_av
-             ENDIF
-
-          CASE ( 'ng' )
-             IF ( av == 0 )  THEN
-                to_be_resorted => ng
-             ELSE
-                to_be_resorted => ng_av
-             ENDIF
-
-          CASE ( 'ni' )
-             IF ( av == 0 )  THEN
-                to_be_resorted => ni
-             ELSE
-                to_be_resorted => ni_av
-             ENDIF
-
-          CASE ( 'nr' )
-             IF ( av == 0 )  THEN
-                to_be_resorted => nr
-             ELSE
-                to_be_resorted => nr_av
-             ENDIF
-
-          CASE ( 'ns' )
-             IF ( av == 0 )  THEN
-                to_be_resorted => ns
-             ELSE
-                to_be_resorted => ns_av
-             ENDIF
-
-          CASE ( 'qc' )
-             IF ( av == 0 )  THEN
-                to_be_resorted => qc
-             ELSE
-                to_be_resorted => qc_av
-             ENDIF
-
-          CASE ( 'qg' )
-             IF ( av == 0 )  THEN
-                to_be_resorted => qg
-             ELSE
-                to_be_resorted => qg_av
-             ENDIF
-
-          CASE ( 'qi' )
-             IF ( av == 0 )  THEN
-                to_be_resorted => qi
-             ELSE
-                to_be_resorted => qi_av
-             ENDIF
-
-          CASE ( 'qr' )
-             IF ( av == 0 )  THEN
-                to_be_resorted => qr
-             ELSE
-                to_be_resorted => qr_av
-             ENDIF
-
-          CASE ( 'qs' )
-             IF ( av == 0 )  THEN
-                to_be_resorted => qs
-             ELSE
-                to_be_resorted => qs_av
-             ENDIF
-
-       CASE DEFAULT
-          found = .FALSE.
-
-    END SELECT
-
-!
-!-- Resort the array to be output, if not done above
-    IF ( found  .AND.  .NOT. resorted )  THEN
-       IF ( .NOT. mask_surface(mid) )  THEN
-!
-!--       Default masked output
-          DO  i = 1, mask_size_l(mid,1)
-             DO  j = 1, mask_size_l(mid,2)
-                DO  k = 1, mask_size_l(mid,3)
-                   local_pf(i,j,k) =  to_be_resorted(mask_k(mid,k), mask_j(mid,j), mask_i(mid,i))
-                ENDDO
-             ENDDO
-          ENDDO
-
-       ELSE
-!
-!--       Terrain-following masked output
-          DO  i = 1, mask_size_l(mid,1)
-             DO  j = 1, mask_size_l(mid,2)
-!
-!--             Get k index of highest horizontal surface
-                topo_top_index = topo_top_ind(mask_j(mid,j),mask_i(mid,i), 0 )
-!
-!--             Save output array
-                DO  k = 1, mask_size_l(mid,3)
-                   local_pf(i,j,k) = to_be_resorted( MIN( topo_top_index+mask_k(mid,k), nzt+1 ),   &
-                                                     mask_j(mid,j), mask_i(mid,i) )
-                ENDDO
-             ENDDO
-          ENDDO
-
-       ENDIF
-    ENDIF
-
- END SUBROUTINE bcm_data_output_mask
-
-
-!--------------------------------------------------------------------------------------------------!
-! Description:
-! ------------
-!> This routine computes profile timeseries data for the bulk cloud module.
-!--------------------------------------------------------------------------------------------------!
- SUBROUTINE bcm_statistics( mode, sr )
-
-    IMPLICIT NONE
-
-    CHARACTER (LEN=*) ::  mode  !<
-
-    INTEGER(iwp) ::  k          !<
-    INTEGER(iwp) ::  sr         !<
-
-    REAL(wp) ::  clwp            !< cloud water path
-    REAL(wp) ::  grwp            !< graupel water path
-    REAL(wp) ::  icwp            !< ice water path
-    REAL(wp) ::  lqwp            !< liquid water path
-    REAL(wp) ::  rawp            !< rain water path
-    REAL(wp) ::  snwp            !< snow water path
-
-    IF ( mode == 'time_series' )  THEN
-!
-!--    Store time series date.
-       lqwp = 0.0_wp
-       DO  k = nzb+1, nzt
-          lqwp  = lqwp + hom(k,1,54,sr) * dzu(k)
-       ENDDO
-!
-!--    set lqwp in units g/m2
-       ts_value(dots_start_index_bcm,sr) = lqwp * 1000.0_wp
-
-       clwp = 0.0_wp
-          DO  k = nzb+1, nzt
-             clwp  = clwp + hom(k,1,75,sr) * dzu(k)
-          ENDDO
-!
-!--    set clwp in units g/m2
-       ts_value(dots_start_index_bcm+1,sr) = clwp * 1000.0_wp
-
-       IF ( microphysics_seifert )  THEN
-          rawp = 0.0_wp
-          DO  k = nzb+1, nzt
-             rawp  = rawp + hom(k,1,74,sr) * dzu(k)
-          ENDDO
-!
-!--       set rawp in units g/m2
-          ts_value(dots_start_index_bcm+2,sr) = rawp * 1000.0_wp
-       ENDIF
-
-       IF ( microphysics_ice_phase )  THEN
-          icwp = 0.0_wp
-          DO  k = nzb+1, nzt
-             icwp  = icwp + hom(k,1,125,sr) * dzu(k)
-          ENDDO
-!
-!--       set icwp in units g/m2
-          ts_value(dots_start_index_bcm+3,sr) = icwp * 1000.0_wp
-
-          IF ( snow  .AND.  graupel  )  THEN
-             grwp = 0.0_wp
-             DO  k = nzb+1, nzt
-                grwp  = grwp + hom(k,1,127,sr) * dzu(k)
-             ENDDO
-!
-!--          set grwp in units g/m2
-             ts_value(dots_start_index_bcm+4,sr) = grwp * 1000.0_wp
-             snwp = 0.0_wp
-             DO  k = nzb+1, nzt
-                snwp  = snwp + hom(k,1,129,sr) * dzu(k)
-             ENDDO
-!
-!--          set snwp in units g/m2
-             ts_value(dots_start_index_bcm+5,sr) = snwp * 1000.0_wp
-          ENDIF
-       ENDIF
-    ENDIF
-
- END SUBROUTINE bcm_statistics
 
 
 !--------------------------------------------------------------------------------------------------!
@@ -5454,8 +4767,7 @@
 
 
        USE control_parameters,                                                                     &
-           ONLY: length,                                                                           &
-                 restart_string
+           ONLY: length, restart_string
 
 
        IMPLICIT NONE
@@ -5690,92 +5002,12 @@
              prr(:,nysc-nbgp:nync+nbgp,nxlc-nbgp:nxrc+nbgp) =                                      &
                 tmp_3d(:,nysf-nbgp:nynf+nbgp,nxlf-nbgp:nxrf+nbgp)
 
-          CASE ( 'prr_cloud' )
-             IF ( .NOT. ALLOCATED( prr_cloud ) )  THEN
-                ALLOCATE( prr_cloud(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-             ENDIF
-             IF ( k == 1 )  READ ( 13 )  tmp_3d
-             prr_cloud(:,nysc-nbgp:nync+nbgp,nxlc-nbgp:nxrc+nbgp) =                                &
-                tmp_3d(:,nysf-nbgp:nynf+nbgp,nxlf-nbgp:nxrf+nbgp)
-
-          CASE ( 'prr_graupel' )
-             IF ( .NOT. ALLOCATED( prr_graupel ) )  THEN
-                ALLOCATE( prr_graupel(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-             ENDIF
-             IF ( k == 1 )  READ ( 13 )  tmp_3d
-             prr_graupel(:,nysc-nbgp:nync+nbgp,nxlc-nbgp:nxrc+nbgp) =                              &
-                tmp_3d(:,nysf-nbgp:nynf+nbgp,nxlf-nbgp:nxrf+nbgp)
-
-          CASE ( 'prr_ice' )
-             IF ( .NOT. ALLOCATED( prr_ice ) )  THEN
-                ALLOCATE( prr_ice(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-             ENDIF
-             IF ( k == 1 )  READ ( 13 )  tmp_3d
-             prr_ice(:,nysc-nbgp:nync+nbgp,nxlc-nbgp:nxrc+nbgp) =                                  &
-                tmp_3d(:,nysf-nbgp:nynf+nbgp,nxlf-nbgp:nxrf+nbgp)
-
-          CASE ( 'prr_rain' )
-             IF ( .NOT. ALLOCATED( prr_rain ) )  THEN
-                ALLOCATE( prr_rain(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-             ENDIF
-             IF ( k == 1 )  READ ( 13 )  tmp_3d
-             prr_rain(:,nysc-nbgp:nync+nbgp,nxlc-nbgp:nxrc+nbgp) =                                 &
-                tmp_3d(:,nysf-nbgp:nynf+nbgp,nxlf-nbgp:nxrf+nbgp)
-
-          CASE ( 'prr_snow' )
-             IF ( .NOT. ALLOCATED( prr_snow ) )  THEN
-                ALLOCATE( prr_snow(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-             ENDIF
-             IF ( k == 1 )  READ ( 13 )  tmp_3d
-             prr_snow(:,nysc-nbgp:nync+nbgp,nxlc-nbgp:nxrc+nbgp) =                                 &
-                tmp_3d(:,nysf-nbgp:nynf+nbgp,nxlf-nbgp:nxrf+nbgp)
-
           CASE ( 'prr_av' )
              IF ( .NOT. ALLOCATED( prr_av ) )  THEN
                 ALLOCATE( prr_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
              ENDIF
              IF ( k == 1 )  READ ( 13 )  tmp_3d
              prr_av(:,nysc-nbgp:nync+nbgp,nxlc-nbgp:nxrc+nbgp) =                                   &
-                tmp_3d(:,nysf-nbgp:nynf+nbgp,nxlf-nbgp:nxrf+nbgp)
-
-          CASE ( 'prr_cloud_av' )
-             IF ( .NOT. ALLOCATED( prr_cloud_av ) )  THEN
-                ALLOCATE( prr_cloud_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-             ENDIF
-             IF ( k == 1 )  READ ( 13 )  tmp_3d
-             prr_cloud_av(:,nysc-nbgp:nync+nbgp,nxlc-nbgp:nxrc+nbgp) =                             &
-                tmp_3d(:,nysf-nbgp:nynf+nbgp,nxlf-nbgp:nxrf+nbgp)
-
-          CASE ( 'prr_graupel_av' )
-             IF ( .NOT. ALLOCATED( prr_graupel_av ) )  THEN
-                ALLOCATE( prr_graupel_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-             ENDIF
-             IF ( k == 1 )  READ ( 13 )  tmp_3d
-             prr_graupel_av(:,nysc-nbgp:nync+nbgp,nxlc-nbgp:nxrc+nbgp) =                           &
-                tmp_3d(:,nysf-nbgp:nynf+nbgp,nxlf-nbgp:nxrf+nbgp)
-
-          CASE ( 'prr_ice_av' )
-             IF ( .NOT. ALLOCATED( prr_ice_av ) )  THEN
-                ALLOCATE( prr_ice_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-             ENDIF
-             IF ( k == 1 )  READ ( 13 )  tmp_3d
-             prr_ice_av(:,nysc-nbgp:nync+nbgp,nxlc-nbgp:nxrc+nbgp) =                               &
-                tmp_3d(:,nysf-nbgp:nynf+nbgp,nxlf-nbgp:nxrf+nbgp)
-
-          CASE ( 'prr_rain_av' )
-             IF ( .NOT. ALLOCATED( prr_rain_av ) )  THEN
-                ALLOCATE( prr_rain_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-             ENDIF
-             IF ( k == 1 )  READ ( 13 )  tmp_3d
-             prr_rain_av(:,nysc-nbgp:nync+nbgp,nxlc-nbgp:nxrc+nbgp) =                              &
-                tmp_3d(:,nysf-nbgp:nynf+nbgp,nxlf-nbgp:nxrf+nbgp)
-
-          CASE ( 'prr_snow_av' )
-             IF ( .NOT. ALLOCATED( prr_snow_av ) )  THEN
-                ALLOCATE( prr_snow_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-             ENDIF
-             IF ( k == 1 )  READ ( 13 )  tmp_3d
-             prr_snow_av(:,nysc-nbgp:nync+nbgp,nxlc-nbgp:nxrc+nbgp) =                              &
                 tmp_3d(:,nysf-nbgp:nynf+nbgp,nxlf-nbgp:nxrf+nbgp)
 
           CASE ( 'qc' )
@@ -5887,88 +5119,11 @@
           IF ( .NOT. ALLOCATED( prr ) )  ALLOCATE( prr(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
           CALL rrd_mpi_io( 'prr', prr )
        ENDIF
-       
-       CALL rd_mpi_io_check_array( 'prr_cloud' , found = array_found )
+
+       CALL rd_mpi_io_check_array( 'prr_av' , found = array_found )
        IF ( array_found )  THEN
-          IF ( .NOT. ALLOCATED( prr_cloud ) )  ALLOCATE( prr_cloud(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-          CALL rrd_mpi_io( 'prr_cloud', prr_cloud )
-       ENDIF
-
-       CALL rd_mpi_io_check_array( 'prr_graupel' , found = array_found )
-       IF ( array_found )  THEN
-          IF ( .NOT. ALLOCATED( prr_graupel ) )  THEN
-              ALLOCATE( prr_graupel(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-          ENDIF
-          CALL rrd_mpi_io( 'prr_graupel', prr_graupel )
-       ENDIF
-
-       CALL rd_mpi_io_check_array( 'prr_ice' , found = array_found )
-       IF ( array_found )  THEN
-          IF ( .NOT. ALLOCATED( prr_ice ) )  ALLOCATE( prr_ice(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-          CALL rrd_mpi_io( 'prr_ice', prr_ice )
-       ENDIF
-
-       CALL rd_mpi_io_check_array( 'prr_rain' , found = array_found )
-       IF ( array_found )  THEN
-          IF ( .NOT. ALLOCATED( prr_rain ) )  ALLOCATE( prr_rain(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-          CALL rrd_mpi_io( 'prr_rain', prr_rain )
-       ENDIF
-
-       CALL rd_mpi_io_check_array( 'prr_snow' , found = array_found )
-       IF ( array_found )  THEN
-          IF ( .NOT. ALLOCATED( prr_snow ) )  ALLOCATE( prr_snow(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-          CALL rrd_mpi_io( 'prr_snow', prr_snow )
-       ENDIF
-!
-!--    Note, restart input of time-averaged quantities is skipped in case of cyclic-fill
-!--    initialization. This case, input of time-averaged data is useless and can lead to faulty
-!--    averaging.
-       IF ( .NOT. cyclic_fill_initialization )  THEN
-          CALL rd_mpi_io_check_array( 'prr_av' , found = array_found )
-          IF ( array_found )  THEN
-             IF ( .NOT. ALLOCATED( prr_av ) )  ALLOCATE( prr_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-             CALL rrd_mpi_io( 'prr_av', prr_av )
-          ENDIF
-
-          CALL rd_mpi_io_check_array( 'prr_cloud_av' , found = array_found )
-          IF ( array_found )  THEN
-             IF ( .NOT. ALLOCATED( prr_cloud_av ) )  THEN
-                ALLOCATE( prr_cloud_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-             ENDIF
-             CALL rrd_mpi_io( 'prr_cloud_av', prr_cloud_av )
-          ENDIF
-
-          CALL rd_mpi_io_check_array( 'prr_graupel_av' , found = array_found )
-          IF ( array_found )  THEN
-             IF ( .NOT. ALLOCATED( prr_graupel_av ) )  THEN
-                ALLOCATE( prr_graupel_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-             ENDIF
-             CALL rrd_mpi_io( 'prr_graupel_av', prr_graupel_av )
-          ENDIF
-
-          CALL rd_mpi_io_check_array( 'prr_ice_av' , found = array_found )
-          IF ( array_found )  THEN
-             IF ( .NOT. ALLOCATED( prr_ice_av ) )  THEN
-                ALLOCATE( prr_ice_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-             ENDIF
-             CALL rrd_mpi_io( 'prr_ice_av', prr_ice_av )
-          ENDIF
-
-          CALL rd_mpi_io_check_array( 'prr_rain_av' , found = array_found )
-          IF ( array_found )  THEN
-             IF ( .NOT. ALLOCATED( prr_rain_av ) )  THEN
-                ALLOCATE( prr_rain_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-             ENDIF
-             CALL rrd_mpi_io( 'prr_rain_av', prr_rain_av )
-          ENDIF
-
-          CALL rd_mpi_io_check_array( 'prr_snow_av' , found = array_found )
-          IF ( array_found )  THEN
-             IF ( .NOT. ALLOCATED( prr_snow_av ) )  THEN
-                ALLOCATE( prr_snow_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-             ENDIF
-             CALL rrd_mpi_io( 'prr_snow_av', prr_snow_av )
-          ENDIF
+          IF ( .NOT. ALLOCATED( prr_av ) )  ALLOCATE( prr_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
+          CALL rrd_mpi_io( 'prr_av', prr_av )
        ENDIF
 
        CALL rd_mpi_io_check_array( 'precipitation_amount' , found = array_found )
@@ -5979,133 +5134,102 @@
           CALL rrd_mpi_io( 'precipitation_amount', precipitation_amount )
        ENDIF
 
-       CALL rd_mpi_io_check_array( 'qf' , found = array_found )
-       IF ( array_found )  CALL rrd_mpi_io( 'qf', qf )
+       CALL rrd_mpi_io( 'qf', qf )
 
-       CALL rd_mpi_io_check_array( 'ql' , found = array_found )
-       IF ( array_found )  CALL rrd_mpi_io( 'ql', ql )
+       CALL rrd_mpi_io( 'ql', ql )
 
-       IF ( .NOT. cyclic_fill_initialization )  THEN
-          CALL rd_mpi_io_check_array( 'ql_av' , found = array_found )
-          IF ( array_found )  THEN
-             IF ( .NOT. ALLOCATED( ql_av ) )  ALLOCATE( ql_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-             CALL rrd_mpi_io( 'ql_av', ql_av )
-          ENDIF
+       CALL rd_mpi_io_check_array( 'ql_av' , found = array_found )
+       IF ( array_found )  THEN
+          IF ( .NOT. ALLOCATED( ql_av ) )  ALLOCATE( ql_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
+          CALL rrd_mpi_io( 'ql_av', ql_av )
        ENDIF
 
-       CALL rd_mpi_io_check_array( 'qc' , found = array_found )
-       IF ( array_found )  CALL rrd_mpi_io( 'qc', qc )
+       CALL rrd_mpi_io( 'qc', qc )
 
-       IF ( .NOT. cyclic_fill_initialization )  THEN
-          CALL rd_mpi_io_check_array( 'qc_av' , found = array_found )
-          IF ( array_found )  THEN
-             IF ( .NOT. ALLOCATED( qc_av ) )  ALLOCATE( qc_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-             CALL rrd_mpi_io( 'qc_av', qc_av )
-          ENDIF
+       CALL rd_mpi_io_check_array( 'qc_av' , found = array_found )
+       IF ( array_found )  THEN
+          IF ( .NOT. ALLOCATED( qc_av ) )  ALLOCATE( qc_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
+          CALL rrd_mpi_io( 'qc_av', qc_av )
        ENDIF
 
        IF ( microphysics_morrison )  THEN
 
-          CALL rd_mpi_io_check_array( 'nc' , found = array_found )
-          IF ( array_found )  CALL rrd_mpi_io( 'nc', nc )
+          CALL rrd_mpi_io( 'nc', nc )
 
-          IF ( .NOT. cyclic_fill_initialization )  THEN
-             CALL rd_mpi_io_check_array( 'nc_av' , found = array_found )
-             IF ( array_found )  THEN
-                IF ( .NOT. ALLOCATED( nc_av ) )  ALLOCATE( nc_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-                CALL rrd_mpi_io( 'nc_av', nc_av )
-             ENDIF
+          CALL rd_mpi_io_check_array( 'nc_av' , found = array_found )
+          IF ( array_found )  THEN
+             IF ( .NOT. ALLOCATED( nc_av ) )  ALLOCATE( nc_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
+             CALL rrd_mpi_io( 'nc_av', nc_av )
           ENDIF
 
        ENDIF
 
        IF ( microphysics_seifert )  THEN
 
-          CALL rd_mpi_io_check_array( 'nr' , found = array_found )
-          IF ( array_found )  CALL rrd_mpi_io( 'nr', nr )
+          CALL rrd_mpi_io( 'nr', nr )
 
-          IF ( .NOT. cyclic_fill_initialization )  THEN
-             CALL rd_mpi_io_check_array( 'nr_av' , found = array_found )
-             IF ( array_found )  THEN
-                IF ( .NOT. ALLOCATED( nr_av ) )  ALLOCATE( nr_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-                CALL rrd_mpi_io( 'nr_av', nr_av )
-             ENDIF
+          CALL rd_mpi_io_check_array( 'nr_av' , found = array_found )
+          IF ( array_found )  THEN
+             IF ( .NOT. ALLOCATED( nr_av ) )  ALLOCATE( nr_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
+             CALL rrd_mpi_io( 'nr_av', nr_av )
           ENDIF
 
-          CALL rd_mpi_io_check_array( 'qr' , found = array_found )
-          IF ( array_found )  CALL rrd_mpi_io( 'qr', qr )
+          CALL rrd_mpi_io( 'qr', qr )
 
-          IF ( .NOT. cyclic_fill_initialization )  THEN
-             CALL rd_mpi_io_check_array( 'qr_av' , found = array_found )
-             IF ( array_found )  THEN
-                IF ( .NOT. ALLOCATED( qr_av ) )  ALLOCATE( qr_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-                CALL rrd_mpi_io( 'qr_av', qr_av )
-             ENDIF
+          CALL rd_mpi_io_check_array( 'qr_av' , found = array_found )
+          IF ( array_found )  THEN
+             IF ( .NOT. ALLOCATED( qr_av ) )  ALLOCATE( qr_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
+             CALL rrd_mpi_io( 'qr_av', qr_av )
           ENDIF
 
        ENDIF
 
        IF ( microphysics_ice_phase )  THEN
 
-          CALL rd_mpi_io_check_array( 'ni' , found = array_found )
-          IF ( array_found )  CALL rrd_mpi_io( 'ni', ni )
+          CALL rrd_mpi_io( 'ni', ni )
 
-          IF ( .NOT. cyclic_fill_initialization )  THEN
-             CALL rd_mpi_io_check_array( 'ni_av' , found = array_found )
-             IF ( array_found )  THEN
-                IF ( .NOT. ALLOCATED( ni_av ) )  ALLOCATE( ni_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-                CALL rrd_mpi_io( 'ni_av', ni_av )
-             ENDIF
+          CALL rd_mpi_io_check_array( 'ni_av' , found = array_found )
+          IF ( array_found )  THEN
+             IF ( .NOT. ALLOCATED( ni_av ) )  ALLOCATE( ni_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
+             CALL rrd_mpi_io( 'ni_av', ni_av )
           ENDIF
 
-          CALL rd_mpi_io_check_array( 'qi' , found = array_found )
-          IF ( array_found )  CALL rrd_mpi_io( 'qi', qi )
+          CALL rrd_mpi_io( 'qi', qi )
 
-          IF ( .NOT. cyclic_fill_initialization )  THEN
-             CALL rd_mpi_io_check_array( 'qi_av' , found = array_found )
-             IF ( array_found )  THEN
-                IF ( .NOT. ALLOCATED( qi_av ) )  ALLOCATE( qi_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-                CALL rrd_mpi_io( 'qi_av', qi_av )
-             ENDIF
+          CALL rd_mpi_io_check_array( 'qi_av' , found = array_found )
+          IF ( array_found )  THEN
+             IF ( .NOT. ALLOCATED( qi_av ) )  ALLOCATE( qi_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
+             CALL rrd_mpi_io( 'qi_av', qi_av )
           ENDIF
 
           IF ( snow .OR. graupel )  THEN
-             CALL rd_mpi_io_check_array( 'ng' , found = array_found )
-             IF ( array_found )  CALL rrd_mpi_io( 'ng', ng )
+             CALL rrd_mpi_io( 'ng', ng )
+             CALL rrd_mpi_io( 'ns', ns )
+             CALL rrd_mpi_io( 'qg', qg )
+             CALL rrd_mpi_io( 'qs', qs )
 
-             CALL rd_mpi_io_check_array( 'ns' , found = array_found )
-             IF ( array_found )  CALL rrd_mpi_io( 'ns', ns )
+             CALL rd_mpi_io_check_array( 'ng_av' , found = array_found )
+             IF ( array_found )  THEN
+                IF ( .NOT. ALLOCATED( ng_av ) )  ALLOCATE( ng_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
+                CALL rrd_mpi_io( 'ng_av', ng_av )
+             ENDIF
 
-             CALL rd_mpi_io_check_array( 'qg' , found = array_found )
-             IF ( array_found )  CALL rrd_mpi_io( 'qg', qg )
+             CALL rd_mpi_io_check_array( 'ns_av' , found = array_found )
+             IF ( array_found )  THEN
+                IF ( .NOT. ALLOCATED( ns_av ) )  ALLOCATE( ns_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
+                CALL rrd_mpi_io( 'ns_av', ns_av )
+             ENDIF
 
-             CALL rd_mpi_io_check_array( 'qs' , found = array_found )
-             IF ( array_found )  CALL rrd_mpi_io( 'qs', qs )
+             CALL rd_mpi_io_check_array( 'qg_av' , found = array_found )
+             IF ( array_found )  THEN
+                IF ( .NOT. ALLOCATED( qg_av ) )  ALLOCATE( qg_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
+                CALL rrd_mpi_io( 'qg_av', qg_av )
+             ENDIF
 
-             IF ( .NOT. cyclic_fill_initialization )  THEN
-                CALL rd_mpi_io_check_array( 'ng_av' , found = array_found )
-                IF ( array_found )  THEN
-                   IF ( .NOT. ALLOCATED( ng_av ) )  ALLOCATE( ng_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-                   CALL rrd_mpi_io( 'ng_av', ng_av )
-                ENDIF
-
-                CALL rd_mpi_io_check_array( 'ns_av' , found = array_found )
-                IF ( array_found )  THEN
-                   IF ( .NOT. ALLOCATED( ns_av ) )  ALLOCATE( ns_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-                   CALL rrd_mpi_io( 'ns_av', ns_av )
-                ENDIF
-
-                CALL rd_mpi_io_check_array( 'qg_av' , found = array_found )
-                IF ( array_found )  THEN
-                   IF ( .NOT. ALLOCATED( qg_av ) )  ALLOCATE( qg_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-                   CALL rrd_mpi_io( 'qg_av', qg_av )
-                ENDIF
-
-                CALL rd_mpi_io_check_array( 'qs_av' , found = array_found )
-                IF ( array_found )  THEN
-                   IF ( .NOT. ALLOCATED( qs_av ) )  ALLOCATE( qs_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-                   CALL rrd_mpi_io( 'qs_av', qs_av )
-                ENDIF
+             CALL rd_mpi_io_check_array( 'qs_av' , found = array_found )
+             IF ( array_found )  THEN
+                IF ( .NOT. ALLOCATED( qs_av ) )  ALLOCATE( qs_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
+                CALL rrd_mpi_io( 'qs_av', qs_av )
              ENDIF
           ENDIF
 
@@ -6234,59 +5358,9 @@
              WRITE ( 14 )  prr
           ENDIF
 
-          IF ( ALLOCATED( prr_cloud ) )  THEN
-             CALL wrd_write_string( 'prr_cloud' )
-             WRITE ( 14 )  prr_cloud
-          ENDIF
-
-          IF ( ALLOCATED( prr_graupel ) )  THEN
-             CALL wrd_write_string( 'prr_graupel' )
-             WRITE ( 14 )  prr_graupel
-          ENDIF
-
-          IF ( ALLOCATED( prr_ice ) )  THEN
-             CALL wrd_write_string( 'prr_ice' )
-             WRITE ( 14 )  prr_ice
-          ENDIF
-
-          IF ( ALLOCATED( prr_rain ) )  THEN
-             CALL wrd_write_string( 'prr_rain' )
-             WRITE ( 14 )  prr_rain
-          ENDIF
-
-          IF ( ALLOCATED( prr_snow ) )  THEN
-             CALL wrd_write_string( 'prr_snow' )
-             WRITE ( 14 )  prr_snow
-          ENDIF
-
           IF ( ALLOCATED( prr_av ) )  THEN
              CALL wrd_write_string( 'prr_av' )
              WRITE ( 14 )  prr_av
-          ENDIF
-
-          IF ( ALLOCATED( prr_cloud_av ) )  THEN
-             CALL wrd_write_string( 'prr_cloud_av' )
-             WRITE ( 14 )  prr_cloud_av
-          ENDIF
-
-          IF ( ALLOCATED( prr_graupel_av ) )  THEN
-             CALL wrd_write_string( 'prr_graupel_av' )
-             WRITE ( 14 )  prr_graupel_av
-          ENDIF
-
-          IF ( ALLOCATED( prr_ice_av ) )  THEN
-             CALL wrd_write_string( 'prr_ice_av' )
-             WRITE ( 14 )  prr_ice_av
-          ENDIF
-
-          IF ( ALLOCATED( prr_rain_av ) )  THEN
-             CALL wrd_write_string( 'prr_rain_av' )
-             WRITE ( 14 )  prr_rain_av
-          ENDIF
-
-          IF ( ALLOCATED( prr_snow_av ) )  THEN
-             CALL wrd_write_string( 'prr_snow_av' )
-             WRITE ( 14 )  prr_snow_av
           ENDIF
 
           IF ( ALLOCATED( precipitation_amount ) )  THEN
@@ -6397,17 +5471,7 @@
        ELSEIF ( TRIM( restart_data_format_output(1:3) ) == 'mpi' )  THEN
 
           IF ( ALLOCATED( prr ) )  CALL wrd_mpi_io( 'prr', prr )
-          IF ( ALLOCATED( prr_cloud ) )  CALL wrd_mpi_io( 'prr_cloud', prr_cloud )
-          IF ( ALLOCATED( prr_graupel ) )  CALL wrd_mpi_io( 'prr_graupel', prr_graupel )
-          IF ( ALLOCATED( prr_ice ) )  CALL wrd_mpi_io( 'prr_ice', prr_ice )
-          IF ( ALLOCATED( prr_rain ) )  CALL wrd_mpi_io( 'prr_rain', prr_rain )
-          IF ( ALLOCATED( prr_snow ) )  CALL wrd_mpi_io( 'prr_snow', prr_snow )
           IF ( ALLOCATED( prr_av ) )  CALL wrd_mpi_io( 'prr_av', prr_av )
-          IF ( ALLOCATED( prr_cloud_av ) )  CALL wrd_mpi_io( 'prr_cloud_av', prr_cloud_av )
-          IF ( ALLOCATED( prr_graupel_av ) )  CALL wrd_mpi_io( 'prr_graupel_av', prr_graupel_av )
-          IF ( ALLOCATED( prr_ice_av ) )  CALL wrd_mpi_io( 'prr_ice_av', prr_ice_av )
-          IF ( ALLOCATED( prr_rain_av ) )  CALL wrd_mpi_io( 'prr_rain_av', prr_rain_av )
-          IF ( ALLOCATED( prr_snow_av ) )  CALL wrd_mpi_io( 'prr_snow_av', prr_snow_av )
           IF ( ALLOCATED( precipitation_amount ) )  THEN
              CALL wrd_mpi_io( 'precipitation_amount', precipitation_amount )
           ENDIF
@@ -6787,7 +5851,7 @@
              DO  k = nzb+1, nzt
 !
 !--             Predetermine flag to mask topography
-                flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
                 IF ( .NOT. microphysics_morrison_no_rain )  THEN
                    IF ( qr(k,j,i) <= eps_sb )  THEN
                       qr(k,j,i) = 0.0_wp
@@ -6839,7 +5903,7 @@
        DO  k = nzb+1, nzt
 !
 !--       Predetermine flag to mask topography
-          flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+          flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
 
           IF ( .NOT. microphysics_morrison_no_rain )  THEN
              IF ( qr(k,j,i) <= eps_sb )  THEN
@@ -6894,7 +5958,7 @@
              DO  k = nzb+1, nzt
 !
 !--             Predetermine flag to mask topography
-                flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
                 IF ( qi(k,j,i) <= ximin )  THEN
                    qi(k,j,i) = 0.0_wp
                    ni(k,j,i) = 0.0_wp
@@ -6958,7 +6022,7 @@
        DO  k = nzb+1, nzt
 !
 !--       Predetermine flag to mask topography
-          flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+          flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
 !
 !--       ice adjust
           IF ( qi(k,j,i) <= ximin )  THEN
@@ -7034,7 +6098,7 @@
              DO  k = nzb+1, nzt
 !
 !--             Predetermine flag to mask topography
-                flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
 !
 !--             Call calculation of supersaturation located in subroutine
                 CALL supersaturation ( i, j, k )
@@ -7132,7 +6196,7 @@
        DO  k = nzb+1, nzt
 !
 !--       Predetermine flag to mask topography
-          flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+          flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
 !
 !--       Call calculation of supersaturation
           CALL supersaturation ( i, j, k )
@@ -7215,7 +6279,7 @@
                 DO  k = nzb+1, nzt
 !
 !--                Predetermine flag to mask topography
-                   flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                   flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
 !
 !--                Call calculation of supersaturation located in subroutine
                    CALL supersaturation_ice ( i, j, k )
@@ -7236,7 +6300,7 @@
                 DO  k = nzb+1, nzt
 !
 !--                Predetermine flag to mask topography
-                   flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                   flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
 !
 !--                Call calculation of supersaturation located in subroutine
                    CALL supersaturation_ice ( i, j, k )
@@ -7280,7 +6344,7 @@
           DO  k = nzb+1, nzt
 !
 !--          Predetermine flag to mask topography
-             flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+             flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
 !
 !--          Call calculation of supersaturation located in subroutine
              CALL supersaturation_ice ( i, j, k )
@@ -7296,7 +6360,7 @@
           DO  k = nzb+1, nzt
 !
 !--          Predetermine flag to mask topography
-             flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+             flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
 !
 !--          Call calculation of supersaturation located in subroutine
              CALL supersaturation_ice ( i, j, k )
@@ -7344,7 +6408,7 @@
              DO  k = nzb+1, nzt
 !
 !--             Predetermine flag to mask topography
-                flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
 !
 !--             Call calculation of supersaturation
                 CALL supersaturation ( i, j, k )
@@ -7432,7 +6496,7 @@
        DO  k = nzb+1, nzt
 !
 !--       Predetermine flag to mask topography
-          flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+          flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
 !
 !--       Call calculation of supersaturation
           CALL supersaturation ( i, j, k )
@@ -7514,7 +6578,7 @@
              DO  k = nzb+1, nzt
 !
 !--             Predetermine flag to mask topography
-                flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
 !
 !--             Call calculation of supersaturation over a plane ice surface
                 CALL supersaturation_ice ( i, j, k )
@@ -7592,7 +6656,7 @@
        DO  k = nzb+1, nzt
 !
 !--       Predetermine flag to mask topography
-          flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+          flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
 !
 !--       Call calculation of supersaturation over a plane ice surface
           CALL supersaturation_ice( i, j, k )
@@ -7672,7 +6736,7 @@
              DO  k = nzb+1, nzt
 !
 !--             Predetermine flag to mask topography
-                flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
 !
 !--             Call calculation of supersaturation over a plane ice surface
                 CALL supersaturation_ice( i, j, k )
@@ -7763,7 +6827,7 @@
        DO  k = nzb+1, nzt
 !
 !--       Predetermine flag to mask topography
-          flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+          flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
 !
 !--       Call calculation of supersaturation over a plane ice surface
           CALL supersaturation_ice( i, j, k )
@@ -7854,7 +6918,7 @@
              DO  k = nzb+1, nzt
 !
 !--             Predetermine flag to mask topography
-                flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
 !
 !--             Call calculation of supersaturation over a plane ice surface
                 CALL supersaturation_ice( i, j, k )
@@ -7941,7 +7005,7 @@
        DO  k = nzb+1, nzt
 !
 !--       Predetermine flag to mask topography
-          flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+          flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
 !
 !--       Call calculation of supersaturation over a plane ice surface
           CALL supersaturation_ice( i, j, k )
@@ -8133,7 +7197,7 @@
              DO  k = nzb+1, nzt
 !
 !--             Predetermine flag to mask topography
-                flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
 !
 !--             Actual temperature:
                 temp = exner(k) * pt(k,j,i) + lv_d_cp * ql(k,j,i) + ls_d_cp * qf(k,j,i)
@@ -8226,7 +7290,7 @@
        DO  k = nzb+1, nzt
 !
 !--       Predetermine flag to mask topography
-          flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+          flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
 !
 !--       Actual temperature:
           temp = exner(k) * pt(k,j,i) + lv_d_cp * ql(k,j,i) + ls_d_cp * qf(k,j,i)
@@ -8318,7 +7382,7 @@
              DO  k = nzb+1, nzt
 !
 !--             Predetermine flag to mask topography
-                flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
 !
 !--             Actual temperature:
                 temp = exner(k) * pt(k,j,i) + lv_d_cp * ql(k,j,i) + ls_d_cp * qf(k,j,i)
@@ -8414,7 +7478,7 @@
        DO  k = nzb+1, nzt
 !
 !--       Predetermine flag to mask topography
-          flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+          flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
 !
 !--       Actual temperature:
           temp = exner(k) * pt(k,j,i) + lv_d_cp * ql(k,j,i) + ls_d_cp * qf(k,j,i)
@@ -8504,7 +7568,7 @@
              DO  k = nzb+1, nzt
 !
 !--             Predetermine flag to mask topography
-                flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
 !
 !--             Actual temperature:
                 temp = exner(k) * pt(k,j,i) + lv_d_cp * ql(k,j,i) + ls_d_cp * qf(k,j,i)
@@ -8568,7 +7632,7 @@
        DO  k = nzb+1, nzt
 !
 !--       Predetermine flag to mask topography
-          flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+          flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
 !
 !--       Actual temperature:
           temp = exner(k) * pt(k,j,i) + lv_d_cp * ql(k,j,i) + ls_d_cp * qf(k,j,i)
@@ -8631,7 +7695,7 @@
              DO  k = nzb+1, nzt
 !
 !--             Predetermine flag to mask topography
-                flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
 !
 !--             Actual temperature:
                 temp = exner(k) * pt(k,j,i) + lv_d_cp * ql(k,j,i) + ls_d_cp * qf(k,j,i)
@@ -8695,7 +7759,7 @@
        DO  k = nzb+1, nzt
 !
 !--       Predetermine flag to mask topography
-          flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+          flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
 !
 !--       Actual temperature:
           temp = exner(k) * pt(k,j,i) + lv_d_cp * ql(k,j,i) + ls_d_cp * qf(k,j,i)
@@ -8758,7 +7822,7 @@
           DO  j = nys, nyn
              DO  k = nzb+1, nzt
 
-                flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
 !
 !--             Actual temperature:
                 temp = exner(k) * pt(k,j,i) + lv_d_cp * ql(k,j,i) + ls_d_cp * qf(k,j,i)
@@ -8818,7 +7882,7 @@
 
        DO  k = nzb+1, nzt
 
-          flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+          flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
 !
 !--       Actual temperature:
           temp = exner(k) * pt(k,j,i) + lv_d_cp * ql(k,j,i) + ls_d_cp * qf(k,j,i)
@@ -8878,7 +7942,7 @@
           DO  j = nys, nyn
              DO  k = nzb+1, nzt
 
-                flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
 !
 !--             Actual temperature:
                 temp = exner(k) * pt(k,j,i) + lv_d_cp * ql(k,j,i) + ls_d_cp * qf(k,j,i)
@@ -8964,7 +8028,7 @@
 
        DO  k = nzb+1, nzt
 
-          flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+          flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
 !
 !--       Actual temperature:
           temp = exner(k) * pt(k,j,i) + lv_d_cp * ql(k,j,i) + ls_d_cp * qf(k,j,i)
@@ -9060,7 +8124,7 @@
              DO  k = nzb+1, nzt
 !
 !--             Predetermine flag to mask topography
-                flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
 
                 IF ( microphysics_morrison )  THEN
                    nc_c = nc(k,j,i)
@@ -9176,7 +8240,7 @@
        DO  k = nzb+1, nzt
 !
 !--       Predetermine flag to mask topography
-          flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+          flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
           IF ( microphysics_morrison ) THEN
              nc_c = nc(k,j,i)
           ELSE
@@ -9279,7 +8343,7 @@
              DO  k = nzb+1, nzt
 !
 !--             Predetermine flag to mask topography
-                flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
 
                 IF ( qc(k,j,i) > ql_crit )  THEN
                    dqdt_precip = prec_time_const * ( qc(k,j,i) - ql_crit )
@@ -9325,7 +8389,7 @@
        DO  k = nzb+1, nzt
 !
 !--       Predetermine flag to mask topography
-          flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+          flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
 
           IF ( qc(k,j,i) > ql_crit )  THEN
              dqdt_precip = prec_time_const * ( qc(k,j,i) - ql_crit )
@@ -9371,7 +8435,7 @@
              DO  k = nzb+1, nzt
 !
 !--             Predetermine flag to mask topography
-                flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
 
                 IF ( microphysics_morrison )  THEN
                    nc_c = nc(k,j,i)
@@ -9445,7 +8509,7 @@
        DO  k = nzb+1, nzt
 !
 !--       Predetermine flag to mask topography
-          flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+          flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
           IF ( microphysics_morrison )  THEN
              nc_c = nc(k,j,i)
           ELSE
@@ -9517,7 +8581,7 @@
              DO  k = nzb+1, nzt
 !
 !--             Predetermine flag to mask topography
-                flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
 
                 IF ( qr(k,j,i) > eps_sb  .AND.  nr(k,j,i) > 0.0_wp  )  THEN
 !
@@ -9569,7 +8633,7 @@
        DO  k = nzb+1, nzt
 !
 !--       Predetermine flag to mask topography
-          flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+          flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
 
           IF ( qr(k,j,i) > eps_sb  .AND.  nr(k,j,i) > 0.0_wp )  THEN
 !
@@ -9622,7 +8686,7 @@
              DO  k = nzb+1, nzt
 !
 !--             Predetermine flag to mask topography
-                flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
 
                 IF ( qg(k,j,i) > eps_sb  .AND.  ng(k,j,i) > 0.0_wp )  THEN
 
@@ -9682,7 +8746,7 @@
        DO  k = nzb+1, nzt
 !
 !--       Predetermine flag to mask topography
-          flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+          flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
 
           IF ( qg(k,j,i) > eps_sb  .AND.  ng(k,j,i) > 0.0_wp )  THEN
 
@@ -9744,7 +8808,7 @@
              DO  k = nzb+1, nzt
 !
 !--             Predetermine flag to mask topography
-                flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
 
                 IF ( qi(k,j,i) > q_crit_ii  .AND.  ni(k,j,i) > 0.0_wp )  THEN
 !
@@ -9826,7 +8890,7 @@
        DO  k = nzb+1, nzt
 !
 !--       Predetermine flag to mask topography
-          flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+          flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
 
           IF ( qi(k,j,i) > q_crit_ii  .AND.  ni(k,j,i) > 0.0_wp )  THEN
 !
@@ -9901,7 +8965,7 @@
              DO  k = nzb+1, nzt
 !
 !--             Predetermine flag to mask topography
-                flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
 
                 IF ( qs(k,j,i) > eps_sb  .AND.  ns(k,j,i) > 0.0_wp )  THEN
 !
@@ -9962,7 +9026,7 @@
        DO  k = nzb+1, nzt
 !
 !--       Predetermine flag to mask topography
-          flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+          flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
 
           IF ( qs(k,j,i) > eps_sb  .AND.  ns(k,j,i) > 0.0_wp )  THEN
 !
@@ -10026,7 +9090,7 @@
              DO  k = nzb+1, nzt
 !
 !--             Predetermine flag to mask topography
-                flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
 !
 !--             Apply collection only above threshold
                 IF ( qi(k,j,i) > eps_sb_coll  .AND.  qg(k,j,i) > eps_sb_coll )  THEN
@@ -10116,7 +9180,7 @@
        DO  k = nzb+1, nzt
 !
 !--       Predetermine flag to mask topography
-          flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+          flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
 !
 !--       Apply collection only above threshold
           IF ( qi(k,j,i) > eps_sb_coll  .AND.  qg(k,j,i) > eps_sb_coll )  THEN
@@ -10205,7 +9269,7 @@
              DO  k = nzb+1, nzt
 !
 !--             Predetermine flag to mask topography
-                flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
 !
 !--             Apply collection only above threshold
                 IF ( qi(k,j,i) > eps_sb_coll  .AND.  qs(k,j,i) > eps_sb_coll )  THEN
@@ -10295,7 +9359,7 @@
        DO  k = nzb+1, nzt
 !
 !--       Predetermine flag to mask topography
-          flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+          flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
 !
 !--       Apply collection only above threshold
           IF ( qi(k,j,i) > eps_sb_coll  .AND.  qs(k,j,i) > eps_sb_coll )  THEN
@@ -10384,7 +9448,7 @@
              DO  k = nzb+1, nzt
 !
 !--             Predetermine flag to mask topography
-                flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
 !
 !--             Apply collection only above threshold
                 IF ( qg(k,j,i) > eps_sb_coll  .AND.  qs(k,j,i) > eps_sb_coll )  THEN
@@ -10474,7 +9538,7 @@
        DO  k = nzb+1, nzt
 !
 !--       Predetermine flag to mask topography
-          flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+          flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
 !
 !--       Apply collection only above threshold
           IF ( qg(k,j,i) > eps_sb_coll  .AND.  qs(k,j,i) > eps_sb_coll )  THEN
@@ -10577,7 +9641,7 @@
              DO  k = nzb+1, nzt
 !
 !--             Predetermine flag to mask topography
-                flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
                 IF ( microphysics_morrison )  THEN
                    nc_c = nc(k,j,i)
                 ELSE
@@ -10716,7 +9780,7 @@
        DO  k = nzb+1, nzt
 !
 !--       Predetermine flag to mask topography
-          flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+          flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
           IF ( microphysics_morrison )  THEN
              nc_c = nc(k,j,i)
           ELSE
@@ -10849,7 +9913,7 @@
              DO  k = nzb+1, nzt
 !
 !--             Predetermine flag to mask topography
-                flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
 !
 !--             Apply riming only above threshold
                 IF ( qr(k,j,i) > eps_sb_coll  .AND.  qg(k,j,i) > eps_sb_coll                       &
@@ -10970,7 +10034,7 @@
        DO  k = nzb+1, nzt
 !
 !--       Predetermine flag to mask topography
-          flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+          flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
 !
 !--       Apply riming only above threshold
           IF ( qr(k,j,i) > eps_sb_coll  .AND.  qg(k,j,i) > eps_sb_coll                             &
@@ -11098,7 +10162,7 @@
                 ENDIF
 !
 !--             Predetermine flag to mask topography
-                flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
 !
 !--             Calculate mean mass, mean diameter for both graupel and rain
                 xc = mean_mass( cloud_species%cloud, qc(k,j,i), nc_c, hyrho(k) )
@@ -11245,7 +10309,7 @@
           ENDIF
 !
 !--       Predetermine flag to mask topography
-          flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+          flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
 !
 !--       Calculate mean mass, mean diameter for both graupel and rain
           xc = mean_mass( cloud_species%cloud, qc(k,j,i), nc_c, hyrho(k) )
@@ -11381,7 +10445,7 @@
              DO  k = nzb+1, nzt
 !
 !--             Predetermine flag to mask topography
-                flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
 !
 !--             Calculate mean mass, mean diameter for both graupel and rain
                 xr = mean_mass( cloud_species%rain, qr(k,j,i), nr(k,j,i), hyrho(k) )
@@ -11571,7 +10635,7 @@
        DO  k = nzb+1, nzt
 !
 !--       Predetermine flag to mask topography
-          flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+          flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
 !
 !--       Calculate mean mass, mean diameter for both graupel and rain
           xr = mean_mass( cloud_species%rain, qr(k,j,i), nr(k,j,i), hyrho(k) )
@@ -11771,7 +10835,7 @@
                 ENDIF
 !
 !--             Predetermine flag to mask topography
-                flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
 !
 !--             Calculate mean mass, mean diameter for both graupel and rain
                 xc = mean_mass( cloud_species%cloud, qc(k,j,i), nc_c     , hyrho(k) )
@@ -11925,7 +10989,7 @@
           ENDIF
 !
 !--       Predetermine flag to mask topography
-          flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+          flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
 !
 !--       Calculate mean mass, mean diameter for both graupel and rain
           xc = mean_mass( cloud_species%cloud, qc(k,j,i), nc_c     , hyrho(k) )
@@ -12068,7 +11132,7 @@
              DO  k = nzb+1, nzt
 !
 !--             Predetermine flag to mask topography
-                flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
 !
 !--             Calculate mean mass, mean diameter for both graupel and rain
                 xr = mean_mass( cloud_species%rain, qr(k,j,i), nr(k,j,i), hyrho(k) )
@@ -12252,7 +11316,7 @@
        DO  k = nzb+1, nzt
 !
 !--       Predetermine flag to mask topography
-          flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+          flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
 !
 !--       Calculate mean mass, mean diameter for both graupel and rain
           xr = mean_mass( cloud_species%rain, qr(k,j,i), nr(k,j,i), hyrho(k) )
@@ -12433,7 +11497,7 @@
              DO  k = nzb+1, nzt
 !
 !--             Predetermine flag to mask topography
-                flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
 
                 IF ( qr(k,j,i) > eps_sb  .AND.  nr(k,j,i) > 0.0_wp )  THEN
 !
@@ -12543,7 +11607,7 @@
        DO  k = nzb+1, nzt
 !
 !--       Predetermine flag to mask topography
-          flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+          flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
 
           IF ( qr(k,j,i) > eps_sb  .AND.  nr(k,j,i) > 0.0_wp )  THEN
 !
@@ -12647,7 +11711,7 @@
              DO  k = nzt, nzb+1, -1
 !
 !--             Predetermine flag to mask topography
-                flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
 
                 IF ( microphysics_morrison )  THEN
                    nc_c = nc(k,j,i)
@@ -12675,7 +11739,7 @@
                 ENDIF
 
                 IF ( qc(k,j,i) > eps_sb .AND.  nc_c > eps_mr )  THEN
-                   sed_qc(k) = sed_qc_const * nc_c**( -2.0_wp / 3.0_wp )  *                        &
+                   sed_qc(k) = sed_qc_const * nc_c**( -2.0_wp / 3.0_wp )  *                     &
                                ( qc(k,j,i) * hyrho(k) )**( 5.0_wp / 3.0_wp ) * flag
                 ELSE
                    sed_qc(k) = 0.0_wp
@@ -12693,15 +11757,13 @@
                                         d_exner(k) * dt_micro           * flag
 
 !
-!--             Compute the precipitation rate due to cloud (fog) droplets.
+!--             Compute the precipitation rate due to cloud (fog) droplets
                 IF ( call_microphysics_at_all_substeps )  THEN
-                   prr(k,j,i) = prr(k,j,i) + sed_qc(k) / hyrho(k) *                                &
-                                             weight_substep(intermediate_timestep_count) * flag
-                   prr_cloud(k,j,i) = prr_cloud(k,j,i) + sed_qc(k) / hyrho(k) *                    &
-                                             weight_substep(intermediate_timestep_count) * flag
+                   prr(k,j,i) = prr(k,j,i) +  sed_qc(k) / hyrho(k)                                 &
+                                * weight_substep(intermediate_timestep_count)                      &
+                                * flag
                 ELSE
                    prr(k,j,i) = prr(k,j,i) + sed_qc(k) / hyrho(k) * flag
-                   prr_cloud(k,j,i) = prr(k,j,i) + sed_qc(k) / hyrho(k) * flag
                 ENDIF
 
              ENDDO
@@ -12738,7 +11800,7 @@
        DO  k = nzt, nzb+1, -1
 !
 !--       Predetermine flag to mask topography
-          flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+          flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
           IF ( microphysics_morrison )  THEN
              nc_c = nc(k,j,i)
           ELSE
@@ -12755,7 +11817,8 @@
                 sed_nc(k) = 0.0_wp
              ENDIF
 
-             sed_nc(k) = MIN( sed_nc(k), hyrho(k) * dzu(k+1) * nc(k,j,i) / dt_micro + sed_nc(k+1)  &
+             sed_nc(k) = MIN( sed_nc(k), hyrho(k) * dzu(k+1) *                                     &
+                              nc(k,j,i) / dt_micro + sed_nc(k+1)                                   &
                             ) * flag
 
              nc(k,j,i) = nc(k,j,i) + ( sed_nc(k+1) - sed_nc(k) ) * ddzu(k+1) /                     &
@@ -12763,8 +11826,8 @@
           ENDIF
 
           IF ( qc(k,j,i) > eps_sb  .AND.  nc_c > eps_mr )  THEN
-             sed_qc(k) = sed_qc_const * nc_c**( -2.0_wp / 3.0_wp ) *                               &
-                         ( qc(k,j,i) * hyrho(k) )**( 5.0_wp / 3.0_wp ) * flag
+             sed_qc(k) = sed_qc_const * nc_c**( -2.0_wp / 3.0_wp )   *                          &
+                         ( qc(k,j,i) * hyrho(k) )**( 5.0_wp / 3.0_wp )  * flag
           ELSE
              sed_qc(k) = 0.0_wp
           ENDIF
@@ -12783,12 +11846,9 @@
 !--       Compute the precipitation rate of cloud (fog) droplets
           IF ( call_microphysics_at_all_substeps )  THEN
              prr(k,j,i) = prr(k,j,i) + sed_qc(k) / hyrho(k) *                                      &
-                                       weight_substep(intermediate_timestep_count) * flag
-             prr_cloud(k,j,i) = prr_cloud(k,j,i) + sed_qc(k) / hyrho(k) *                          &
-                                       weight_substep(intermediate_timestep_count) * flag
+                          weight_substep(intermediate_timestep_count) * flag
           ELSE
              prr(k,j,i) = prr(k,j,i) + sed_qc(k) / hyrho(k) * flag
-             prr_cloud(k,j,i) = prr_cloud(k,j,i) + sed_qc(k) / hyrho(k) * flag
           ENDIF
 
        ENDDO
@@ -12835,7 +11895,7 @@
                 vi = av * xi**bv
 !
 !--             Predetermine flag to mask topography
-                flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
 !
 !--             Calculate sedimentation rate for each grid box
                 IF ( qi(k,j,i) > eps_sb  .AND.  ni(k,j,i) >= 0.0_wp )  THEN
@@ -12850,25 +11910,23 @@
                 sed_qi(k) = MIN( sed_qi(k), hyrho(k) * dzu(k+1) * q(k,j,i) / dt_micro + sed_qi(k+1)&
                                ) * flag
 
-                q(k,j,i)  = q(k,j,i)  + ( sed_qi(k+1) - sed_qi(k) ) * ddzu(k+1) /                  &
-                                        hyrho(k) * dt_micro * flag
-                qi(k,j,i) = qi(k,j,i) + ( sed_qi(k+1) - sed_qi(k) ) * ddzu(k+1) /                  &
-                                        hyrho(k) * dt_micro * flag
-                ni(k,j,i) = ni(k,j,i) + ( sed_ni(k+1) - sed_ni(k) ) * ddzu(k+1) /                  &
-                                        hyrho(k) * dt_micro * flag
+                q(k,j,i)  = q(k,j,i)  + ( sed_qi(k+1) - sed_qi(k) ) * ddzu(k+1)                    &
+                                      / hyrho(k) * dt_micro * flag
+                qi(k,j,i) = qi(k,j,i) + ( sed_qi(k+1) - sed_qi(k) ) * ddzu(k+1)                    &
+                                      / hyrho(k) * dt_micro * flag
+                ni(k,j,i) = ni(k,j,i) + ( sed_ni(k+1) - sed_ni(k) ) * ddzu(k+1)                    &
+                                      / hyrho(k) * dt_micro * flag
 
-                pt(k,j,i) = pt(k,j,i) - ( sed_qi(k+1) - sed_qi(k) ) * ddzu(k+1) /                  &
-                                        hyrho(k) * l_s / c_p * d_exner(k) * dt_micro * flag
+                pt(k,j,i) = pt(k,j,i) - ( sed_qi(k+1) - sed_qi(k) ) * ddzu(k+1)                    &
+                                      / hyrho(k) * l_s / c_p * d_exner(k) *                        &
+                                        dt_micro * flag
 !
 !--             Compute the precipitation rate of cloud (fog) droplets
                 IF ( call_microphysics_at_all_substeps )  THEN
                    prr(k,j,i) = prr(k,j,i) + sed_qi(k) / hyrho(k) *                                &
-                                             weight_substep(intermediate_timestep_count) * flag
-                   prr_ice(k,j,i) = prr_ice(k,j,i) + sed_qi(k) / hyrho(k) *                        &
-                                             weight_substep(intermediate_timestep_count) * flag
+                                weight_substep(intermediate_timestep_count) * flag
                 ELSE
                    prr(k,j,i) = prr(k,j,i) + sed_qi(k) / hyrho(k) * flag
-                   prr_ice(k,j,i) = prr_ice(k,j,i) + sed_qi(k) / hyrho(k) * flag
                 ENDIF
 
              ENDDO
@@ -12915,7 +11973,7 @@
           vi = av * xi**bv
 !
 !--       Predetermine flag to mask topography
-          flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+          flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
 !
 !--       Calculate sedimentation rate for each grid box
           IF ( qi(k,j,i) > eps_sb  .AND.  ni(k,j,i) >= 0.0_wp )  THEN
@@ -12927,7 +11985,7 @@
           ENDIF
 !
 !--       Predetermine flag to mask topography
-          flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+          flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
 
           sed_qi(k) = MIN( sed_qi(k), hyrho(k) * dzu(k+1) * qi(k,j,i) / dt_micro + sed_qi(k+1)     &
                          ) * flag
@@ -12935,23 +11993,20 @@
                          ) * flag
 
           q(k,j,i)  = q(k,j,i)  + ( sed_qi(k+1) - sed_qi(k) ) * ddzu(k+1) /                        &
-                                  hyrho(k) * dt_micro * flag
+                                hyrho(k) * dt_micro * flag
           qi(k,j,i) = qi(k,j,i) + ( sed_qi(k+1) - sed_qi(k) ) * ddzu(k+1) /                        &
-                                  hyrho(k) * dt_micro * flag
+                                hyrho(k) * dt_micro * flag
           ni(k,j,i) = ni(k,j,i) + ( sed_ni(k+1) - sed_ni(k) ) * ddzu(k+1) /                        &
-                                  hyrho(k) * dt_micro * flag
+                                hyrho(k) * dt_micro * flag
           pt(k,j,i) = pt(k,j,i) - ( sed_qi(k+1) - sed_qi(k) ) * ddzu(k+1) /                        &
-                                  hyrho(k) * l_s / c_p * d_exner(k) * dt_micro * flag
+                                hyrho(k) * l_s / c_p * d_exner(k) * dt_micro * flag
 !
 !--       Compute the precipitation rate of ice
           IF ( call_microphysics_at_all_substeps )  THEN
              prr(k,j,i) = prr(k,j,i) + sed_qi(k) / hyrho(k) *                                      &
-                                       weight_substep(intermediate_timestep_count) * flag
-             prr_ice(k,j,i) = prr_ice(k,j,i) + sed_qi(k) / hyrho(k) *                              &
-                                       weight_substep(intermediate_timestep_count) * flag
+                          weight_substep(intermediate_timestep_count) * flag
           ELSE
              prr(k,j,i) = prr(k,j,i) + sed_qi(k) / hyrho(k) * flag
-             prr_ice(k,j,i) = prr_ice(k,j,i) + sed_qi(k) / hyrho(k) * flag
           ENDIF
 
        ENDDO
@@ -12998,7 +12053,7 @@
                 vg = av * xg**bv
 !
 !--             Predetermine flag to mask topography
-                flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
 !
 !--             Calculate sedimentation rate for each grid box, factors are
 !--             calculated using
@@ -13011,29 +12066,26 @@
                 ENDIF
 !
 !--             Predetermine flag to mask topography
-                flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
 
                 sed_qg(k) = MIN( sed_qg(k), hyrho(k) * dzu(k+1) * qg(k,j,i) / dt_micro +           &
                                  sed_qg(k+1) ) * flag
 
                 q(k,j,i)  = q(k,j,i)  + ( sed_qg(k+1) - sed_qg(k) ) * ddzu(k+1) /                  &
-                                        hyrho(k) * dt_micro * flag
+                                      hyrho(k) * dt_micro * flag
                 qg(k,j,i) = qg(k,j,i) + ( sed_qg(k+1) - sed_qg(k) ) * ddzu(k+1) /                  &
-                                        hyrho(k) * dt_micro * flag
+                                      hyrho(k) * dt_micro * flag
                 ng(k,j,i) = ng(k,j,i) + ( sed_ng(k+1) - sed_ng(k) ) * ddzu(k+1) /                  &
-                                        hyrho(k) * dt_micro * flag
+                                      hyrho(k) * dt_micro * flag
                 pt(k,j,i) = pt(k,j,i) - ( sed_qg(k+1) - sed_qg(k) ) * ddzu(k+1) /                  &
-                                        hyrho(k) * l_s / c_p * d_exner(k) * dt_micro * flag
+                                      hyrho(k) * l_s / c_p * d_exner(k) * dt_micro * flag
 !
 !--             Compute the precipitation rate of graupel
                 IF ( call_microphysics_at_all_substeps )  THEN
                    prr(k,j,i) = prr(k,j,i) + sed_qg(k) / hyrho(k) *                                &
-                                             weight_substep(intermediate_timestep_count) * flag
-                   prr_graupel(k,j,i) = prr_graupel(k,j,i) + sed_qg(k) / hyrho(k) *                &
-                                             weight_substep(intermediate_timestep_count) * flag
+                                weight_substep(intermediate_timestep_count) * flag
                 ELSE
                    prr(k,j,i) = prr(k,j,i) + sed_qg(k) / hyrho(k) * flag
-                   prr_graupel(k,j,i) = prr_graupel(k,j,i) + sed_qg(k) / hyrho(k) * flag
                 ENDIF
              ENDDO
           ENDDO
@@ -13079,7 +12131,7 @@
           vg = av * xg**bv
 !
 !--       Predetermine flag to mask topography
-          flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+          flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
 !
 !--       Calculate sedimentation rate for each grid box, factors are
 !--       calculated using
@@ -13092,29 +12144,26 @@
           ENDIF
 !
 !--       Predetermine flag to mask topography
-          flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+          flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
 
           sed_qg(k) = MIN( sed_qg(k), hyrho(k) * dzu(k+1) * qg(k,j,i) / dt_micro + sed_qg(k+1)     &
                          ) * flag
 
           q(k,j,i)  = q(k,j,i)  + ( sed_qg(k+1) - sed_qg(k) ) * ddzu(k+1) /                        &
-                                  hyrho(k) * dt_micro * flag
+                                hyrho(k) * dt_micro * flag
           qg(k,j,i) = qg(k,j,i) + ( sed_qg(k+1) - sed_qg(k) ) * ddzu(k+1) /                        &
-                                  hyrho(k) * dt_micro * flag
+                                hyrho(k) * dt_micro * flag
           ng(k,j,i) = ng(k,j,i) + ( sed_ng(k+1) - sed_ng(k) ) * ddzu(k+1) /                        &
-                                  hyrho(k) * dt_micro * flag
+                                hyrho(k) * dt_micro * flag
           pt(k,j,i) = pt(k,j,i) - ( sed_qg(k+1) - sed_qg(k) ) * ddzu(k+1) /                        &
-                                  hyrho(k) * l_s / c_p * d_exner(k) * dt_micro * flag
+                                hyrho(k) * l_s / c_p * d_exner(k) * dt_micro * flag
 !
 !--       Compute the precipitation rate of graupel
           IF ( call_microphysics_at_all_substeps )  THEN
              prr(k,j,i) = prr(k,j,i) + sed_qg(k) / hyrho(k) *                                      &
-                                       weight_substep(intermediate_timestep_count) * flag
-             prr_graupel(k,j,i) = prr_graupel(k,j,i) + sed_qg(k) / hyrho(k) *                      &
-                                       weight_substep(intermediate_timestep_count) * flag
+                          weight_substep(intermediate_timestep_count) * flag
           ELSE
              prr(k,j,i) = prr(k,j,i) + sed_qg(k) / hyrho(k) * flag
-             prr_graupel(k,j,i) = prr_graupel(k,j,i) + sed_qg(k) / hyrho(k) * flag
           ENDIF
 
        ENDDO
@@ -13161,7 +12210,7 @@
                 vs = av * xs**bv
 !
 !--             Predetermine flag to mask topography
-                flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
 !
 !--             Calculate sedimentation rate for each grid box, factors are
 !--             calculated using
@@ -13174,29 +12223,26 @@
                 ENDIF
 !
 !--             Predetermine flag to mask topography
-                flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
 
                 sed_qs(k) = MIN( sed_qs(k), hyrho(k) * dzu(k+1) * qs(k,j,i) / dt_micro +           &
                                  sed_qs(k+1) ) * flag
 
                 q(k,j,i)  = q(k,j,i)  + ( sed_qs(k+1) - sed_qs(k) ) * ddzu(k+1) /                  &
-                                        hyrho(k) * dt_micro * flag
+                                      hyrho(k) * dt_micro * flag
                 qs(k,j,i) = qs(k,j,i) + ( sed_qs(k+1) - sed_qs(k) ) * ddzu(k+1) /                  &
-                                        hyrho(k) * dt_micro * flag
+                                      hyrho(k) * dt_micro * flag
                 ns(k,j,i) = ns(k,j,i) + ( sed_ns(k+1) - sed_ns(k) ) * ddzu(k+1) /                  &
-                                        hyrho(k) * dt_micro * flag
+                                      hyrho(k) * dt_micro * flag
                 pt(k,j,i) = pt(k,j,i) - ( sed_qs(k+1) - sed_qs(k) ) * ddzu(k+1) /                  &
-                                        hyrho(k) * l_s / c_p * d_exner(k) * dt_micro * flag
+                                      hyrho(k) * l_s / c_p * d_exner(k) * dt_micro * flag
 !
 !--             Compute the precipitation rate of snow
                 IF ( call_microphysics_at_all_substeps )  THEN
                    prr(k,j,i) = prr(k,j,i) + sed_qs(k) / hyrho(k) *                                &
-                                             weight_substep(intermediate_timestep_count) * flag
-                   prr_snow(k,j,i) = prr_snow(k,j,i) + sed_qs(k) / hyrho(k) *                      &
-                                             weight_substep(intermediate_timestep_count) * flag
+                                weight_substep(intermediate_timestep_count) * flag
                 ELSE
                    prr(k,j,i) = prr(k,j,i) + sed_qs(k) / hyrho(k) * flag
-                   prr_snow(k,j,i) = prr_snow(k,j,i) + sed_qs(k) / hyrho(k) * flag
                 ENDIF
 
              ENDDO
@@ -13243,7 +12289,7 @@
           vs = av * xs**bv
 !
 !--       Predetermine flag to mask topography
-          flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+          flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
 !
 !--       Calculate sedimentation rate for each grid box, factors are
 !--       calculated using
@@ -13256,29 +12302,26 @@
           ENDIF
 !
 !--       Predetermine flag to mask topography
-          flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+          flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
 
           sed_qs(k) = MIN( sed_qs(k), hyrho(k) * dzu(k+1) * qs(k,j,i) / dt_micro + sed_qs(k+1)     &
                          ) * flag
 
           q(k,j,i)  = q(k,j,i)  + ( sed_qs(k+1) - sed_qs(k) ) * ddzu(k+1) /                        &
-                                  hyrho(k) * dt_micro * flag
+                                hyrho(k) * dt_micro * flag
           qs(k,j,i) = qs(k,j,i) + ( sed_qs(k+1) - sed_qs(k) ) * ddzu(k+1) /                        &
-                                  hyrho(k) * dt_micro * flag
+                                hyrho(k) * dt_micro * flag
           ns(k,j,i) = ns(k,j,i) + ( sed_ns(k+1) - sed_ns(k) ) * ddzu(k+1) /                        &
-                                  hyrho(k) * dt_micro * flag
+                                hyrho(k) * dt_micro * flag
           pt(k,j,i) = pt(k,j,i) - ( sed_qs(k+1) - sed_qs(k) ) * ddzu(k+1) /                        &
-                                  hyrho(k) * l_s / c_p * d_exner(k) * dt_micro * flag
+                                hyrho(k) * l_s / c_p * d_exner(k) * dt_micro * flag
 !
 !--       Compute the precipitation rate of cloud (fog) droplets
           IF ( call_microphysics_at_all_substeps )  THEN
              prr(k,j,i) = prr(k,j,i) + sed_qs(k) / hyrho(k) *                                      &
-                                       weight_substep(intermediate_timestep_count) * flag
-             prr_snow(k,j,i) = prr_snow(k,j,i) + sed_qs(k) / hyrho(k) *                            &
-                                       weight_substep(intermediate_timestep_count) * flag
+                          weight_substep(intermediate_timestep_count) * flag
           ELSE
              prr(k,j,i) = prr(k,j,i) + sed_qs(k) / hyrho(k) * flag
-             prr_snow(k,j,i) = prr_snow(k,j,i) + sed_qs(k) / hyrho(k) * flag
           ENDIF
 
        ENDDO
@@ -13300,6 +12343,9 @@
        INTEGER(iwp) ::  j             !< loop index
        INTEGER(iwp) ::  k             !< loop index
        INTEGER(iwp) ::  k_run         !<
+       INTEGER(iwp) ::  m             !< running index surface elements
+       INTEGER(iwp) ::  surf_e        !< End index of surface elements at (j,i)-gridpoint
+       INTEGER(iwp) ::  surf_s        !< Start index of surface elements at (j,i)-gridpoint
 
        REAL(wp)     ::  c_run                      !<
        REAL(wp)     ::  d_max                      !<
@@ -13327,7 +12373,7 @@
              DO  k = nzb+1, nzt
 !
 !--             Predetermine flag to mask topography
-                flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
 
                 !IF ( qr(k,j,i) > eps_sb  .AND.  nr(k,j,i) > 0.0_wp )  THEN
                 IF ( qr(k,j,i) > eps_sb )  THEN
@@ -13365,10 +12411,24 @@
                 ENDIF
              ENDDO
 !
-!--          Adjust boundary values.
-             k = topo_top_ind(j,i,0) + 1
-             w_nr(k-1) = w_nr(k)
-             w_qr(k-1) = w_qr(k)
+!--          Adjust boundary values using surface data type.
+!--          Upward-facing
+             surf_s = bc_h(0)%start_index(j,i)
+             surf_e = bc_h(0)%end_index(j,i)
+             DO  m = surf_s, surf_e
+                k         = bc_h(0)%k(m)
+                w_nr(k-1) = w_nr(k)
+                w_qr(k-1) = w_qr(k)
+             ENDDO
+!
+!--          Downward-facing
+             surf_s = bc_h(1)%start_index(j,i)
+             surf_e = bc_h(1)%end_index(j,i)
+             DO  m = surf_s, surf_e
+                k         = bc_h(1)%k(m)
+                w_nr(k+1) = w_nr(k)
+                w_qr(k+1) = w_qr(k)
+             ENDDO
 !
 !--          Model top boundary value
              w_nr(nzt+1) = 0.0_wp
@@ -13378,7 +12438,7 @@
              DO  k = nzb+1, nzt
 !
 !--             Predetermine flag to mask topography
-                flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
 
                 c_nr(k) = 0.25_wp * ( w_nr(k-1) + 2.0_wp * w_nr(k) + w_nr(k+1) ) *                 &
                           dt_micro * ddzu(k) * flag
@@ -13392,7 +12452,7 @@
                 DO k = nzb+1, nzt
 !
 !--                Predetermine flag to mask topography
-                   flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                   flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
 
                    d_mean = 0.5_wp * ( qr(k+1,j,i) - qr(k-1,j,i) )
                    d_min  = qr(k,j,i) - MIN( qr(k+1,j,i), qr(k,j,i), qr(k-1,j,i) )
@@ -13424,7 +12484,7 @@
              DO  k = nzt, nzb+1, -1
 !
 !--             Predetermine flag to mask topography
-                flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
 !
 !--             Sum up all rain drop number densities which contribute to the flux
 !--             through k-1/2
@@ -13436,8 +12496,8 @@
                    flux  = flux + hyrho(k_run) * ( nr(k_run,j,i) + nr_slope(k_run) *               &
                            ( 1.0_wp - c_run ) * 0.5_wp ) * c_run * dzu(k_run) * flag
                    z_run = z_run + dzu(k_run) * flag
-                   k_run = k_run + 1 * flag
-                   c_run = MIN( 1.0_wp, c_nr(k_run) - z_run * ddzu(k_run) ) * flag
+                   k_run = k_run + 1          * flag
+                   c_run = MIN( 1.0_wp, c_nr(k_run) - z_run * ddzu(k_run) )   * flag
                 ENDDO
 !
 !--             It is not allowed to sediment more rain drop number density than available.
@@ -13455,13 +12515,13 @@
 
                 DO WHILE ( c_run > 0.0_wp  .AND.  k_run <= nzt )
 
-                   flux  = flux +                                                                  &
-                           hyrho(k_run) *                                                          &
-                           ( qr(k_run,j,i) + qr_slope(k_run) * ( 1.0_wp - c_run ) * 0.5_wp ) *     &
-                           c_run * dzu(k_run) * flag
-                   z_run = z_run + dzu(k_run) * flag
-                   k_run = k_run + 1 * flag
-                   c_run = MIN( 1.0_wp, c_qr(k_run) - z_run * ddzu(k_run) ) * flag
+                   flux  = flux + hyrho(k_run) * ( qr(k_run,j,i) +                                 &
+                                  qr_slope(k_run) * ( 1.0_wp - c_run ) *                           &
+                                  0.5_wp ) * c_run * dzu(k_run) * flag
+                   z_run = z_run + dzu(k_run)                   * flag
+                   k_run = k_run + 1                            * flag
+                   c_run = MIN( 1.0_wp, c_qr(k_run) - z_run * ddzu(k_run) )                        &
+                                                                * flag
 
                 ENDDO
 !
@@ -13476,17 +12536,14 @@
                                         ddzu(k+1) / hyrho(k) * dt_micro * flag
                 pt(k,j,i) = pt(k,j,i) - ( sed_qr(k+1) - sed_qr(k) ) *                              &
                                         ddzu(k+1) / hyrho(k) * lv_d_cp *                           &
-                                        d_exner(k) * dt_micro * flag
+                                        d_exner(k) * dt_micro            * flag
 !
 !--             Compute the rain rate
                 IF ( call_microphysics_at_all_substeps )  THEN
-                   prr(k,j,i) = prr(k,j,i) + sed_qr(k) / hyrho(k) *                                &
-                                             weight_substep(intermediate_timestep_count) * flag
-                   prr_rain(k,j,i) = prr_rain(k,j,i) + sed_qr(k) / hyrho(k) *                      &
-                                             weight_substep(intermediate_timestep_count) * flag
+                   prr(k,j,i) = prr(k,j,i) + sed_qr(k) / hyrho(k)                                  &
+                                * weight_substep(intermediate_timestep_count) * flag
                 ELSE
                    prr(k,j,i) = prr(k,j,i) + sed_qr(k) / hyrho(k) * flag
-                   prr_rain(k,j,i) = prr_rain(k,j,i) + sed_qr(k) / hyrho(k) * flag
                 ENDIF
 
              ENDDO
@@ -13510,6 +12567,9 @@
        INTEGER(iwp) ::  j             !< loop index
        INTEGER(iwp) ::  k             !< loop index
        INTEGER(iwp) ::  k_run         !<
+       INTEGER(iwp) ::  m             !< running index surface elements
+       INTEGER(iwp) ::  surf_e        !< End index of surface elements at (j,i)-gridpoint
+       INTEGER(iwp) ::  surf_s        !< Start index of surface elements at (j,i)-gridpoint
 
        REAL(wp)     ::  c_run                     !<
        REAL(wp)     ::  d_max                     !<
@@ -13536,7 +12596,7 @@
        DO  k = nzb+1, nzt
 !
 !--       Predetermine flag to mask topography
-          flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+          flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
 
 !          IF ( qr(k,j,i) > eps_sb  .AND.  nr(k,j,i) > 0.0_wp )  THEN
            IF ( qr(k,j,i) > eps_sb )  THEN
@@ -13569,10 +12629,24 @@
           ENDIF
        ENDDO
 !
-!--    Adjust boundary values.
-       k = topo_top_ind(j,i,0) + 1
-       w_nr(k-1) = w_nr(k)
-       w_qr(k-1) = w_qr(k)
+!--    Adjust boundary values using surface data type.
+!--    Upward facing non-natural
+       surf_s = bc_h(0)%start_index(j,i)
+       surf_e = bc_h(0)%end_index(j,i)
+       DO  m = surf_s, surf_e
+          k         = bc_h(0)%k(m)
+          w_nr(k-1) = w_nr(k)
+          w_qr(k-1) = w_qr(k)
+       ENDDO
+!
+!--    Downward facing non-natural
+       surf_s = bc_h(1)%start_index(j,i)
+       surf_e = bc_h(1)%end_index(j,i)
+       DO  m = surf_s, surf_e
+          k         = bc_h(1)%k(m)
+          w_nr(k+1) = w_nr(k)
+          w_qr(k+1) = w_qr(k)
+       ENDDO
 !
 !--    Neumann boundary condition at model top
        w_nr(nzt+1) = 0.0_wp
@@ -13582,7 +12656,7 @@
        DO  k = nzb+1, nzt
 !
 !--       Predetermine flag to mask topography
-          flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+          flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
 
           c_nr(k) = 0.25_wp * ( w_nr(k-1) + 2.0_wp * w_nr(k) + w_nr(k+1) ) *                       &
                     dt_micro * ddzu(k) * flag
@@ -13596,7 +12670,7 @@
           DO k = nzb+1, nzt
 !
 !--          Predetermine flag to mask topography
-             flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+             flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
 
              d_mean = 0.5_wp * ( qr(k+1,j,i) - qr(k-1,j,i) )
              d_min  = qr(k,j,i) - MIN( qr(k+1,j,i), qr(k,j,i), qr(k-1,j,i) )
@@ -13627,7 +12701,7 @@
        DO  k = nzt, nzb+1, -1
 !
 !--       Predetermine flag to mask topography
-          flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+          flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
 !
 !--       Sum up all rain drop number densities which contribute to the flux through k-1/2
           flux  = 0.0_wp
@@ -13637,9 +12711,9 @@
           DO WHILE ( c_run > 0.0_wp  .AND.  k_run <= nzt )
              flux  = flux + hyrho(k_run) *                                                         &
                      ( nr(k_run,j,i) + nr_slope(k_run) * ( 1.0_wp - c_run ) * 0.5_wp ) *           &
-                     c_run * dzu(k_run) * flag
-             z_run = z_run + dzu(k_run) * flag
-             k_run = k_run + 1 * flag
+                       c_run *  dzu(k_run)         * flag
+             z_run = z_run + dzu(k_run)            * flag
+             k_run = k_run + 1                     * flag
              c_run = MIN( 1.0_wp, c_nr(k_run) - z_run * ddzu(k_run) ) * flag
           ENDDO
 !
@@ -13661,9 +12735,9 @@
 
              flux  = flux + hyrho(k_run) *                                                         &
                      ( qr(k_run,j,i) + qr_slope(k_run) * ( 1.0_wp - c_run ) * 0.5_wp ) *           &
-                     c_run * dzu(k_run) * flag
-             z_run = z_run + dzu(k_run) * flag
-             k_run = k_run + 1 * flag
+                       c_run * dzu(k_run)          * flag
+             z_run = z_run + dzu(k_run)            * flag
+             k_run = k_run + 1                     * flag
              c_run = MIN( 1.0_wp, c_qr(k_run) - z_run * ddzu(k_run) ) * flag
 
           ENDDO
@@ -13674,21 +12748,18 @@
           sed_qr(k) = flux / dt_micro * flag
 
           qr(k,j,i) = qr(k,j,i) + ( sed_qr(k+1) - sed_qr(k) ) * ddzu(k+1) /                        &
-                                  hyrho(k) * dt_micro * flag
+                                hyrho(k) * dt_micro * flag
           q(k,j,i)  = q(k,j,i)  + ( sed_qr(k+1) - sed_qr(k) ) * ddzu(k+1) /                        &
-                                  hyrho(k) * dt_micro * flag
+                                hyrho(k) * dt_micro * flag
           pt(k,j,i) = pt(k,j,i) - ( sed_qr(k+1) - sed_qr(k) ) * ddzu(k+1) /                        &
-                                  hyrho(k) * lv_d_cp * d_exner(k) * dt_micro * flag
+                                hyrho(k) * lv_d_cp * d_exner(k) * dt_micro * flag
 !
 !--       Compute the rain rate
           IF ( call_microphysics_at_all_substeps )  THEN
-             prr(k,j,i) = prr(k,j,i) + sed_qr(k) / hyrho(k) *                                      &
-                                       weight_substep(intermediate_timestep_count) * flag
-             prr_rain(k,j,i) = prr_rain(k,j,i) + sed_qr(k) / hyrho(k) *                            &
-                                       weight_substep(intermediate_timestep_count) * flag
+             prr(k,j,i) = prr(k,j,i) + sed_qr(k) / hyrho(k)                                        &
+                          * weight_substep(intermediate_timestep_count) * flag
           ELSE
              prr(k,j,i) = prr(k,j,i) + sed_qr(k) / hyrho(k) * flag
-             prr_rain(k,j,i) = prr_rain(k,j,i) + sed_qr(k) / hyrho(k) * flag
           ENDIF
 
        ENDDO
@@ -13713,19 +12784,15 @@
 
        IF ( ( dt_do2d_xy - time_do2d_xy ) < precipitation_amount_interval .AND.                    &
             ( .NOT. call_microphysics_at_all_substeps .OR.                                         &
-              intermediate_timestep_count == intermediate_timestep_count_max ) )                   &
+            intermediate_timestep_count == intermediate_timestep_count_max ) )                     &
        THEN
 !
-!--       Run over all upward-facing surface elements koff(m) = -1, i.e. non-natural, natural and
-!--       urban.
-          DO  m = 1, bc_hv%ns
-             i = bc_hv%i(m)
-             j = bc_hv%j(m)
-             k = bc_hv%k(m)
-             precipitation_amount(j,i) = MERGE( precipitation_amount(j,i)                          &
-                                              + prr(k,j,i) * hyrho(k) * dt_3d,                     &
-                                                precipitation_amount(j,i),                         &
-                                                bc_hv%koff(m) == -1 )
+!--       Run over all upward-facing surface elements, i.e. non-natural, natural and urban
+          DO  m = 1, bc_h(0)%ns
+             i = bc_h(0)%i(m)
+             j = bc_h(0)%j(m)
+             k = bc_h(0)%k(m)
+             precipitation_amount(j,i) = precipitation_amount(j,i) + prr(k,j,i) * hyrho(k) * dt_3d
           ENDDO
 
        ENDIF
@@ -13746,18 +12813,21 @@
        INTEGER(iwp) ::  i             !< loop index
        INTEGER(iwp) ::  j             !< loop index
        INTEGER(iwp) ::  k             !< loop index
+       INTEGER(iwp) ::  m             !< running index surface elements
+       INTEGER(iwp) ::  surf_e        !< End index of surface elements at (j,i)-gridpoint
+       INTEGER(iwp) ::  surf_s        !< Start index of surface elements at (j,i)-gridpoint
 
        IF ( ( dt_do2d_xy - time_do2d_xy ) < precipitation_amount_interval .AND.                    &
             ( .NOT. call_microphysics_at_all_substeps .OR.                                         &
-              intermediate_timestep_count == intermediate_timestep_count_max ) )                   &
+            intermediate_timestep_count == intermediate_timestep_count_max ) )                     &
        THEN
-!
-!--       Note, in contrast to the vector-optimized version, computation of precipitaton amount
-!--       at the surface is done using the topo_top index instead of the surface data structure.
-!--       This is because no local information from only horizontally upward facing surfaces can
-!--       be inferred from bc_hv any more after putting all surfaces into one array.
-          k = topo_top_ind(j,i,0) + 1
-          precipitation_amount(j,i) = precipitation_amount(j,i) + prr(k,j,i) * hyrho(k) * dt_3d
+
+          surf_s = bc_h(0)%start_index(j,i)
+          surf_e = bc_h(0)%end_index(j,i)
+          DO  m = surf_s, surf_e
+             k                         = bc_h(0)%k(m)
+             precipitation_amount(j,i) = precipitation_amount(j,i) + prr(k,j,i) * hyrho(k) * dt_3d
+          ENDDO
 
        ENDIF
 
@@ -13887,7 +12957,7 @@
              DO  k = nzb+1, nzt
 !
 !--             Predetermine flag to mask topography
-                flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
 !
 !--             Call calculation of supersaturation located
                 CALL supersaturation( i, j, k )
@@ -13967,11 +13037,7 @@
 !--                Morrison scheme: explicit condensation (see above)
                    ELSEIF ( microphysics_morrison  .AND.  microphysics_seifert )  THEN
                       ql(k,j,i) = qc(k,j,i) + qr(k,j,i) * flag
-                      IF ( snow  .AND.  graupel )  THEN
-                         qf(k,j,i) = qi(k,j,i) + qs(k,j,i) + qg(k,j,i) * flag
-                      ELSE
-                         qf(k,j,i) = qi(k,j,i) * flag
-                      ENDIF
+                      qf(k,j,i) = qi(k,j,i) + qs(k,j,i) + qg(k,j,i) * flag
                    ENDIF
                 ENDIF
              ENDDO

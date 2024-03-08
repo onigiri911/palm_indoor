@@ -13,15 +13,38 @@
 ! You should have received a copy of the GNU General Public License along with PALM. If not, see
 ! <http://www.gnu.org/licenses/>.
 !
-! Copyright 1997-2021 Leibniz Universitaet Hannover
+! Copyright 1997-2020 Leibniz Universitaet Hannover
 !--------------------------------------------------------------------------------------------------!
 !
+!
+! Current revisions:
+! -----------------
+! 
+! 
+! Former revisions:
+! -----------------
+! $Id: user_init_radiation.f90 4497 2020-04-15 10:20:51Z raasch $
+! file re-formatted to follow the PALM coding standard
+!
+!
+! 4360 2020-01-07 11:25:50Z suehring
+! Corrected "Former revisions" section
+!
+! 3768 2019-02-27 14:35:58Z raasch
+! unused variables commented out to avoid compiler warnings
+!
+! 3655 2019-01-07 16:51:22Z knoop
+! Corrected "Former revisions" section
+!
+! 1585 2015-04-30 07:05:52Z maronga
+! Initial revision
 !
 ! Description:
 ! ------------
 !> Execution of user-defined actions to initiate the radiation model
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE user_init_radiation
+
 
     USE arrays_3d
 

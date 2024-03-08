@@ -13,9 +13,40 @@
 ! You should have received a copy of the GNU General Public License along with PALM. If not, see
 ! <http://www.gnu.org/licenses/>.
 !
-! Copyright 1997-2021 Leibniz Universitaet Hannover
+! Copyright 1997-2020 Leibniz Universitaet Hannover
 !--------------------------------------------------------------------------------------------------!
 !
+!
+! Current revisions:
+! -----------------
+! 
+! 
+! Former revisions:
+! -----------------
+! $Id: vdi_internal_controls.f90 4557 2020-06-10 11:55:42Z raasch $
+! bugfix: mpi double precision replaced by mpi real
+! 
+! 4497 2020-04-15 10:20:51Z raasch
+! file re-formatted to follow the PALM coding standard
+!
+! 4481 2020-03-31 18:55:54Z maronga
+! missing preprocessor directive added
+!
+! 4346 2019-12-18 11:55:56Z motisi
+! Introduction of wall_flags_total_0, which currently sets bits based on static topography
+! information used in wall_flags_static_0
+!
+! 4329 2019-12-10 15:46:36Z motisi
+! Renamed wall_flags_0 to wall_flags_static_0
+!
+! 4182 2019-08-22 15:20:23Z scharf
+! added "Authors" section
+!
+! 4175 2019-08-20 13:19:16Z gronemeier
+! bugfix: removed unused variables
+!
+! 4173 2019-08-20 12:04:06Z weniger
+! Initial version
 !
 ! Authors:
 ! --------
@@ -28,10 +59,6 @@
 !> program for the model to be considered as evaluated.
 !--------------------------------------------------------------------------------------------------!
  MODULE vdi_internal_controls
-
-#if defined( __parallel )
-    USE MPI
-#endif
 
     USE arrays_3d,                                                                                 &
         ONLY:  dzw,                                                                                &
@@ -68,7 +95,7 @@
                nysg,                                                                               &
                nzb,                                                                                &
                nzt,                                                                                &
-               topo_flags
+               wall_flags_total_0
 
     USE kinds
 
@@ -77,6 +104,10 @@
         ONLY:  collective_wait,                                                                    &
                comm2d,                                                                             &
                ierr,                                                                               &
+               MPI_REAL,                                                                           &
+               MPI_INTEGER,                                                                        &
+               MPI_MAX,                                                                            &
+               MPI_SUM,                                                                            &
                myid
 #else
     USE pegrid,                                                                                    &
@@ -89,7 +120,7 @@
                dy
 
     USE pmc_interface,                                                                             &
-        ONLY:  nested_run
+        ONLY: nested_run
 
     IMPLICIT NONE
 
@@ -192,7 +223,7 @@
        cgp_k = INT( nzt / 2 )
 !
 !--    If the grid point lies in a building, a new point is defined
-       DO WHILE ( .NOT. BTEST( topo_flags(cgp_k,cgp_j,cgp_i), 1 ) )
+       DO WHILE ( .NOT. BTEST( wall_flags_total_0(cgp_k,cgp_j,cgp_i), 1 ) )
           CALL RANDOM_NUMBER( random )
           cgp_k = cgp_k + FLOOR( ( nzt - cgp_k ) * random )   !< Random number upon cgp_k
 !
@@ -250,8 +281,8 @@
        count_wave = count_wave + 1
 
        IF ( count_wave == number_wave  .AND.  count_time == 4 )  THEN
-          message_string = '2 deltat waves are generated'
-          CALL message( 'vdi_2_deltat_wave', 'VDI0001', 2, 2, myid, 6, 0 )
+          message_string = '2 deltat waves are generated '
+          CALL message( 'vdi_2_deltat_wave', 'PA0669', 2, 2, myid, 6, 0 )
        ENDIF
 
        count_time = 0
@@ -445,7 +476,7 @@
     DO  i = nxl, nxr
        DO  j = nys, nyn
           DO  k = nzb+1, nzt+1
-             flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), quant_type ) )
+             flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), quant_type ) )
              quant_av_k_l(k) = quant_av_k_l(k) + quant(k,j,i) * flag
              count_2d_l(k)   = count_2d_l(k) + INT( flag, KIND = iwp )
           ENDDO
@@ -470,7 +501,8 @@
           DO  k = nzb+1, nzt+1
              std_deviation_l(k) = std_deviation_l(k)                                               &
                                 + ( quant(k,j,i) - quant_av_k(k) )**2                              &
-                                * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), quant_type ) )
+                                * MERGE( 1.0_wp, 0.0_wp,                                           &
+                                  BTEST( wall_flags_total_0(k,j,i), quant_type ) )
           ENDDO
        ENDDO
     ENDDO
@@ -507,17 +539,18 @@
     IF ( position_std_deviation == nzt    .AND.                                                    &
          position_std_deviation_p == nzt  .AND.                                                    &
          position_std_deviation_pp == nzt       )  THEN
-       message_string = 'maxima of the standard deviation remain at the open edges of the model'
-       CALL message( 'vdi_standard_differences', 'VDI0002', 1, 2, 0, 6, 0 )
+       message_string = 'The maxima of the standard deviation' //                                  &
+                        'remain at the open edges of the model.'
+       CALL message( 'vdi_standard_differences', 'PA0663', 1, 2, 0, 6, 0 )
     ENDIF
 
     IF ( position_std_deviation == nzt-2    .AND.                                                  &
          position_std_deviation_p == nzt-1  .AND.                                                  &
          position_std_deviation_pp == nzt         )  THEN
-       message_string = 'maxima of the standard deviation travel ' //                              &
+       message_string = 'The maxima of the standard deviation travel ' //                          &
                         'from the open edges into the interior ' //                                &
-                        'of the domain with increasing simulation time'
-       CALL message( 'vdi_standard_differences', 'VDI0003', 1, 2, 0, 6, 0 )
+                        'of the domain with increasing simulation time.'
+       CALL message( 'vdi_standard_differences', 'PA0664', 1, 2, 0, 6, 0 )
     ENDIF
 
  END SUBROUTINE check_position
@@ -607,8 +640,8 @@
     IF ( time_since_reference_point >= end_time  .AND.                                             &
          mono_count_u > 0.9_wp * internal_count )  THEN
 
-       message_string = 'monotonic decrease or increase with increasing simulation time for u'
-       CALL message( 'vdi_domain_averages', 'VDI0004', 0, 1, 0, 6, 0 )
+       message_string = 'Monotonic decrease or increase with increasing simulation time for u'
+       CALL message( 'vdi_domain_averages', 'PA0665', 0, 1, 0, 6, 0 )
     ENDIF
 
     IF ( sig_v_arr(2) /= sig_v_arr(3) )  THEN
@@ -619,8 +652,8 @@
 
     IF ( time_since_reference_point >= end_time  .AND.                                             &
          mono_count_v > 0.9_wp * internal_count )  THEN
-       message_string = 'monotonic decrease or increase with increasing simulation time for v'
-       CALL message( 'vdi_domain_averages', 'VDI0004', 0, 1, 0, 6, 0 )
+       message_string = 'Monotonic decrease or increase with increasing simulation time for v'
+       CALL message( 'vdi_domain_averages', 'PA0665', 0, 1, 0, 6, 0 )
     ENDIF
 
     IF ( sig_w_arr(2) /= sig_w_arr(3) )  THEN
@@ -631,8 +664,8 @@
 
     IF ( time_since_reference_point >= end_time  .AND.                                             &
          mono_count_w > 0.9_wp * internal_count )  THEN
-       message_string = 'monotonic decrease or increase with increasing simulation time for w'
-       CALL message( 'vdi_domain_averages', 'VDI0004', 0, 1, 0, 6, 0 )
+       message_string = 'Monotonic decrease or increase with increasing simulation time for w'
+       CALL message( 'vdi_domain_averages', 'PA0665', 0, 1, 0, 6, 0 )
     ENDIF
 
     IF ( .NOT. neutral )  THEN
@@ -644,8 +677,8 @@
 
        IF ( time_since_reference_point >= end_time  .AND.                                          &
             mono_count_pt > 0.9_wp * internal_count )  THEN
-          message_string = 'monotonic decrease or increase with increasing simulation time for pt'
-          CALL message( 'vdi_domain_averages', 'VDI0004', 0, 1, 0, 6, 0 )
+          message_string = 'Monotonic decrease or increase with increasing simulation time for pt'
+          CALL message( 'vdi_domain_averages', 'PA0665', 0, 1, 0, 6, 0 )
        ENDIF
     ENDIF
 
@@ -658,8 +691,8 @@
 
        IF ( time_since_reference_point >= end_time  .AND.                                          &
             mono_count_q > 0.9_wp * internal_count )  THEN
-          message_string = 'monotonic decrease or increase with increasing simulation time for q'
-          CALL message( 'vdi_domain_averages', 'VDI0004', 0, 1, 0, 6, 0 )
+          message_string = 'Monotonic decrease or increase with increasing simulation time for q'
+          CALL message( 'vdi_domain_averages', 'PA0665', 0, 1, 0, 6, 0 )
        ENDIF
     ENDIF
 
@@ -707,7 +740,7 @@
    DO  i = nxl, nxr
       DO  j = nys, nyn
          DO  k = nzb, nzt+1
-            flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), quant_type ) )
+            flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), quant_type ) )
             quant_av_l = quant_av_l + quant(k,j,i) * flag
             average_count_l = average_count_l + INT( flag, KIND = iwp )
          ENDDO
@@ -755,7 +788,7 @@
        DO  j = nys, nyn
           DO  k = nzb+1, nzt
              volume_flow_l(1) = volume_flow_l(1) + u(k,j,i) * dzw(k) * dy                          &
-                                * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 1 ) )
+                                * MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 1 ) )
           ENDDO
        ENDDO
     ENDIF
@@ -766,7 +799,7 @@
        DO  j = nys, nyn
           DO  k = nzb+1, nzt
              volume_flow_l(1) = volume_flow_l(1) - u(k,j,i) * dzw(k) * dy                          &
-                                * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 1 ) )
+                                * MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 1 ) )
           ENDDO
        ENDDO
     ENDIF
@@ -778,7 +811,7 @@
        DO  i = nxl, nxr
           DO  k = nzb+1, nzt
              volume_flow_l(2) = volume_flow_l(2) + v(k,j,i) * dzw(k) * dx                          &
-                                * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 2 ) )
+                                * MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 2 ) )
           ENDDO
        ENDDO
     ENDIF
@@ -789,7 +822,7 @@
        DO  i = nxl, nxr
           DO  k = nzb+1, nzt
              volume_flow_l(2) = volume_flow_l(2) - v(k,j,i) * dzw(k) * dx                          &
-                                * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 2 ) )
+                                * MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 2 ) )
           ENDDO
        ENDDO
     ENDIF
@@ -812,8 +845,8 @@
     sum_mass_flux = SUM( volume_flow ) / ( ( nx + 1 ) * dx * ( ny + 1 ) * dy )
 
    IF ( ABS( sum_mass_flux ) > 0.001 )  THEN
-      message_string = 'mass is not conserved'
-      CALL message( 'vdi_conservation_of_mass', 'VDI0005', 1, 2, 0, 6, 0 )
+      message_string = 'The mass is not conserved. '
+      CALL message( 'vdi_conservation_of_mass', 'PA0666', 1, 2, 0, 6, 0 )
    ENDIF
 
  END SUBROUTINE vdi_conservation_of_mass
@@ -992,30 +1025,27 @@
    ENDIF
 
 !
-!-- Test for exceedance of the specified limits.
+!-- Test for exceedance of the specified limits
+    message_string = 'A wind component have a magnitude greater than ten times the maximum' //     &
+                     'wind velocity at the approach flow profile.'
+
     IF ( MAXVAL( ABS( u ) ) > 10.0_wp * max_uv )  THEN
-       message_string = 'wind component u has a magnitude greater than ten times the maximum' //   &
-                        'horizontal wind velocity of the approach flow profile'
-       CALL message( 'vdi_plausible_values', 'VDI0006', 2, 2, myid, 6, 0 )
+       CALL message( 'vdi_plausible_values', 'PA0667', 2, 2, myid, 6, 0 )
     ENDIF
 
     IF ( MAXVAL( ABS( v ) ) > 10.0_wp * max_uv )  THEN
-       message_string = 'wind component v has a magnitude greater than ten times the maximum' //   &
-                        'horizontal wind velocity of the approach flow profile'
-       CALL message( 'vdi_plausible_values', 'VDI0006', 2, 2, myid, 6, 0 )
+       CALL message( 'vdi_plausible_values', 'PA0667', 2, 2, myid, 6, 0 )
     ENDIF
 
     IF ( MAXVAL( ABS( w ) ) > 10.0_wp * max_uv )  THEN
-       message_string = 'wind component w has a magnitude greater than ten times the maximum' //   &
-                        'horizontal wind velocity of the approach flow profile'
-       CALL message( 'vdi_plausible_values', 'VDI0006', 2, 2, myid, 6, 0 )
+       CALL message( 'vdi_plausible_values', 'PA0667', 2, 2, myid, 6, 0 )
     ENDIF
 
 !
 !-- Test if the potential temperature lies between 220 K and 330 K
     IF ( MAXVAL( pt ) > 330.0_wp .OR. MAXVAL( pt ) < 220.0_wp )  THEN
-       message_string = 'potential temperature does not lie between 220 K and 330 K'
-       CALL message( 'vdi_plausible_values', 'VDI0007', 2, 2, myid, 6, 0 )
+       message_string = 'The potential temperature does not lie between 220 K and 330 K.'
+       CALL message( 'vdi_plausible_values', 'PA0668', 2, 2, myid, 6, 0 )
     ENDIF
 
  END SUBROUTINE vdi_plausible_values

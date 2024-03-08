@@ -14,8 +14,63 @@
 ! <http://www.gnu.org/licenses/>.
 !
 !
-! Copyright 1997-2021 Leibniz Universitaet Hannover
+! Copyright 1997-2020 Leibniz Universitaet Hannover
 !--------------------------------------------------------------------------------------------------!
+!
+! Current revisions:
+! -----------------
+!
+!
+! Former revisions:
+! -----------------
+! $Id: check_open.f90 4778 2020-11-09 13:40:05Z raasch $
+! local filename for output of particle time series changed
+!
+! 4652 2020-08-27 08:51:55Z raasch
+! Routine fortran_sleep has been moved to module posix_interface
+! 
+! 4577 2020-06-25 09:53:58Z raasch
+! further re-formatting to follow the PALM coding standard
+!
+! 4546 2020-05-24 12:16:41Z raasch
+! file re-formatted to follow the PALM coding standard
+!
+! 4444 2020-03-05 15:59:50Z raasch
+! bugfix: cpp-directives for serial mode added
+!
+! 4400 2020-02-10 20:32:41Z suehring
+! Remove binary output for virtual measurements
+!
+! 4360 2020-01-07 11:25:50Z suehring
+! Corrected "Former revisions" section
+!
+! 4128 2019-07-30 16:28:58Z gronemeier
+! Bugfix for opening the parameter file (unit 11): return error message if file
+! was not found.
+!
+! 4099 2019-07-15 15:29:37Z suehring
+! Bugfix in opening the parameter file (unit 11) in case of ocean precursor
+! runs.
+!
+! 4069 2019-07-01 14:05:51Z Giersch
+! Masked output running index mid has been introduced as a local variable to
+! avoid runtime error (Loop variable has been modified) in time_integration
+!
+! 3967 2019-05-09 16:04:34Z gronemeier
+! Save binary data of virtual measurements within separate folder
+!
+! 3812 2019-03-25 07:10:12Z gronemeier
+! Open binary surface output data within separate folder
+!
+! 3705 2019-01-29 19:56:39Z suehring
+! Open binary files for virtual measurements
+!
+! 3704 2019-01-29 19:51:41Z suehring
+! Open files for surface data
+!
+! Revision 1.1  1997/08/11 06:10:55  raasch
+! Initial revision
+!
 !
 ! Description:
 ! ------------
@@ -24,19 +79,10 @@
 !--------------------------------------------------------------------------------------------------!
 SUBROUTINE check_open( file_id )
 
-    USE control_parameters,                                                                        &
-        ONLY:  coupling_char,                                                                      &
-               data_output_2d_on_each_pe,                                                          &
-               debug_output,                                                                       &
-               debug_string,                                                                       &
-               max_masks,                                                                          &
-               message_string,                                                                     &
-               openfile,                                                                           &
-               run_description_header
 
-    USE cpulog,                                                                                    &
-        ONLY: cpu_log,                                                                             &
-              log_point_s
+    USE control_parameters,                                                                        &
+        ONLY:  coupling_char, data_output_2d_on_each_pe, max_masks, message_string, openfile,      &
+               run_description_header
 
 #if defined( __parallel )
     USE control_parameters,                                                                        &
@@ -44,16 +90,7 @@ SUBROUTINE check_open( file_id )
 #endif
 
     USE indices,                                                                                   &
-        ONLY:  nbgp,                                                                               &
-               nx,                                                                                 &
-               nxl,                                                                                &
-               nxr,                                                                                &
-               ny,                                                                                 &
-               nyn,                                                                                &
-               nys,                                                                                &
-               nz,                                                                                 &
-               nzb,                                                                                &
-               nzt
+        ONLY:  nbgp, nx, nxl, nxr, ny, nyn, nys, nz, nzb, nzt
 
     USE kinds
 
@@ -62,27 +99,14 @@ SUBROUTINE check_open( file_id )
 #endif
 
     USE netcdf_interface,                                                                          &
-        ONLY:  id_set_agt,                                                                         &
-               id_set_fl,                                                                          &
-               id_set_mask,                                                                        &
-               id_set_pr,                                                                          &
-               id_set_sp,                                                                          &
-               id_set_ts,                                                                          &
-               id_set_xy,                                                                          &
-               id_set_xz,                                                                          &
-               id_set_yz,                                                                          &
-               id_set_3d,                                                                          &
-               nc_stat,                                                                            &
-               netcdf_create_file,                                                                 &
-               netcdf_data_format,                                                                 &
-               netcdf_define_header,                                                               &
-               netcdf_handle_error,                                                                &
+        ONLY:  id_set_agt, id_set_fl, id_set_mask, id_set_pr,                                      &
+               id_set_pts, id_set_sp, id_set_ts, id_set_xy, id_set_xz,                             &
+               id_set_yz, id_set_3d, nc_stat, netcdf_create_file,                                  &
+               netcdf_data_format, netcdf_define_header, netcdf_handle_error,                      &
                netcdf_open_write_file
 
     USE particle_attributes,                                                                       &
-        ONLY:  max_number_of_particle_groups,                                                      &
-               number_of_particle_groups,                                                          &
-               particle_groups
+        ONLY:  max_number_of_particle_groups, number_of_particle_groups, particle_groups
 
     USE pegrid
 
@@ -101,6 +125,7 @@ SUBROUTINE check_open( file_id )
     INTEGER(iwp) ::  ioerr       !< IOSTAT flag for IO-commands ( 0 = no error )
     INTEGER(iwp) ::  mid         !< masked output running index
 
+    LOGICAL ::  file_exist       !< file check
     LOGICAL ::  netcdf_extend    !<
 
 !
@@ -115,13 +140,13 @@ SUBROUTINE check_open( file_id )
        SELECT CASE ( file_id )
           CASE ( 13, 14, 21, 22, 23, 80, 85, 117 )
              IF ( file_id == 14  .AND.  openfile(file_id)%opened_before )  THEN
-                message_string = 're-opening of unit ' // '14 not verified'
-                CALL message( 'check_open', 'PAC0006', 0, 1, 0, 6, 0 )
+                message_string = 're-open of unit ' // '14 is not verified. Please check results!'
+                CALL message( 'check_open', 'PA0165', 0, 1, 0, 6, 0 )
              ENDIF
 
           CASE DEFAULT
              WRITE( message_string, * ) 're-opening of file-id ', file_id, ' is not allowed'
-             CALL message( 'check_open', 'PAC0007', 0, 1, 0, 6, 0 )
+             CALL message( 'check_open', 'PA0166', 0, 1, 0, 6, 0 )
 
              RETURN
 
@@ -136,7 +161,7 @@ SUBROUTINE check_open( file_id )
 
           IF ( myid /= 0 )  THEN
              WRITE( message_string, * ) 'opening file-id ', file_id, ' not allowed for PE ', myid
-             CALL message( 'check_open', 'PAC0008', 2, 2, -1, 6, 1 )
+             CALL message( 'check_open', 'PA0167', 2, 2, -1, 6, 1 )
           ENDIF
 
        CASE ( 101:103, 106, 111:113, 116, 201:200+2*max_masks )
@@ -145,7 +170,7 @@ SUBROUTINE check_open( file_id )
 
              IF ( myid /= 0 )  THEN
                 WRITE( message_string, * ) 'opening file-id ', file_id, ' not allowed for PE ', myid
-                CALL message( 'check_open', 'PAC0008', 2, 2, -1, 6, 1 )
+                CALL message( 'check_open', 'PA0167', 2, 2, -1, 6, 1 )
              ENDIF
 
           ENDIF
@@ -155,7 +180,7 @@ SUBROUTINE check_open( file_id )
           IF ( .NOT. data_output_2d_on_each_pe )  THEN
              IF ( myid /= 0 )  THEN
                 WRITE( message_string, * ) 'opening file-id ', file_id, ' not allowed for PE ', myid
-                CALL message( 'check_open', 'PAC0008', 2, 2, -1, 6, 1 )
+                CALL message( 'check_open', 'PA0167', 2, 2, -1, 6, 1 )
              END IF
           ENDIF
 
@@ -165,7 +190,7 @@ SUBROUTINE check_open( file_id )
 !--       File-ids that are used temporarily in other routines
           WRITE( message_string, * ) 'opening file-id ', file_id,                                  &
                                      ' is not allowed since it is used otherwise'
-          CALL message( 'check_open', 'PAC0009', 0, 1, 0, 6, 0 )
+          CALL message( 'check_open', 'PA0168', 0, 1, 0, 6, 0 )
 
     END SELECT
 
@@ -175,13 +200,31 @@ SUBROUTINE check_open( file_id )
 
        CASE ( 11 )
 !
-!--       Read the namelist parameter file.
-          OPEN ( 11, FILE='PARIN' // TRIM( coupling_char ), FORM='FORMATTED', STATUS='OLD',        &
-                     IOSTAT=ioerr )
+!--       Read the parameter file. Therefore, inquire whether the file exist or not. This is
+!--       required for the ocean-atmoshere coupling. For an ocean precursor run palmrun provides a
+!--       PARIN_O file instead of a PARIN file. Actually this should be considered in coupling_char,
+!--       however, in pmc_init the parameter file is already opened to read the nesting parameters
+!--       and decide whether it is a nested run or not, but coupling_char is still not set at that
+!--       moment (must be set after the nesting setup is read).
+!--       This, however, leads to the situation that for ocean precursor runs PARIN is not available
+!--       and the run crashes. Thus, if the file is not there, PARIN_O will be read. An ocean
+!--       precursor run will be the only situation where this can happen.
+          INQUIRE( FILE='PARIN' // TRIM( coupling_char ), EXIST=file_exist )
+
+          IF ( file_exist )  THEN
+             filename = 'PARIN' // TRIM( coupling_char )
+          ELSE
+             filename = 'PARIN_O'
+          ENDIF
+
+          OPEN ( 11, FILE=TRIM( filename ), FORM='FORMATTED', STATUS='OLD', IOSTAT=ioerr )
 
           IF ( ioerr /= 0 )  THEN
-             message_string = 'namelist file "PARIN' // TRIM( coupling_char ) // '" not found'
-             CALL message( 'check_open', 'PAC0010', 3, 2, 0, 6, 1 )
+             message_string = 'namelist file "PARIN' // TRIM( coupling_char ) //                   &
+                              '"  or "PARIN_O" not found!' //                                      &
+                              '&Please have a look at the online description of the ' //           &
+                              'error message for further hints.'
+             CALL message( 'check_open', 'PA0661', 3, 2, 0, 6, 1 )
           ENDIF
 
        CASE ( 13 )
@@ -219,14 +262,12 @@ SUBROUTINE check_open( file_id )
 #endif
              ioerr = 1
              DO WHILE ( ioerr /= 0 )
-                OPEN ( 14, FILE='BINOUT' // TRIM( coupling_char )// '/' // myid_char,              &
+                OPEN ( 14, FILE='BINOUT' // TRIM(coupling_char)// '/' // myid_char,                &
                            FORM='UNFORMATTED', IOSTAT=ioerr )
                 IF ( ioerr /= 0 )  THEN
-                   IF ( debug_output )  THEN
-                      debug_string = 'could not open "BINOUT' // TRIM(coupling_char) // '/' //     &
-                                     myid_char // '"! Trying again in 1 sec.'
-                      CALL debug_message( debug_string, 'info' )
-                   ENDIF
+                   WRITE( 9, * )  '*** could not open "BINOUT' //                                  &
+                                  TRIM(coupling_char) // '/' // myid_char //                       &
+                                  '"! Trying again in 1 sec.'
                    CALL fortran_sleep( 1 )
                 ENDIF
              ENDDO
@@ -273,11 +314,8 @@ SUBROUTINE check_open( file_id )
                 OPEN ( 20, FILE='DATA_LOG' // TRIM( coupling_char ) // '/' // myid_char,           &
                            FORM='UNFORMATTED', POSITION='APPEND', IOSTAT=ioerr )
                 IF ( ioerr /= 0 )  THEN
-                   IF ( debug_output )  THEN
-                      debug_string = 'could not open "DATA_LOG' // TRIM(coupling_char) // '/' //   &
-                                     myid_char // '"! Trying again in 1 sec.'
-                      CALL debug_message( debug_string, 'info' )
-                   ENDIF
+                   WRITE( 9, * )  '*** could not open "DATA_LOG' // TRIM( coupling_char ) // '/' //&
+                                   myid_char // '"! Trying again in 1 sec.'
                    CALL fortran_sleep( 1 )
                 ENDIF
              ENDDO
@@ -365,11 +403,8 @@ SUBROUTINE check_open( file_id )
                 OPEN ( 25, FILE='SURFACE_DATA_BIN' // TRIM(coupling_char) //  '/' // myid_char,    &
                            FORM='UNFORMATTED', IOSTAT=ioerr )
                 IF ( ioerr /= 0 )  THEN
-                   IF ( debug_output )  THEN
-                      debug_string = 'could not open "SURFACE_DATA_BIN' // TRIM(coupling_char) //  &
-                                     '/' // myid_char // '"! Trying again in 1 sec.'
-                      CALL debug_message( debug_string, 'info' )
-                   ENDIF
+                   WRITE( 9, * )  '*** could not open "SURFACE_DATA_BIN'// TRIM(coupling_char) //  &
+                                  '/' // myid_char // '"! Trying again in 1 sec.'
                    CALL fortran_sleep( 1 )
                 ENDIF
              ENDDO
@@ -400,11 +435,9 @@ SUBROUTINE check_open( file_id )
                 OPEN ( 26, FILE='SURFACE_DATA_AV_BIN' // TRIM( coupling_char ) // '/' // myid_char,&
                            FORM='UNFORMATTED', IOSTAT=ioerr )
                 IF ( ioerr /= 0 )  THEN
-                   IF ( debug_output )  THEN
-                      debug_string = 'could not open "SURFACE_DATA_AV_BIN' // TRIM(coupling_char)  &
-                                     // '/' // myid_char // '"! Trying again in 1 sec.'
-                      CALL debug_message( debug_string, 'info' )
-                   ENDIF
+                   WRITE( 9, * )  '*** could not open "SURFACE_DATA_AV_BIN' //                     &
+                                  TRIM( coupling_char ) // '/' // myid_char //                     &
+                                  '"! Trying again in 1 sec.'
                    CALL fortran_sleep( 1 )
                 ENDIF
              ENDDO
@@ -469,11 +502,8 @@ SUBROUTINE check_open( file_id )
                 OPEN ( 85, FILE='PARTICLE_DATA' // TRIM( coupling_char ) // '/' // myid_char,      &
                            FORM='UNFORMATTED', POSITION='APPEND', IOSTAT=ioerr )
                 IF ( ioerr /= 0 )  THEN
-                   IF ( debug_output )  THEN
-                      debug_string = 'could not open "PARTICLE_DATA' // TRIM(coupling_char) //     &
-                                     '/' // myid_char // '"! Trying again in 1 sec.'
-                      CALL debug_message( debug_string, 'info' )
-                   ENDIF
+                   WRITE( 9, * )  '*** could not open "PARTICLE_DATA' // TRIM( coupling_char ) //  &
+                                  '/' // myid_char // '"! Trying again in 1 sec.'
                    CALL fortran_sleep( 1 )
                 ENDIF
              ENDDO
@@ -527,11 +557,8 @@ SUBROUTINE check_open( file_id )
                 OPEN ( 89, FILE='SVFOUT' // TRIM( coupling_char ) // '/' // myid_char,             &
                            FORM='UNFORMATTED', STATUS='NEW', IOSTAT=ioerr )
                 IF ( ioerr /= 0 )  THEN
-                   IF ( debug_output )  THEN
-                      debug_string = 'could not open "SVFOUT' // TRIM(coupling_char) //            &
-                                     '/' // myid_char // '"! Trying again in 1 sec.'
-                      CALL debug_message( debug_string, 'info' )
-                   ENDIF
+                   WRITE( 9, * )  '*** could not open "SVFOUT' // TRIM( coupling_char ) // '/' //  &
+                                  myid_char // '"! Trying again in 1 sec.'
                    CALL fortran_sleep( 1 )
                 ENDIF
              ENDDO
@@ -807,8 +834,6 @@ SUBROUTINE check_open( file_id )
 
 
        CASE ( 106, 116 )
-
-          CALL cpu_log( log_point_s(96), 'output_3d open ', 'start' )
 !
 !--       Set filename depending on unit number
           IF ( file_id == 106 )  THEN
@@ -868,7 +893,6 @@ SUBROUTINE check_open( file_id )
 
           ENDIF
 
-          CALL cpu_log( log_point_s(96), 'output_3d open ', 'stop' )
 
        CASE ( 107 )
 !
@@ -907,6 +931,108 @@ SUBROUTINE check_open( file_id )
 !
 !--          Define the header
              CALL netcdf_define_header( 'sp', netcdf_extend, 0 )
+
+          ENDIF
+
+!
+!--     Currently disabled
+!       CASE ( 108 )
+
+!          IF ( myid_char == '' )  THEN
+!             filename = 'DATA_PRT_NETCDF' // TRIM( coupling_char )
+!          ELSE
+!             filename = 'DATA_PRT_NETCDF' // TRIM( coupling_char ) // '/' //   &
+!                        myid_char
+!          ENDIF
+!
+!--       Inquire, if there is a netCDF file from a previous run. This should
+!--       be opened for extension, if its variables match the actual run.
+!          INQUIRE( FILE=filename, EXIST=netcdf_extend )
+
+!          IF ( netcdf_extend )  THEN
+!
+!--          Open an existing netCDF file for output
+!             CALL netcdf_open_write_file( filename, id_set_prt, .FALSE., 41 )
+!
+!--          Read header information and set all ids. If there is a mismatch
+!--          between the previous and the actual run, netcdf_extend is returned
+!--          as .FALSE.
+!             CALL netcdf_define_header( 'pt', netcdf_extend, 0 )
+
+!
+!--          Remove the local file, if it can not be extended
+!             IF ( .NOT. netcdf_extend )  THEN
+!                nc_stat = NF90_CLOSE( id_set_prt )
+!                CALL netcdf_handle_error( 'check_open', 42 )
+!                CALL local_system( 'rm ' // TRIM( filename ) )
+!             ENDIF
+
+!          ENDIF
+
+!          IF ( .NOT. netcdf_extend )  THEN
+
+!
+!--          For runs on multiple processors create the subdirectory
+!             IF ( myid_char /= '' )  THEN
+!                IF ( myid == 0  .AND. .NOT. openfile(file_id)%opened_before )  &
+!                THEN    ! needs modification in case of non-extendable sets
+!                   CALL local_system( 'mkdir  DATA_PRT_NETCDF' //              &
+!                                       TRIM( coupling_char ) // '/' )
+!                ENDIF
+#if defined( __parallel )
+!
+!--             Set a barrier in order to allow that all other processors in the
+!--             directory created by PE0 can open their file
+!                CALL MPI_BARRIER( comm2d, ierr )
+#endif
+!             ENDIF
+
+!
+!--          Create a new netCDF output file with requested netCDF format
+!             CALL netcdf_create_file( filename, id_set_prt, .FALSE., 43 )
+
+!
+!--          Define the header
+!             CALL netcdf_define_header( 'pt', netcdf_extend, 0 )
+
+!          ENDIF
+
+       CASE ( 109 )
+!
+!--       Set filename
+          filename = 'DATA_1D_SPTS_NETCDF' // TRIM( coupling_char )
+
+!
+!--       Inquire, if there is a netCDF file from a previous run. This should be opened for
+!--       extension, if its variables match the actual run.
+          INQUIRE( FILE=filename, EXIST=netcdf_extend )
+
+          IF ( netcdf_extend )  THEN
+!
+!--          Open an existing netCDF file for output
+             CALL netcdf_open_write_file( filename, id_set_pts, .FALSE., 393 )
+!
+!--          Read header information and set all ids. If there is a mismatch between the previous
+!--          and the actual run, netcdf_extend is returned as .FALSE.
+             CALL netcdf_define_header( 'ps', netcdf_extend, 0 )
+
+!
+!--          Remove the local file, if it can not be extended
+             IF ( .NOT. netcdf_extend )  THEN
+                nc_stat = NF90_CLOSE( id_set_pts )
+                CALL netcdf_handle_error( 'check_open', 394 )
+                CALL local_system( 'rm ' // TRIM( filename ) )
+             ENDIF
+
+          ENDIF
+
+          IF ( .NOT. netcdf_extend )  THEN
+!
+!--          Create a new netCDF output file with requested netCDF format
+             CALL netcdf_create_file( filename, id_set_pts, .FALSE., 395 )
+!
+!--          Define the header
+             CALL netcdf_define_header( 'ps', netcdf_extend, 0 )
 
           ENDIF
 
@@ -1062,7 +1188,7 @@ SUBROUTINE check_open( file_id )
 
 #else
 
-       CASE ( 101:107, 111:113, 116, 201:200+2*max_masks )
+       CASE ( 101:109, 111:113, 116, 201:200+2*max_masks )
 
 !
 !--       Nothing is done in case of missing netcdf support
@@ -1073,7 +1199,7 @@ SUBROUTINE check_open( file_id )
        CASE DEFAULT
 
           WRITE( message_string, * ) 'no OPEN-statement for file-id ', file_id
-          CALL message( 'check_open', 'PAC0011', 2, 2, -1, 6, 1 )
+          CALL message( 'check_open', 'PA0172', 2, 2, -1, 6, 1 )
 
     END SELECT
 

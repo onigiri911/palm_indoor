@@ -14,8 +14,122 @@
 ! You should have received a copy of the GNU General Public License along with
 ! PALM. If not, see <http://www.gnu.org/licenses/>.
 !
-! Copyright 1997-2021 Leibniz Universitaet Hannover
-!--------------------------------------------------------------------------------------------------!
+! Copyright 1997-2020 Leibniz Universitaet Hannover
+!------------------------------------------------------------------------------!
+!
+! Current revisions:
+! -----------------
+!
+!
+! Former revisions:
+! -----------------
+! $Id: read_restart_data_mod.f90 4777 2020-11-06 14:50:49Z raasch $
+! bugfix for reading spectra data with MPI-I/O (they are global arrays!)
+!
+! 4671 2020-09-09 20:27:58Z pavelkrc
+! Implementation of downward facing USM and LSM surfaces
+!
+! 4617 2020-07-22 09:48:50Z raasch
+! check, if boundary conditions in the prerun are both set to cyclic
+!
+! 4590 2020-07-06 14:34:59Z suehring
+! Bugfix in allocation of hom and hom_sum in case of mpi-io restart when
+! chemistry or salsa are employed
+! 
+! 4580 2020-06-29 07:54:21Z raasch
+! data handling with MPI-IO for cyclic-fill added (so far only for global data)
+! 
+! 4564 2020-06-12 14:03:36Z raasch
+! Vertical nesting method of Huq et al. (2019) removed
+! 
+! 4539 2020-05-18 14:05:17Z raasch
+! location message added
+! 
+! 4536 2020-05-17 17:24:13Z raasch
+! binary version incremented
+! 
+! 4534 2020-05-14 18:35:22Z raasch
+! adjustments for I/O on reduced number of cores using shared memory MPI
+! 
+! 4518 2020-05-04 15:44:28Z suehring
+! Move input of diagnostic output quantities to doq_rrd_local
+! 
+! 4517 2020-05-03 14:29:30Z raasch
+! qsurf and ssurf added
+! 
+! 4498 2020-04-15 14:26:31Z raasch
+! argument removed from rd_mpi_io_open
+! 
+! 4496 2020-04-15 08:37:26Z raasch
+! bugfix: MPI barrier removed, coupling character added to input filename
+! 
+! 4495 2020-04-13 20:11:20Z raasch
+! restart data handling with MPI-IO added
+! 
+! 4435 2020-03-03 10:38:41Z raasch
+! bugfix for message that reports about files that are read from in case that the virtual PE grid
+! has chenged (in case of large number of files format was exceeded), detailed messages about the
+! files are now output to the debug file
+! 
+! 4431 2020-02-27 23:23:01Z gronemeier
+! added u_center_av, v_center_av, wspeed_av
+!
+! 4360 2020-01-07 11:25:50Z suehring
+! Change automatic arrays to allocatable ones in rrd_local, in order to avoid
+! memory problems due to too small stack size for large jobs with intel
+! compiler. (J.Resler)
+!
+! 4331 2019-12-10 18:25:02Z suehring
+! Enable restart data for 2-m potential temperature output
+!
+! 4301 2019-11-22 12:09:09Z oliver.maas
+! removed recycling_yshift
+!
+! 4227 2019-09-10 18:04:34Z gronemeier
+! implement new palm_date_time_mod and increased binary version
+!
+! 4146 2019-08-07 07:47:36Z gronemeier
+! Corrected "Former revisions" section
+!
+! 4131 2019-08-02 11:06:18Z monakurppa
+! Allocate hom and hom_sum to allow profile output for salsa variables.
+!
+! 4101 2019-07-17 15:14:26Z gronemeier
+! remove old_dt
+!
+! 4039 2019-06-18 10:32:41Z suehring
+! input of uu_av, vv_av, ww_av added
+!
+! 4017 2019-06-06 12:16:46Z schwenkel
+! bugfix for r3998, allocation of 3d temporary arrays of various dimensions revised
+!
+! 3998 2019-05-23 13:38:11Z suehring
+! Formatting adjustment
+!
+! 3994 2019-05-22 18:08:09Z suehring
+! output of turbulence intensity added
+!
+! 3988 2019-05-22 11:32:37Z kanani
+! + time_virtual_measurement (to enable steering of output interval)
+!
+! 3936 2019-04-26 15:38:02Z kanani
+! Enable time-averaged output of theta_2m* with restarts
+!
+! 3767 2019-02-27 08:18:02Z raasch
+! unused variables removed from rrd-subroutines parameter list
+!
+! 3766 2019-02-26 16:23:41Z raasch
+! first argument removed from module_interface_rrd_*
+!
+! 3668 2019-01-14 12:49:24Z maronga
+! Removed most_method and increased binary version
+!
+! 3655 2019-01-07 16:51:22Z knoop
+! Implementation of the PALM module interface
+!
+! 2894 2018-03-15 09:17:58Z Giersch
+! Initial revision
+!
 !
 ! Description:
 ! ------------
@@ -24,32 +138,15 @@
 !> @todo: Revise max_pr_cs (profiles for chemistry)
 !> @todo: Modularize reading of restart data for diagnostic quantities, which
 !>        is not possible with the current module-interface structure
-!--------------------------------------------------------------------------------------------------!
+!------------------------------------------------------------------------------!
  MODULE read_restart_data_mod
 
-    USE arrays_3d,                                                                                 &
-        ONLY:  mean_inflow_profiles,                                                               &
-               pt_init,                                                                            &
-               q_init,                                                                             &
-               ref_state,                                                                          &
-               sa_init,                                                                            &
-               s_init,                                                                             &
-               u_init,                                                                             &
-               ug,                                                                                 &
-               v_init,                                                                             &
-               vg,                                                                                 &
-               e,                                                                                  &
-               kh,                                                                                 &
-               km,                                                                                 &
-               p,                                                                                  &
-               pt,                                                                                 &
-               q,                                                                                  &
-               ql,                                                                                 &
-               s,                                                                                  &
-               u,                                                                                  &
-               v,                                                                                  &
-               vpt,                                                                                &
-               w
+
+    USE arrays_3d,                                                             &
+        ONLY:  inflow_damping_factor, mean_inflow_profiles, pt_init,           &
+               q_init, ref_state, sa_init, s_init, u_init, ug, v_init, vg,     &
+               e, kh, km, p, pt, q, ql, s, u, u_m_l, u_m_n, u_m_r, u_m_s,      &
+               v, v_m_l, v_m_n, v_m_r, v_m_s, vpt, w, w_m_l, w_m_n, w_m_r, w_m_s
 
     USE averaging
 
@@ -57,114 +154,68 @@
         ONLY:  bulk_cloud_model
 
     USE chem_modules,                                                                              &
-        ONLY:  max_pr_cs
+       ONLY: max_pr_cs
 
     USE control_parameters
 
-    USE cpulog,                                                                                    &
-        ONLY:  cpu_log,                                                                            &
-               log_point_s
+    USE cpulog,                                                                &
+        ONLY:  cpu_log, log_point_s
 
-    USE grid_variables,                                                                            &
-        ONLY:  dx,                                                                                 &
-               dy
+    USE grid_variables,                                                        &
+        ONLY:  dx, dy
 
     USE gust_mod,                                                                                  &
         ONLY:  gust_module_enabled
 
-    USE indices,                                                                                   &
-        ONLY:  nbgp,                                                                               &
-               nx,                                                                                 &
-               nxl,                                                                                &
-               nxlg,                                                                               &
-               nxr,                                                                                &
-               nxrg,                                                                               &
-               nx_on_file,                                                                         &
-               ny,                                                                                 &
-               nys,                                                                                &
-               nysg,                                                                               &
-               nyn,                                                                                &
-               nyng,                                                                               &
-               ny_on_file,                                                                         &
-               nz,                                                                                 &
-               nzb,                                                                                &
-               nzt
-
-    USE indoor_model_mod,                                                                          &
-        ONLY:  time_indoor
+    USE indices,                                                               &
+        ONLY:  nbgp, nx, nxl, nxlg, nxr, nxrg, nx_on_file, ny, nys, nysg, nyn, &
+               nyng, ny_on_file, nz, nzb, nzt
 
     USE kinds
 
-    USE model_1d_mod,                                                                              &
-        ONLY:  damp_level_1d,                                                                      &
-               dt_pr_1d,                                                                           &
-               dt_run_control_1d,                                                                  &
-               end_time_1d
+    USE model_1d_mod,                                                          &
+        ONLY:  damp_level_1d, dt_pr_1d, dt_run_control_1d, end_time_1d
 
-    USE module_interface,                                                                          &
-        ONLY:  module_interface_rrd_global,                                                        &
-               module_interface_rrd_local,                                                         &
-               module_interface_rrd_local_spinup
+    USE module_interface,                                                      &
+        ONLY:  module_interface_rrd_global,                                    &
+               module_interface_rrd_local
 
-    USE netcdf_interface,                                                                          &
-        ONLY:  netcdf_precision,                                                                   &
-               output_for_t0
+    USE netcdf_interface,                                                      &
+        ONLY:  netcdf_precision, output_for_t0
 
     USE particle_attributes,                                                                       &
         ONLY:  particle_advection
 
     USE pegrid
 
-    USE radiation_model_mod,                                                                       &
+    USE radiation_model_mod,                                                   &
         ONLY:  time_radiation
 
-    USE random_function_mod,                                                                       &
-        ONLY:  random_iv,                                                                          &
-               random_iy
+    USE random_function_mod,                                                   &
+        ONLY:  random_iv, random_iy
 
-    USE random_generator_parallel,                                                                 &
-        ONLY:  id_random_array,                                                                    &
-               seq_random_array
+    USE random_generator_parallel,                                             &
+        ONLY:  id_random_array, seq_random_array
 
     USE restart_data_mpi_io_mod,                                                                   &
-        ONLY:  rd_mpi_io_check_array,                                                              &
-               rd_mpi_io_close,                                                                    &
-               rd_mpi_io_open,                                                                     &
-               rrd_mpi_io,                                                                         &
+        ONLY:  rd_mpi_io_check_array, rd_mpi_io_close, rd_mpi_io_open, rrd_mpi_io,                 &
                rrd_mpi_io_global_array
 
-    USE spectra_mod,                                                                               &
-        ONLY:  average_count_sp,                                                                   &
-               spectrum_x,                                                                         &
-               spectrum_y
+    USE spectra_mod,                                                           &
+        ONLY:  average_count_sp, spectrum_x, spectrum_y
 
-    USE surface_data_output_mod,                                                                   &
-        ONLY:  surface_data_output_rrd_global,                                                     &
-               surface_data_output_rrd_local
+    USE surface_mod,                                                           &
+        ONLY :  surface_rrd_local
 
-    USE surface_mod,                                                                               &
-        ONLY:  surface_rrd_local
-
-    USE statistics,                                                                                &
-        ONLY:  hom,                                                                                &
-               hom_sum,                                                                            &
-               pr_max,                                                                             &
-               statistic_regions,                                                                  &
-               u_max,                                                                              &
-               u_max_ijk,                                                                          &
-               v_max,                                                                              &
-               v_max_ijk,                                                                          &
-               w_max,                                                                              &
-               w_max_ijk,                                                                          &
-               z_i
+    USE statistics,                                                            &
+        ONLY:  statistic_regions, hom, hom_sum, pr_palm, u_max, u_max_ijk,     &
+               v_max, v_max_ijk, w_max, w_max_ijk, z_i
 
     USE user,                                                                                      &
         ONLY:  user_module_enabled
 
-    USE virtual_measurement_mod,                                                                   &
-        ONLY:  time_virtual_measurement_pr,                                                        &
-               time_virtual_measurement_ts,                                                        &
-               time_virtual_measurement_tr
+    USE virtual_measurement_mod,                                               &
+        ONLY:  time_virtual_measurement
 
 
     IMPLICIT NONE
@@ -174,10 +225,6 @@
        MODULE PROCEDURE rrd_global
     END INTERFACE rrd_global
 
-    INTERFACE rrd_global_spinup
-       MODULE PROCEDURE rrd_global_spinup
-    END INTERFACE rrd_global_spinup
-
     INTERFACE rrd_read_parts_of_global
        MODULE PROCEDURE rrd_read_parts_of_global
     END INTERFACE rrd_read_parts_of_global
@@ -186,21 +233,12 @@
        MODULE PROCEDURE rrd_local
     END INTERFACE rrd_local
 
-    INTERFACE rrd_local_spinup
-       MODULE PROCEDURE rrd_local_spinup
-    END INTERFACE rrd_local_spinup
-
     INTERFACE rrd_skip_global
        MODULE PROCEDURE rrd_skip_global
     END INTERFACE rrd_skip_global
 
 
-    PUBLIC rrd_global,                                                                             &
-           rrd_global_spinup,                                                                      &
-           rrd_read_parts_of_global,                                                               &
-           rrd_local,                                                                              &
-           rrd_local_spinup,                                                                       &
-           rrd_skip_global
+    PUBLIC rrd_global, rrd_read_parts_of_global, rrd_local, rrd_skip_global
 
 
  CONTAINS
@@ -226,12 +264,6 @@
 
     CALL location_message( 'read global restart data', 'start' )
 
-!
-!-- Caution: When any of the read instructions have been changed, the
-!-- -------  version number stored in the variable binary_version_global has
-!--          to be increased. The same changes must also be done in wrd_write_global.
-    binary_version_global = '22.04'
-
     IF ( TRIM( restart_data_format_input ) == 'fortran_binary' )  THEN
 !
 !--    Input in Fortran binary format
@@ -242,14 +274,15 @@
        READ ( 13 )  restart_string(1:length)
        READ ( 13 )  version_on_file
 
+       binary_version_global = '5.1'
        IF ( TRIM( version_on_file ) /= TRIM( binary_version_global ) )  THEN
           WRITE( message_string, * ) 'version mismatch concerning ',           &
                                      'binary_version_global:',                 &
                                      '&version on file    = "',                &
                                      TRIM( version_on_file ), '"',             &
-                                     '&version in program = "',                &
+                                     '&version on program = "',                &
                                      TRIM( binary_version_global ), '"'
-          CALL message( 'rrd_global', 'PAC0268', 1, 2, 0, 6, 0 )
+          CALL message( 'rrd_global', 'PA0296', 1, 2, 0, 6, 0 )
        ENDIF
 
 !
@@ -259,8 +292,9 @@
        READ ( 13 )  restart_string(1:length)
 
        IF ( TRIM( restart_string(1:length) ) /= 'numprocs' )  THEN
-          WRITE( message_string, * ) 'numprocs not found in data from prior run on PE ', myid
-          CALL message( 'rrd_global', 'PAC0269', 1, 2, 0, 6, 0 )
+          WRITE( message_string, * ) 'numprocs not found in data from prior ', &
+                                     'run on PE ', myid
+          CALL message( 'rrd_global', 'PA0297', 1, 2, 0, 6, 0 )
        ENDIF
        READ ( 13 )  numprocs_previous_run
 
@@ -274,7 +308,7 @@
        IF ( restart_string(1:length) /= 'hor_index_bounds' )  THEN
           WRITE( message_string, * ) 'hor_index_bounds not found in data ',    &
                                      'from prior run on PE ', myid
-          CALL message( 'rrd_global', 'PAC0270', 1, 2, 0, 6, 0 )
+          CALL message( 'rrd_global', 'PA0298', 1, 2, 0, 6, 0 )
        ENDIF
        READ ( 13 )  hor_index_bounds_previous_run
 
@@ -286,8 +320,9 @@
        READ ( 13 )  restart_string(1:length)
 
        IF ( restart_string(1:length) /= 'nz' )  THEN
-          WRITE( message_string, * ) 'nz not found in data from prior run on PE ', myid
-          CALL message( 'rrd_global', 'PAC0271', 1, 2, 0, 6, 0 )
+          WRITE( message_string, * ) 'nz not found in data from prior run ',   &
+                                     'on PE ', myid
+          CALL message( 'rrd_global', 'PA0299', 1, 2, 0, 6, 0 )
        ENDIF
        READ ( 13 )  nz
 
@@ -297,7 +332,7 @@
        IF ( restart_string(1:length) /= 'max_pr_user' )  THEN
           WRITE( message_string, * ) 'max_pr_user not found in data from ',    &
                                      'prior run on PE ', myid
-          CALL message( 'rrd_global', 'PAC0272', 1, 2, 0, 6, 0 )
+          CALL message( 'rrd_global', 'PA0300', 1, 2, 0, 6, 0 )
        ENDIF
        READ ( 13 )  max_pr_user    ! This value is checked against the number of
                                    ! user profiles given for the current run
@@ -309,7 +344,7 @@
        IF ( restart_string(1:length) /= 'statistic_regions' )  THEN
           WRITE( message_string, * ) 'statistic_regions not found in data ',   &
                                      'from prior run on PE ', myid
-          CALL message( 'rrd_global', 'PAC0273', 1, 2, 0, 6, 0 )
+          CALL message( 'rrd_global', 'PA0301', 1, 2, 0, 6, 0 )
        ENDIF
        READ ( 13 )  statistic_regions
 
@@ -320,14 +355,16 @@
           ALLOCATE( ug(0:nz+1), u_init(0:nz+1), vg(0:nz+1),                                        &
                     v_init(0:nz+1), pt_init(0:nz+1), q_init(0:nz+1),                               &
                     ref_state(0:nz+1), s_init(0:nz+1), sa_init(0:nz+1),                            &
-                    hom(0:nz+1,2,pr_max,0:statistic_regions),                                      &
-                    hom_sum(0:nz+1,pr_max,0:statistic_regions) )
-          hom = 0.0_wp
-          hom_sum = 0.0_wp
+                    hom(0:nz+1,2,pr_palm+max_pr_user+max_pr_cs+max_pr_salsa,0:statistic_regions),  &
+                    hom_sum(0:nz+1,pr_palm+max_pr_user+max_pr_cs+max_pr_salsa,0:statistic_regions) )
        ENDIF
 
 !
 !--    Now read all control parameters:
+!--    Caution: When the following read instructions have been changed, the
+!--    -------  version number stored in the variable binary_version_global has
+!--             to be increased. The same changes must also be done in
+!--             wrd_write_global.
        READ ( 13 )  length
        READ ( 13 )  restart_string(1:length)
 
@@ -341,8 +378,6 @@
                 READ ( 13 )  advected_distance_x
              CASE ( 'advected_distance_y' )
                 READ ( 13 )  advected_distance_y
-             CASE ( 'allow_negative_scalar_values' )
-                READ ( 13 )  allow_negative_scalar_values
              CASE ( 'alpha_surface' )
                 READ ( 13 )  alpha_surface
              CASE ( 'average_count_pr' )
@@ -427,6 +462,14 @@
                 READ ( 13 )  origin_date_time
              CASE ( 'dissipation_1d' )
                 READ ( 13 )  dissipation_1d
+             CASE ( 'do2d_xy_time_count' )
+                READ ( 13 )  do2d_xy_time_count
+             CASE ( 'do2d_xz_time_count' )
+                READ ( 13 )  do2d_xz_time_count
+             CASE ( 'do2d_yz_time_count' )
+                READ ( 13 )  do2d_yz_time_count
+             CASE ( 'do3d_time_count' )
+                READ ( 13 )  do3d_time_count
              CASE ( 'dp_external' )
                 READ ( 13 )  dp_external
              CASE ( 'dp_level_b' )
@@ -473,10 +516,17 @@
                 READ ( 13 )  hom
              CASE ( 'hom_sum' )
                 READ ( 13 )  hom_sum
-             CASE ( 'homogenize_surface_temperature' )
-                READ ( 13 )  homogenize_surface_temperature
              CASE ( 'humidity' )
                 READ ( 13 )  humidity
+             CASE ( 'inflow_damping_factor' )
+                IF ( .NOT. ALLOCATED( inflow_damping_factor ) )  THEN
+                   ALLOCATE( inflow_damping_factor(0:nz+1) )
+                ENDIF
+                READ ( 13 )  inflow_damping_factor
+             CASE ( 'inflow_damping_height' )
+                READ ( 13 )  inflow_damping_height
+             CASE ( 'inflow_damping_width' )
+                READ ( 13 )  inflow_damping_width
              CASE ( 'inflow_disturbance_begin' )
                 READ ( 13 )  inflow_disturbance_begin
              CASE ( 'inflow_disturbance_end' )
@@ -552,8 +602,8 @@
                 READ ( 13 )  pt_reference
              CASE ( 'pt_surface' )
                 READ ( 13 )  pt_surface
-             CASE ( 'pt_surface_heating_rate' )
-                READ ( 13 )  pt_surface_heating_rate
+             CASE ( 'pt_surface_initial_change' )
+                READ ( 13 )  pt_surface_initial_change
              CASE ( 'pt_vertical_gradient' )
                 READ ( 13 )  pt_vertical_gradient
              CASE ( 'pt_vertical_gradient_level' )
@@ -564,6 +614,8 @@
                 READ ( 13 )  q_init
              CASE ( 'q_surface' )
                 READ ( 13 )  q_surface
+             CASE ( 'q_surface_initial_change' )
+                READ ( 13 )  q_surface_initial_change
              CASE ( 'q_vertical_gradient' )
                 READ ( 13 )  q_vertical_gradient
              CASE ( 'q_vertical_gradient_level' )
@@ -580,6 +632,8 @@
                 READ ( 13 )  rayleigh_damping_factor
              CASE ( 'rayleigh_damping_height' )
                 READ ( 13 )  rayleigh_damping_height
+             CASE ( 'recycling_width' )
+                READ ( 13 )  recycling_width
              CASE ( 'ref_state' )
                 READ ( 13 )  ref_state
              CASE ( 'reference_state' )
@@ -588,12 +642,16 @@
                 READ ( 13 )  residual_limit
              CASE ( 'roughness_length' )
                 READ ( 13 )  roughness_length
+             CASE ( 'run_coupled' )
+                READ ( 13 )  run_coupled
              CASE ( 'runnr' )
                 READ ( 13 )  runnr
              CASE ( 's_init' )
                 READ ( 13 )  s_init
              CASE ( 's_surface' )
                 READ ( 13 )  s_surface
+             CASE ( 's_surface_initial_change' )
+                READ ( 13 )  s_surface_initial_change
              CASE ( 's_vertical_gradient' )
                 READ ( 13 )  s_vertical_gradient
              CASE ( 's_vertical_gradient_level' )
@@ -660,8 +718,6 @@
                 READ ( 13 )  time_dosp
              CASE ( 'time_dots' )
                 READ ( 13 )  time_dots
-             CASE ( 'time_indoor' )
-                READ ( 13 )  time_indoor
              CASE ( 'time_radiation' )
                 READ ( 13 )  time_radiation
              CASE ( 'time_restart' )
@@ -670,12 +726,8 @@
                 READ ( 13 )  time_run_control
              CASE ( 'time_since_reference_point' )
                 READ ( 13 )  time_since_reference_point
-             CASE ( 'time_virtual_measurement_pr' )
-                READ ( 13 )  time_virtual_measurement_pr
-             CASE ( 'time_virtual_measurement_ts' )
-                READ ( 13 )  time_virtual_measurement_ts
-             CASE ( 'time_virtual_measurement_tr' )
-                READ ( 13 )  time_virtual_measurement_tr
+             CASE ( 'time_virtual_measurement' )
+                READ ( 13 )  time_virtual_measurement
              CASE ( 'timestep_scheme' )
                 READ ( 13 )  timestep_scheme
              CASE ( 'top_heatflux' )
@@ -704,6 +756,8 @@
                 READ ( 13 )  tunnel_width_y
              CASE ( 'turbulence_closure' )
                 READ ( 13 )  turbulence_closure
+             CASE ( 'turbulent_inflow' )
+                READ ( 13 )  turbulent_inflow
              CASE ( 'u_bulk' )
                 READ ( 13 )  u_bulk
              CASE ( 'u_init' )
@@ -781,15 +835,13 @@
 !
 !--             Read global variables from of other modules
                 CALL module_interface_rrd_global( found )
-!
-!--             Read global variables from surface_data_output_mod
-                IF ( .NOT. found )  CALL surface_data_output_rrd_global( found )
 
                 IF ( .NOT. found )  THEN
                    WRITE( message_string, * ) 'unknown variable named "',      &
-                                              restart_string(1:length),           &
-                                              '" found in global data from prior run on PE ', myid
-                CALL message( 'rrd_global', 'PAC0274', 1, 2, 0, 6, 0 )
+                                           restart_string(1:length),           &
+                                          '" found in global data from ',      &
+                                          'prior run on PE ', myid
+                CALL message( 'rrd_global', 'PA0302', 1, 2, 0, 6, 0 )
 
                 ENDIF
 
@@ -807,7 +859,10 @@
 !
 !--    Read global restart data using MPI-IO
 !--    ATTENTION: Arrays need to be read with routine rrd_mpi_io_global_array!
-
+!--    Caution: When any of the following read instructions have been changed, the
+!--    -------  version number stored in the variable binary_version_global has
+!--             to be increased. The same changes must also be done in
+!--             wrd_write_global.
 !
 !--    Open the MPI-IO restart file.
        CALL rd_mpi_io_open( 'read', 'BININ' // TRIM( coupling_char ),                              &
@@ -817,11 +872,12 @@
 !--    Make version number check first
        CALL rrd_mpi_io( 'binary_version_global',  version_on_file )
 
+       binary_version_global = '5.1'
        IF ( TRIM( version_on_file ) /= TRIM( binary_version_global ) )  THEN
           WRITE( message_string, * ) 'version mismatch concerning binary_version_global:',         &
                                      '&version on file    = "', TRIM( version_on_file ), '"',      &
                                      '&version in program = "', TRIM( binary_version_global ), '"'
-          CALL message( 'rrd_global', 'PAC0268', 1, 2, 0, 6, 0 )
+          CALL message( 'rrd_global', 'PA0296', 1, 2, 0, 6, 0 )
        ENDIF
 
        CALL rrd_mpi_io( 'numprocs',  numprocs_previous_run )
@@ -833,18 +889,15 @@
 !--    The following global arrays (better to say, they have the same size and values on each
 !--    subdomain) are by default allocated in routine parin, but not in case of restarts!
        IF ( .NOT. ALLOCATED( ug ) )  THEN
-          ALLOCATE( ug(0:nz+1), u_init(0:nz+1), vg(0:nz+1),                                        &
-                    v_init(0:nz+1), pt_init(0:nz+1), q_init(0:nz+1),                               &
-                    ref_state(0:nz+1), s_init(0:nz+1), sa_init(0:nz+1),                            &
-                    hom(0:nz+1,2,pr_max,0:statistic_regions),                                      &
-                    hom_sum(0:nz+1,pr_max,0:statistic_regions) )
-          hom = 0.0_wp
-          hom_sum = 0.0_wp
+           ALLOCATE( ug(0:nz+1), u_init(0:nz+1), vg(0:nz+1),                                       &
+                     v_init(0:nz+1), pt_init(0:nz+1), q_init(0:nz+1),                              &
+                     ref_state(0:nz+1), s_init(0:nz+1), sa_init(0:nz+1),                           &
+                     hom(0:nz+1,2,pr_palm+max_pr_user+max_pr_cs+max_pr_salsa,0:statistic_regions), &
+                     hom_sum(0:nz+1,pr_palm+max_pr_user+max_pr_cs+max_pr_salsa,0:statistic_regions) )
        ENDIF
 
        CALL rrd_mpi_io( 'advected_distance_x',  advected_distance_x )
        CALL rrd_mpi_io( 'advected_distance_y', advected_distance_y )
-       CALL rrd_mpi_io( 'allow_negative_scalar_values', allow_negative_scalar_values )
        CALL rrd_mpi_io( 'alpha_surface', alpha_surface )
        CALL rrd_mpi_io( 'average_count_pr', average_count_pr )
        CALL rrd_mpi_io( 'average_count_sp', average_count_sp )
@@ -888,6 +941,10 @@
        CALL rrd_mpi_io( 'cycle_mg', cycle_mg )
        CALL rrd_mpi_io( 'damp_level_1d', damp_level_1d )
        CALL rrd_mpi_io( 'dissipation_1d', dissipation_1d )
+       CALL rrd_mpi_io_global_array( 'do2d_xy_time_count', do2d_xy_time_count )
+       CALL rrd_mpi_io_global_array( 'do2d_xz_time_count', do2d_xz_time_count )
+       CALL rrd_mpi_io_global_array( 'do2d_yz_time_count', do2d_yz_time_count )
+       CALL rrd_mpi_io_global_array( 'do3d_time_count', do3d_time_count )
        CALL rrd_mpi_io( 'dp_external', dp_external )
        CALL rrd_mpi_io( 'dp_level_b', dp_level_b )
        CALL rrd_mpi_io( 'dp_smooth', dp_smooth )
@@ -912,8 +969,16 @@
        CALL rrd_mpi_io( 'gust_module_enabled', gust_module_enabled )
        CALL rrd_mpi_io_global_array( 'hom', hom )
        CALL rrd_mpi_io_global_array( 'hom_sum', hom_sum )
-       CALL rrd_mpi_io( 'homogenize_surface_temperature', homogenize_surface_temperature )
        CALL rrd_mpi_io( 'humidity', humidity )
+       CALL rd_mpi_io_check_array( 'inflow_damping_factor', found = array_found )
+       IF ( array_found )  THEN
+           IF ( .NOT. ALLOCATED( inflow_damping_factor ) )  THEN
+               ALLOCATE( inflow_damping_factor(0:nz+1) )
+           ENDIF
+           CALL rrd_mpi_io_global_array( 'inflow_damping_factor', inflow_damping_factor )
+       ENDIF
+       CALL rrd_mpi_io( 'inflow_damping_height', inflow_damping_height )
+       CALL rrd_mpi_io( 'inflow_damping_width', inflow_damping_width )
        CALL rrd_mpi_io( 'inflow_disturbance_begin', inflow_disturbance_begin )
        CALL rrd_mpi_io( 'inflow_disturbance_end', inflow_disturbance_end )
        CALL rrd_mpi_io( 'km_constant', km_constant )
@@ -964,12 +1029,13 @@
        CALL rrd_mpi_io_global_array( 'pt_init', pt_init )
        CALL rrd_mpi_io( 'pt_reference', pt_reference )
        CALL rrd_mpi_io( 'pt_surface', pt_surface )
-       CALL rrd_mpi_io( 'pt_surface_heating_rate', pt_surface_heating_rate )
+       CALL rrd_mpi_io( 'pt_surface_initial_change', pt_surface_initial_change )
        CALL rrd_mpi_io_global_array( 'pt_vertical_gradient', pt_vertical_gradient )
        CALL rrd_mpi_io_global_array( 'pt_vertical_gradient_level', pt_vertical_gradient_level )
        CALL rrd_mpi_io_global_array( 'pt_vertical_gradient_level_ind', pt_vertical_gradient_level_ind )
        CALL rrd_mpi_io_global_array( 'q_init', q_init )
        CALL rrd_mpi_io( 'q_surface', q_surface )
+       CALL rrd_mpi_io( 'q_surface_initial_change', q_surface_initial_change )
        CALL rrd_mpi_io_global_array( 'q_vertical_gradient', q_vertical_gradient )
        CALL rrd_mpi_io_global_array( 'q_vertical_gradient_level', q_vertical_gradient_level )
        CALL rrd_mpi_io_global_array( 'q_vertical_gradient_level_ind', q_vertical_gradient_level_ind )
@@ -978,13 +1044,16 @@
        CALL rrd_mpi_io( 'rans_mode', rans_mode )
        CALL rrd_mpi_io( 'rayleigh_damping_factor', rayleigh_damping_factor )
        CALL rrd_mpi_io( 'rayleigh_damping_height', rayleigh_damping_height )
+       CALL rrd_mpi_io( 'recycling_width', recycling_width )
        CALL rrd_mpi_io_global_array( 'ref_state', ref_state )
        CALL rrd_mpi_io( 'reference_state', reference_state )
        CALL rrd_mpi_io( 'residual_limit', residual_limit )
        CALL rrd_mpi_io( 'roughness_length', roughness_length )
+       CALL rrd_mpi_io( 'run_coupled', run_coupled )
        CALL rrd_mpi_io( 'runnr', runnr )
        CALL rrd_mpi_io_global_array( 's_init', s_init )
        CALL rrd_mpi_io( 's_surface', s_surface )
+       CALL rrd_mpi_io( 's_surface_initial_change', s_surface_initial_change )
        CALL rrd_mpi_io_global_array( 's_vertical_gradient', s_vertical_gradient )
        CALL rrd_mpi_io_global_array( 's_vertical_gradient_level', s_vertical_gradient_level )
        CALL rrd_mpi_io_global_array( 's_vertical_gradient_level_ind', s_vertical_gradient_level_ind )
@@ -1013,6 +1082,7 @@
        CALL rrd_mpi_io( 'surface_output', surface_output )
        CALL rrd_mpi_io( 'surface_scalarflux', surface_scalarflux )
        CALL rrd_mpi_io( 'surface_waterflux', surface_waterflux )
+       CALL rrd_mpi_io( 'syn_turb_gen', syn_turb_gen )
        CALL rrd_mpi_io( 'time_coupling', time_coupling )
        CALL rrd_mpi_io( 'time_disturb', time_disturb )
        CALL rrd_mpi_io( 'time_do2d_xy', time_do2d_xy )
@@ -1028,14 +1098,11 @@
        CALL rrd_mpi_io( 'time_dopts', time_dopts )
        CALL rrd_mpi_io( 'time_dosp', time_dosp )
        CALL rrd_mpi_io( 'time_dots', time_dots )
-       CALL rrd_mpi_io( 'time_indoor', time_indoor )
        CALL rrd_mpi_io( 'time_radiation', time_radiation )
        CALL rrd_mpi_io( 'time_restart', time_restart )
        CALL rrd_mpi_io( 'time_run_control', time_run_control )
        CALL rrd_mpi_io( 'time_since_reference_point', time_since_reference_point )
-       CALL rrd_mpi_io( 'time_virtual_measurement_pr', time_virtual_measurement_pr )
-       CALL rrd_mpi_io( 'time_virtual_measurement_ts', time_virtual_measurement_ts )
-       CALL rrd_mpi_io( 'time_virtual_measurement_tr', time_virtual_measurement_tr )
+       CALL rrd_mpi_io( 'time_virtual_measurement', time_virtual_measurement )
        CALL rrd_mpi_io( 'timestep_scheme', timestep_scheme )
        CALL rrd_mpi_io( 'top_heatflux', top_heatflux )
        CALL rrd_mpi_io( 'top_momentumflux_u', top_momentumflux_u )
@@ -1050,6 +1117,7 @@
        CALL rrd_mpi_io( 'tunnel_width_x', tunnel_width_x )
        CALL rrd_mpi_io( 'tunnel_width_y', tunnel_width_y )
        CALL rrd_mpi_io( 'turbulence_closure', turbulence_closure )
+       CALL rrd_mpi_io( 'turbulent_inflow', turbulent_inflow )
        CALL rrd_mpi_io( 'u_bulk', u_bulk )
        CALL rrd_mpi_io_global_array( 'u_init', u_init )
        CALL rrd_mpi_io( 'u_max', u_max )
@@ -1087,9 +1155,7 @@
        CALL rrd_mpi_io( 'zeta_max', zeta_max )
        CALL rrd_mpi_io( 'zeta_min', zeta_min )
        CALL rrd_mpi_io_global_array( 'z_i', z_i )
-!
-!--    Read global variables from surface_data_output_mod
-       IF ( surface_output )  CALL surface_data_output_rrd_global
+
 !
 !--    Read global variables from of other modules
        CALL module_interface_rrd_global
@@ -1105,39 +1171,15 @@
  END SUBROUTINE rrd_global
 
 
-!--------------------------------------------------------------------------------------------------!
-! Description:
-! ------------
-!> Reads values of global control variables from spinup restart-file
-!--------------------------------------------------------------------------------------------------!
- SUBROUTINE rrd_global_spinup
 
-!
-!-- Open the MPI-IO restart file.
-    CALL rd_mpi_io_open( 'read', 'SPINUPIN' // TRIM( coupling_char ),                              &
-                         open_for_global_io_only = .TRUE. )
-
-    CALL rrd_mpi_io( 'nx', nx )
-    CALL rrd_mpi_io( 'ny', ny )
-!
-!-- Close restart file
-    CALL rd_mpi_io_close
-!
-!-- Set x-/y-on-file dimensions to enable cyclic fill capability.
-    nx_on_file = nx
-    ny_on_file = ny
-
- END SUBROUTINE rrd_global_spinup
-
-
-!--------------------------------------------------------------------------------------------------!
+!------------------------------------------------------------------------------!
 ! Description:
 ! ------------
 !> Skipping the global control variables from restart-file (binary format)
-!> except some information which is required when reading restart data from a previous
+!> except some information needed when reading restart data from a previous
 !> run which used a smaller total domain or/and a different domain decomposition
 !> (initializing_actions  == 'cyclic_fill').
-!--------------------------------------------------------------------------------------------------!
+!------------------------------------------------------------------------------!
  SUBROUTINE rrd_read_parts_of_global
 
 
@@ -1151,9 +1193,8 @@
     INTEGER(iwp) ::  max_pr_user_on_file
     INTEGER(iwp) ::  nz_on_file
     INTEGER(iwp) ::  statistic_regions_on_file
+    INTEGER(iwp) ::  tmp_mpru
     INTEGER(iwp) ::  tmp_sr
-
-    LOGICAL ::  neutral_check
 
     REAL(wp), DIMENSION(:,:,:),   ALLOCATABLE ::  hom_sum_on_file
     REAL(wp), DIMENSION(:,:,:,:), ALLOCATABLE ::  hom_on_file
@@ -1174,8 +1215,9 @@
        READ ( 13 )  restart_string(1:length)
 
        IF ( restart_string(1:length) /= 'numprocs' )  THEN
-          WRITE( message_string, * ) 'numprocs not found in data from prior run on PE ', myid
-          CALL message( 'rrd_read_parts_of_global', 'PAC0269', 1, 2, 0, 6, 0 )
+          WRITE( message_string, * ) 'numprocs not found in data from prior ', &
+                                     'run on PE ', myid
+          CALL message( 'rrd_read_parts_of_global', 'PA0297', 1, 2, 0, 6, 0 )
        ENDIF
        READ ( 13 )  numprocs_previous_run
 
@@ -1189,7 +1231,7 @@
        IF ( restart_string(1:length) /= 'hor_index_bounds' )  THEN
           WRITE( message_string, * ) 'hor_index_bounds not found in data ',    &
                                      'from prior run on PE ', myid
-          CALL message( 'rrd_read_parts_of_global', 'PAC0270', 1, 2, 0, 6, 0 )
+          CALL message( 'rrd_read_parts_of_global', 'PA0298', 1, 2, 0, 6, 0 )
        ENDIF
        READ ( 13 )  hor_index_bounds_previous_run
 
@@ -1202,7 +1244,7 @@
 
        IF ( restart_string(1:length) /= 'nz' )  THEN
           message_string = 'nz not found in restart data file'
-          CALL message( 'rrd_read_parts_of_global', 'PAC0347', 1, 2, 0, 6, 0 )
+          CALL message( 'rrd_read_parts_of_global', 'PA0303', 1, 2, 0, 6, 0 )
        ENDIF
        READ ( 13 )  nz_on_file
        IF ( nz_on_file /= nz )  THEN
@@ -1210,7 +1252,7 @@
                                      'gridpoints along z:',                    &
                                      '&nz on file    = "', nz_on_file, '"',    &
                                      '&nz from run   = "', nz, '"'
-          CALL message( 'rrd_read_parts_of_global', 'PAC0275', 1, 2, 0, 6, 0 )
+          CALL message( 'rrd_read_parts_of_global', 'PA0304', 1, 2, 0, 6, 0 )
        ENDIF
 
        READ ( 13 )  length
@@ -1218,7 +1260,7 @@
 
        IF ( restart_string(1:length) /= 'max_pr_user' )  THEN
           message_string = 'max_pr_user not found in restart data file'
-          CALL message( 'rrd_read_parts_of_global', 'PAC0276', 1, 2, 0, 6, 0 )
+          CALL message( 'rrd_read_parts_of_global', 'PA0305', 1, 2, 0, 6, 0 )
        ENDIF
        READ ( 13 )  max_pr_user_on_file
        IF ( max_pr_user_on_file /= max_pr_user )  THEN
@@ -1228,7 +1270,10 @@
                                      max_pr_user_on_file, '"',                 &
                                      '&max_pr_user from run   = "',            &
                                      max_pr_user, '"'
-          CALL message( 'rrd_read_parts_of_global', 'PAC0277', 0, 0, 0, 6, 0 )
+          CALL message( 'rrd_read_parts_of_global', 'PA0306', 0, 0, 0, 6, 0 )
+          tmp_mpru = MIN( max_pr_user_on_file, max_pr_user )
+       ELSE
+          tmp_mpru = max_pr_user
        ENDIF
 
        READ ( 13 )  length
@@ -1236,7 +1281,7 @@
 
        IF ( restart_string(1:length) /= 'statistic_regions' )  THEN
           message_string = 'statistic_regions not found in restart data file'
-          CALL message( 'rrd_read_parts_of_global', 'PAC0278', 1, 2, 0, 6, 0 )
+          CALL message( 'rrd_read_parts_of_global', 'PA0307', 1, 2, 0, 6, 0 )
        ENDIF
        READ ( 13 )  statistic_regions_on_file
        IF ( statistic_regions_on_file /= statistic_regions )  THEN
@@ -1247,7 +1292,7 @@
                                      '&statistic regions from run   = "',      &
                                       statistic_regions, '"',                  &
                                      '&statistic data may be lost!'
-          CALL message( 'rrd_read_parts_of_global', 'PAC0279', 0, 1, 0, 6, 0 )
+          CALL message( 'rrd_read_parts_of_global', 'PA0308', 0, 1, 0, 6, 0 )
           tmp_sr = MIN( statistic_regions_on_file, statistic_regions )
        ELSE
           tmp_sr = statistic_regions
@@ -1265,37 +1310,48 @@
              CASE ( 'average_count_pr' )
                 READ ( 13 )  average_count_pr
                 IF ( average_count_pr /= 0 )  THEN
-                   WRITE( message_string, * ) 'Inflow profiles not temporally averaged.',          &
-                                              '&Averaging will be done now using',                 &
-                                              average_count_pr, ' samples.'
-                   CALL message( 'rrd_read_parts_of_global', 'PAC0280',         &
+                   WRITE( message_string, * ) 'inflow profiles not ',          &
+                                  'temporally averaged. &Averaging will be ',  &
+                                  'done now using', average_count_pr,          &
+                                  ' samples.'
+                   CALL message( 'rrd_read_parts_of_global', 'PA0309',         &
                                  0, 1, 0, 6, 0 )
                 ENDIF
 
              CASE ( 'bc_lr' )
                 READ ( 13 )  bc_lr_on_file
-                IF ( TRIM( bc_lr_on_file ) /= 'cyclic' )  THEN
-                   message_string = 'illegal setting of bc_lr = "cyclic" in the prerun'
-                   CALL message( 'rrd_read_parts_of_global', 'PAC0281', 1, 2, 0, 6, 0 )
-                ENDIF
+                
+               !-- COVID-19 related code begins (Mikko) 
+               !-- comment out error concerning cyclic bcs.
+               !IF ( TRIM( bc_lr_on_file ) /= 'cyclic' )  THEN
+                !   message_string = 'bc_lr in the prerun was set /= "cyclic"'
+                !   CALL message( 'rrd_read_parts_of_global', 'PA0498', 1, 2, 0, 6, 0 )
+                !ENDIF
+
 
              CASE ( 'bc_ns' )
                 READ ( 13 )  bc_ns_on_file
-                IF ( TRIM( bc_ns_on_file ) /= 'cyclic' )  THEN
-                   message_string = 'illegal setting of bc_lr = "cyclic" in the prerun'
-                   CALL message( 'rrd_read_parts_of_global', 'PAC0281', 1, 2, 0, 6, 0 )
-                ENDIF
+                
+               !IF ( TRIM( bc_ns_on_file ) /= 'cyclic' )  THEN
+                !   message_string = 'bc_ns in the prerun was set /= "cyclic"'
+                !   CALL message( 'rrd_read_parts_of_global', 'PA0498', 1, 2, 0, 6, 0 )
+                !ENDIF
+               !-- COVID-19 related code ends
 
              CASE ( 'hom' )
-                ALLOCATE( hom_on_file(0:nz+1,2,pr_max,0:statistic_regions_on_file) )
+                ALLOCATE( hom_on_file(0:nz+1,2,pr_palm+max_pr_user_on_file,    &
+                          0:statistic_regions_on_file) )
                 READ ( 13 )  hom_on_file
-                hom(:,:,:,0:tmp_sr) = hom_on_file(:,:,:,0:tmp_sr)
+                hom(:,:,1:pr_palm+tmp_mpru,0:tmp_sr) =                         &
+                             hom_on_file(:,:,1:pr_palm+tmp_mpru,0:tmp_sr)
                 DEALLOCATE( hom_on_file )
 
              CASE ( 'hom_sum' )
-                ALLOCATE( hom_sum_on_file(0:nz+1,pr_max,0:statistic_regions_on_file) )
+                ALLOCATE( hom_sum_on_file(0:nz+1,pr_palm+max_pr_user_on_file,  &
+                          0:statistic_regions_on_file) )
                 READ ( 13 )  hom_sum_on_file
-                hom_sum(:,:,0:tmp_sr) = hom_sum_on_file(:,:,0:tmp_sr)
+                hom_sum(:,1:pr_palm+tmp_mpru,0:tmp_sr) =                       &
+                             hom_sum_on_file(:,1:pr_palm+tmp_mpru,0:tmp_sr)
                 DEALLOCATE( hom_sum_on_file )
 
              CASE ( 'momentum_advec' )
@@ -1303,19 +1359,11 @@
                 READ ( 13 )  momentum_advec
                 IF ( TRIM( momentum_advec_check ) /= TRIM( momentum_advec ) )  &
                 THEN
-                   message_string = 'momentum_advec = "' // TRIM( momentum_advec_check ) //        &
-                                    '" of the restart run differs from momentum_advec = "' //      &
-                                    TRIM( momentum_advec) // '" of the initial run'
-                   CALL message( 'rrd_read_parts_of_global', 'PAC0282',         &
+                   WRITE( message_string, * ) 'momentum_advec of the restart ',&
+                                  'run differs from momentum_advec of the ',   &
+                                  'initial run.'
+                   CALL message( 'rrd_read_parts_of_global', 'PA0100',         &
                                  1, 2, 0, 6, 0 )
-                ENDIF
-
-             CASE ( 'neutral' )
-                neutral_check = neutral
-                READ (13 )  neutral
-                IF ( neutral_check  .NEQV.  neutral )  THEN
-                   message_string = 'setting of neutral in pre-run differs from setting in main run'
-                   CALL message( 'rrd_read_parts_of_global', 'PAC0283', 1, 2, 0, 6, 0 )
                 ENDIF
 
              CASE ( 'nx' )
@@ -1332,10 +1380,11 @@
                 READ ( 13 )  scalar_advec
                 IF ( TRIM( scalar_advec_check ) /= TRIM( scalar_advec ) )      &
                 THEN
-                   message_string = 'scalar_advec = "' // TRIM( scalar_advec_check ) //            &
-                                    '" of the restart run differs from scalar_advec = "' //        &
-                                    TRIM( scalar_advec) // '" of the initial run'
-                   CALL message( 'rrd_read_parts_of_global', 'PAC0284', 1, 2, 0, 6, 0 )
+                   WRITE( message_string, * ) 'scalar_advec of the restart ',  &
+                                  'run differs from scalar_advec of the ',     &
+                                  'initial run.'
+                   CALL message( 'rrd_read_parts_of_global', 'PA0101',         &
+                                 1, 2, 0, 6, 0 )
                 ENDIF
 
              CASE DEFAULT
@@ -1366,7 +1415,7 @@
           WRITE( message_string, * ) 'mismatch concerning number of gridpoints along z:',          &
                                      '&nz on file    = "', nz_on_file, '"',                        &
                                      '&nz from run   = "', nz, '"'
-          CALL message( 'rrd_read_parts_of_global', 'PAC0275', 1, 2, 0, 6, 0 )
+          CALL message( 'rrd_read_parts_of_global', 'PA0304', 1, 2, 0, 6, 0 )
        ENDIF
 
        CALL rrd_mpi_io( 'max_pr_user', max_pr_user_on_file )
@@ -1375,7 +1424,10 @@
                                      'the current run:&max_pr_user on file    = "',                &
                                      max_pr_user_on_file, '" &max_pr_user from run   = "',         &
                                      max_pr_user, '"'
-          CALL message( 'rrd_read_parts_of_global', 'PAC0277', 0, 0, 0, 6, 0 )
+          CALL message( 'rrd_read_parts_of_global', 'PA0306', 0, 0, 0, 6, 0 )
+          tmp_mpru = MIN( max_pr_user_on_file, max_pr_user )
+       ELSE
+          tmp_mpru = max_pr_user
        ENDIF
 
        CALL rrd_mpi_io( 'statistic_regions', statistic_regions_on_file )
@@ -1387,7 +1439,7 @@
                                      '&statistic regions from run   = "',      &
                                       statistic_regions, '"',                  &
                                      '&statistic data may be lost!'
-          CALL message( 'rrd_read_parts_of_global', 'PAC0279', 0, 1, 0, 6, 0 )
+          CALL message( 'rrd_read_parts_of_global', 'PA0308', 0, 1, 0, 6, 0 )
           tmp_sr = MIN( statistic_regions_on_file, statistic_regions )
        ELSE
           tmp_sr = statistic_regions
@@ -1397,55 +1449,49 @@
 !--    Now read and check some control parameters and skip the rest.
        CALL rrd_mpi_io( 'average_count_pr', average_count_pr )
        IF ( average_count_pr /= 0 )  THEN
-          WRITE( message_string, * ) 'Inflow profiles not temporally averaged.&Averaging ',        &
-                                     'will be done now using', average_count_pr, ' samples.'
-          CALL message( 'rrd_read_parts_of_global', 'PAC0280', 0, 1, 0, 6, 0 )
+          WRITE( message_string, * ) 'inflow profiles not ',          &
+                         'temporally averaged. &Averaging will be ',  &
+                         'done now using', average_count_pr,          &
+                         ' samples.'
+          CALL message( 'rrd_read_parts_of_global', 'PA0309', 0, 1, 0, 6, 0 )
        ENDIF
 
-       ALLOCATE( hom_on_file(0:nz+1,2,pr_max,0:statistic_regions_on_file) )
+       ALLOCATE( hom_on_file(0:nz+1,2,pr_palm+max_pr_user_on_file,0:statistic_regions_on_file) )
        CALL rrd_mpi_io_global_array( 'hom', hom_on_file )
-       hom(:,:,:,0:tmp_sr) = hom_on_file(:,:,:,0:tmp_sr)
+       hom(:,:,1:pr_palm+tmp_mpru,0:tmp_sr) = hom_on_file(:,:,1:pr_palm+tmp_mpru,0:tmp_sr)
        DEALLOCATE( hom_on_file )
 
-       ALLOCATE( hom_sum_on_file(0:nz+1,pr_max,0:statistic_regions_on_file) )
+       ALLOCATE( hom_sum_on_file(0:nz+1,pr_palm+max_pr_user_on_file, 0:statistic_regions_on_file) )
        CALL rrd_mpi_io_global_array( 'hom_sum', hom_sum_on_file )
-       hom_sum(:,:,0:tmp_sr) = hom_sum_on_file(:,:,0:tmp_sr)
+       hom_sum(:,1:pr_palm+tmp_mpru,0:tmp_sr) = hom_sum_on_file(:,1:pr_palm+tmp_mpru,0:tmp_sr)
        DEALLOCATE( hom_sum_on_file )
 
        momentum_advec_check = momentum_advec
        CALL rrd_mpi_io( 'momentum_advec', momentum_advec )
        IF ( TRIM( momentum_advec_check ) /= TRIM( momentum_advec ) )  THEN
-          message_string = 'momentum_advec = "' // TRIM( momentum_advec_check ) //                 &
-                           '" of the restart run differs from momentum_advec = "' //               &
-                           TRIM( momentum_advec) // '" of the initial run'
-          CALL message( 'rrd_read_parts_of_global', 'PAC0282', 1, 2, 0, 6, 0 )
+          WRITE( message_string, * ) 'momentum_advec of the restart ',&
+                                  'run differs from momentum_advec of the ',   &
+                                  'initial run.'
+          CALL message( 'rrd_read_parts_of_global', 'PA0100', 1, 2, 0, 6, 0 )
        ENDIF
 
        CALL rrd_mpi_io( 'bc_lr', bc_lr_on_file )
-       IF ( TRIM( bc_lr_on_file ) /= 'cyclic' )  THEN
-          message_string = 'illegal setting of bc_lr = "cyclic" in the prerun'
-          CALL message( 'rrd_read_parts_of_global', 'PAC0281', 1, 2, 0, 6, 0 )
-       ENDIF
        CALL rrd_mpi_io( 'bc_ns', bc_ns_on_file )
-       IF ( TRIM( bc_ns_on_file ) /= 'cyclic'  )  THEN
-          message_string = 'illegal setting of bc_ns = "cyclic" in the prerun'
-          CALL message( 'rrd_read_parts_of_global', 'PAC0281', 1, 2, 0, 6, 0 )
-       ENDIF
+
+       !-- COVID-19 related code begins (Mikko) 
+       !IF ( TRIM( bc_lr_on_file ) /= 'cyclic'  .OR.  TRIM( bc_ns_on_file ) /= 'cyclic' )  THEN
+       !   message_string = 'bc_lr and/or bc_ns in the prerun was set /= "cyclic"'
+       !   CALL message( 'rrd_read_parts_of_global', 'PA0498', 1, 2, 0, 6, 0 )
+       !ENDIF
+       !-- COVID-19 related code ends
 
        scalar_advec_check = scalar_advec
        CALL rrd_mpi_io( 'scalar_advec', scalar_advec )
        IF ( TRIM( scalar_advec_check ) /= TRIM( scalar_advec ) )  THEN
-          message_string = 'scalar_advec = "' // TRIM( scalar_advec_check ) //                     &
-                           '" of the restart run differs from scalar_advec = "' //                 &
-                           TRIM( momentum_advec) // '" of the initial run'
-          CALL message( 'rrd_read_parts_of_global', 'PAC0284', 1, 2, 0, 6, 0 )
-       ENDIF
-
-       neutral_check = neutral
-       CALL rrd_mpi_io( 'neutral', neutral )
-       IF ( neutral_check  .NEQV.  neutral )  THEN
-          message_string = 'setting of neutral in pre-run differs from setting in main run'
-          CALL message( 'rrd_read_parts_of_global', 'PAC0283', 1, 2, 0, 6, 0 )
+          WRITE( message_string, * ) 'scalar_advec of the restart ',  &
+                                  'run differs from scalar_advec of the ',     &
+                                  'initial run.'
+          CALL message( 'rrd_read_parts_of_global', 'PA0101', 1, 2, 0, 6, 0 )
        ENDIF
 
        CALL rrd_mpi_io( 'nx', nx_on_file )
@@ -1589,9 +1635,9 @@
                       IF ( j > 1000 )  THEN
 !
 !--                      Array bound exceeded
-                         message_string = 'data from subdomain of previous run mapped more ' //    &
-                                          'than 1000 times'
-                         CALL message( 'rrd_local', 'PAC0285', 2, 2, -1, 6, 1 )
+                         message_string = 'data from subdomain of previous' //                        &
+                                          ' run mapped more than 1000 times'
+                         CALL message( 'rrd_local', 'PA0284', 2, 2, -1, 6, 1 )
                       ENDIF
 
                       IF ( j == 1 )  THEN
@@ -1628,17 +1674,19 @@
        myid_char_save = myid_char
 
        IF ( files_to_be_opened /= 1  .OR.  numprocs /= numprocs_previous_run )  THEN
-          message_string = 'number of PEs or virtual PE-grid changed in restart run'
-          CALL message( 'rrd_local', 'PAC0286', 0, 0, 0, 6, 0 )
+          WRITE( message_string, * ) 'number of PEs or virtual PE-grid changed in restart run. & ',   &
+                                     'Set debug_output =.T. to get a list of files from which the & ',&
+                                     'single PEs will read respectively'
+          CALL message( 'rrd_local', 'PA0285', 0, 0, 0, 6, 0 )
           IF ( debug_output )  THEN
              IF ( files_to_be_opened <= 120 )  THEN
-                WRITE( debug_string, '(2A,1X,120(I6.6,1X))' )                                      &
-                  'number of PEs or virtual PE-grid changed in restart run.  PE will read from ',  &
-                  'files ', file_list(1:files_to_be_opened)
+                WRITE( debug_string, '(2A,1X,120(I6.6,1X))' )                                         &
+                     'number of PEs or virtual PE-grid changed in restart run.  PE will read from ',  &
+                     'files ', file_list(1:files_to_be_opened)
              ELSE
-                WRITE( debug_string, '(3A,1X,120(I6.6,1X),A)' )                                    &
-                  'number of PEs or virtual PE-grid changed in restart run.  PE will read from ',  &
-                  'files ', file_list(1:120), '... and more'
+                WRITE( debug_string, '(3A,1X,120(I6.6,1X),A)' )                                      &
+                     'number of PEs or virtual PE-grid changed in restart run.  PE will read from ',  &
+                     'files ', file_list(1:120), '... and more'
              ENDIF
              CALL debug_message( 'rrd_local', 'info' )
           ENDIF
@@ -1666,72 +1714,72 @@
           READ ( 13 )  restart_string(1:length)
           READ ( 13 )  version_on_file
 
-          binary_version_local = '22.04'
+          binary_version_local = '5.1'
           IF ( TRIM( version_on_file ) /= TRIM( binary_version_local ) )  THEN
-             WRITE( message_string, * ) 'version mismatch concerning ',                            &
-                                        'binary_version_local:',                                   &
-                                        '&version on file    = "', TRIM( version_on_file ), '"',   &
+             WRITE( message_string, * ) 'version mismatch concerning ',                               &
+                                        'binary_version_local:',                                      &
+                                        '&version on file    = "', TRIM( version_on_file ), '"',      &
                                         '&version in program = "', TRIM( binary_version_local ), '"'
-             CALL message( 'rrd_local', 'PAC0287', 1, 2, 0, 6, 0 )
+             CALL message( 'rrd_local', 'PA0286', 1, 2, 0, 6, 0 )
           ENDIF
 
 !
 !--       Read number of processors, processor-id, and array ranges.
 !--       Compare the array ranges with those stored in the index bound array.
-          READ ( 13 )  numprocs_on_file, myid_on_file, nxl_on_file, nxr_on_file, nys_on_file,      &
+          READ ( 13 )  numprocs_on_file, myid_on_file, nxl_on_file, nxr_on_file, nys_on_file,         &
                        nyn_on_file, nzb_on_file, nzt_on_file
 
           IF ( nxl_on_file /= hor_index_bounds_previous_run(1,j) )  THEN
-             WRITE( message_string, * ) 'problem with index bound nxl on ',                        &
-                                        'restart file "', myid_char, '"',                          &
-                                        '&nxl = ', nxl_on_file, ' but it should be',               &
-                                        '&= ', hor_index_bounds_previous_run(1,j),                 &
+             WRITE( message_string, * ) 'problem with index bound nxl on ',                           &
+                                        'restart file "', myid_char, '"',                             &
+                                        '&nxl = ', nxl_on_file, ' but it should be',                  &
+                                        '&= ', hor_index_bounds_previous_run(1,j),                    &
                                         '&from the index bound information array'
-             CALL message( 'rrd_local', 'PAC0288', 2, 2, -1, 6, 1 )
+             CALL message( 'rrd_local', 'PA0287', 2, 2, -1, 6, 1 )
           ENDIF
 
           IF ( nxr_on_file /= hor_index_bounds_previous_run(2,j) )  THEN
-              WRITE( message_string, * ) 'problem with index bound nxr on ',                       &
-                                         'restart file "', myid_char, '"'  ,                       &
-                                         ' nxr = ', nxr_on_file, ' but it should be',              &
-                                         ' = ', hor_index_bounds_previous_run(2,j),                &
+              WRITE( message_string, * ) 'problem with index bound nxr on ',                          &
+                                         'restart file "', myid_char, '"'  ,                          &
+                                         ' nxr = ', nxr_on_file, ' but it should be',                 &
+                                         ' = ', hor_index_bounds_previous_run(2,j),                   &
                                          ' from the index bound information array'
-             CALL message( 'rrd_local', 'PAC0289', 2, 2, -1, 6, 1 )
+             CALL message( 'rrd_local', 'PA0288', 2, 2, -1, 6, 1 )
 
           ENDIF
 
           IF ( nys_on_file /= hor_index_bounds_previous_run(3,j) )  THEN
-             WRITE( message_string, * ) 'problem with index bound nys on ',                        &
-                                        'restart file "', myid_char, '"',                          &
-                                        '&nys = ', nys_on_file, ' but it should be',               &
-                                        '&= ', hor_index_bounds_previous_run(3,j),                 &
+             WRITE( message_string, * ) 'problem with index bound nys on ',                           &
+                                        'restart file "', myid_char, '"',                             &
+                                        '&nys = ', nys_on_file, ' but it should be',                  &
+                                        '&= ', hor_index_bounds_previous_run(3,j),                    &
                                         '&from the index bound information array'
-             CALL message( 'rrd_local', 'PAC0290', 2, 2, -1, 6, 1 )
+             CALL message( 'rrd_local', 'PA0289', 2, 2, -1, 6, 1 )
           ENDIF
 
           IF ( nyn_on_file /= hor_index_bounds_previous_run(4,j) )  THEN
-             WRITE( message_string, * ) 'problem with index bound nyn on ',                        &
-                                        'restart file "', myid_char, '"',                          &
-                                        '&nyn = ', nyn_on_file, ' but it should be',               &
-                                        '&= ', hor_index_bounds_previous_run(4,j),                 &
+             WRITE( message_string, * ) 'problem with index bound nyn on ',                           &
+                                        'restart file "', myid_char, '"',                             &
+                                        '&nyn = ', nyn_on_file, ' but it should be',                  &
+                                        '&= ', hor_index_bounds_previous_run(4,j),                    &
                                         '&from the index bound information array'
-             CALL message( 'rrd_local', 'PAC0291', 2, 2, -1, 6, 1 )
+             CALL message( 'rrd_local', 'PA0290', 2, 2, -1, 6, 1 )
           ENDIF
 
           IF ( nzb_on_file /= nzb )  THEN
-             WRITE( message_string, * ) 'mismatch between actual data and data ',                  &
-                                        'from prior run on PE ', myid,                             &
-                                        '&nzb on file = ', nzb_on_file,                            &
+             WRITE( message_string, * ) 'mismatch between actual data and data ',                     &
+                                        'from prior run on PE ', myid,                                &
+                                        '&nzb on file = ', nzb_on_file,                               &
                                         '&nzb         = ', nzb
-             CALL message( 'rrd_local', 'PAC0292', 1, 2, 0, 6, 0 )
+             CALL message( 'rrd_local', 'PA0291', 1, 2, 0, 6, 0 )
           ENDIF
 
           IF ( nzt_on_file /= nzt )  THEN
-             WRITE( message_string, * ) 'mismatch between actual data and data ',                  &
-                                        'from prior run on PE ', myid,                             &
-                                        '&nzt on file = ', nzt_on_file,                            &
+             WRITE( message_string, * ) 'mismatch between actual data and data ',                     &
+                                        'from prior run on PE ', myid,                                &
+                                        '&nzt on file = ', nzt_on_file,                               &
                                         '&nzt         = ', nzt
-             CALL message( 'rrd_local', 'PAC0293', 1, 2, 0, 6, 0 )
+             CALL message( 'rrd_local', 'PA0292', 1, 2, 0, 6, 0 )
           ENDIF
 
 !
@@ -1781,26 +1829,26 @@
                          ALLOCATE( ghf_av(nysg:nyng,nxlg:nxrg) )
                       ENDIF
                       IF ( k == 1 )  READ ( 13 )  tmp_2d
-                      ghf_av(nysc-nbgp:nync+nbgp,nxlc-nbgp:nxrc+nbgp) =                            &
+                      ghf_av(nysc-nbgp:nync+nbgp,nxlc-nbgp:nxrc+nbgp) =                               &
                          tmp_2d(nysf-nbgp:nynf+nbgp,nxlf-nbgp:nxrf+nbgp)
 
                    CASE ( 'e' )
                       IF ( k == 1 )  READ ( 13 )  tmp_3d
-                      e(:,nysc-nbgp:nync+nbgp,nxlc-nbgp:nxrc+nbgp) =                               &
+                      e(:,nysc-nbgp:nync+nbgp,nxlc-nbgp:nxrc+nbgp) =                                  &
                          tmp_3d(:,nysf-nbgp:nynf+nbgp,nxlf-nbgp:nxrf+nbgp)
 
                    CASE ( 'e_av' )
                       IF ( .NOT. ALLOCATED( e_av ) )  THEN
-                         ALLOCATE( e_av(nzb:nzt+1,nys-nbgp:nyn+nbgp,                               &
+                         ALLOCATE( e_av(nzb:nzt+1,nys-nbgp:nyn+nbgp,                                  &
                                         nxl-nbgp:nxr+nbgp) )
                       ENDIF
                       IF ( k == 1 )  READ ( 13 )  tmp_3d
-                      e_av(:,nysc-nbgp:nync+nbgp,nxlc-nbgp:nxrc+nbgp) =                            &
+                      e_av(:,nysc-nbgp:nync+nbgp,nxlc-nbgp:nxrc+nbgp) =                               &
                          tmp_3d(:,nysf-nbgp:nynf+nbgp,nxlf-nbgp:nxrf+nbgp)
 
                    CASE ( 'kh' )
                       IF ( k == 1 )  READ ( 13 )  tmp_3d
-                      kh(:,nysc-nbgp:nync+nbgp,nxlc-nbgp:nxrc+nbgp) =                              &
+                      kh(:,nysc-nbgp:nync+nbgp,nxlc-nbgp:nxrc+nbgp) =                                 &
                          tmp_3d(:,nysf-nbgp:nynf+nbgp,nxlf-nbgp:nxrf+nbgp)
 
                    CASE ( 'kh_av' )
@@ -1808,12 +1856,12 @@
                          ALLOCATE( kh_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg ))
                       ENDIF
                       IF ( k == 1 )  READ ( 13 )  tmp_3d
-                      kh_av(:,nysc-nbgp:nync+nbgp,nxlc-nbgp:nxrc+nbgp) =                           &
+                      kh_av(:,nysc-nbgp:nync+nbgp,nxlc-nbgp:nxrc+nbgp) =                              &
                          tmp_3d(:,nysf-nbgp:nynf+nbgp,nxlf-nbgp:nxrf+nbgp)
 
                    CASE ( 'km' )
                       IF ( k == 1 )  READ ( 13 )  tmp_3d
-                      km(:,nysc-nbgp:nync+nbgp,nxlc-nbgp:nxrc+nbgp) =                              &
+                      km(:,nysc-nbgp:nync+nbgp,nxlc-nbgp:nxrc+nbgp) =                                 &
                          tmp_3d(:,nysf-nbgp:nynf+nbgp,nxlf-nbgp:nxrf+nbgp)
 
                    CASE ( 'km_av' )
@@ -1821,7 +1869,7 @@
                          ALLOCATE( km_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg ))
                       ENDIF
                       IF ( k == 1 )  READ ( 13 )  tmp_3d
-                      km_av(:,nysc-nbgp:nync+nbgp,nxlc-nbgp:nxrc+nbgp) =                           &
+                      km_av(:,nysc-nbgp:nync+nbgp,nxlc-nbgp:nxrc+nbgp) =                              &
                          tmp_3d(:,nysf-nbgp:nynf+nbgp,nxlf-nbgp:nxrf+nbgp)
 
                    CASE ( 'lpt_av' )
@@ -1829,7 +1877,7 @@
                          ALLOCATE( lpt_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg ))
                       ENDIF
                       IF ( k == 1 )  READ ( 13 )  tmp_3d
-                      lpt_av(:,nysc-nbgp:nync+nbgp,nxlc-nbgp:nxrc+nbgp) =                          &
+                      lpt_av(:,nysc-nbgp:nync+nbgp,nxlc-nbgp:nxrc+nbgp) =                             &
                          tmp_3d(:,nysf-nbgp:nynf+nbgp,nxlf-nbgp:nxrf+nbgp)
 
                    CASE ( 'lwp_av' )
@@ -1837,20 +1885,12 @@
                          ALLOCATE( lwp_av(nysg:nyng,nxlg:nxrg) )
                       ENDIF
                       IF ( k == 1 )  READ ( 13 )  tmp_2d
-                      lwp_av(nysc-nbgp:nync+nbgp,nxlc-nbgp:nxrc+nbgp) =                            &
-                         tmp_2d(nysf-nbgp:nynf+nbgp,nxlf-nbgp:nxrf+nbgp)
-
-                   CASE ( 'ol_av' )
-                      IF ( .NOT. ALLOCATED( ol_av ) )  THEN
-                         ALLOCATE( ol_av(nysg:nyng,nxlg:nxrg) )
-                      ENDIF
-                      IF ( k == 1 )  READ ( 13 )  tmp_2d
-                      ol_av(nysc-nbgp:nync+nbgp,nxlc-nbgp:nxrc+nbgp) =                             &
+                      lwp_av(nysc-nbgp:nync+nbgp,nxlc-nbgp:nxrc+nbgp) =                               &
                          tmp_2d(nysf-nbgp:nynf+nbgp,nxlf-nbgp:nxrf+nbgp)
 
                    CASE ( 'p' )
                       IF ( k == 1 )  READ ( 13 )  tmp_3d
-                      p(:,nysc-nbgp:nync+nbgp,nxlc-nbgp:nxrc+nbgp) =                               &
+                      p(:,nysc-nbgp:nync+nbgp,nxlc-nbgp:nxrc+nbgp) =                                  &
                          tmp_3d(:,nysf-nbgp:nynf+nbgp,nxlf-nbgp:nxrf+nbgp)
 
                    CASE ( 'p_av' )
@@ -1858,28 +1898,12 @@
                          ALLOCATE( p_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
                       ENDIF
                       IF ( k == 1 )  READ ( 13 )  tmp_3d
-                      p_av(:,nysc-nbgp:nync+nbgp,nxlc-nbgp:nxrc+nbgp) =                            &
+                      p_av(:,nysc-nbgp:nync+nbgp,nxlc-nbgp:nxrc+nbgp) =                               &
                          tmp_3d(:,nysf-nbgp:nynf+nbgp,nxlf-nbgp:nxrf+nbgp)
-
-                   CASE ( 'pres_drag_x_av' )
-                      IF ( .NOT. ALLOCATED( pres_drag_x_av ) )  THEN
-                         ALLOCATE( pres_drag_x_av(nysg:nyng,nxlg:nxrg) )
-                      ENDIF
-                      IF ( k == 1 )  READ ( 13 )  tmp_2d
-                      pres_drag_x_av(nysc-nbgp:nync+nbgp,nxlc-nbgp:nxrc+nbgp) =                    &
-                         tmp_2d(nysf-nbgp:nynf+nbgp,nxlf-nbgp:nxrf+nbgp)
-
-                   CASE ( 'pres_drag_y_av' )
-                      IF ( .NOT. ALLOCATED( pres_drag_y_av ) )  THEN
-                         ALLOCATE( pres_drag_y_av(nysg:nyng,nxlg:nxrg) )
-                      ENDIF
-                      IF ( k == 1 )  READ ( 13 )  tmp_2d
-                      pres_drag_y_av(nysc-nbgp:nync+nbgp,nxlc-nbgp:nxrc+nbgp) =                    &
-                         tmp_2d(nysf-nbgp:nynf+nbgp,nxlf-nbgp:nxrf+nbgp)
 
                    CASE ( 'pt' )
                       IF ( k == 1 )  READ ( 13 )  tmp_3d
-                      pt(:,nysc-nbgp:nync+nbgp,nxlc-nbgp:nxrc+nbgp) =                              &
+                      pt(:,nysc-nbgp:nync+nbgp,nxlc-nbgp:nxrc+nbgp) =                                 &
                          tmp_3d(:,nysf-nbgp:nynf+nbgp,nxlf-nbgp:nxrf+nbgp)
 
                    CASE ( 'pt_av' )
@@ -1887,12 +1911,12 @@
                          ALLOCATE( pt_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
                       ENDIF
                       IF ( k == 1 )  READ ( 13 )  tmp_3d
-                      pt_av(:,nysc-nbgp:nync+nbgp,nxlc-nbgp:nxrc+nbgp) =                           &
+                      pt_av(:,nysc-nbgp:nync+nbgp,nxlc-nbgp:nxrc+nbgp) =                              &
                          tmp_3d(:,nysf-nbgp:nynf+nbgp,nxlf-nbgp:nxrf+nbgp)
 
                    CASE ( 'q' )
                       IF ( k == 1 )  READ ( 13 )  tmp_3d
-                      q(:,nysc-nbgp:nync+nbgp,nxlc-nbgp:nxrc+nbgp) =                               &
+                      q(:,nysc-nbgp:nync+nbgp,nxlc-nbgp:nxrc+nbgp) =                                  &
                          tmp_3d(:,nysf-nbgp:nynf+nbgp,nxlf-nbgp:nxrf+nbgp)
 
                    CASE ( 'q_av' )
@@ -1900,12 +1924,12 @@
                          ALLOCATE( q_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg ))
                       ENDIF
                       IF ( k == 1 )  READ ( 13 )  tmp_3d
-                      q_av(:,nysc-nbgp:nync+nbgp,nxlc-nbgp:nxrc+nbgp) =                            &
+                      q_av(:,nysc-nbgp:nync+nbgp,nxlc-nbgp:nxrc+nbgp) =                               &
                          tmp_3d(:,nysf-nbgp:nynf+nbgp,nxlf-nbgp:nxrf+nbgp)
 
                    CASE ( 'ql' )
                       IF ( k == 1 )  READ ( 13 )  tmp_3d
-                      ql(:,nysc-nbgp:nync+nbgp,nxlc-nbgp:nxrc+nbgp) =                              &
+                      ql(:,nysc-nbgp:nync+nbgp,nxlc-nbgp:nxrc+nbgp) =                                 &
                          tmp_3d(:,nysf-nbgp:nynf+nbgp,nxlf-nbgp:nxrf+nbgp)
 
                    CASE ( 'ql_av' )
@@ -1913,7 +1937,7 @@
                          ALLOCATE( ql_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
                       ENDIF
                       IF ( k == 1 )  READ ( 13 )  tmp_3d
-                      ql_av(:,nysc-nbgp:nync+nbgp,nxlc-nbgp:nxrc+nbgp) =                           &
+                      ql_av(:,nysc-nbgp:nync+nbgp,nxlc-nbgp:nxrc+nbgp) =                              &
                          tmp_3d(:,nysf-nbgp:nynf+nbgp,nxlf-nbgp:nxrf+nbgp)
 
                    CASE ( 'qsurf_av' )
@@ -1921,7 +1945,7 @@
                          ALLOCATE( qsurf_av(nysg:nyng,nxlg:nxrg) )
                       ENDIF
                       IF ( k == 1 )  READ ( 13 )  tmp_2d
-                      qsurf_av(nysc-nbgp:nync+nbgp,nxlc-nbgp:nxrc+nbgp) =                          &
+                      qsurf_av(nysc-nbgp:nync+nbgp,nxlc-nbgp:nxrc+nbgp) =                             &
                          tmp_2d(nysf-nbgp:nynf+nbgp,nxlf-nbgp:nxrf+nbgp)
 
                    CASE ( 'qsws_av' )
@@ -1929,7 +1953,7 @@
                          ALLOCATE( qsws_av(nysg:nyng,nxlg:nxrg) )
                       ENDIF
                       IF ( k == 1 )  READ ( 13 )  tmp_2d
-                      qsws_av(nysc-nbgp:nync+nbgp,nxlc-nbgp:nxrc+nbgp)  =                          &
+                      qsws_av(nysc-nbgp:nync+nbgp,nxlc-nbgp:nxrc+nbgp)  =                             &
                          tmp_2d(nysf-nbgp:nynf+nbgp,nxlf-nbgp:nxrf+nbgp)
 
                    CASE ( 'qv_av' )
@@ -1937,7 +1961,7 @@
                          ALLOCATE( qv_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
                       ENDIF
                       IF ( k == 1 )  READ ( 13 )  tmp_3d
-                      qv_av(:,nysc-nbgp:nync+nbgp,nxlc-nbgp:nxrc+nbgp) =                           &
+                      qv_av(:,nysc-nbgp:nync+nbgp,nxlc-nbgp:nxrc+nbgp) =                              &
                          tmp_3d(:,nysf-nbgp:nynf+nbgp,nxlf-nbgp:nxrf+nbgp)
 
                    CASE ( 'r_a_av' )
@@ -1945,7 +1969,7 @@
                          ALLOCATE( r_a_av(nysg:nyng,nxlg:nxrg) )
                       ENDIF
                       IF ( k == 1 )  READ ( 13 )  tmp_2d
-                      r_a_av(nysc-nbgp:nync+nbgp,nxlc-nbgp:nxrc+nbgp) =                            &
+                      r_a_av(nysc-nbgp:nync+nbgp,nxlc-nbgp:nxrc+nbgp) =                               &
                          tmp_2d(nysf-nbgp:nynf+nbgp,nxlf-nbgp:nxrf+nbgp)
 
                    CASE ( 'random_iv' )  ! still unresolved issue
@@ -1969,7 +1993,7 @@
 
                    CASE ( 's' )
                       IF ( k == 1 )  READ ( 13 )  tmp_3d
-                      s(:,nysc-nbgp:nync+nbgp,nxlc-nbgp:nxrc+nbgp) =                               &
+                      s(:,nysc-nbgp:nync+nbgp,nxlc-nbgp:nxrc+nbgp) =                                  &
                          tmp_3d(:,nysf-nbgp:nynf+nbgp,nxlf-nbgp:nxrf+nbgp)
 
                    CASE ( 's_av' )
@@ -1977,7 +2001,7 @@
                          ALLOCATE( s_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg))
                       ENDIF
                       IF ( k == 1 )  READ ( 13 )  tmp_3d
-                      s_av(:,nysc-nbgp:nync+nbgp,nxlc-nbgp:nxrc+nbgp) =                            &
+                      s_av(:,nysc-nbgp:nync+nbgp,nxlc-nbgp:nxrc+nbgp) =                               &
                          tmp_3d(:,nysf-nbgp:nynf+nbgp,nxlf-nbgp:nxrf+nbgp)
 
                    CASE ( 'shf_av' )
@@ -1985,7 +2009,7 @@
                          ALLOCATE( shf_av(nysg:nyng,nxlg:nxrg) )
                       ENDIF
                       IF ( k == 1 )  READ ( 13 )  tmp_2d
-                      shf_av(nysc-nbgp:nync+nbgp,nxlc-nbgp:nxrc+nbgp)  =                           &
+                      shf_av(nysc-nbgp:nync+nbgp,nxlc-nbgp:nxrc+nbgp)  =                              &
                          tmp_2d(nysf-nbgp:nynf+nbgp,nxlf-nbgp:nxrf+nbgp)
 
                    CASE ( 'ssurf_av' )
@@ -1993,7 +2017,7 @@
                          ALLOCATE( ssurf_av(nysg:nyng,nxlg:nxrg) )
                       ENDIF
                       IF ( k == 1 )  READ ( 13 )  tmp_2d
-                      ssurf_av(nysc-nbgp:nync+nbgp,nxlc-nbgp:nxrc+nbgp) =                          &
+                      ssurf_av(nysc-nbgp:nync+nbgp,nxlc-nbgp:nxrc+nbgp) =                             &
                          tmp_2d(nysf-nbgp:nynf+nbgp,nxlf-nbgp:nxrf+nbgp)
 
                    CASE ( 'ssws_av' )
@@ -2001,7 +2025,7 @@
                          ALLOCATE( ssws_av(nysg:nyng,nxlg:nxrg) )
                       ENDIF
                       IF ( k == 1 )  READ ( 13 )  tmp_2d
-                      ssws_av(nysc-nbgp:nync+nbgp,nxlc-nbgp:nxrc+nbgp)  =                          &
+                      ssws_av(nysc-nbgp:nync+nbgp,nxlc-nbgp:nxrc+nbgp)  =                             &
                          tmp_2d(nysf-nbgp:nynf+nbgp,nxlf-nbgp:nxrf+nbgp)
 
                    CASE ( 'ts_av' )
@@ -2009,7 +2033,7 @@
                          ALLOCATE( ts_av(nysg:nyng,nxlg:nxrg) )
                       ENDIF
                       IF ( k == 1 )  READ ( 13 )  tmp_2d
-                      ts_av(nysc-nbgp:nync+nbgp,nxlc-nbgp:nxrc+nbgp)  =                            &
+                      ts_av(nysc-nbgp:nync+nbgp,nxlc-nbgp:nxrc+nbgp)  =                               &
                            tmp_2d(nysf-nbgp:nynf+nbgp,nxlf-nbgp:nxrf+nbgp)
 
                    CASE ( 'tsurf_av' )
@@ -2017,12 +2041,12 @@
                          ALLOCATE( tsurf_av(nysg:nyng,nxlg:nxrg) )
                       ENDIF
                       IF ( k == 1 )  READ ( 13 )  tmp_2d
-                      tsurf_av(nysc-nbgp:nync+nbgp,nxlc-nbgp:nxrc+nbgp) =                          &
+                      tsurf_av(nysc-nbgp:nync+nbgp,nxlc-nbgp:nxrc+nbgp) =                             &
                          tmp_2d(nysf-nbgp:nynf+nbgp,nxlf-nbgp:nxrf+nbgp)
 
                    CASE ( 'u' )
                       IF ( k == 1 )  READ ( 13 )  tmp_3d
-                      u(:,nysc-nbgp:nync+nbgp,nxlc-nbgp:nxrc+nbgp) =                               &
+                      u(:,nysc-nbgp:nync+nbgp,nxlc-nbgp:nxrc+nbgp) =                                  &
                          tmp_3d(:,nysf-nbgp:nynf+nbgp,nxlf-nbgp:nxrf+nbgp)
 
                    CASE ( 'u_av' )
@@ -2030,20 +2054,60 @@
                          ALLOCATE( u_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
                       ENDIF
                       IF ( k == 1 )  READ ( 13 )  tmp_3d
-                      u_av(:,nysc-nbgp:nync+nbgp,nxlc-nbgp:nxrc+nbgp) =                            &
+                      u_av(:,nysc-nbgp:nync+nbgp,nxlc-nbgp:nxrc+nbgp) =                               &
                          tmp_3d(:,nysf-nbgp:nynf+nbgp,nxlf-nbgp:nxrf+nbgp)
+
+                   CASE ( 'u_m_l' )
+                      IF ( k == 1 )  THEN
+                         ALLOCATE( tmp_3d_non_standard(nzb:nzt+1,nys_on_file-nbgp:nyn_on_file+nbgp,   &
+                                                       1:2) )
+                         READ ( 13 )  tmp_3d_non_standard
+                      ENDIF
+                      IF ( bc_radiation_l )  THEN
+                         u_m_l(:,nysc-nbgp:nync+nbgp,:) =  tmp_3d_non_standard(:,nysf-nbgp:nynf+nbgp,:)
+                      ENDIF
+
+                   CASE ( 'u_m_n' )
+                      IF ( k == 1 )  THEN
+                         ALLOCATE( tmp_3d_non_standard(nzb:nzt+1,ny-1:ny,                             &
+                                                       nxl_on_file-nbgp:nxr_on_file+nbgp) )
+                         READ ( 13 )  tmp_3d_non_standard
+                      ENDIF
+                      IF ( bc_radiation_n )  THEN
+                         u_m_n(:,:,nxlc-nbgp:nxrc+nbgp) = tmp_3d_non_standard(:,:,nxlf-nbgp:nxrf+nbgp)
+                      ENDIF
+
+                   CASE ( 'u_m_r' )
+                      IF ( k == 1 )  THEN
+                         ALLOCATE( tmp_3d_non_standard(nzb:nzt+1,nys_on_file-nbgp:nyn_on_file+nbgp,   &
+                                                       nx-1:nx) )
+                         READ ( 13 )  tmp_3d_non_standard
+                      ENDIF
+                      IF ( bc_radiation_r )  THEN
+                         u_m_r(:,nysc-nbgp:nync+nbgp,:) = tmp_3d_non_standard(:,nysf-nbgp:nynf+nbgp,:)
+                      ENDIF
+
+                   CASE ( 'u_m_s' )
+                      IF ( k == 1 )  THEN
+                         ALLOCATE( tmp_3d_non_standard(nzb:nzt+1,0:1,                                 &
+                                                       nxl_on_file-nbgp:nxr_on_file+nbgp) )
+                         READ ( 13 )  tmp_3d_non_standard
+                      ENDIF
+                      IF ( bc_radiation_s )  THEN
+                         u_m_s(:,:,nxlc-nbgp:nxrc+nbgp) = tmp_3d_non_standard(:,:,nxlf-nbgp:nxrf+nbgp)
+                      ENDIF
 
                    CASE ( 'us_av' )
                       IF ( .NOT. ALLOCATED( us_av ) )  THEN
                          ALLOCATE( us_av(nysg:nyng,nxlg:nxrg) )
                       ENDIF
                       IF ( k == 1 )  READ ( 13 )  tmp_2d
-                      us_av(nysc-nbgp:nync+nbgp,nxlc-nbgp:nxrc+nbgp)  =                            &
+                      us_av(nysc-nbgp:nync+nbgp,nxlc-nbgp:nxrc+nbgp)  =                               &
                          tmp_2d(nysf-nbgp:nynf+nbgp,nxlf-nbgp:nxrf+nbgp)
 
                    CASE ( 'v' )
                       IF ( k == 1 )  READ ( 13 )  tmp_3d
-                      v(:,nysc-nbgp:nync+nbgp,nxlc-nbgp:nxrc+nbgp) =                               &
+                      v(:,nysc-nbgp:nync+nbgp,nxlc-nbgp:nxrc+nbgp) =                                  &
                          tmp_3d(:,nysf-nbgp:nynf+nbgp,nxlf-nbgp:nxrf+nbgp)
 
                    CASE ( 'v_av' )
@@ -2051,12 +2115,52 @@
                          ALLOCATE( v_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
                       ENDIF
                       IF ( k == 1 )  READ ( 13 )  tmp_3d
-                      v_av(:,nysc-nbgp:nync+nbgp,nxlc-nbgp:nxrc+nbgp) =                            &
+                      v_av(:,nysc-nbgp:nync+nbgp,nxlc-nbgp:nxrc+nbgp) =                               &
                          tmp_3d(:,nysf-nbgp:nynf+nbgp,nxlf-nbgp:nxrf+nbgp)
+
+                   CASE ( 'v_m_l' )
+                      IF ( k == 1 )  THEN
+                         ALLOCATE( tmp_3d_non_standard(nzb:nzt+1,nys_on_file-nbgp:nyn_on_file+nbgp,   &
+                                                       0:1) )
+                         READ ( 13 )  tmp_3d_non_standard
+                      ENDIF
+                      IF ( bc_radiation_l )  THEN
+                         v_m_l(:,nysc-nbgp:nync+nbgp,:) = tmp_3d_non_standard(:,nysf-nbgp:nynf+nbgp,:)
+                      ENDIF
+
+                   CASE ( 'v_m_n' )
+                      IF ( k == 1 )  THEN
+                         ALLOCATE( tmp_3d_non_standard(nzb:nzt+1,ny-1:ny,                             &
+                                                       nxl_on_file-nbgp:nxr_on_file+nbgp) )
+                         READ ( 13 )  tmp_3d_non_standard
+                      ENDIF
+                      IF ( bc_radiation_n )  THEN
+                         v_m_n(:,:,nxlc-nbgp:nxrc+nbgp) = tmp_3d_non_standard(:,:,nxlf-nbgp:nxrf+nbgp)
+                      ENDIF
+
+                   CASE ( 'v_m_r' )
+                      IF ( k == 1 )  THEN
+                         ALLOCATE( tmp_3d_non_standard(nzb:nzt+1,nys_on_file-nbgp:nyn_on_file+nbgp,   &
+                                                       nx-1:nx) )
+                         READ ( 13 )  tmp_3d_non_standard
+                      ENDIF
+                      IF ( bc_radiation_r )  THEN
+                         v_m_r(:,nysc-nbgp:nync+nbgp,:) = tmp_3d_non_standard(:,nysf-nbgp:nynf+nbgp,:)
+                      ENDIF
+
+                   CASE ( 'v_m_s' )
+                      IF ( k == 1 )  THEN
+                         ALLOCATE( tmp_3d_non_standard(nzb:nzt+1,1:2,                                 &
+                                                       nxl_on_file-nbgp:nxr_on_file+nbgp) )
+                         READ ( 13 )  tmp_3d_non_standard
+                      ENDIF
+                      IF ( bc_radiation_s )  THEN
+                         v_m_s(:,:,nxlc-nbgp:nxrc+nbgp) = tmp_3d_non_standard(:,:,nxlf-nbgp:nxrf+nbgp)
+                      ENDIF
 
                    CASE ( 'vpt' )
                       IF ( k == 1 )  READ ( 13 )  tmp_3d
-                      vpt(:,nysc-nbgp:nync+nbgp,nxlc-nbgp:nxrc+nbgp) =                             &
+                      vpt(:,nysc-nbgp:nync+nbgp,nxlc-nbgp:nxrc+nbgp) =                                &
                          tmp_3d(:,nysf-nbgp:nynf+nbgp,nxlf-nbgp:nxrf+nbgp)
 
                    CASE ( 'vpt_av' )
@@ -2064,12 +2168,12 @@
                          ALLOCATE( vpt_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
                       ENDIF
                       IF ( k == 1 )  READ ( 13 )  tmp_3d
-                      vpt_av(:,nysc-nbgp:nync+nbgp,nxlc-nbgp:nxrc+nbgp) =                          &
+                      vpt_av(:,nysc-nbgp:nync+nbgp,nxlc-nbgp:nxrc+nbgp) =                             &
                          tmp_3d(:,nysf-nbgp:nynf+nbgp,nxlf-nbgp:nxrf+nbgp)
 
                    CASE ( 'w' )
                       IF ( k == 1 )  READ ( 13 )  tmp_3d
-                      w(:,nysc-nbgp:nync+nbgp,nxlc-nbgp:nxrc+nbgp) =                               &
+                      w(:,nysc-nbgp:nync+nbgp,nxlc-nbgp:nxrc+nbgp) =                                  &
                          tmp_3d(:,nysf-nbgp:nynf+nbgp,nxlf-nbgp:nxrf+nbgp)
 
                    CASE ( 'w_av' )
@@ -2077,15 +2181,55 @@
                          ALLOCATE( w_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
                       ENDIF
                       IF ( k == 1 )  READ ( 13 )  tmp_3d
-                      w_av(:,nysc-nbgp:nync+nbgp,nxlc-nbgp:nxrc+nbgp) =                            &
+                      w_av(:,nysc-nbgp:nync+nbgp,nxlc-nbgp:nxrc+nbgp) =                               &
                          tmp_3d(:,nysf-nbgp:nynf+nbgp,nxlf-nbgp:nxrf+nbgp)
+
+                   CASE ( 'w_m_l' )
+                      IF ( k == 1 )  THEN
+                         ALLOCATE( tmp_3d_non_standard(nzb:nzt+1,nys_on_file-nbgp:nyn_on_file+nbgp,   &
+                                                       0:1) )
+                         READ ( 13 )  tmp_3d_non_standard
+                      ENDIF
+                      IF ( bc_radiation_l )  THEN
+                         w_m_l(:,nysc-nbgp:nync+nbgp,:) = tmp_3d_non_standard(:,nysf-nbgp:nynf+nbgp,:)
+                      ENDIF
+
+                   CASE ( 'w_m_n' )
+                      IF ( k == 1 )  THEN
+                         ALLOCATE( tmp_3d_non_standard(nzb:nzt+1,ny-1:ny,                             &
+                                                       nxl_on_file-nbgp:nxr_on_file+nbgp) )
+                         READ ( 13 )  tmp_3d_non_standard
+                      ENDIF
+                      IF ( bc_radiation_n )  THEN
+                         w_m_n(:,:,nxlc-nbgp:nxrc+nbgp) = tmp_3d_non_standard(:,:,nxlf-nbgp:nxrf+nbgp)
+                      ENDIF
+
+                   CASE ( 'w_m_r' )
+                      IF ( k == 1 )  THEN
+                         ALLOCATE( tmp_3d_non_standard(nzb:nzt+1,nys_on_file-nbgp:nyn_on_file+nbgp,   &
+                                                       nx-1:nx) )
+                         READ ( 13 )  tmp_3d_non_standard
+                      ENDIF
+                      IF ( bc_radiation_r )  THEN
+                         w_m_r(:,nysc-nbgp:nync+nbgp,:) = tmp_3d_non_standard(:,nysf-nbgp:nynf+nbgp,:)
+                      ENDIF
+
+                   CASE ( 'w_m_s' )
+                      IF ( k == 1 )  THEN
+                         ALLOCATE( tmp_3d_non_standard(nzb:nzt+1,0:1,                                 &
+                                                       nxl_on_file-nbgp:nxr_on_file+nbgp) )
+                         READ ( 13 )  tmp_3d_non_standard
+                      ENDIF
+                      IF ( bc_radiation_s )  THEN
+                         w_m_s(:,:,nxlc-nbgp:nxrc+nbgp) = tmp_3d_non_standard(:,:,nxlf-nbgp:nxrf+nbgp)
+                      ENDIF
 
                    CASE ( 'z0_av' )
                       IF ( .NOT. ALLOCATED( z0_av ) )  THEN
                          ALLOCATE( z0_av(nysg:nyng,nxlg:nxrg) )
                       ENDIF
                       IF ( k == 1 )  READ ( 13 )  tmp_2d
-                      z0_av(nysc-nbgp:nync+nbgp,nxlc-nbgp:nxrc+nbgp)  =                            &
+                      z0_av(nysc-nbgp:nync+nbgp,nxlc-nbgp:nxrc+nbgp)  =                               &
                          tmp_2d(nysf-nbgp:nynf+nbgp,nxlf-nbgp:nxrf+nbgp)
 
                    CASE ( 'z0h_av' )
@@ -2093,7 +2237,7 @@
                          ALLOCATE( z0h_av(nysg:nyng,nxlg:nxrg) )
                       ENDIF
                       IF ( k == 1 )  READ ( 13 )  tmp_2d
-                      z0h_av(nysc-nbgp:nync+nbgp,nxlc-nbgp:nxrc+nbgp)  =                           &
+                      z0h_av(nysc-nbgp:nync+nbgp,nxlc-nbgp:nxrc+nbgp)  =                              &
                           tmp_2d(nysf-nbgp:nynf+nbgp,nxlf-nbgp:nxrf+nbgp)
 
                    CASE ( 'z0q_av' )
@@ -2101,36 +2245,31 @@
                          ALLOCATE( z0q_av(nysg:nyng,nxlg:nxrg) )
                       ENDIF
                       IF ( k == 1 )  READ ( 13 )  tmp_2d
-                      z0q_av(nysc-nbgp:nync+nbgp,nxlc-nbgp:nxrc+nbgp)  =                           &
+                      z0q_av(nysc-nbgp:nync+nbgp,nxlc-nbgp:nxrc+nbgp)  =                              &
                       tmp_2d(nysf-nbgp:nynf+nbgp,nxlf-nbgp:nxrf+nbgp)
 
                    CASE DEFAULT
 
 !
 !--                   Read restart data of surfaces
-                      IF ( .NOT. found )  CALL surface_rrd_local( k, nxlf, nxlc, nxl_on_file, nxrf,&
-                                                                  nxr_on_file, nynf, nyn_on_file,  &
+                      IF ( .NOT. found )  CALL surface_rrd_local( k, nxlf, nxlc, nxl_on_file, nxrf,   &
+                                                                  nxr_on_file, nynf, nyn_on_file,     &
                                                                   nysf, nysc, nys_on_file, found )
 !
-!--                   Read restart data of surface_data_output_mod.  Surface data do not need
-!--                   overlap data, so do not pass these information.
-                      IF ( .NOT. found )  CALL surface_data_output_rrd_local( found )
-!
 !--                   Read restart data of other modules
-                      IF ( .NOT. found ) CALL module_interface_rrd_local(                          &
-                                                                  k, nxlf, nxlc, nxl_on_file, nxrf,&
-                                                                  nxrc, nxr_on_file, nynf, nync,   &
-                                                                  nyn_on_file, nysf, nysc,         &
-                                                                  nys_on_file, tmp_2d, tmp_3d,     &
-                                                                  found )
+                      IF ( .NOT. found ) CALL module_interface_rrd_local(                             &
+                                                                  k, nxlf, nxlc, nxl_on_file, nxrf,   &
+                                                                  nxrc, nxr_on_file, nynf, nync,      &
+                                                                  nyn_on_file, nysf, nysc,            &
+                                                                  nys_on_file, tmp_2d, tmp_3d, found )
 
 
                       IF ( .NOT. found )  THEN
-                         WRITE( message_string, * ) 'unknown variable named "',                    &
-                                                    restart_string(1:length),                      &
-                                                   '" found in subdomain data ',                   &
+                         WRITE( message_string, * ) 'unknown variable named "',                       &
+                                                    restart_string(1:length),                         &
+                                                   '" found in subdomain data ',                      &
                                                    'from prior run on PE ', myid
-                         CALL message( 'rrd_local', 'PAC0274', 1, 2, 0, 6, 0 )
+                         CALL message( 'rrd_local', 'PA0302', 1, 2, 0, 6, 0 )
 
                       ENDIF
 
@@ -2176,96 +2315,63 @@
 !--    Open the MPI-IO restart file.
        CALL rd_mpi_io_open( 'read', 'BININ' // TRIM( coupling_char ) )
 
-!
-!--    Note, restart input of time-averaged quantities is skipped in case of cyclic-fill
-!--    initialization. This case, input of time-averaged data is useless and can lead to faulty
-!--    averaging.
-       IF ( .NOT. cyclic_fill_initialization )  THEN
-          CALL rd_mpi_io_check_array( 'ghf_av' , found = array_found )
-          IF ( array_found )  THEN
-             IF (.NOT. ALLOCATED( ghf_av ) )  ALLOCATE( ghf_av(nysg:nyng,nxlg:nxrg) )
-             CALL rrd_mpi_io( 'ghf_av', ghf_av )
-          ENDIF
+
+       CALL rd_mpi_io_check_array( 'ghf_av' , found = array_found )
+       IF ( array_found )  THEN
+          IF (.NOT. ALLOCATED( ghf_av ) )  ALLOCATE( ghf_av(nysg:nyng,nxlg:nxrg) )
+          CALL rrd_mpi_io( 'ghf_av', ghf_av )
        ENDIF
 
        CALL rrd_mpi_io( 'e', e )
 
-       IF ( .NOT. cyclic_fill_initialization )  THEN
-          CALL rd_mpi_io_check_array( 'e_av' , found = array_found )
-          IF ( array_found  )  THEN
-             IF ( .NOT. ALLOCATED( e_av ) )  ALLOCATE( e_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-             CALL rrd_mpi_io( 'e_av', e_av )
-          ENDIF
+       CALL rd_mpi_io_check_array( 'e_av' , found = array_found )
+       IF ( array_found  )  THEN
+          IF ( .NOT. ALLOCATED( e_av ) )  ALLOCATE( e_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
+          CALL rrd_mpi_io( 'e_av', e_av )
        ENDIF
 
        CALL rrd_mpi_io( 'kh', kh )
 
-       IF ( .NOT. cyclic_fill_initialization )  THEN
-          CALL rd_mpi_io_check_array( 'kh_av' , found = array_found )
-          IF ( array_found )  THEN
-             IF ( .NOT. ALLOCATED( kh_av ) )  ALLOCATE( kh_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-             CALL rrd_mpi_io( 'kh_av', kh_av )
-          ENDIF
+       CALL rd_mpi_io_check_array( 'kh_av' , found = array_found )
+       IF ( array_found )  THEN
+          IF ( .NOT. ALLOCATED( kh_av ) )  ALLOCATE( kh_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
+          CALL rrd_mpi_io( 'kh_av', kh_av )
        ENDIF
 
        CALL rrd_mpi_io( 'km' , km)
 
-       IF ( .NOT. cyclic_fill_initialization )  THEN
-          CALL rd_mpi_io_check_array( 'km_av' , found = array_found )
-          IF ( array_found )  THEN
-             IF ( .NOT. ALLOCATED( km_av ) )  ALLOCATE( km_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-             CALL rrd_mpi_io( 'km_av', km_av )
-          ENDIF
-!
-          CALL rd_mpi_io_check_array( 'lpt_av' , found = array_found )
-          IF ( array_found )  THEN
-             IF ( .NOT. ALLOCATED( lpt_av ) )  ALLOCATE( lpt_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-             CALL rrd_mpi_io( 'lpt_av', lpt_av )
-          ENDIF
+       CALL rd_mpi_io_check_array( 'km_av' , found = array_found )
+       IF ( array_found )  THEN
+          IF ( .NOT. ALLOCATED( km_av ) )  ALLOCATE( km_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
+          CALL rrd_mpi_io( 'km_av', km_av )
+       ENDIF
 
-          CALL rd_mpi_io_check_array( 'lwp_av' , found = array_found )
-          IF ( array_found )  THEN
-             IF ( .NOT. ALLOCATED( lwp_av ) )  ALLOCATE( lwp_av(nysg:nyng,nxlg:nxrg) )
-             CALL rrd_mpi_io( 'lwp_av', lwp_av )
-          ENDIF
+       CALL rd_mpi_io_check_array( 'lpt_av' , found = array_found )
+       IF ( array_found )  THEN
+          IF ( .NOT. ALLOCATED( lpt_av ) )  ALLOCATE( lpt_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
+          CALL rrd_mpi_io( 'lpt_av', lpt_av )
+       ENDIF
 
-          CALL rd_mpi_io_check_array( 'ol_av' , found = array_found )
-          IF ( array_found )  THEN
-             IF ( .NOT. ALLOCATED( ol_av ) )  ALLOCATE( ol_av(nysg:nyng,nxlg:nxrg) )
-             CALL rrd_mpi_io( 'ol_av', ol_av )
-          ENDIF
+       CALL rd_mpi_io_check_array( 'lwp_av' , found = array_found )
+       IF ( array_found )  THEN
+          IF ( .NOT. ALLOCATED( lwp_av ) )  ALLOCATE( lwp_av(nysg:nyng,nxlg:nxrg) )
+          CALL rrd_mpi_io( 'lwp_av', lwp_av )
        ENDIF
 
        CALL rrd_mpi_io( 'p', p)
 
-       IF ( .NOT. cyclic_fill_initialization )  THEN
-          CALL rd_mpi_io_check_array( 'p_av' , found = array_found )
-          IF ( array_found )  THEN
-             IF ( .NOT. ALLOCATED( p_av ) )  ALLOCATE( p_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-             CALL rrd_mpi_io( 'p_av', p_av )
-          ENDIF
-
-          CALL rd_mpi_io_check_array( 'pres_drag_x_av' , found = array_found )
-          IF ( array_found )  THEN
-             IF ( .NOT. ALLOCATED( pres_drag_x_av ) )  ALLOCATE( pres_drag_x_av(nysg:nyng,nxlg:nxrg) )
-             CALL rrd_mpi_io( 'pres_drag_x_av', pres_drag_x_av )
-          ENDIF
-
-          CALL rd_mpi_io_check_array( 'pres_drag_y_av' , found = array_found )
-          IF ( array_found )  THEN
-             IF ( .NOT. ALLOCATED( pres_drag_y_av ) )  ALLOCATE( pres_drag_y_av(nysg:nyng,nxlg:nxrg) )
-             CALL rrd_mpi_io( 'pres_drag_y_av', pres_drag_y_av )
-          ENDIF
+       CALL rd_mpi_io_check_array( 'p_av' , found = array_found )
+       IF ( array_found )  THEN
+          IF ( .NOT. ALLOCATED( p_av ) )  ALLOCATE( p_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
+          CALL rrd_mpi_io( 'p_av', p_av )
        ENDIF
 
        CALL rrd_mpi_io( 'pt', pt)
 
-       IF ( .NOT. cyclic_fill_initialization )  THEN
-          CALL rd_mpi_io_check_array( 'pt_av' , found = array_found )
-          IF ( array_found )  THEN
-             IF ( .NOT. ALLOCATED( pt_av ) )  ALLOCATE( pt_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-             CALL rrd_mpi_io( 'pt_av', pt_av )
-          ENDIF
+       CALL rd_mpi_io_check_array( 'pt_av' , found = array_found )
+       IF ( array_found )  THEN
+          IF ( .NOT. ALLOCATED( pt_av ) )  ALLOCATE( pt_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
+          CALL rrd_mpi_io( 'pt_av', pt_av )
        ENDIF
 
        CALL rd_mpi_io_check_array( 'q' , found = array_found )
@@ -2273,12 +2379,10 @@
           CALL rrd_mpi_io( 'q', q )
        ENDIF
 
-       IF ( .NOT. cyclic_fill_initialization )  THEN
-          CALL rd_mpi_io_check_array( 'q_av' , found = array_found )
-          IF ( array_found )  THEN
-             IF ( .NOT. ALLOCATED( q_av ) )  ALLOCATE( q_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-             CALL rrd_mpi_io( 'q_av', q_av )
-          ENDIF
+       CALL rd_mpi_io_check_array( 'q_av' , found = array_found )
+       IF ( array_found )  THEN
+          IF ( .NOT. ALLOCATED( q_av ) )  ALLOCATE( q_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
+          CALL rrd_mpi_io( 'q_av', q_av )
        ENDIF
 
        CALL rd_mpi_io_check_array( 'ql' , found = array_found )
@@ -2286,36 +2390,34 @@
           CALL rrd_mpi_io( 'ql', ql )
        ENDIF
 
-       IF ( .NOT. cyclic_fill_initialization )  THEN
-          CALL rd_mpi_io_check_array( 'ql_av' , found = array_found )
-          IF ( array_found )  THEN
-             IF ( .NOT. ALLOCATED( ql_av ) )  ALLOCATE( ql_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-             CALL rrd_mpi_io( 'ql_av', ql_av )
-          ENDIF
+       CALL rd_mpi_io_check_array( 'ql_av' , found = array_found )
+       IF ( array_found )  THEN
+          IF ( .NOT. ALLOCATED( ql_av ) )  ALLOCATE( ql_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
+          CALL rrd_mpi_io( 'ql_av', ql_av )
+       ENDIF
 
-          CALL rd_mpi_io_check_array( 'qsurf_av' , found = array_found )
-          IF ( array_found )  THEN
-             IF ( .NOT. ALLOCATED( qsurf_av ) )  ALLOCATE( qsurf_av(nysg:nyng,nxlg:nxrg) )
-             CALL rrd_mpi_io( 'qsurf_av', qsurf_av )
-          ENDIF
+       CALL rd_mpi_io_check_array( 'qsurf_av' , found = array_found )
+       IF ( array_found )  THEN
+          IF ( .NOT. ALLOCATED( qsurf_av ) )  ALLOCATE( qsurf_av(nysg:nyng,nxlg:nxrg) )
+          CALL rrd_mpi_io( 'qsurf_av', qsurf_av )
+       ENDIF
 
-          CALL rd_mpi_io_check_array( 'qsws_av' , found = array_found )
-          IF ( array_found )  THEN
-             IF ( .NOT. ALLOCATED( qsws_av ) )  ALLOCATE( qsws_av(nysg:nyng,nxlg:nxrg) )
-             CALL rrd_mpi_io( 'qsws_av', qsws_av )
-          ENDIF
+       CALL rd_mpi_io_check_array( 'qsws_av' , found = array_found )
+       IF ( array_found )  THEN
+          IF ( .NOT. ALLOCATED( qsws_av ) )  ALLOCATE( qsws_av(nysg:nyng,nxlg:nxrg) )
+          CALL rrd_mpi_io( 'qsws_av', qsws_av )
+       ENDIF
 
-          CALL rd_mpi_io_check_array( 'qv_av' , found = array_found )
-          IF ( array_found )  THEN
-             IF ( .NOT. ALLOCATED( qv_av ) )  ALLOCATE( qv_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-             CALL rrd_mpi_io( 'qv_av', qv_av )
-          ENDIF
+       CALL rd_mpi_io_check_array( 'qv_av' , found = array_found )
+       IF ( array_found )  THEN
+          IF ( .NOT. ALLOCATED( qv_av ) )  ALLOCATE( qv_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
+          CALL rrd_mpi_io( 'qv_av', qv_av )
+       ENDIF
 
-          CALL rd_mpi_io_check_array( 'r_a_av' , found = array_found )
-          IF ( array_found )  THEN
-             IF ( .NOT. ALLOCATED( r_a_av ) )  ALLOCATE( r_a_av(nysg:nyng,nxlg:nxrg) )
-             CALL rrd_mpi_io( 'r_a_av', r_a_av )
-          ENDIF
+       CALL rd_mpi_io_check_array( 'r_a_av' , found = array_found )
+       IF ( array_found )  THEN
+          IF ( .NOT. ALLOCATED( r_a_av ) )  ALLOCATE( r_a_av(nysg:nyng,nxlg:nxrg) )
+          CALL rrd_mpi_io( 'r_a_av', r_a_av )
        ENDIF
 
 !
@@ -2341,68 +2443,110 @@
           CALL rrd_mpi_io( 's', s )
        ENDIF
 
-       IF ( .NOT. cyclic_fill_initialization )  THEN
-          CALL rd_mpi_io_check_array( 's_av' , found = array_found )
-          IF ( array_found )  THEN
-             IF ( .NOT. ALLOCATED( s_av ) )  ALLOCATE( s_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-             CALL rrd_mpi_io( 's_av', s_av )
-          ENDIF
+       CALL rd_mpi_io_check_array( 's_av' , found = array_found )
+       IF ( array_found )  THEN
+          IF ( .NOT. ALLOCATED( s_av ) )  ALLOCATE( s_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
+          CALL rrd_mpi_io( 's_av', s_av )
+       ENDIF
 
-          CALL rd_mpi_io_check_array( 'shf_av' , found = array_found )
-          IF ( array_found )  THEN
-             IF ( .NOT. ALLOCATED( shf_av ) )  ALLOCATE( shf_av(nysg:nyng,nxlg:nxrg) )
-             CALL rrd_mpi_io( 'shf_av', shf_av )
-          ENDIF
+       CALL rd_mpi_io_check_array( 'shf_av' , found = array_found )
+       IF ( array_found )  THEN
+          IF ( .NOT. ALLOCATED( shf_av ) )  ALLOCATE( shf_av(nysg:nyng,nxlg:nxrg) )
+          CALL rrd_mpi_io( 'shf_av', shf_av )
+       ENDIF
 
-          CALL rd_mpi_io_check_array( 'ssurf_av' , found = array_found )
-          IF ( array_found )  THEN
-             IF ( .NOT. ALLOCATED( ssurf_av ) )  ALLOCATE( ssurf_av(nysg:nyng,nxlg:nxrg) )
-             CALL rrd_mpi_io( 'ssurf_av', ssurf_av )
-          ENDIF
+       CALL rd_mpi_io_check_array( 'ssurf_av' , found = array_found )
+       IF ( array_found )  THEN
+          IF ( .NOT. ALLOCATED( ssurf_av ) )  ALLOCATE( ssurf_av(nysg:nyng,nxlg:nxrg) )
+          CALL rrd_mpi_io( 'ssurf_av', ssurf_av )
+       ENDIF
 
-          CALL rd_mpi_io_check_array( 'ssws_av' , found = array_found )
-          IF ( array_found )  THEN
-             IF ( .NOT. ALLOCATED( ssws_av ) )  ALLOCATE( ssws_av(nysg:nyng,nxlg:nxrg) )
-             CALL rrd_mpi_io( 'ssws_av', ssws_av )
-          ENDIF
+       CALL rd_mpi_io_check_array( 'ssws_av' , found = array_found )
+       IF ( array_found )  THEN
+          IF ( .NOT. ALLOCATED( ssws_av ) )  ALLOCATE( ssws_av(nysg:nyng,nxlg:nxrg) )
+          CALL rrd_mpi_io( 'ssws_av', ssws_av )
+       ENDIF
 
-          CALL rd_mpi_io_check_array( 'ts_av' , found = array_found )
-          IF ( array_found )  THEN
-             IF ( .NOT. ALLOCATED( ts_av ) )  ALLOCATE( ts_av(nysg:nyng,nxlg:nxrg) )
-             CALL rrd_mpi_io( 'ts_av', ts_av )
-          ENDIF
+       CALL rd_mpi_io_check_array( 'ts_av' , found = array_found )
+       IF ( array_found )  THEN
+          IF ( .NOT. ALLOCATED( ts_av ) )  ALLOCATE( ts_av(nysg:nyng,nxlg:nxrg) )
+          CALL rrd_mpi_io( 'ts_av', ts_av )
+       ENDIF
 
-          CALL rd_mpi_io_check_array( 'tsurf_av' , found = array_found )
-          IF ( array_found )  THEN
-             IF ( .NOT. ALLOCATED( tsurf_av ) )  ALLOCATE( tsurf_av(nysg:nyng,nxlg:nxrg) )
-             CALL rrd_mpi_io( 'tsurf_av', tsurf_av )
-          ENDIF
+       CALL rd_mpi_io_check_array( 'tsurf_av' , found = array_found )
+       IF ( array_found )  THEN
+          IF ( .NOT. ALLOCATED( tsurf_av ) )  ALLOCATE( tsurf_av(nysg:nyng,nxlg:nxrg) )
+          CALL rrd_mpi_io( 'tsurf_av', tsurf_av )
        ENDIF
 
        CALL rrd_mpi_io( 'u', u)
 
-       IF ( .NOT. cyclic_fill_initialization )  THEN
-          CALL rd_mpi_io_check_array( 'u_av' , found = array_found )
-          IF ( array_found )  THEN
-             IF ( .NOT. ALLOCATED( u_av ) )  ALLOCATE( u_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-             CALL rrd_mpi_io( 'u_av', u_av )
-          ENDIF
+       CALL rd_mpi_io_check_array( 'u_av' , found = array_found )
+       IF ( array_found )  THEN
+          IF ( .NOT. ALLOCATED( u_av ) )  ALLOCATE( u_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
+          CALL rrd_mpi_io( 'u_av', u_av )
+       ENDIF
 
-          CALL rd_mpi_io_check_array( 'us_av' , found = array_found )
-          IF ( array_found )  THEN
-             IF ( .NOT. ALLOCATED( us_av ) )  ALLOCATE( us_av(nysg:nyng,nxlg:nxrg) )
-             CALL rrd_mpi_io( 'us_av', us_av )
-          ENDIF
+       CALL rd_mpi_io_check_array( 'u_m_l' , found = array_found )
+       IF ( array_found )  THEN
+          IF ( .NOT. ALLOCATED( u_m_l ) )  ALLOCATE( u_m_l(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
+          CALL rrd_mpi_io( 'u_m_l', u_m_l )
+       ENDIF
+
+       CALL rd_mpi_io_check_array( 'u_m_n' , found = array_found )
+       IF ( array_found )  THEN
+          IF ( .NOT. ALLOCATED( u_m_n ) )  ALLOCATE( u_m_n(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
+          CALL rrd_mpi_io( 'u_m_n', u_m_n )
+       ENDIF
+
+       CALL rd_mpi_io_check_array( 'u_m_r' , found = array_found )
+       IF ( array_found )  THEN
+          IF ( .NOT. ALLOCATED( u_m_r ) )  ALLOCATE( u_m_r(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
+          CALL rrd_mpi_io( 'u_m_r', u_m_r )
+       ENDIF
+
+       CALL rd_mpi_io_check_array( 'u_m_s' , found = array_found )
+       IF ( array_found )  THEN
+          IF ( .NOT. ALLOCATED( u_m_s ) )  ALLOCATE( u_m_s(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
+          CALL rrd_mpi_io( 'u_m_s', u_m_s )
+       ENDIF
+
+       CALL rd_mpi_io_check_array( 'us_av' , found = array_found )
+       IF ( array_found )  THEN
+          IF ( .NOT. ALLOCATED( us_av ) )  ALLOCATE( us_av(nysg:nyng,nxlg:nxrg) )
+          CALL rrd_mpi_io( 'us_av', us_av )
        ENDIF
 
        CALL rrd_mpi_io( 'v', v )
 
-       IF ( .NOT. cyclic_fill_initialization )  THEN
-          CALL rd_mpi_io_check_array( 'v_av' , found = array_found )
-          IF ( array_found )  THEN
-             IF ( .NOT. ALLOCATED( v_av ) )  ALLOCATE( v_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-             CALL rrd_mpi_io( 'v_av', v_av )
-          ENDIF
+       CALL rd_mpi_io_check_array( 'v_av' , found = array_found )
+       IF ( array_found )  THEN
+          IF ( .NOT. ALLOCATED( v_av ) )  ALLOCATE( v_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
+          CALL rrd_mpi_io( 'v_av', v_av )
+       ENDIF
+
+       CALL rd_mpi_io_check_array( 'v_m_l' , found = array_found )
+       IF ( array_found )  THEN
+          IF ( .NOT. ALLOCATED( v_m_l ) )  ALLOCATE( v_m_l(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
+          CALL rrd_mpi_io( 'v_m_l', v_m_l )
+       ENDIF
+
+       CALL rd_mpi_io_check_array( 'v_m_n' , found = array_found )
+       IF ( array_found )  THEN
+          IF ( .NOT. ALLOCATED( v_m_n ) )  ALLOCATE( v_m_n(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
+          CALL rrd_mpi_io( 'v_m_n', v_m_n )
+       ENDIF
+
+       CALL rd_mpi_io_check_array( 'v_m_r' , found = array_found )
+       IF ( array_found )  THEN
+          IF ( .NOT. ALLOCATED( v_m_r ) )  ALLOCATE( v_m_r(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
+          CALL rrd_mpi_io( 'v_m_r', v_m_r )
+       ENDIF
+
+       CALL rd_mpi_io_check_array( 'v_m_s' , found = array_found )
+       IF ( array_found )  THEN
+          IF ( .NOT. ALLOCATED( v_m_s ) )  ALLOCATE( v_m_s(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
+          CALL rrd_mpi_io( 'v_m_s', v_m_s )
        ENDIF
 
        CALL rd_mpi_io_check_array( 'vpt' , found = array_found )
@@ -2410,48 +2554,66 @@
           CALL rrd_mpi_io( 'vpt',  vpt)
        ENDIF
 
-       IF ( .NOT. cyclic_fill_initialization )  THEN
-          CALL rd_mpi_io_check_array( 'vpt_av' , found = array_found )
-          IF ( array_found )  THEN
-             IF ( .NOT. ALLOCATED( vpt_av ) )  ALLOCATE( vpt_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-             CALL rrd_mpi_io( 'vpt_av', vpt_av )
-          ENDIF
+       CALL rd_mpi_io_check_array( 'vpt_av' , found = array_found )
+       IF ( array_found )  THEN
+          IF ( .NOT. ALLOCATED( vpt_av ) )  ALLOCATE( vpt_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
+          CALL rrd_mpi_io( 'vpt_av', vpt_av )
        ENDIF
 
        CALL rrd_mpi_io( 'w', w)
 
-       IF ( .NOT. cyclic_fill_initialization )  THEN
-          CALL rd_mpi_io_check_array( 'w_av' , found = array_found )
-          IF ( array_found )  THEN
-             IF ( .NOT. ALLOCATED( w_av ) )  ALLOCATE( w_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-             CALL rrd_mpi_io( 'w_av', w_av )
-          ENDIF
+       CALL rd_mpi_io_check_array( 'w_av' , found = array_found )
+       IF ( array_found )  THEN
+          IF ( .NOT. ALLOCATED( w_av ) )  ALLOCATE( w_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
+          CALL rrd_mpi_io( 'w_av', w_av )
+       ENDIF
 
-          CALL rd_mpi_io_check_array( 'z0_av' , found = array_found )
-          IF ( array_found )  THEN
-             IF ( .NOT. ALLOCATED( z0_av ) )  ALLOCATE( z0_av(nysg:nyng,nxlg:nxrg) )
-             CALL rrd_mpi_io( 'z0_av', z0_av )
-          ENDIF
+       CALL rd_mpi_io_check_array( 'w_m_l' , found = array_found )
+       IF ( array_found )  THEN
+          IF ( .NOT. ALLOCATED( w_m_l ) )  ALLOCATE( w_m_l(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
+          CALL rrd_mpi_io( 'w_m_l', w_m_l )
+       ENDIF
 
-          CALL rd_mpi_io_check_array( 'z0h_av' , found = array_found )
-          IF ( array_found )  THEN
-             IF ( .NOT. ALLOCATED( z0h_av ) )  ALLOCATE( z0h_av(nysg:nyng,nxlg:nxrg) )
-             CALL rrd_mpi_io( 'z0h_av', z0h_av )
-          ENDIF
+       CALL rd_mpi_io_check_array( 'w_m_n' , found = array_found )
+       IF ( array_found )  THEN
+          IF ( .NOT. ALLOCATED( w_m_n ) )  ALLOCATE( w_m_n(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
+          CALL rrd_mpi_io( 'w_m_n', w_m_n )
+       ENDIF
 
-          CALL rd_mpi_io_check_array( 'z0q_av' , found = array_found )
-          IF ( array_found )  THEN
-             IF ( .NOT. ALLOCATED( z0q_av ) )  ALLOCATE( z0q_av(nysg:nyng,nxlg:nxrg) )
-             CALL rrd_mpi_io( 'z0q_av', z0q_av )
-          ENDIF
+       CALL rd_mpi_io_check_array( 'w_m_r' , found = array_found )
+       IF ( array_found )  THEN
+          IF ( .NOT. ALLOCATED( w_m_r ) )  ALLOCATE( w_m_r(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
+          CALL rrd_mpi_io( 'w_m_r', w_m_r )
+       ENDIF
+
+       CALL rd_mpi_io_check_array( 'w_m_s' , found = array_found )
+       IF ( array_found )  THEN
+          IF ( .NOT. ALLOCATED( w_m_s ) )  ALLOCATE( w_m_s(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
+          CALL rrd_mpi_io( 'w_m_s', w_m_s )
+       ENDIF
+
+       CALL rd_mpi_io_check_array( 'z0_av' , found = array_found )
+       IF ( array_found )  THEN
+          IF ( .NOT. ALLOCATED( z0_av ) )  ALLOCATE( z0_av(nysg:nyng,nxlg:nxrg) )
+          CALL rrd_mpi_io( 'z0_av', z0_av )
+       ENDIF
+
+       CALL rd_mpi_io_check_array( 'z0h_av' , found = array_found )
+       IF ( array_found )  THEN
+          IF ( .NOT. ALLOCATED( z0h_av ) )  ALLOCATE( z0h_av(nysg:nyng,nxlg:nxrg) )
+          CALL rrd_mpi_io( 'z0h_av', z0h_av )
+       ENDIF
+
+       CALL rd_mpi_io_check_array( 'z0q_av' , found = array_found )
+       IF ( array_found )  THEN
+          IF ( .NOT. ALLOCATED( z0q_av ) )  ALLOCATE( z0q_av(nysg:nyng,nxlg:nxrg) )
+          CALL rrd_mpi_io( 'z0q_av', z0q_av )
        ENDIF
 
 !
 !--    Read restart data of surfaces
        CALL surface_rrd_local
-!
-!--    Read restart data of surface_data_output_mod
-       IF ( surface_output )  CALL surface_data_output_rrd_local
+
 !
 !--    Read restart data of other modules
        CALL module_interface_rrd_local
@@ -2469,27 +2631,6 @@
 
  END SUBROUTINE rrd_local
 
-
-!--------------------------------------------------------------------------------------------------!
-! Description:
-! ------------
-!> Reads local spinup data
-!--------------------------------------------------------------------------------------------------!
- SUBROUTINE rrd_local_spinup
-!
-!-- Open the MPI-IO restart file.
-    CALL rd_mpi_io_open( 'read', 'SPINUPIN' // TRIM( coupling_char ) )
-!
-!-- Read restart data of surfaces
-    CALL surface_rrd_local
-!
-!-- Read restart data of other modules
-    CALL module_interface_rrd_local_spinup
-!
-!-- Close restart file
-    CALL rd_mpi_io_close
-
- END SUBROUTINE rrd_local_spinup
 
 !------------------------------------------------------------------------------!
 ! Description:

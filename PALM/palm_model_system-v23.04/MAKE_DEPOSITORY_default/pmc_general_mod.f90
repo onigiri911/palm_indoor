@@ -1,4 +1,5 @@
-!> @file pmc_general_mod.f90
+ MODULE pmc_general
+
 !--------------------------------------------------------------------------------------------------!
 ! This file is part of the PALM model system.
 !
@@ -13,18 +14,41 @@
 ! You should have received a copy of the GNU General Public License along with PALM. If not, see
 ! <http://www.gnu.org/licenses/>.
 !
-! Copyright 1997-2021 Leibniz Universitaet Hannover
+! Copyright 1997-2020 Leibniz Universitaet Hannover
 !--------------------------------------------------------------------------------------------------!
 !
-! Authors:
-! --------
-!> @author Klaus Ketelsen (no affiliation)
+!
+! Current revisions:
+! -----------------
+!
+!
+! Former revisions:
+! -----------------
+! $Id: pmc_general_mod.f90 4649 2020-08-25 12:11:17Z raasch $
+! File re-formatted to follow the PALM coding standard
+!
+! 4629 2020-07-29 09:37:56Z raasch
+! Support for MPI Fortran77 interface (mpif.h) removed
+!
+! 4360 2020-01-07 11:25:50Z suehring
+! Corrected "Former revisions" section
+!
+! 3945 2019-05-02 11:29:27Z raasch
+!
+! 2019-04-24 17:31:34Z suehring
+! Increase character length so that also chemistry variable names fully fit
+!
+! 3655 2019-01-07 16:51:22Z knoop
+! Determine number of coupled arrays dynamically.
+!
+! 1762 2016-02-25 12:31:13Z hellstea
+! Initial revision by K. Ketelsen
 !
 ! Description:
 ! ------------
-!> Structure definition and utilities of Palm Model Coupler
+!
+! Structure definition and utilities of Palm Model Coupler
 !--------------------------------------------------------------------------------------------------!
- MODULE pmc_general
 
 #if defined( __parallel )
     USE, INTRINSIC ::  ISO_C_BINDING
@@ -35,22 +59,27 @@
 
     IMPLICIT NONE
 
-    INTEGER(iwp) ::  pmc_max_array  !< max # of arrays which can be coupled
-                                    !< - will be determined dynamically in pmc_interface
 
-    INTEGER(iwp), PARAMETER ::  da_desclen       =  8  !<
-    INTEGER(iwp), PARAMETER ::  da_namelen       = 16  !<
-    INTEGER(iwp), PARAMETER ::  pmc_da_name_err  = 10  !<
-    INTEGER(iwp), PARAMETER ::  pmc_max_models   = 64  !<
-    INTEGER(iwp), PARAMETER ::  pmc_status_ok    =  0  !<
-    INTEGER(iwp), PARAMETER ::  pmc_status_error = -1  !<
+    PRIVATE
+    SAVE
 
-    TYPE ::  xy_ind  !< pair of indices in horizontal plane
-       INTEGER(iwp) ::  i  !<
-       INTEGER(iwp) ::  j  !<
+    INTEGER(iwp), PARAMETER, PUBLIC :: da_desclen       =  8  !<
+    INTEGER(iwp), PARAMETER, PUBLIC :: da_namelen       = 16  !<
+    INTEGER(iwp), PARAMETER, PUBLIC :: pmc_da_name_err  = 10  !<
+    INTEGER(iwp), PARAMETER, PUBLIC :: pmc_max_models   = 64  !<
+    INTEGER(iwp), PARAMETER, PUBLIC :: pmc_status_ok    =  0  !<
+    INTEGER(iwp), PARAMETER, PUBLIC :: pmc_status_error = -1  !<
+
+    INTEGER(iwp), PUBLIC ::  pmc_max_array  !< max # of arrays which can be coupled
+                                            !< - will be determined dynamically in pmc_interface
+
+
+    TYPE, PUBLIC :: xy_ind  !< pair of indices in horizontal plane
+       INTEGER(iwp) ::  i
+       INTEGER(iwp) ::  j
     END TYPE
 
-    TYPE ::  arraydef
+    TYPE, PUBLIC ::  arraydef
        CHARACTER(LEN=da_namelen) ::  Name  !< name of array
 
        INTEGER(iwp) ::  coupleindex  !<
@@ -58,8 +87,9 @@
        INTEGER(iwp) ::  nrdims       !< number of dimensions
        INTEGER(iwp) ::  RecvSize     !< size in receive buffer
        INTEGER(iwp) ::  SendSize     !< size in send buffer
-       INTEGER(idp) ::  RecvIndex    !< index in receive buffer
-       INTEGER(idp) ::  SendIndex    !< index in send buffer
+
+       INTEGER(idp) ::  RecvIndex  !< index in receive buffer
+       INTEGER(idp) ::  SendIndex  !< index in send buffer
 
        INTEGER(iwp), DIMENSION(4) ::  a_dim  !< size of dimensions
 
@@ -73,89 +103,71 @@
                                               !< sets active pointer
     END TYPE arraydef
 
-    TYPE ::  pedef
-       INTEGER(iwp) ::  nr_arrays = 0  !< number of arrays which will be transfered
-       INTEGER(iwp) ::  nrele          !< number of elements, same for all arrays
+
+    TYPE(arraydef), PUBLIC, POINTER  :: next  !<
+
+
+    TYPE, PUBLIC ::  pedef
+       INTEGER(iwp) :: nr_arrays = 0  !< number of arrays which will be transfered
+       INTEGER(iwp) :: nrele          !< number of elements, same for all arrays
 
        TYPE(arraydef), POINTER, DIMENSION(:) ::  array_list  !< list of data arrays to be transfered
-
-       TYPE(xy_ind), POINTER, DIMENSION(:) ::  locInd  !< xy index local array for remote PE
+       TYPE(xy_ind), POINTER, DIMENSION(:)   ::  locInd      !< xy index local array for remote PE
     END TYPE pedef
 
-    TYPE ::  childdef
-       INTEGER(iwp) ::  inter_comm        !< inter communicator model and child
-       INTEGER(iwp) ::  inter_npes        !< number of PEs child model
-       INTEGER(iwp) ::  intra_comm        !< intra communicator model and child
-       INTEGER(iwp) ::  intra_rank        !< rank within intra_comm
-       INTEGER(iwp) ::  model_comm        !< communicator of this model
-       INTEGER(iwp) ::  model_npes        !< number of PEs this model
-       INTEGER(iwp) ::  model_rank        !< rank of this model
-       INTEGER(idp) ::  totalbuffersize   !<
-       INTEGER(iwp) ::  win_parent_child  !< MPI RMA for preparing data on parent AND child side
 
+    TYPE, PUBLIC ::  childdef
+       INTEGER(iwp) ::  inter_comm         !< inter communicator model and child
+       INTEGER(iwp) ::  inter_npes         !< number of PEs child model
+       INTEGER(iwp) ::  intra_comm         !< intra communicator model and child
+       INTEGER(iwp) ::  intra_rank         !< rank within intra_comm
+       INTEGER(iwp) ::  model_comm         !< communicator of this model
+       INTEGER(iwp) ::  model_npes         !< number of PEs this model
+       INTEGER(iwp) ::  model_rank         !< rank of this model
+       INTEGER(idp) ::  totalbuffersize    !<
+       INTEGER(iwp) ::  win_parent_child   !< MPI RMA for preparing data on parent AND child side
        TYPE(pedef), DIMENSION(:), POINTER ::  pes  !< list of all child PEs
     END TYPE childdef
 
-    TYPE ::  da_namedef  !< data array name definition
+
+    TYPE, PUBLIC ::  da_namedef  !< data array name definition
        CHARACTER(LEN=da_desclen) ::  childdesc     !< child array description
        CHARACTER(LEN=da_namelen) ::  nameonchild   !< name of array within child
        CHARACTER(LEN=da_namelen) ::  nameonparent  !< name of array within parent
        CHARACTER(LEN=da_desclen) ::  parentdesc    !< parent array description
-
-       INTEGER(iwp) ::  couple_index  !< unique number of array
+       INTEGER(iwp)              ::  couple_index  !< unique number of array
     END TYPE da_namedef
-
-    TYPE(arraydef), POINTER ::  next  !<
-
-    SAVE
-
-    PRIVATE
-
-!
-!-- Public functions
-    PUBLIC pmc_g_setname
-
-!
-!-- Public variables, constants and types
-    PUBLIC arraydef,                                                                               &
-           childdef,                                                                               &
-           da_desclen,                                                                             &
-           da_namedef,                                                                             &
-           da_namelen,                                                                             &
-           next,                                                                                   &
-           pedef,                                                                                  &
-           pmc_da_name_err,                                                                        &
-           pmc_max_array,                                                                          &
-           pmc_max_models,                                                                         &
-           pmc_status_error,                                                                       &
-           pmc_status_ok,                                                                          &
-           xy_ind
 
     INTERFACE pmc_g_setname
        MODULE PROCEDURE pmc_g_setname
     END INTERFACE pmc_g_setname
 
+    INTERFACE pmc_sort
+       MODULE PROCEDURE sort_2d_i
+    END INTERFACE pmc_sort
+
+    PUBLIC pmc_g_setname, pmc_sort
 
  CONTAINS
 
-
-!---------------------------------------------------------------------------------------------------!
+!--------------------------------------------------------------------------------------------------!
 ! Description:
 ! ------------
-!> Add array to list of arraydef structure. No the arra "name" is schedules for parent child transfer
-!---------------------------------------------------------------------------------------------------!
+!> @Todo: Missing subroutine description.
+!--------------------------------------------------------------------------------------------------!
  SUBROUTINE pmc_g_setname( mychild, couple_index, aname )
 
-    CHARACTER(LEN=*), INTENT(IN) ::  aname  !<
+    IMPLICIT NONE
+
+    CHARACTER(LEN=*)              ::  aname         !<
+
+    INTEGER(iwp), INTENT(IN)      ::  couple_index  !<
 
     INTEGER(iwp) ::  i  !<
 
-    INTEGER(iwp), INTENT(IN) ::  couple_index  !<
+    TYPE(childdef), INTENT(INOUT) ::  mychild       !<
 
-    TYPE(childdef), INTENT(INOUT) ::  mychild  !<
-
-    TYPE(pedef), POINTER ::  ape  !<
-
+    TYPE(pedef), POINTER    ::  ape  !<
 
 !
 !-- Assign array to next free index in array list.
@@ -168,7 +180,38 @@
     ENDDO
 
  END SUBROUTINE pmc_g_setname
+
+
+!--------------------------------------------------------------------------------------------------!
+! Description:
+! ------------
+!> @Todo: Missing subroutine description.
+!--------------------------------------------------------------------------------------------------!
+ SUBROUTINE sort_2d_i( array, sort_ind )
+
+    IMPLICIT NONE
+
+    INTEGER(iwp), INTENT(IN)                    ::  sort_ind
+    INTEGER(iwp), DIMENSION(:,:), INTENT(INOUT) ::  array
+
+    INTEGER(iwp) ::  i  !<
+    INTEGER(iwp) ::  j  !<
+    INTEGER(iwp) ::  n  !<
+
+    INTEGER(iwp), DIMENSION(SIZE(array,1)) ::  tmp  !<
+
+    n = SIZE( array, 2 )
+    DO  j = 1, n-1
+       DO  i = j+1, n
+          IF ( array(sort_ind,i) < array(sort_ind,j) )  THEN
+             tmp = array(:,i)
+             array(:,i) = array(:,j)
+             array(:,j) = tmp
+          ENDIF
+       ENDDO
+    ENDDO
+
+ END  SUBROUTINE sort_2d_i
+
 #endif
-
-
  END MODULE pmc_general

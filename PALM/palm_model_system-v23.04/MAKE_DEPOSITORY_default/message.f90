@@ -13,8 +13,47 @@
 ! You should have received a copy of the GNU General Public License along with PALM. If not, see
 ! <http://www.gnu.org/licenses/>.
 !
-! Copyright 1997-2021 Leibniz Universitaet Hannover
+! Copyright 1997-2020 Leibniz Universitaet Hannover
 !--------------------------------------------------------------------------------------------------!
+!
+! Current revisions:
+! -----------------
+!
+!
+! Former revisions:
+! -----------------
+! $Id: message.f90 4677 2020-09-14 07:55:28Z raasch $
+! file re-formatted to follow the PALM coding standard
+!
+! 4580 2020-06-29 07:54:21Z raasch
+! bugfix for aborts in case of nested runs
+!
+! 4578 2020-06-25 15:43:32Z gronemeier
+! bugfix : do not save input values from last call of routines debug_message and location_message
+! changes: layout changes according to PALM coding standards
+!
+! 4536 2020-05-17 17:24:13Z raasch
+! location message format changed
+!
+! 4360 2020-01-07 11:25:50Z suehring
+! Corrected "Former revisions" section
+!
+! 4097 2019-07-15 11:59:11Z suehring
+! Avoid overlong lines - limit is 132 characters per line
+!
+! 3987 2019-05-22 09:52:13Z kanani
+! Improved formatting of job logfile output,
+! changed output of DEBUG file
+!
+! 3885 2019-04-11 11:29:34Z kanani
+! Changes related to global restructuring of location messages and introduction of additional debug
+! messages
+!
+! 3655 2019-01-07 16:51:22Z knoop
+! Minor formating changes
+!
+! 213 2008-11-13 10:26:18Z raasch
+! Initial revision
 !
 ! Description:
 ! ------------
@@ -27,45 +66,38 @@
 !> file_id: 6 - stdout (*)
 !> flush_file: 0 - no action, 1 - flush the respective output buffer
 !--------------------------------------------------------------------------------------------------!
- SUBROUTINE message( routine_name, logging_id, requested_action, message_level, output_on_pe,      &
-                     file_id, flush_file )
+ SUBROUTINE message( routine_name, message_identifier, requested_action, message_level,            &
+                     output_on_pe, file_id, flush_file )
 
     USE control_parameters,                                                                        &
-        ONLY:  abort_mode,                                                                         &
-               message_string
+        ONLY:  abort_mode, message_string
 
     USE kinds
-
-#if defined( __parallel )
-    USE MPI
-#endif
 
     USE pegrid
 
     USE pmc_interface,                                                                             &
-        ONLY:  atmosphere_ocean_coupled_run,                                                       &
-               cpl_id,                                                                             &
-               nested_run
+        ONLY:  cpl_id, nested_run
 
     IMPLICIT NONE
 
-    CHARACTER(LEN=*)   ::  logging_id            !<
-    CHARACTER(LEN=40)  ::  nest_string           !< nest id information
-    CHARACTER(LEN=*)   ::  routine_name          !<
-    CHARACTER(LEN=200) ::  header_string         !<
-    CHARACTER(LEN=200) ::  header_string_2       !< for message ID and routine name
-    CHARACTER(LEN=200) ::  information_string_1  !<
-    CHARACTER(LEN=200) ::  information_string_2  !<
+    CHARACTER(LEN=6)   ::  message_identifier            !<
+    CHARACTER(LEN=20)  ::  nest_string                   !< nest id information
+    CHARACTER(LEN=*)   ::  routine_name                  !<
+    CHARACTER(LEN=200) ::  header_string                 !<
+    CHARACTER(LEN=200) ::  header_string_2               !< for message ID and routine name
+    CHARACTER(LEN=200) ::  information_string_1          !<
+    CHARACTER(LEN=200) ::  information_string_2          !<
 
-    INTEGER(iwp) ::  file_id           !<
-    INTEGER(iwp) ::  flush_file        !<
-    INTEGER(iwp) ::  i                 !<
-    INTEGER(iwp) ::  message_level     !<
-    INTEGER(iwp) ::  output_on_pe      !<
-    INTEGER(iwp) ::  requested_action  !<
+    INTEGER(iwp) ::  file_id                             !<
+    INTEGER(iwp) ::  flush_file                          !<
+    INTEGER(iwp) ::  i                                   !<
+    INTEGER(iwp) ::  message_level                       !<
+    INTEGER(iwp) ::  output_on_pe                        !<
+    INTEGER(iwp) ::  requested_action                    !<
 
-    LOGICAL ::  do_output        !<
-    LOGICAL ::  pe_out_of_range  !<
+    LOGICAL ::  do_output                                !<
+    LOGICAL ::  pe_out_of_range                          !<
 
 
     do_output       = .FALSE.
@@ -75,8 +107,6 @@
 !-- In case of nested runs create the nest id informations
     IF ( nested_run )  THEN
        WRITE( nest_string, '(1X,A,I2.2)' )  'from nest-id ', cpl_id
-    ELSEIF ( atmosphere_ocean_coupled_run )  THEN
-       WRITE( nest_string, '(1X,A,I2.2)' )  'from atmosphere-ocean-id ', cpl_id
     ELSE
        nest_string = ''
     ENDIF
@@ -95,16 +125,16 @@
 
 !
 !-- Add the message identifier and the generating routine
-    header_string_2 = 'ID: ' // TRIM( logging_id ) // '  generated by routine "' //                &
-                      TRIM( routine_name ) // '":'
+    header_string_2 = 'ID: ' // message_identifier //                                              &
+                      '  generated by routine: ' // TRIM( routine_name )
 
     information_string_1 = 'Further information can be found at'
-!    IF ( logging_id(1:2) == 'NC' )  THEN
-!       information_string_2 = 'http://palm.muk.uni-hannover.de/trac/wiki/doc/app/errmsg#NC'
-!    ELSE
-       information_string_2 = '<temporary no link available>/errmsg#' //                           &
-                              TRIM( logging_id )
-!    ENDIF
+    IF ( message_identifier(1:2) == 'NC' )  THEN
+       information_string_2 = 'http://palm.muk.uni-hannover.de/trac/wiki/doc/app/errmsg#NC'
+    ELSE
+       information_string_2 = 'http://palm.muk.uni-hannover.de/trac/wiki/doc/app/errmsg#' //       &
+                              message_identifier
+    ENDIF
 
 
 !
@@ -135,7 +165,6 @@
 !--       Output on stdout
           WRITE( *, '(16X,A)' )  TRIM( header_string )
           WRITE( *, '(20X,A)' )  TRIM( header_string_2 )
-          WRITE( *, '(20X,A)' )  ''
 !
 !--       Cut message string into pieces and output one piece per line.
 !--       Remove leading blanks.
@@ -146,6 +175,7 @@
              message_string = ADJUSTL( message_string(i+1:) )
              i = INDEX( message_string, '&' )
           ENDDO
+          WRITE( *, '(20X,A)' )  ''
           WRITE( *, '(20X,A)' )  TRIM( message_string )
           WRITE( *, '(20X,A)' )  ''
           WRITE( *, '(20X,A)' )  TRIM( information_string_1 )
@@ -190,11 +220,11 @@
     IF ( requested_action > 0 )  THEN
        abort_mode = requested_action
 !
-!--    Since nested and coupled runs always use MPI_ABORT, let all those PEs just wait, which
-!--    don't output the message.
-       IF ( ( nested_run  .OR.  atmosphere_ocean_coupled_run )  .AND.  .NOT. do_output )  THEN
+!--    Since nested runs always use MPI_ABORT, let only the PE which output a message initiate the
+!--    abort. Others just wait.
+       IF ( nested_run  .AND.  requested_action == 1  .AND.  .NOT. do_output )  THEN
 #if defined( __parallel )
-          CALL MPI_BARRIER( MPI_COMM_WORLD, ierr )
+          CALL MPI_BARRIER( comm2d, ierr )
 #endif
        ELSE
           CALL local_stop
@@ -325,22 +355,21 @@
     CHARACTER(LEN=*) ::  location !< text to be output on stdout
     CHARACTER(LEN=*) ::  line
 
-    CHARACTER(LEN=200) ::  line_dum
+    CHARACTER(LEN=80) ::  line_dum
 
     INTEGER(iwp) ::  line_counter
-
 
     line_dum = ' '
     line_counter = 0
 
     REWIND( 11 )
-    DO WHILE ( INDEX( line_dum, TRIM( line ) ) == 0 )
-       line_counter = line_counter + 1
+    DO WHILE ( INDEX( line_dum, TRIM(line) ) == 0 )
        READ ( 11, '(A)', END=20 )  line_dum
+       line_counter = line_counter + 1
     ENDDO
 
- 20 WRITE( message_string, '(A,I3,A)' ) 'reading fails on line ', line_counter, 'in namelist "' // &
-                                        TRIM(location) // '":&' // line
-    CALL message( 'parin', 'PAC0247', 1, 2, 0, 6, 0 )
+ 20 WRITE( message_string, '(A,I3,A)' ) 'Error(s) in NAMELIST '// TRIM(location) //                &
+                                        '&Reading fails on line ', line_counter, ' at&' // line
+    CALL message( 'parin', 'PA0271', 1, 2, 0, 6, 0 )
 
  END SUBROUTINE parin_fail_message

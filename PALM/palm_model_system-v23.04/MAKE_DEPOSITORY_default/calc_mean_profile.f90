@@ -14,8 +14,39 @@
 ! <http://www.gnu.org/licenses/>.
 !
 !
-! Copyright 1997-2021 Leibniz Universitaet Hannover
+! Copyright 1997-2020 Leibniz Universitaet Hannover
 !--------------------------------------------------------------------------------------------------!
+!
+! Current revisions:
+! -----------------
+!
+!
+! Former revisions:
+! -----------------
+! $Id: calc_mean_profile.f90 4750 2020-10-16 14:27:48Z suehring $
+! Bugfix for last commit
+!
+! 4743 2020-10-14 16:40:58Z suehring
+! Add option to force calculation of horizontal mean profiles independent on data output
+! 
+! 4542 2020-05-19 15:45:12Z raasch
+! file re-formatted to follow the PALM coding standard
+!
+! 4360 2020-01-07 11:25:50Z suehring
+! Introduction of wall_flags_total_0, which currently sets bits based on static
+! topography information used in wall_flags_static_0
+!
+! 4329 2019-12-10 15:46:36Z motisi
+! Renamed wall_flags_0 to wall_flags_static_0
+!
+! 4182 2019-08-22 15:20:23Z scharf
+! Corrected "Former revisions" section
+!
+! 3655 2019-01-07 16:51:22Z knoop
+! nopointer option removed
+!
+! 1365 2014-04-22 15:03:56Z boeske
+! Initial revision
 !
 ! Description:
 ! ------------
@@ -25,9 +56,6 @@
 !------------------------------------------------------------------------------!
  MODULE calc_mean_profile_mod
 
-#if defined( __parallel )
-    USE MPI
-#endif
 
     PRIVATE
     PUBLIC calc_mean_profile
@@ -49,25 +77,14 @@
            ONLY:  intermediate_timestep_count
 
        USE indices,                                                                                &
-           ONLY:  ngp_2dh_s_inner,                                                                 &
-                  nxl,                                                                             &
-                  nxr,                                                                             &
-                  nyn,                                                                             &
-                  nys,                                                                             &
-                  nzb,                                                                             &
-                  nzb,                                                                             &
-                  nzt,                                                                             &
-                  topo_flags
+           ONLY:  ngp_2dh_s_inner, nxl, nxr, nyn, nys, nzb, nzb, nzt, wall_flags_total_0
 
        USE kinds
 
        USE pegrid
 
        USE statistics,                                                                             &
-           ONLY:  flow_statistics_called,                                                          &
-                  hom,                                                                             &
-                  sums,                                                                            &
-                  sums_l
+           ONLY:  flow_statistics_called, hom, sums, sums_l
 
 
        IMPLICIT NONE
@@ -117,7 +134,7 @@
              DO  j =  nys, nyn
                 DO  k = nzb, nzt+1
                    sums_l(k,pr,tn) = sums_l(k,pr,tn) + var(k,j,i) * MERGE( 1.0_wp, 0.0_wp,         &
-                                                            BTEST( topo_flags(k,j,i), 22 ) )
+                                                            BTEST( wall_flags_total_0(k,j,i), 22 ) )
                 ENDDO
              ENDDO
           ENDDO

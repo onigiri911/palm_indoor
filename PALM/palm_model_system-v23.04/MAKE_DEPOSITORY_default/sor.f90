@@ -13,10 +13,33 @@
 ! You should have received a copy of the GNU General Public License along with PALM. If not, see
 ! <http://www.gnu.org/licenses/>.
 !
-! Copyright 1997-2021 Leibniz Universitaet Hannover
+! Copyright 1997-2020 Leibniz Universitaet Hannover
 !--------------------------------------------------------------------------------------------------!
 !
 !
+! Current revisions:
+! -----------------
+!
+!
+! Former revisions:
+! -----------------
+! $Id: sor.f90 4591 2020-07-06 15:56:08Z raasch $
+! File re-formatted to follow the PALM coding standard
+!
+!
+! 4457 2020-03-11 14:20:43Z raasch
+! Use statement for exchange horiz added
+!
+! 4360 2020-01-07 11:25:50Z suehring
+! Corrected "Former revisions" section
+!
+! 3655 2019-01-07 16:51:22Z knoop
+! Rename variables in mesoscale-offline nesting mode
+!
+! Revision 1.1  1997/08/11 06:25:56  raasch
+! Initial revision
+!
+!--------------------------------------------------------------------------------------------------!
 ! Description:
 ! ------------
 !> Solve the Poisson-equation with the SOR-Red/Black-scheme.

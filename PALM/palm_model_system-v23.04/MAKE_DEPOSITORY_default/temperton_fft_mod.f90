@@ -13,8 +13,33 @@
 ! You should have received a copy of the GNU General Public License along with PALM. If not, see
 ! <http://www.gnu.org/licenses/>.
 !
-! Copyright 1997-2021 Leibniz Universitaet Hannover
+! Copyright 1997-2020 Leibniz Universitaet Hannover
 !--------------------------------------------------------------------------------------------------!
+!
+!
+! Current revisions:
+! -----------------
+! 
+! 
+! Former revisions:
+! -----------------
+! $Id: temperton_fft_mod.f90 4559 2020-06-11 08:51:48Z raasch $
+! File re-formatted to follow the PALM coding standard
+!
+! 4370 2020-01-10 14:00:44Z raasch
+! unused variables removed
+!
+! 4366 2020-01-09 08:12:43Z raasch
+! vectorized routines added
+!
+! 4182 2019-08-22 15:20:23Z scharf
+! Corrected "Former revisions" section
+!
+! 3725 2019-02-07 10:11:02Z raasch
+! GOTO statements replaced, file re-formatted corresponding to coding standards
+!
+! Revision 1.1  2003/03/12 16:41:59  raasch
+! Initial revision
 !
 !
 ! Description:
@@ -2225,7 +2250,7 @@ CONTAINS
        IF (ifac < 2 )  THEN
           message_string = 'number of gridpoints along x or/and y contain illegal  factors' //     &
                            '&only factors 2, 3, 5 are allowed'
-          CALL message( 'temperton_fft', 'PAC0317', 1, 2, 0, 6, 0 )
+          CALL message( 'temperton_fft', 'PA0311', 1, 2, 0, 6, 0 )
           RETURN
        ENDIF
 

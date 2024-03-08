@@ -13,8 +13,42 @@
 ! You should have received a copy of the GNU General Public License along with PALM. If not, see
 ! <http://www.gnu.org/licenses/>.
 !
-! Copyright 2019-2021 Leibniz Universitaet Hannover
+! Copyright 2019-2020 Leibniz Universitaet Hannover
 !--------------------------------------------------------------------------------------------------!
+!
+! Current revisions:
+! ------------------
+!
+!
+! Former revisions:
+! -----------------
+! $Id: data_output_binary_module.f90 4629 2020-07-29 09:37:56Z raasch $
+! support for MPI Fortran77 interface (mpif.h) removed
+!
+! 4597 2020-07-09 19:21:53Z gronemeier
+! change: update argument list of routine binary_init_dimension due to changes in interface
+!
+! 4579 2020-06-25 20:05:07Z gronemeier
+! corrected formatting to follow PALM coding standard
+!
+! 4577 2020-06-25 09:53:58Z raasch
+! further re-formatting to follow the PALM coding standard
+!
+! 4559 2020-06-11 08:51:48Z raasch
+! file re-formatted to follow the PALM coding standard
+!
+! 4481 2020-03-31 18:55:54Z maronga
+! Enable character-array output
+!
+! 4232 2019-09-20 09:34:22Z knoop
+! Bugfix: INCLUDE "mpif.h" must be placed after IMPLICIT NONE statement
+!
+! 4147 2019-08-07 09:42:31Z gronemeier
+! corrected indentation according to coding standard
+!
+! 4141 2019-08-05 12:24:51Z gronemeier
+! Initial revision
+!
 !
 ! Authors:
 ! --------
@@ -25,7 +59,6 @@
 !> Binary output module to write output data into binary files.
 !>
 !> @todo Get iostat value of write statements.
-!> @todo Use write_mode instead of write_only_by_master_rank
 !--------------------------------------------------------------------------------------------------!
  MODULE data_output_binary_module
 

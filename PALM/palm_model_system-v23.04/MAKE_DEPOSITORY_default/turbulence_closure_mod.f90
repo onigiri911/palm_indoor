@@ -13,8 +13,131 @@
 ! You should have received a copy of the GNU General Public License along with PALM. If not, see
 ! <http://www.gnu.org/licenses/>.
 !
-! Copyright 1997-2021 Leibniz Universitaet Hannover
+! Copyright 1997-2020 Leibniz Universitaet Hannover
 !--------------------------------------------------------------------------------------------------!
+!
+!
+! Current revisions:
+! -----------------
+!
+!
+! Former revisions:
+! -----------------
+! $Id: turbulence_closure_mod.f90 4768 2020-11-02 19:11:23Z suehring $
+! Enable 3D data output also with 64-bit precision
+!
+! 4717 2020-09-30 22:27:40Z pavelkrc
+! Fixes and optimizations of OpenMP parallelization, formatting of OpenMP
+! directives (J. Resler)
+!
+! 4674 2020-09-10 10:36:55Z pavelkrc
+! Update ACC directives for downward facing USM and LSM surfaces
+!
+! 4671 2020-09-09 20:27:58Z pavelkrc
+! Implementation of downward facing USM and LSM surfaces
+!
+! 4625 2020-07-24 12:13:16Z oliver.maas
+! for turbulence_closure = '1.5-order-dai': copy value of distance_to_wall to
+! ghostpoints at dirichlet/radiation boundaries
+!
+! 4586 2020-07-01 16:16:43Z gronemeier
+! Renamed rif to richardson_number (Richardson Flux Number to Gradient Richardson Number)
+!
+! 4510 2020-04-29 14:19:18Z raasch
+! file re-formatted to follow the PALM coding standard
+!
+! 4495 2020-04-13 20:11:20Z raasch
+! workaround for Intel14 compiler added
+!
+! 4486 2020-04-02 20:45:12Z maronga
+! Bugfix: include topography in calculation of distance_to_wall (1.5-order-dai closure)
+!
+! 4481 2020-03-31 18:55:54Z maronga
+! - added new LES closure after Dai et al. (2020), which provides much better grid convergence in
+!   stable boundary layer runs. The implementation is experimental at the moment and should be used
+!   with special care. The new SGS closure can be switched on via
+!   turbulence_closure = '1.5-order-dai'
+! - variable ml_wall_adjusted renamed to delta as it represents a grid size and not a mixing length
+!   (see Equations 14 and 18 in Maronga et al. 2015, GMD)
+! - nameing of turbulence closures revised:
+!        'Moeng_Wyngaard' to '1.5-order'
+!        'TKE-l' to 'tke-l'
+!        'TKE-e' to 'tke-e'
+! - LOGICAL steering variable renamed:
+!        les_mw to les_default
+!
+! 4473 2020-03-25 21:04:07Z gronemeier
+! - rename l-grid to gridsize-geometric-mean
+!          l-wall to ml-wall-adjusted
+!          l-stable to ml-stratification
+!          l-black to ml-blackadar
+!          l-v to ml-local-profile
+!          l-max to max-length-scale
+!          l to ml
+! - adjust some comments
+! - corrected definition of wall-adjusted mixing length to include gridsize-geometric-mean
+! - moved definition of wall_adjustment_factor to this module
+!
+! 4457 2020-03-11 14:20:43Z raasch
+! use statement for exchange horiz added
+!
+! 4433 2020-02-28 22:14:43Z gronemeier
+! remove warning for newly implemented RANS mode
+!
+! 4370 2020-01-10 14:00:44Z raasch
+! vector directives added to force vectorization on Intel19 compiler
+!
+! 4346 2019-12-18 11:55:56Z motisi
+! Introduction of wall_flags_total_0, which currently sets bits based on static topography
+! information used in wall_flags_static_0
+!
+! 4329 2019-12-10 15:46:36Z motisi
+! Renamed wall_flags_0 to wall_flags_static_0
+!
+! 4182 2019-08-22 15:20:23Z scharf
+! Corrected "Former revisions" section
+!
+! 4177 2019-08-20 14:32:34Z gronemeier
+! add comment
+!
+! 4170 2019-08-19 17:12:31Z gronemeier
+! - add performance optimizations according to K. Ketelsen to diffusion_e and
+!   tcm_diffusivities_default
+! - bugfix in calculating l_wall for vertical walls
+! - bugfix in using l_wall in initialization (consider wall_adjustment_factor)
+! - always initialize diss and save the dissipation to that array
+!
+! 4168 2019-08-16 13:50:17Z suehring
+! Replace function get_topography_top_index by topo_top_ind
+!
+! 4110 2019-07-22 17:05:21Z suehring
+! pass integer flag array as well as boundary flags to WS scalar advection routine
+!
+! 4109 2019-07-22 17:00:34Z suehring
+! - Modularize setting of boundary conditions for TKE and dissipation
+! - Neumann boundary condition for TKE at model top is set also in child domain
+! - Revise setting of Neumann boundary conditions at non-cyclic lateral boundaries
+! - Bugfix, set Neumann boundary condition for TKE at vertical wall instead of an implicit Dirichlet
+!   boundary condition which implied a sink of TKE at vertical walls
+!
+! 4048 2019-06-21 21:00:21Z knoop
+! write out preprocessor directives; remove tailing whitespaces
+!
+! 3775 2019-03-04 12:40:20Z gronemeier
+! removed unused variables
+!
+! 3724 2019-02-06 16:28:23Z kanani
+! Correct double-used log_point_s units
+!
+! 3719 2019-02-06 13:10:18Z kanani
+! Changed log_point to log_point_s, otherwise this overlaps with 'all progn.equations' cpu
+! measurement.
+!
+! 3684 2019-01-20 20:20:58Z knoop
+! Remove unused variable simulated_time
+!
+! 2696 2017-12-14 17:12:51Z kanani
+! Initial revision
 !
 !
 ! Authors:
@@ -33,9 +156,6 @@
 !--------------------------------------------------------------------------------------------------!
  MODULE turbulence_closure_mod
 
-#if defined( __parallel )
-    USE MPI
-#endif
 
     USE arrays_3d,                                                                                 &
         ONLY:  diss,                                                                               &
@@ -43,6 +163,7 @@
                diss_2,                                                                             &
                diss_3,                                                                             &
                diss_p,                                                                             &
+               dzu,                                                                                &
                e,                                                                                  &
                e_1,                                                                                &
                e_2,                                                                                &
@@ -79,6 +200,7 @@
                bc_radiation_s,                                                                     &
                child_domain,                                                                       &
                constant_diffusion,                                                                 &
+               current_timestep_number,                                                            &
                dt_3d,                                                                              &
                e_init,                                                                             &
                humidity,                                                                           &
@@ -98,6 +220,7 @@
                rans_tke_l,                                                                         &
                timestep_scheme,                                                                    &
                turbulence_closure,                                                                 &
+               turbulent_inflow,                                                                   &
                use_upstream_for_tke,                                                               &
                vpt_reference,                                                                      &
                ws_scheme_sca
@@ -132,16 +255,12 @@
                nzb,                                                                                &
                nzt,                                                                                &
                topo_top_ind,                                                                       &
-               topo_flags
+               wall_flags_total_0
 
     USE kinds
 
     USE ocean_mod,                                                                                 &
         ONLY:  prho_reference
-
-    USE particle_attributes,                                                                       &
-        ONLY:  use_sgs_for_particles,                                                              &
-               wang_kernel
 
     USE pegrid
 
@@ -154,11 +273,15 @@
                statistic_regions
 
     USE surface_mod,                                                                               &
-        ONLY:  bc_hv,                                                                              &
-               surf_def,                                                                           &
-               surf_lsm,                                                                           &
-               surf_top,                                                                           &
-               surf_usm
+        ONLY:  bc_h,                                                                               &
+               bc_v,                                                                               &
+               surf_def_h,                                                                         &
+               surf_def_v,                                                                         &
+               surf_lsm_h,                                                                         &
+               surf_lsm_v,                                                                         &
+               surf_usm_h,                                                                         &
+               surf_usm_v,                                                                         &
+               surf_type
 
     IMPLICIT NONE
 
@@ -301,17 +424,15 @@
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE tcm_boundary_conds
 
-    USE bulk_cloud_model_mod,                                                                      &
-        ONLY:  collision_turbulence
-
     USE pmc_interface,                                                                             &
-        ONLY:  rans_mode_parent
+        ONLY : rans_mode_parent
 
     IMPLICIT NONE
 
     INTEGER(iwp) ::  i  !< grid index x direction
     INTEGER(iwp) ::  j  !< grid index y direction
     INTEGER(iwp) ::  k  !< grid index z direction
+    INTEGER(iwp) ::  l  !< running index boundary type, for up- and downward-facing walls
     INTEGER(iwp) ::  m  !< running index surface elements
 !
 !-- Boundary conditions for TKE.
@@ -320,47 +441,94 @@
 !--    In LES mode, Neumann conditions with de/x_i=0 are assumed at solid walls.
 !--    Note, only TKE is prognostic in this case and dissipation is only a diagnostic quantity.
        IF ( .NOT. rans_mode )  THEN
-          !$OMP PARALLEL DO PRIVATE( i, j, k )
-          !$ACC PARALLEL LOOP PRIVATE(i, j, k) &
-          !$ACC PRESENT(bc_hv, e_p)
-          DO  m = 1, bc_hv%ns
-             i = bc_hv%i(m)
-             j = bc_hv%j(m)
-             k = bc_hv%k(m)
 !
-!--          At corners e_p is overdetermined and an accurate Neumann condition
-!--          cannot be maintained.
-             e_p(k+bc_hv%koff(m),j+bc_hv%joff(m),i+bc_hv%ioff(m)) = e_p(k,j,i)
+!--       Horizontal walls, upward- and downward-facing
+          DO  l = 0, 1
+             !$OMP PARALLEL DO PRIVATE( i, j, k )
+             !$ACC PARALLEL LOOP PRIVATE(i, j, k) &
+             !$ACC PRESENT(bc_h, e_p)
+             DO  m = 1, bc_h(l)%ns
+                i = bc_h(l)%i(m)
+                j = bc_h(l)%j(m)
+                k = bc_h(l)%k(m)
+                e_p(k+bc_h(l)%koff,j,i) = e_p(k,j,i)
+             ENDDO
+          ENDDO
+!
+!--       Vertical walls
+          DO  l = 0, 3
+!
+!--          Note concerning missing ACC directive for this loop: Even though the data structure
+!--          bc_v is present, it may not contain any allocated arrays in the flat but also in a
+!--          topography case, leading to a runtime error. Therefore, omit ACC directives for this
+!--          loop, in contrast to the bc_h loop.
+             !$OMP PARALLEL DO PRIVATE( i, j, k )
+             DO  m = 1, bc_v(l)%ns
+                i = bc_v(l)%i(m)
+                j = bc_v(l)%j(m)
+                k = bc_v(l)%k(m)
+                e_p(k,j+bc_v(l)%joff,i+bc_v(l)%ioff) = e_p(k,j,i)
+             ENDDO
           ENDDO
 !
 !--    In RANS mode, wall function is used as boundary condition for TKE
        ELSE
 !
 !--       Use wall function within constant-flux layer
-!--       Note, grid points listed in bc_hv are not included in any calculations in RANS mode and are
+!--       Note, grid points listed in bc_h are not included in any calculations in RANS mode and are
 !--       therefore not set here.
+!
+!--       Upward-facing surfaces
 !--       Default surfaces
-          DO  m = 1, surf_def%ns
-             i = surf_def%i(m)
-             j = surf_def%j(m)
-             k = surf_def%k(m)
-             e_p(k,j,i) = ( surf_def%us(m) / c_0 )**2
+          DO  m = 1, surf_def_h(0)%ns
+             i = surf_def_h(0)%i(m)
+             j = surf_def_h(0)%j(m)
+             k = surf_def_h(0)%k(m)
+             e_p(k,j,i) = ( surf_def_h(0)%us(m) / c_0 )**2
           ENDDO
 !
 !--       Natural surfaces
-          DO  m = 1, surf_lsm%ns
-             i = surf_lsm%i(m)
-             j = surf_lsm%j(m)
-             k = surf_lsm%k(m)
-             e_p(k,j,i) = ( surf_lsm%us(m) / c_0 )**2
+          DO  m = 1, surf_lsm_h(0)%ns
+             i = surf_lsm_h(0)%i(m)
+             j = surf_lsm_h(0)%j(m)
+             k = surf_lsm_h(0)%k(m)
+             e_p(k,j,i) = ( surf_lsm_h(0)%us(m) / c_0 )**2
           ENDDO
 !
 !--       Urban surfaces
-          DO  m = 1, surf_usm%ns
-             i = surf_usm%i(m)
-             j = surf_usm%j(m)
-             k = surf_usm%k(m)
-             e_p(k,j,i) = ( surf_usm%us(m) / c_0 )**2
+          DO  m = 1, surf_usm_h(0)%ns
+             i = surf_usm_h(0)%i(m)
+             j = surf_usm_h(0)%j(m)
+             k = surf_usm_h(0)%k(m)
+             e_p(k,j,i) = ( surf_usm_h(0)%us(m) / c_0 )**2
+          ENDDO
+!
+!--       Vertical surfaces
+          DO  l = 0, 3
+!
+!--          Default surfaces
+             DO  m = 1, surf_def_v(l)%ns
+                i = surf_def_v(l)%i(m)
+                j = surf_def_v(l)%j(m)
+                k = surf_def_v(l)%k(m)
+                e_p(k,j,i) = ( surf_def_v(l)%us(m) / c_0 )**2
+             ENDDO
+!
+!--          Natural surfaces
+             DO  m = 1, surf_lsm_v(l)%ns
+                i = surf_lsm_v(l)%i(m)
+                j = surf_lsm_v(l)%j(m)
+                k = surf_lsm_v(l)%k(m)
+                e_p(k,j,i) = ( surf_lsm_v(l)%us(m) / c_0 )**2
+             ENDDO
+!
+!--          Urban surfaces
+             DO  m = 1, surf_usm_v(l)%ns
+                i = surf_usm_v(l)%i(m)
+                j = surf_usm_v(l)%j(m)
+                k = surf_usm_v(l)%k(m)
+                e_p(k,j,i) = ( surf_usm_v(l)%us(m) / c_0 )**2
+             ENDDO
           ENDDO
        ENDIF
 !
@@ -377,10 +545,10 @@
           IF ( rans_mode_parent  .AND.  .NOT. rans_mode )  THEN
 
              e_p(nzt+1,:,:) = e_p(nzt,:,:)
-             IF ( bc_dirichlet_l  .OR.  bc_radiation_l )  e_p(:,:,nxl-1) = e_p(:,:,nxl)
-             IF ( bc_dirichlet_r  .OR.  bc_radiation_r )  e_p(:,:,nxr+1) = e_p(:,:,nxr)
-             IF ( bc_dirichlet_s  .OR.  bc_radiation_s )  e_p(:,nys-1,:) = e_p(:,nys,:)
-             IF ( bc_dirichlet_n  .OR.  bc_radiation_n )  e_p(:,nyn+1,:) = e_p(:,nyn,:)
+             IF ( bc_dirichlet_l )  e_p(:,:,nxl-1) = e_p(:,:,nxl)
+             IF ( bc_dirichlet_r )  e_p(:,:,nxr+1) = e_p(:,:,nxr)
+             IF ( bc_dirichlet_s )  e_p(:,nys-1,:) = e_p(:,nys,:)
+             IF ( bc_dirichlet_n )  e_p(:,nyn+1,:) = e_p(:,nyn,:)
 
           ENDIF
        ENDIF
@@ -408,19 +576,6 @@
           ENDIF
        ENDIF
     ENDIF
-!
-!-- Set boundary condition for dissipation in LES mode. This is needed for calculating the
-!-- SGS particle velocities or in the bulk-cloud model.
-    IF ( .NOT. rans_tke_e  .AND.                                                                   &
-         ( use_sgs_for_particles  .OR.  wang_kernel  .OR.  collision_turbulence ) )                &
-    THEN
-       DO  m = 1, bc_hv%ns
-          i = bc_hv%i(m)
-          j = bc_hv%j(m)
-          k = bc_hv%k(m)
-          diss(k+bc_hv%koff(m),j+bc_hv%joff(m),i+bc_hv%ioff(m)) = diss(k,j,i)
-       ENDDO
-    ENDIF
 
 !
 !-- Boundary conditions for TKE dissipation rate in RANS mode.
@@ -429,27 +584,55 @@
 !--    Use wall function within constant-flux layer
 !--    Upward-facing surfaces
 !--    Default surfaces
-       DO  m = 1, surf_def%ns
-          i = surf_def%i(m)
-          j = surf_def%j(m)
-          k = surf_def%k(m)
-          diss_p(k,j,i) = surf_def%us(m)**3 / ( kappa * surf_def%z_mo(m) )
+       DO  m = 1, surf_def_h(0)%ns
+          i = surf_def_h(0)%i(m)
+          j = surf_def_h(0)%j(m)
+          k = surf_def_h(0)%k(m)
+          diss_p(k,j,i) = surf_def_h(0)%us(m)**3 / ( kappa * surf_def_h(0)%z_mo(m) )
        ENDDO
 !
 !--    Natural surfaces
-       DO  m = 1, surf_lsm%ns
-          i = surf_lsm%i(m)
-          j = surf_lsm%j(m)
-          k = surf_lsm%k(m)
-          diss_p(k,j,i) = surf_lsm%us(m)**3 / ( kappa * surf_lsm%z_mo(m) )
+       DO  m = 1, surf_lsm_h(0)%ns
+          i = surf_lsm_h(0)%i(m)
+          j = surf_lsm_h(0)%j(m)
+          k = surf_lsm_h(0)%k(m)
+          diss_p(k,j,i) = surf_lsm_h(0)%us(m)**3 / ( kappa * surf_lsm_h(0)%z_mo(m) )
        ENDDO
 !
 !--    Urban surfaces
-       DO  m = 1, surf_usm%ns
-          i = surf_usm%i(m)
-          j = surf_usm%j(m)
-          k = surf_usm%k(m)
-          diss_p(k,j,i) = surf_usm%us(m)**3 / ( kappa * surf_usm%z_mo(m) )
+       DO  m = 1, surf_usm_h(0)%ns
+          i = surf_usm_h(0)%i(m)
+          j = surf_usm_h(0)%j(m)
+          k = surf_usm_h(0)%k(m)
+          diss_p(k,j,i) = surf_usm_h(0)%us(m)**3 / ( kappa * surf_usm_h(0)%z_mo(m) )
+       ENDDO
+!
+!--    Vertical surfaces
+       DO  l = 0, 3
+!
+!--       Default surfaces
+          DO  m = 1, surf_def_v(l)%ns
+             i = surf_def_v(l)%i(m)
+             j = surf_def_v(l)%j(m)
+             k = surf_def_v(l)%k(m)
+             diss_p(k,j,i) = surf_def_v(l)%us(m)**3 / ( kappa * surf_def_v(l)%z_mo(m) )
+          ENDDO
+!
+!--       Natural surfaces
+          DO  m = 1, surf_lsm_v(l)%ns
+             i = surf_lsm_v(l)%i(m)
+             j = surf_lsm_v(l)%j(m)
+             k = surf_lsm_v(l)%k(m)
+             diss_p(k,j,i) = surf_lsm_v(l)%us(m)**3 / ( kappa * surf_lsm_v(l)%z_mo(m) )
+          ENDDO
+!
+!--       Urban surfaces
+          DO  m = 1, surf_usm_v(l)%ns
+             i = surf_usm_v(l)%i(m)
+             j = surf_usm_v(l)%j(m)
+             k = surf_usm_v(l)%k(m)
+             diss_p(k,j,i) = surf_usm_v(l)%us(m)**3 / ( kappa * surf_usm_v(l)%z_mo(m) )
+          ENDDO
        ENDDO
 !
 !--    Limit change of diss to be between -90% and +100%. Also, set an absolute minimum value
@@ -457,7 +640,7 @@
           DO  j = nys, nyn
              DO  k = nzb, nzt+1
                 diss_p(k,j,i) = MAX( MIN( diss_p(k,j,i), 2.0_wp * diss(k,j,i) ),                   &
-                                     0.1_wp * diss(k,j,i), 0.0001_wp )
+                                          0.1_wp * diss(k,j,i), 0.0001_wp )
              ENDDO
           ENDDO
        ENDDO
@@ -504,8 +687,8 @@
           rans_mode = .TRUE.
 
        CASE DEFAULT
-          message_string = 'unknown turbulence closure: "' // TRIM( turbulence_closure ) // '"'
-          CALL message( 'tcm_check_parameters', 'TCM0001', 1, 2, 0, 6, 0 )
+          message_string = 'Unknown turbulence closure: ' // TRIM( turbulence_closure )
+          CALL message( 'tcm_check_parameters', 'PA0500', 1, 2, 0, 6, 0 )
 
     END SELECT
 !
@@ -522,21 +705,21 @@
        c_3 = rans_const_c(3)   !> @todo Clarify how to switch between different models
        c_4 = rans_const_c(4)
 
-       IF ( turbulent_inflow  .OR.  turbulent_outflow )  THEN
-          message_string = 'turbulent inflow/outflow is not yet implemented for RANS mode'
-          CALL message( 'tcm_check_parameters', 'TCM0002', 1, 2, 0, 6, 0 )
+       IF ( turbulent_inflow .OR. turbulent_outflow )  THEN
+          message_string = 'turbulent inflow/outflow is not yet '// 'implemented for RANS mode'
+          CALL message( 'tcm_check_parameters', 'PA0501', 1, 2, 0, 6, 0 )
        ENDIF
 
     ELSE
 !
 !--    LES mode
        c_0 = 0.1_wp    !According to Lilly (1967) and Deardorff (1980)
+
        dsig_e = 1.0_wp !Assure to use K_m to calculate TKE instead of K_e which is used in RANS mode
 
     ENDIF
 
  END SUBROUTINE tcm_check_parameters
-
 
 !--------------------------------------------------------------------------------------------------!
 ! Description:
@@ -583,8 +766,8 @@
 
     LOGICAL, INTENT(OUT) ::  found   !< flag if output variable is found
 
-
     found  = .TRUE.
+
 !
 !-- Check for the grid
     SELECT CASE ( TRIM( var ) )
@@ -622,6 +805,7 @@
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE tcm_3d_data_averaging( mode, variable )
 
+
     USE averaging,                                                                                 &
         ONLY:  diss_av,                                                                            &
                kh_av,                                                                              &
@@ -638,7 +822,6 @@
     INTEGER(iwp) ::  i  !< loop index
     INTEGER(iwp) ::  j  !< loop index
     INTEGER(iwp) ::  k  !< loop index
-
 
     IF ( mode == 'allocate' )  THEN
 
@@ -782,11 +965,12 @@
     LOGICAL ::  found     !< flag if output variable is found
     LOGICAL ::  resorted  !< flag if output is already resorted
 
+    REAL(wp) ::  fill_value = -9999.0_wp  !< value for the _FillValue attribute
+
     REAL(wp), DIMENSION(nxl:nxr,nys:nyn,nzb_do:nzt_do) ::  local_pf  !< local
      !< array to which output data is resorted to
 
     REAL(wp), DIMENSION(:,:,:), POINTER ::  to_be_resorted  !< points to selected output variable
-
 
     found = .TRUE.
     resorted = .FALSE.
@@ -802,7 +986,7 @@
           ELSE
              IF ( .NOT. ALLOCATED( diss_av ) )  THEN
                 ALLOCATE( diss_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-                diss_av = 0.0_wp
+                diss_av = REAL( fill_value, KIND = wp )
              ENDIF
              to_be_resorted => diss_av
           ENDIF
@@ -814,7 +998,7 @@
           ELSE
              IF ( .NOT. ALLOCATED( kh_av ) )  THEN
                 ALLOCATE( kh_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-                kh_av = 0.0_wp
+                kh_av = REAL( fill_value, KIND = wp )
              ENDIF
              to_be_resorted => kh_av
           ENDIF
@@ -826,7 +1010,7 @@
           ELSE
              IF ( .NOT. ALLOCATED( km_av ) )  THEN
                 ALLOCATE( km_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-                km_av = 0.0_wp
+                km_av = REAL( fill_value, KIND = wp )
              ENDIF
              to_be_resorted => km_av
           ENDIF
@@ -842,7 +1026,8 @@
        DO  i = nxl, nxr
           DO  j = nys, nyn
              DO  k = nzb_do, nzt_do
-                IF ( BTEST( topo_flags(k,j,i), flag_nr ) )  local_pf(i,j,k) = to_be_resorted(k,j,i)
+                local_pf(i,j,k) = MERGE( to_be_resorted(k,j,i), REAL( fill_value, KIND = wp ),     &
+                                  BTEST( wall_flags_total_0(k,j,i), flag_nr ) )
              ENDDO
           ENDDO
        ENDDO
@@ -857,6 +1042,7 @@
 !> Define 3D output variables.
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE tcm_data_output_3d( av, variable, found, local_pf, nzb_do, nzt_do )
+
 
     USE averaging,                                                                                 &
         ONLY:  diss_av,                                                                            &
@@ -878,11 +1064,12 @@
     LOGICAL ::  found     !< flag if output variable is found
     LOGICAL ::  resorted  !< flag if output is already resorted
 
+    REAL(wp) ::  fill_value = -9999.0_wp  !< value for the _FillValue attribute
+
     REAL(wp), DIMENSION(nxl:nxr,nys:nyn,nzb_do:nzt_do) ::  local_pf  !< local
        !< array to which output data is resorted to
 
     REAL(wp), DIMENSION(:,:,:), POINTER ::  to_be_resorted  !< points to selected output variable
-
 
     found = .TRUE.
     resorted = .FALSE.
@@ -898,7 +1085,7 @@
           ELSE
              IF ( .NOT. ALLOCATED( diss_av ) )  THEN
                 ALLOCATE( diss_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-                diss_av = 0.0_wp
+                diss_av = REAL( fill_value, KIND = wp )
              ENDIF
              to_be_resorted => diss_av
           ENDIF
@@ -909,7 +1096,7 @@
           ELSE
              IF ( .NOT. ALLOCATED( kh_av ) )  THEN
                 ALLOCATE( kh_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-                kh_av = 0.0_wp
+                kh_av = REAL( fill_value, KIND = wp )
              ENDIF
              to_be_resorted => kh_av
           ENDIF
@@ -920,7 +1107,7 @@
           ELSE
              IF ( .NOT. ALLOCATED( km_av ) )  THEN
                 ALLOCATE( km_av(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-                km_av = 0.0_wp
+                km_av = REAL( fill_value, KIND = wp )
              ENDIF
              to_be_resorted => km_av
           ENDIF
@@ -935,7 +1122,8 @@
        DO  i = nxl, nxr
           DO  j = nys, nyn
              DO  k = nzb_do, nzt_do
-                IF ( BTEST( topo_flags(k,j,i), flag_nr ) )  local_pf(i,j,k) = to_be_resorted(k,j,i)
+                local_pf(i,j,k) = MERGE( to_be_resorted(k,j,i), REAL( fill_value, KIND = wp ),     &
+                                  BTEST( wall_flags_total_0(k,j,i), flag_nr ) )
              ENDDO
           ENDDO
        ENDDO
@@ -952,6 +1140,9 @@
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE tcm_init_arrays
 
+    USE bulk_cloud_model_mod,                                                                      &
+        ONLY:  collision_turbulence
+
     USE pmc_interface,                                                                             &
         ONLY:  nested_run
 
@@ -963,7 +1154,6 @@
     ALLOCATE( e_1(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
     ALLOCATE( e_2(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
     ALLOCATE( e_3(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
-
 
 !
 !-- Allocate arrays required for dissipation.
@@ -997,12 +1187,9 @@
  SUBROUTINE tcm_init
 
     USE control_parameters,                                                                        &
-        ONLY:  cyclic_fill_initialization,                                                         &
-               terrain_following_mapping,                                                          &
+        ONLY:  bc_dirichlet_l,                                                                     &
+               complex_terrain,                                                                    &
                topography
-
-    USE exchange_horiz_mod,                                                                        &
-        ONLY:  exchange_horiz
 
     USE model_1d_mod,                                                                              &
         ONLY:  e1d,                                                                                &
@@ -1015,7 +1202,7 @@
     INTEGER(iwp) :: j             !< loop index
     INTEGER(iwp) :: k             !< loop index
     INTEGER(iwp) :: nz_s_shift    !< lower shift index for scalars
-
+    INTEGER(iwp) :: nz_s_shift_l  !< local lower shift index in case of turbulent inflow
 
 !
 !-- Initialize mixing length
@@ -1024,8 +1211,7 @@
 !
 !-- Actions for initial runs
     IF ( TRIM( initializing_actions ) /= 'read_restart_data'  .AND.                                &
-         .NOT. cyclic_fill_initialization )                                                        &
-    THEN
+         TRIM( initializing_actions ) /= 'cyclic_fill' )  THEN
 
        IF ( INDEX( initializing_actions, 'set_1d-model_profiles' ) /= 0 )  THEN
 
@@ -1055,8 +1241,8 @@
                 kh = km / prandtl_number
                 e  = 0.0_wp
              ELSEIF ( e_init > 0.0_wp )  THEN
-                DO  i = nxl, nxr
-                   DO  j = nys, nyn
+                DO  i = nxlg, nxrg
+                   DO  j = nysg, nyng
                       DO  k = nzb+1, nzt
                          km(k,j,i) = c_0 * SQRT( e_init ) * MIN( delta(k,j,i), ml_blackadar(k) )
                       ENDDO
@@ -1066,47 +1252,20 @@
                 km(nzt+1,:,:) = km(nzt,:,:)
                 kh = km / prandtl_number
                 e  = e_init
-
-                CALL exchange_horiz( km, nbgp )
-                CALL exchange_horiz( kh, nbgp )
-                CALL exchange_horiz( e, nbgp )
-!
-!--             Set Neumann conditions at the outer boundaries in case of non-cyclic boundary
-!--             conditions.
-                IF ( bc_dirichlet_l  .OR.  bc_radiation_l )  THEN
-                   km(:,:,nxl-1) = km(:,:,nxl)
-                   kh(:,:,nxl-1) = kh(:,:,nxl)
-                   e(:,:,nxl-1)  = e(:,:,nxl)
-                ENDIF
-                IF ( bc_dirichlet_r  .OR.  bc_radiation_r )  THEN
-                   km(:,:,nxr+1) = km(:,:,nxr)
-                   kh(:,:,nxr+1) = kh(:,:,nxr)
-                   e(:,:,nxr+1)  = e(:,:,nxr)
-                ENDIF
-                IF ( bc_dirichlet_s  .OR.  bc_radiation_s )  THEN
-                   km(:,nys-1,:) = km(:,nys,:)
-                   kh(:,nys-1,:) = kh(:,nys,:)
-                   e(:,nys-1,:)  = e(:,nys,:)
-                ENDIF
-                IF ( bc_dirichlet_n  .OR.  bc_radiation_n )  THEN
-                   km(:,nyn+1,:) = km(:,nyn,:)
-                   kh(:,nyn+1,:) = kh(:,nyn,:)
-                   e(:,nyn+1,:)  = e(:,nyn,:)
-                ENDIF
              ELSE
                 IF ( .NOT. ocean_mode )  THEN
-                   kh = 0.01_wp   ! There must exist an initial diffusion, because otherwise no
-                   km = 0.01_wp   ! TKE would be produced by the production terms, as long as not
+                   kh   = 0.01_wp   ! There must exist an initial diffusion, because otherwise no
+                   km   = 0.01_wp   ! TKE would be produced by the production terms, as long as not
                                     ! yet e = (u*/cm)**2 at k=nzb+1
                 ELSE
-                   kh = 0.00001_wp
-                   km = 0.00001_wp
+                   kh   = 0.00001_wp
+                   km   = 0.00001_wp
                 ENDIF
-                e = 0.0_wp
+                e    = 0.0_wp
              ENDIF
 
-             DO  i = nxl, nxr
-                DO  j = nys, nyn
+             DO  i = nxlg, nxrg
+                DO  j = nysg, nyng
                    DO  k = nzb+1, nzt
                       diss(k,j,i) = c_0**4 * e(k,j,i)**2 / km(k,j,i)
                    ENDDO
@@ -1115,27 +1274,18 @@
              diss(nzb,:,:) = diss(nzb+1,:,:)
              diss(nzt+1,:,:) = diss(nzt,:,:)
 
-             CALL exchange_horiz( diss, nbgp )
-!
-!--          Set Neumann conditions at the outer boundaries in case of non-cyclic boundary
-!--          conditions.
-             IF ( bc_dirichlet_l  .OR.  bc_radiation_l )  diss(:,:,nxl-1) = diss(:,:,nxl)
-             IF ( bc_dirichlet_r  .OR.  bc_radiation_r )  diss(:,:,nxr+1) = diss(:,:,nxr)
-             IF ( bc_dirichlet_s  .OR.  bc_radiation_s )  diss(:,nys-1,:) = diss(:,nys,:)
-             IF ( bc_dirichlet_n  .OR.  bc_radiation_n )  diss(:,nyn+1,:) = diss(:,nyn,:)
           ENDIF
 
-       ELSEIF ( INDEX( initializing_actions, 'set_constant_profiles' ) /= 0  .OR.                  &
-                INDEX( initializing_actions, 'interpolate_from_parent' ) /= 0  .OR.                &
-                INDEX( initializing_actions, 'read_from_file' ) /= 0 )  THEN
+       ELSEIF ( INDEX( initializing_actions, 'set_constant_profiles' ) /= 0 .OR.                   &
+                INDEX( initializing_actions, 'inifor' ) /= 0 )  THEN
 
           IF ( constant_diffusion )  THEN
              km = km_constant
              kh = km / prandtl_number
              e  = 0.0_wp
           ELSEIF ( e_init > 0.0_wp )  THEN
-             DO  i = nxl, nxr
-                DO  j = nys, nyn
+             DO  i = nxlg, nxrg
+                DO  j = nysg, nyng
                    DO  k = nzb+1, nzt
                       km(k,j,i) = c_0 * SQRT( e_init ) * delta(k,j,i)
                    ENDDO
@@ -1143,49 +1293,30 @@
              ENDDO
              km(nzb,:,:)   = km(nzb+1,:,:)
              km(nzt+1,:,:) = km(nzt,:,:)
-
-             CALL exchange_horiz( km, nbgp )
-!
-!--          Set Neumann conditions at the outer boundaries in case of non-cyclic boundary
-!--          conditions.
-             IF ( bc_dirichlet_l  .OR.  bc_radiation_l )  km(:,:,nxl-1) = km(:,:,nxl)
-             IF ( bc_dirichlet_r  .OR.  bc_radiation_r )  km(:,:,nxr+1) = km(:,:,nxr)
-             IF ( bc_dirichlet_s  .OR.  bc_radiation_s )  km(:,nys-1,:) = km(:,nys,:)
-             IF ( bc_dirichlet_n  .OR.  bc_radiation_n )  km(:,nyn+1,:) = km(:,nyn,:)
-
              kh = km / prandtl_number
              e  = e_init
           ELSE
              IF ( .NOT. ocean_mode )  THEN
-                kh = 0.01_wp   ! There must exist an initial diffusion, because otherwise no TKE
-                km = 0.01_wp   ! would be produced by the production terms, as long as not yet
-                               ! e = (u*/cm)**2 at k=nzb+1
+                kh   = 0.01_wp   ! There must exist an initial diffusion, because otherwise no TKE
+                km   = 0.01_wp   ! would be produced by the production terms, as long as not yet
+                                 ! e = (u*/cm)**2 at k=nzb+1
              ELSE
-                kh = 0.00001_wp
-                km = 0.00001_wp
+                kh   = 0.00001_wp
+                km   = 0.00001_wp
              ENDIF
-             e = 0.0_wp
+             e    = 0.0_wp
           ENDIF
 
           IF ( rans_tke_e )  THEN
-             DO  i = nxl, nxr
-                DO  j = nys, nyn
+             DO  i = nxlg, nxrg
+                DO  j = nysg, nyng
                    DO  k = nzb+1, nzt
                       diss(k,j,i) = c_0**4 * e(k,j,i)**2 / km(k,j,i)
                    ENDDO
                 ENDDO
              ENDDO
-             diss(nzb,:,:)   = diss(nzb+1,:,:)
+             diss(nzb,:,:) = diss(nzb+1,:,:)
              diss(nzt+1,:,:) = diss(nzt,:,:)
-
-             CALL exchange_horiz( diss, nbgp )
-!
-!--          Set Neumann conditions at the outer boundaries in case of non-cyclic boundary
-!--          conditions.
-             IF ( bc_dirichlet_l  .OR.  bc_radiation_l )  diss(:,:,nxl-1) = diss(:,:,nxl)
-             IF ( bc_dirichlet_r  .OR.  bc_radiation_r )  diss(:,:,nxr+1) = diss(:,:,nxr)
-             IF ( bc_dirichlet_s  .OR.  bc_radiation_s )  diss(:,nys-1,:) = diss(:,nys,:)
-             IF ( bc_dirichlet_n  .OR.  bc_radiation_n )  diss(:,nyn+1,:) = diss(:,nyn,:)
           ELSE
              diss = 0.0_wp
           ENDIF
@@ -1205,13 +1336,12 @@
        ENDIF
 
     ELSEIF ( TRIM( initializing_actions ) == 'read_restart_data'  .OR.                             &
-             cyclic_fill_initialization )  THEN
+             TRIM( initializing_actions ) == 'cyclic_fill' )  THEN
 
 !
-!--    In case of terrain-following mapping and cyclic fill method as initialization, shift initial
-!--    data in the vertical direction for each point in the x-y-plane depending on local surface
-!--    height.
-       IF ( terrain_following_mapping  .AND.  cyclic_fill_initialization )  THEN
+!--    In case of complex terrain and cyclic fill method as initialization, shift initial data in
+!--    the vertical direction for each point in the x-y-plane depending on local surface height
+       IF ( complex_terrain  .AND.  TRIM( initializing_actions ) == 'cyclic_fill' )  THEN
           DO  i = nxlg, nxrg
              DO  j = nysg, nyng
                 nz_s_shift = topo_top_ind(j,i,0)
@@ -1235,15 +1365,45 @@
        ENDIF
 
 !
+!--    Initialization of the turbulence recycling method
+       IF ( TRIM( initializing_actions ) == 'cyclic_fill'  .AND.  turbulent_inflow )  THEN
+          mean_inflow_profiles(:,5) = hom_sum(:,8,0)   ! e
+!
+!--       In case of complex terrain, determine vertical displacement at inflow boundary and adjust
+!--       mean inflow profiles
+          IF ( complex_terrain )  THEN
+             IF ( nxlg <= 0  .AND.  nxrg >= 0  .AND.  nysg <= 0  .AND.  nyng >= 0 )  THEN
+                nz_s_shift_l = topo_top_ind(0,0,0)
+             ELSE
+                nz_s_shift_l = 0
+             ENDIF
+#if defined( __parallel )
+             CALL MPI_ALLREDUCE(nz_s_shift_l, nz_s_shift, 1, MPI_INTEGER, MPI_MAX, comm2d, ierr)
+#else
+             nz_s_shift = nz_s_shift_l
+#endif
+             mean_inflow_profiles(nz_s_shift:nzt+1,5) = hom_sum(0:nzt+1-nz_s_shift,8,0)  ! e
+          ENDIF
+!
+!--       Use these mean profiles at the inflow (provided that Dirichlet conditions are used)
+          IF ( bc_dirichlet_l )  THEN
+             DO  j = nysg, nyng
+                DO  k = nzb, nzt+1
+                   e(k,j,nxlg:-1)  = mean_inflow_profiles(k,5)
+                ENDDO
+             ENDDO
+          ENDIF
+       ENDIF
+!
 !--    Inside buildings set TKE back to zero
-       IF ( cyclic_fill_initialization .AND. topography /= 'flat' )  THEN
+       IF ( TRIM( initializing_actions ) == 'cyclic_fill' .AND. topography /= 'flat' )  THEN
 !
 !--       Inside buildings set TKE back to zero.
 !--       Other scalars (km, kh,...) are ignored at present, maybe revise later.
           DO  i = nxlg, nxrg
              DO  j = nysg, nyng
                 DO  k = nzb, nzt
-                   e(k,j,i) = MERGE( e(k,j,i), 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                   e(k,j,i) = MERGE( e(k,j,i), 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
                 ENDDO
              ENDDO
           ENDDO
@@ -1252,7 +1412,8 @@
              DO  i = nxlg, nxrg
                 DO  j = nysg, nyng
                    DO  k = nzb, nzt
-                      diss(k,j,i) = MERGE( diss(k,j,i), 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                      diss(k,j,i) = MERGE( diss(k,j,i), 0.0_wp,                                    &
+                                    BTEST( wall_flags_total_0(k,j,i), 0 ) )
                    ENDDO
                 ENDDO
              ENDDO
@@ -1298,22 +1459,28 @@
                wall_adjustment
 
     USE exchange_horiz_mod,                                                                        &
-        ONLY:  exchange_horiz
+        ONLY:  exchange_horiz,                                                                     &
+               exchange_horiz_int
 
     USE grid_variables,                                                                            &
         ONLY:  dx,                                                                                 &
                dy
 
     USE indices,                                                                                   &
-        ONLY:  nx,                                                                                 &
+        ONLY:  nbgp,                                                                               &
+               nx,                                                                                 &
                nxl,                                                                                &
+               nxlg,                                                                               &
                nxr,                                                                                &
+               nxrg,                                                                               &
                ny,                                                                                 &
                nyn,                                                                                &
+               nyng,                                                                               &
                nys,                                                                                &
+               nysg,                                                                               &
                nzb,                                                                                &
                nzt,                                                                                &
-               topo_flags
+               wall_flags_total_0
 
     USE kinds
 
@@ -1337,9 +1504,9 @@
     INTEGER(iwp) ::  rad_k_b     !< search radius in grid points along negative z
     INTEGER(iwp) ::  rad_k_t     !< search radius in grid points along positive z
 
-    INTEGER(ibp), DIMENSION(:,:), ALLOCATABLE ::  vic_yz  !< contains a quarter of a single yz-slice of vicinity
+    INTEGER(KIND=1), DIMENSION(:,:), ALLOCATABLE ::  vic_yz  !< contains a quarter of a single yz-slice of vicinity
 
-    INTEGER(ibp), DIMENSION(:,:,:), ALLOCATABLE ::  vicinity  !< contains topography information of the vicinity of (i/j/k)
+    INTEGER(KIND=1), DIMENSION(:,:,:), ALLOCATABLE ::  vicinity  !< contains topography information of the vicinity of (i/j/k)
 
     REAL(wp) ::  distance_up            !< distance of grid box center to its boundary in upper direction
     REAL(wp) ::  distance_down          !< distance of grid box center to its boundary in lower direction
@@ -1357,11 +1524,11 @@
     REAL(wp), DIMENSION(nzb:nzt+1) ::  gridsize_geometric_mean  !< geometric mean of grid sizes dx, dy, dz
 
 
-    ALLOCATE( delta(nzb:nzt+1,nys:nyn,nxl:nxr) )
+    ALLOCATE( delta(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
 
 
     IF ( les_dai )  THEN
-       ALLOCATE ( distance_to_wall(nzb:nzt+1,nys:nyn,nxl:nxr) )
+       ALLOCATE ( distance_to_wall(nzb:nzt+1,nysg:nyng,nxlg:nxrg) )
     ENDIF
 !
 !-- Initialize the mixing length in case of an LES-simulation
@@ -1377,8 +1544,8 @@
        IF ( ANY( gridsize_geometric_mean > 1.5_wp * dx * wall_adjustment_factor )  .OR.            &
             ANY( gridsize_geometric_mean > 1.5_wp * dy * wall_adjustment_factor ) )  THEN
             WRITE( message_string, * ) 'grid anisotropy exceeds threshold',                        &
-                                       ' &starting from height level k = ', k
-           CALL message( 'init_grid', 'TCM0003', 0, 1, 0, 6, 0 )
+                                       ' &starting from height level k = ', k, '.'
+           CALL message( 'init_grid', 'PA0202', 0, 1, 0, 6, 0 )
        ENDIF
 
 !
@@ -1410,36 +1577,36 @@
                 DO  k = nzb+1, nzt
 !
 !--                Check if current gridpoint belongs to the atmosphere
-                   IF ( BTEST( topo_flags(k,j,i), 0 ) )  THEN
+                   IF ( BTEST( wall_flags_total_0(k,j,i), 0 ) )  THEN
 !
 !--                   First, check if grid points directly next to current grid point are surface
 !--                   grid points
 !--                   Check along...
 !--                   ...vertical direction, down
-                      IF ( .NOT. BTEST( topo_flags(k-1,j,i), 0 ) )  THEN
+                      IF ( .NOT. BTEST( wall_flags_total_0(k-1,j,i), 0 ) )  THEN
                          distance_down =  zu(k) - zw(k-1)
                       ELSE
                          distance_down = 9999999.9_wp
                       ENDIF
 !
 !--                   ...vertical direction, up
-                      IF ( .NOT. BTEST( topo_flags(k+1,j,i), 0 ) )  THEN
+                      IF ( .NOT. BTEST( wall_flags_total_0(k+1,j,i), 0 ) )  THEN
                          distance_up = zw(k) - zu(k)
                       ELSE
                          distance_up = 9999999.9_wp
                       ENDIF
 !
 !--                   ...y-direction (north/south)
-                      IF ( .NOT. BTEST( topo_flags(k,j-1,i), 0 )  .OR.                             &
-                           .NOT. BTEST( topo_flags(k,j+1,i), 0 ) )  THEN
+                      IF ( .NOT. BTEST( wall_flags_total_0(k,j-1,i), 0 )  .OR.                     &
+                           .NOT. BTEST( wall_flags_total_0(k,j+1,i), 0 ) )  THEN
                          distance_ns = 0.5_wp * dy
                       ELSE
                          distance_ns = 9999999.9_wp
                       ENDIF
 !
 !--                   ...x-direction (left/right)
-                      IF ( .NOT. BTEST( topo_flags(k,j,i-1), 0 )  .OR.                             &
-                           .NOT. BTEST( topo_flags(k,j,i+1), 0 ) )  THEN
+                      IF ( .NOT. BTEST( wall_flags_total_0(k,j,i-1), 0 )  .OR.                     &
+                           .NOT. BTEST( wall_flags_total_0(k,j,i+1), 0 ) )  THEN
                          distance_lr = 0.5_wp * dx
                       ELSE
                          distance_lr = 9999999.9_wp
@@ -1447,42 +1614,42 @@
 !
 !--                   Now, check the edges along...
 !--                   ...yz-direction (vertical edges, down)
-                      IF ( .NOT. BTEST( topo_flags(k-1,j-1,i), 0 )  .OR.                           &
-                           .NOT. BTEST( topo_flags(k-1,j+1,i), 0 ) )  THEN
+                      IF ( .NOT. BTEST( wall_flags_total_0(k-1,j-1,i), 0 )  .OR.                   &
+                           .NOT. BTEST( wall_flags_total_0(k-1,j+1,i), 0 )  )  THEN
                          distance_edge_yz_down = SQRT( 0.25_wp * dy**2 + ( zu(k) - zw(k-1) )**2 )
                       ELSE
                          distance_edge_yz_down = 9999999.9_wp
                       ENDIF
 !
 !--                   ...yz-direction (vertical edges, up)
-                      IF ( .NOT. BTEST( topo_flags(k+1,j-1,i), 0 )  .OR.                           &
-                           .NOT. BTEST( topo_flags(k+1,j+1,i), 0 ) )  THEN
+                      IF ( .NOT. BTEST( wall_flags_total_0(k+1,j-1,i), 0 )  .OR.                   &
+                           .NOT. BTEST( wall_flags_total_0(k+1,j+1,i), 0 )  )  THEN
                          distance_edge_yz_up = SQRT( 0.25_wp * dy**2 + ( zw(k) - zu(k) )**2 )
                       ELSE
                          distance_edge_yz_up = 9999999.9_wp
                       ENDIF
 !
 !--                   ...xz-direction (vertical edges, down)
-                      IF ( .NOT. BTEST( topo_flags(k-1,j,i-1), 0 )  .OR.                           &
-                           .NOT. BTEST( topo_flags(k-1,j,i+1), 0 ) )  THEN
+                      IF ( .NOT. BTEST( wall_flags_total_0(k-1,j,i-1), 0 )  .OR.                   &
+                           .NOT. BTEST( wall_flags_total_0(k-1,j,i+1), 0 )  )  THEN
                          distance_edge_xz_down = SQRT( 0.25_wp * dx**2 + ( zu(k) - zw(k-1) )**2 )
                       ELSE
                          distance_edge_xz_down = 9999999.9_wp
                       ENDIF
 !
 !--                   ...xz-direction (vertical edges, up)
-                      IF ( .NOT. BTEST( topo_flags(k+1,j,i-1), 0 )  .OR.                           &
-                           .NOT. BTEST( topo_flags(k+1,j,i+1), 0 ) )  THEN
+                      IF ( .NOT. BTEST( wall_flags_total_0(k+1,j,i-1), 0 )  .OR.                   &
+                           .NOT. BTEST( wall_flags_total_0(k+1,j,i+1), 0 )  )  THEN
                          distance_edge_xz_up = SQRT( 0.25_wp * dx**2 + ( zw(k) - zu(k) )**2 )
                       ELSE
                          distance_edge_xz_up = 9999999.9_wp
                       ENDIF
 !
 !--                   ...xy-direction (horizontal edges)
-                      IF ( .NOT. BTEST( topo_flags(k,j-1,i-1), 0 )  .OR.                           &
-                           .NOT. BTEST( topo_flags(k,j+1,i-1), 0 )  .OR.                           &
-                           .NOT. BTEST( topo_flags(k,j-1,i+1), 0 )  .OR.                           &
-                           .NOT. BTEST( topo_flags(k,j+1,i+1), 0 ) )  THEN
+                      IF ( .NOT. BTEST( wall_flags_total_0(k,j-1,i-1), 0 )  .OR.                   &
+                           .NOT. BTEST( wall_flags_total_0(k,j+1,i-1), 0 )  .OR.                   &
+                           .NOT. BTEST( wall_flags_total_0(k,j-1,i+1), 0 )  .OR.                   &
+                           .NOT. BTEST( wall_flags_total_0(k,j+1,i+1), 0 ) )  THEN
                          distance_edge_xy = SQRT( 0.25_wp * ( dx**2 + dy**2 ) )
                       ELSE
                          distance_edge_xy = 9999999.9_wp
@@ -1490,10 +1657,10 @@
 !
 !--                   Now, check the corners...
 !--                   ...lower four corners
-                      IF ( .NOT. BTEST( topo_flags(k-1,j-1,i-1), 0 )  .OR.                         &
-                           .NOT. BTEST( topo_flags(k-1,j+1,i-1), 0 )  .OR.                         &
-                           .NOT. BTEST( topo_flags(k-1,j-1,i+1), 0 )  .OR.                         &
-                           .NOT. BTEST( topo_flags(k-1,j+1,i+1), 0 ) )  THEN
+                      IF ( .NOT. BTEST( wall_flags_total_0(k-1,j-1,i-1), 0 )  .OR.                 &
+                           .NOT. BTEST( wall_flags_total_0(k-1,j+1,i-1), 0 )  .OR.                 &
+                           .NOT. BTEST( wall_flags_total_0(k-1,j-1,i+1), 0 )  .OR.                 &
+                           .NOT. BTEST( wall_flags_total_0(k-1,j+1,i+1), 0 ) )  THEN
                          distance_corners_down = SQRT( 0.25_wp * ( dx**2 + dy**2 )                 &
                                                        + ( zu(k) - zw(k-1) )**2 )
                       ELSE
@@ -1501,10 +1668,10 @@
                       ENDIF
 !
 !--                   ...upper four corners
-                      IF ( .NOT. BTEST( topo_flags(k+1,j-1,i-1), 0 )  .OR.                         &
-                           .NOT. BTEST( topo_flags(k+1,j+1,i-1), 0 )  .OR.                         &
-                           .NOT. BTEST( topo_flags(k+1,j-1,i+1), 0 )  .OR.                         &
-                           .NOT. BTEST( topo_flags(k+1,j+1,i+1), 0 ) )  THEN
+                      IF ( .NOT. BTEST( wall_flags_total_0(k+1,j-1,i-1), 0 )  .OR.                 &
+                           .NOT. BTEST( wall_flags_total_0(k+1,j+1,i-1), 0 )  .OR.                 &
+                           .NOT. BTEST( wall_flags_total_0(k+1,j-1,i+1), 0 )  .OR.                 &
+                           .NOT. BTEST( wall_flags_total_0(k+1,j+1,i+1), 0 ) )  THEN
                          distance_corners_up = SQRT( 0.25_wp * ( dx**2 + dy**2 )                   &
                                                      + ( zw(k) - zu(k) )**2 )
                       ELSE
@@ -1533,10 +1700,13 @@
 
                   ENDIF  ! If grid point belongs to atmosphere
 
+
+
 !
 !--               The grid size (delta) is defined as the the minimum of the distance to the nearest
 !--               wall * 1.8 and the geometric mean grid size.
                   delta(k,j,i) = MIN( delta(k,j,i), gridsize_geometric_mean(k) )
+
 
                 ENDDO  !k loop
              ENDDO  !j loop
@@ -1566,10 +1736,10 @@
 !
 !--    Get height level of highest topography within local subdomain
        k_max_topo = 0
-       DO  i = nxl, nxr
-          DO  j = nys, nyn
+       DO  i = nxlg, nxrg
+          DO  j = nysg, nyng
              DO  k = nzb+1, nzt-1
-                IF ( .NOT. BTEST( topo_flags(k,j,i), 0 )  .AND.  k > k_max_topo )                  &
+                IF ( .NOT. BTEST( wall_flags_total_0(k,j,i), 0 )  .AND.  k > k_max_topo )          &
                    k_max_topo = k
              ENDDO
           ENDDO
@@ -1632,7 +1802,7 @@
                 DO  j = nys, nyn
 !
 !--                Start search only if (i/j/k) belongs to atmosphere
-                   IF ( BTEST( topo_flags(k,j,i), 0 ) )  THEN
+                   IF ( BTEST( wall_flags_total_0(k,j,i), 0 )  )  THEN
 !
 !--                   Reset topography within vicinity
                       vicinity(-rad_k:rad_k,:,:) = 0
@@ -1757,7 +1927,43 @@
        !$ACC ENTER DATA COPYIN(ml_blackadar(nzb:nzt+1))
 
     ENDIF  !LES or RANS mode
-    !$ACC ENTER DATA COPYIN(delta(nzb:nzt+1,nys:nyn,nxl:nxr))
+
+!
+!-- Set lateral boundary conditions for delta
+    CALL exchange_horiz( delta, nbgp )
+    !$ACC ENTER DATA COPYIN(delta(nzb:nzt+1,nysg:nyng,nxlg:nxrg))
+
+     IF ( les_dai )  THEN
+        CALL exchange_horiz( distance_to_wall, nbgp )
+        !$ACC ENTER DATA COPYIN(distance_to_wall(nzb:nzt+1,nysg:nyng,nxlg:nxrg))
+
+!
+!--     Copy distance_to_wall to ghostpoints at inflow and outflow in case of
+!--     non-cyclic boundary conditions at inflow and outflow. This can not be done inside
+!--     exchange_horiz() because it is not compatible with prescribing mean inflow profiles.
+        IF ( bc_dirichlet_l  .OR.  bc_radiation_l )  THEN
+           DO  i = nbgp, 1, -1
+             distance_to_wall(:,:,nxl-i) = distance_to_wall(:,:,nxl)
+           ENDDO
+        ENDIF
+        IF ( bc_dirichlet_r  .OR.  bc_radiation_r  )  THEN
+           DO  i = 1, nbgp
+              distance_to_wall(:,:,nxr+i) = distance_to_wall(:,:,nxr)
+           ENDDO
+        ENDIF
+        IF ( bc_dirichlet_s  .OR.  bc_radiation_s  )  THEN
+           DO  i = nbgp, 1, -1
+             distance_to_wall(:,nys-i,:) = distance_to_wall(:,nys,:)
+           ENDDO
+        ENDIF
+        IF ( bc_dirichlet_n  .OR.  bc_radiation_n  )  THEN
+           DO  i = 1, nbgp
+             distance_to_wall(:,nyn+i,:) = distance_to_wall(:,nyn,:)
+           ENDDO
+        ENDIF
+     ENDIF
+
+
 
     CONTAINS
 !--------------------------------------------------------------------------------------------------!
@@ -1776,11 +1982,11 @@
        INTEGER(iwp) ::  b   !< loop index
        INTEGER(iwp) ::  jj  !< loop index
 
-       INTEGER(ibp) ::  maximum  !< maximum of array along z dimension
+       INTEGER(KIND=1) ::  maximum  !< maximum of array along z dimension
 
        INTEGER(iwp), DIMENSION(0:rad_j) ::  loc_k  !< location of closest wall along vertical dimension
 
-       INTEGER(ibp), DIMENSION(0:rad_k+1,0:rad_j), INTENT(IN) ::  array  !< array containing a yz-plane at position pos_i
+       INTEGER(KIND=1), DIMENSION(0:rad_k+1,0:rad_j), INTENT(IN) ::  array  !< array containing a yz-plane at position pos_i
 
        LOGICAL, INTENT(IN) ::  orientation  !< flag if array represents an array oriented upwards (true) or downwards (false)
 
@@ -1835,7 +2041,7 @@
 ! Description:
 ! ------------
 !> Copy a subarray of size (kb:kt,js:jn,il:ir) centered around grid point (kp,jp,ip) containing the
-!> first bit of topo_flags into the array 'vicinity'. Only copy first bit as this indicates
+!> first bit of wall_flags_total_0 into the array 'vicinity'. Only copy first bit as this indicates
 !> the presence of topography.
 !--------------------------------------------------------------------------------------------------!
     SUBROUTINE copy_into_vicinity( kp, jp, ip, kb, kt, js, jn, il, ir )
@@ -1859,7 +2065,7 @@
        DO  i = il, ir
           DO  j = js, jn
              DO  k = kb, kt
-                vicinity(k,j,i) = MERGE( 0, 1, BTEST( topo_flags(kp+k,jp+j,ip+i), 0 ) )
+                vicinity(k,j,i) = MERGE( 0, 1, BTEST( wall_flags_total_0(kp+k,jp+j,ip+i), 0 ) )
              ENDDO
           ENDDO
        ENDDO
@@ -1888,191 +2094,183 @@
 
     IMPLICIT NONE
 
-    INTEGER(iwp) ::  i     !< grid index x-direction
-    INTEGER(iwp) ::  j     !< grid index y-direction
-    INTEGER(iwp) ::  k     !< grid index z-direction
-    INTEGER(iwp) ::  koff  !< offset index indicating the location of the surface with respect to the given grid point
-    INTEGER(iwp) ::  kref  !< reference grid point used for gradient calculation
-    INTEGER(iwp) ::  m     !< running index surface elements
+    INTEGER(iwp) ::  i  !< grid index x-direction
+    INTEGER(iwp) ::  j  !< grid index y-direction
+    INTEGER(iwp) ::  k  !< grid index z-direction
+    INTEGER(iwp) ::  m  !< running index surface elements
 
-    REAL(wp) ::  drho    !< dummy for 1/rho (on w-grid)
-    REAL(wp) ::  flag    !< flag used to distinguish between vertically and horizontally facing surfaces
     REAL(wp) ::  km_sfc  !< diffusion coefficient, used to compute virtual velocities
 
-    REAL(wp), DIMENSION(1:surf_def%ns) ::  phi_m_def
-    REAL(wp), DIMENSION(1:surf_lsm%ns) ::  phi_m_lsm
-    REAL(wp), DIMENSION(1:surf_usm%ns) ::  phi_m_usm
-    !$ACC DECLARE CREATE( phi_m_def, phi_m_lsm, phi_m_usm )
-
-
     IF ( constant_flux_layer )  THEN
-!
-!--    Pre-calculate the function phi_m and store its values in a separate array. This is requied
-!--    to avoid compiler errors about missing declared function phi_m in ACC directive when
-!--    phi_m is used within the MERGE construct.
-       !$OMP PARALLEL DO PRIVATE(m)
-       !$ACC PARALLEL LOOP PRIVATE(m) &
-       !$ACC PRESENT(surf_def)
-       DO  m = 1, surf_def%ns
-          phi_m_def(m) = phi_m( surf_def%z_mo(m) / surf_def%ol(m) )
-       ENDDO
-       !$OMP PARALLEL DO PRIVATE(m)
-       !$ACC PARALLEL LOOP PRIVATE(m) &
-       !$ACC PRESENT(surf_lsm)
-       DO  m = 1, surf_lsm%ns
-          phi_m_lsm(m) = phi_m( surf_lsm%z_mo(m) / surf_lsm%ol(m) )
-       ENDDO
-       !$OMP PARALLEL DO PRIVATE(m)
-       !$ACC PARALLEL LOOP PRIVATE(m) &
-       !$ACC PRESENT(surf_usm)
-       DO  m = 1, surf_usm%ns
-          phi_m_usm(m) = phi_m( surf_usm%z_mo(m) / surf_usm%ol(m) )
-       ENDDO
 !
 !--    Calculate a virtual velocity at the surface in a way that the vertical velocity gradient at
 !--    k = 1 (u(k+1)-u_0) matches the Prandtl law (-w'u'/km). This gradient is used in the TKE shear
 !--    production term at k=1 (see production_e_ij). The velocity gradient has to be limited in case
 !--    of too small km (otherwise the timestep may be significantly reduced by large surface winds).
-!--    Gradients are evaluated over double grid spacing. Though this is required only at upward- or
-!--    downward-facing surfaces, all surfaces are considered while values at vertical surfaces are
-!--    multiplied with zero.
-!--    Default surfaces.
-       !$OMP PARALLEL DO PRIVATE(i, j, k, m, drho, km_sfc, koff, kref, flag)
-       !$ACC PARALLEL LOOP PRIVATE(i, j, k, m, drho, km_sfc, koff, kref, flag) &
-       !$ACC PRESENT(surf_def, u, v, drho_air_zw, zu)
-       DO  m = 1, surf_def%ns
+!--    Not available in case of non-cyclic boundary conditions.
+!--    Default surfaces, upward-facing
+       !$OMP PARALLEL DO PRIVATE(i, j, k, m, km_sfc)
+       !$ACC PARALLEL LOOP PRIVATE(i, j, k, m, km_sfc) &
+       !$ACC PRESENT(surf_def_h(0), u, v, drho_air_zw, zu)
+       DO  m = 1, surf_def_h(0)%ns
 
-          i = surf_def%i(m)
-          j = surf_def%j(m)
-          k = surf_def%k(m)
+          i = surf_def_h(0)%i(m)
+          j = surf_def_h(0)%j(m)
+          k = surf_def_h(0)%k(m)
 !
 !--       Note, calculation of u_0 and v_0 is not fully accurate, as u/v and km are not on the same
 !--       grid. Actually, a further interpolation of km onto the u/v-grid is necessary. However, the
-!--       effect of this error is negligible. For upward facing surfaces infer the effective Km
-!--       from MOST, for downward facing surface just take Km at the reference grid point.
-!--       Moreover, please note, virtual velocities are only computed effectively at up/downward-
-!--       facing surfaces.
-          koff   = surf_def%koff(m)
-          km_sfc = MERGE( kappa * surf_def%us(m) * surf_def%z_mo(m) / phi_m_def(m) + 1.0E-20_wp,   &
-                          km(k,j,i) + 1.0E-20_wp, surf_def%upward(m) )
+!--       effect of this error is negligible.
+          km_sfc = kappa * surf_def_h(0)%us(m) * surf_def_h(0)%z_mo(m) /                           &
+                   phi_m( surf_def_h(0)%z_mo(m) / surf_def_h(0)%ol(m) )
 
-          drho   = MERGE( drho_air_zw(k-1), drho_air_zw(k), surf_def%upward(m) )
-          kref   = MERGE( k+1, k-1, surf_def%upward(m) )
-          flag   = MERGE( 1.0_wp, 0.0_wp, surf_def%upward(m) .OR. surf_def%downward(m) )
-!
-!--       For upward-facing surfaces this is:   u(k+1) + usws * drho * 2 * dz / km
-!--       for downward-facing surfaces this is: u(k-1) - usws * drho * 2 * dz / km.
-!--       Multiply with zero for vertical surfaces (offset in z is zero this case).
-          surf_def%u_0(m) = u(kref,j,i) + surf_def%usws(m) * drho * ( zu(k+1)-zu(k-1) ) / km_sfc * &
-                                          flag * MERGE( 1.0, -1.0, surf_def%upward(m) )
-          surf_def%v_0(m) = v(kref,j,i) + surf_def%vsws(m) * drho * ( zu(k+1)-zu(k-1) ) / km_sfc * &
-                                          flag * MERGE( 1.0, -1.0, surf_def%upward(m) )
-!
-!--       upward: |u(k+1) - u_0|, downward: |u_0 - u(k-1)|
-          IF ( ABS( ( u(kref,j,i) - surf_def%u_0(m) ) * surf_def%n_eff(m) ) >                      &
-               ABS( u(k+1,j,i) - u(k-1,j,i) ) )                                                    &
-          THEN
-             surf_def%u_0(m) = u(k+koff,j,i)
-          ENDIF
+          surf_def_h(0)%u_0(m) = u(k+1,j,i) + surf_def_h(0)%usws(m) * drho_air_zw(k-1) *           &
+                                 ( zu(k+1) - zu(k-1) ) / ( km_sfc  + 1.0E-20_wp )
+          surf_def_h(0)%v_0(m) = v(k+1,j,i) + surf_def_h(0)%vsws(m) * drho_air_zw(k-1) *           &
+                                 ( zu(k+1) - zu(k-1) ) / ( km_sfc  + 1.0E-20_wp )
 
-          IF ( ABS( ( v(kref,j,i) - surf_def%v_0(m) ) * surf_def%n_eff(m) ) >                      &
-               ABS( v(k+1,j,i) - v(k-1,j,i) ) )                                                    &
-          THEN
-             surf_def%v_0(m) = v(k+koff,j,i)
-          ENDIF
+          IF ( ABS( u(k+1,j,i) - surf_def_h(0)%u_0(m) ) > ABS( u(k+1,j,i) - u(k-1,j,i) ) )         &
+             surf_def_h(0)%u_0(m) = u(k-1,j,i)
+
+          IF ( ABS( v(k+1,j,i) - surf_def_h(0)%v_0(m) ) > ABS( v(k+1,j,i) - v(k-1,j,i) ) )         &
+             surf_def_h(0)%v_0(m) = v(k-1,j,i)
+
        ENDDO
-
 !
-!--    Natural surfaces.
-       !$OMP PARALLEL DO PRIVATE(i, j, k, m, drho, km_sfc, koff, kref, flag)
-       !$ACC PARALLEL LOOP PRIVATE(i, j, k, m, drho, km_sfc, koff, kref, flag) &
-       !$ACC PRESENT(surf_lsm, u, v, drho_air_zw, zu)
-       DO  m = 1, surf_lsm%ns
+!--    Default surfaces, downward-facing surfaces
+       !$OMP PARALLEL DO PRIVATE(i, j, k, m)
+       !$ACC PARALLEL LOOP PRIVATE(i, j, k, m) &
+       !$ACC PRESENT(surf_def_h(1), u, v, drho_air_zw, zu, km)
+       DO  m = 1, surf_def_h(1)%ns
 
-          i = surf_lsm%i(m)
-          j = surf_lsm%j(m)
-          k = surf_lsm%k(m)
+          i = surf_def_h(1)%i(m)
+          j = surf_def_h(1)%j(m)
+          k = surf_def_h(1)%k(m)
 !
 !--       Note, calculation of u_0 and v_0 is not fully accurate, as u/v and km are not on the same
 !--       grid. Actually, a further interpolation of km onto the u/v-grid is necessary. However, the
-!--       effect of this error is negligible. For upward facing surfaces infer the effective Km
-!--       from MOST, for downward facing surface just take Km at the reference grid point.
-!--       Moreover, please note, virtual velocities are only computed effectively at up/downward-
-!--       facing surfaces.
-          koff   = surf_lsm%koff(m)
-          km_sfc = MERGE( kappa * surf_lsm%us(m) * surf_lsm%z_mo(m) / phi_m_lsm(m) + 1.0E-20_wp,   &
-                          km(k,j,i) + 1.0E-20_wp, surf_lsm%upward(m) )
+!--       effect of this error is negligible.
+          surf_def_h(1)%u_0(m) = u(k-1,j,i) - surf_def_h(1)%usws(m) * drho_air_zw(k-1) *           &
+                                     ( zu(k+1) - zu(k-1) ) / ( km(k,j,i) + 1.0E-20_wp )
+          surf_def_h(1)%v_0(m) = v(k-1,j,i) - surf_def_h(1)%vsws(m) * drho_air_zw(k-1) *           &
+                                     ( zu(k+1) - zu(k-1) ) / (km(k,j,i) + 1.0E-20_wp )
 
-          drho   = MERGE( drho_air_zw(k-1), drho_air_zw(k), surf_lsm%upward(m) )
-          kref   = MERGE( k+1, k-1, surf_lsm%upward(m) )
-          flag   = MERGE( 1.0_wp, 0.0_wp, surf_lsm%upward(m)  .OR.  surf_lsm%downward(m) )
-!
-!--       For upward-facing surfaces this is:   u(k+1) + usws * drho * 2 * dz / km
-!--       for downward-facing surfaces this is: u(k-1) - usws * drho * 2 * dz / km.
-!--       Multiply with zero for vertical surfaces (offset in z is zero this case).
-          surf_lsm%u_0(m) = u(kref,j,i) + surf_lsm%usws(m) * drho * ( zu(k+1)-zu(k-1) ) / km_sfc * &
-                                          flag * MERGE( 1.0, -1.0, surf_lsm%upward(m) )
-          surf_lsm%v_0(m) = v(kref,j,i) + surf_lsm%vsws(m) * drho * ( zu(k+1)-zu(k-1) ) / km_sfc * &
-                                          flag * MERGE( 1.0, -1.0, surf_lsm%upward(m) )
-!
-!--       upward: |u(k+1) - u_0|, downward: |u_0 - u(k-1)|
-          IF ( ABS( ( u(kref,j,i) - surf_lsm%u_0(m) ) * surf_lsm%n_eff(m) ) >                      &
-               ABS( u(k+1,j,i) - u(k-1,j,i) ) )                                                    &
-          THEN
-             surf_lsm%u_0(m) = u(k+koff,j,i)
-          ENDIF
+          IF ( ABS( surf_def_h(1)%u_0(m) - u(k-1,j,i) ) > ABS( u(k+1,j,i) - u(k-1,j,i) ) )         &
+             surf_def_h(1)%u_0(m) = u(k+1,j,i)
 
-          IF ( ABS( ( v(kref,j,i) - surf_lsm%v_0(m) ) * surf_lsm%n_eff(m) ) >                      &
-               ABS( v(k+1,j,i) - v(k-1,j,i) ) )                                                    &
-          THEN
-             surf_lsm%v_0(m) = v(k+koff,j,i)
-          ENDIF
+          IF ( ABS( surf_def_h(1)%v_0(m) - v(k-1,j,i) ) > ABS( v(k+1,j,i) - v(k-1,j,i) ) )         &
+             surf_def_h(1)%v_0(m) = v(k+1,j,i)
+
        ENDDO
 !
-!--    Urban surfaces
-       !$OMP PARALLEL DO PRIVATE(i, j, k, m, drho, km_sfc, koff, kref, flag)
-       !$ACC PARALLEL LOOP PRIVATE(i, j, k, m, drho, km_sfc, koff, kref, flag) &
-       !$ACC PRESENT(surf_usm, u, v, drho_air_zw, zu)
-       DO  m = 1, surf_usm%ns
+!--    Natural surfaces, upward- and downward facing
+       !$OMP PARALLEL DO PRIVATE(i, j, k, m, km_sfc)
+       !$ACC PARALLEL LOOP PRIVATE(i, j, k, m, km_sfc) &
+       !$ACC PRESENT(surf_lsm_h(0), u, v, drho_air_zw, zu)
+       DO  m = 1, surf_lsm_h(0)%ns
 
-          i = surf_usm%i(m)
-          j = surf_usm%j(m)
-          k = surf_usm%k(m)
+          i = surf_lsm_h(0)%i(m)
+          j = surf_lsm_h(0)%j(m)
+          k = surf_lsm_h(0)%k(m)
 !
 !--       Note, calculation of u_0 and v_0 is not fully accurate, as u/v and km are not on the same
-!--       grid. Actually, a further interpolation of km onto the u/v-grid would be necessary, but
-!--       the effect of this error is negligible. For upward facing surfaces infer the effective Km
-!--       from MOST, for downward facing surface just take Km at the reference grid point.
-!--       Moreover, please note, virtual velocities are only computed effectively at up/downward-
-!--       facing surfaces.
-          koff   = surf_usm%koff(m)
-          km_sfc = MERGE( kappa * surf_usm%us(m) * surf_usm%z_mo(m) / phi_m_usm(m) + 1.0E-20_wp,   &
-                          km(k,j,i) + 1.0E-20_wp, surf_usm%upward(m) )
+!--       grid. Actually, a further interpolation of km onto the u/v-grid is necessary. However, the
+!--       effect of this error is negligible.
+          km_sfc = kappa * surf_lsm_h(0)%us(m) * surf_lsm_h(0)%z_mo(m) /                                 &
+                   phi_m( surf_lsm_h(0)%z_mo(m) / surf_lsm_h(0)%ol(m) )
 
-          drho   = MERGE( drho_air_zw(k-1), drho_air_zw(k), surf_usm%upward(m) )
-          kref   = MERGE( k+1, k-1, surf_usm%upward(m) )
-          flag   = MERGE( 1.0_wp, 0.0_wp, surf_usm%upward(m)  .OR.  surf_usm%downward(m) )
-!
-!--       For upward-facing surfaces this is:   u(k+1) + usws * drho * 2 * dz / km
-!--       for downward-facing surfaces this is: u(k-1) - usws * drho * 2 * dz / km.
-!--       Multiply with zero for vertical surfaces (offset in z is zero this case).
-          surf_usm%u_0(m) = u(kref,j,i) + surf_usm%usws(m) * drho * ( zu(k+1)-zu(k-1) ) / km_sfc * &
-                                          flag * MERGE( 1.0, -1.0, surf_usm%upward(m) )
-          surf_usm%v_0(m) = v(kref,j,i) + surf_usm%vsws(m) * drho * ( zu(k+1)-zu(k-1) ) / km_sfc * &
-                                          flag * MERGE( 1.0, -1.0, surf_usm%upward(m) )
-!
-!--       upward: |u(k+1) - u_0|, downward: |u_0 - u(k-1)|
-          IF ( ABS( ( u(kref,j,i) - surf_usm%u_0(m) ) * surf_usm%n_eff(m) ) >                      &
-               ABS( u(k+1,j,i) - u(k-1,j,i) ) )                                                    &
-          THEN
-             surf_usm%u_0(m) = u(k+koff,j,i)
-          ENDIF
+          surf_lsm_h(0)%u_0(m) = u(k+1,j,i) + surf_lsm_h(0)%usws(m) * drho_air_zw(k-1) *                 &
+                              ( zu(k+1) - zu(k-1) ) / ( km_sfc  + 1.0E-20_wp )
+          surf_lsm_h(0)%v_0(m) = v(k+1,j,i) + surf_lsm_h(0)%vsws(m) * drho_air_zw(k-1) *                 &
+                                        ( zu(k+1) - zu(k-1)) / ( km_sfc  + 1.0E-20_wp )
 
-          IF ( ABS( ( v(kref,j,i) - surf_usm%v_0(m) ) * surf_usm%n_eff(m) ) >                      &
-               ABS( v(k+1,j,i) - v(k-1,j,i) ) )                                                    &
-          THEN
-             surf_usm%v_0(m) = v(k+koff,j,i)
-          ENDIF
+          IF ( ABS( u(k+1,j,i) - surf_lsm_h(0)%u_0(m) ) > ABS( u(k+1,j,i) - u(k-1,j,i) ) )            &
+             surf_lsm_h(0)%u_0(m) = u(k-1,j,i)
+
+          IF ( ABS( v(k+1,j,i) - surf_lsm_h(0)%v_0(m) ) > ABS( v(k+1,j,i) - v(k-1,j,i) ) )            &
+             surf_lsm_h(0)%v_0(m) = v(k-1,j,i)
+
+       ENDDO
+!
+!--    Natural surfaces, downward-facing surfaces
+       !$OMP PARALLEL DO PRIVATE(i, j, k, m)
+       !$ACC PARALLEL LOOP PRIVATE(i, j, k, m) &
+       !$ACC PRESENT(surf_lsm_h(1), u, v, drho_air_zw, zu, km)
+       DO  m = 1, surf_lsm_h(1)%ns
+
+          i = surf_lsm_h(1)%i(m)
+          j = surf_lsm_h(1)%j(m)
+          k = surf_lsm_h(1)%k(m)
+!
+!--       Note, calculation of u_0 and v_0 is not fully accurate, as u/v and km are not on the same
+!--       grid. Actually, a further interpolation of km onto the u/v-grid is necessary. However, the
+!--       effect of this error is negligible.
+          surf_lsm_h(1)%u_0(m) = u(k-1,j,i) - surf_lsm_h(1)%usws(m) * drho_air_zw(k-1) *           &
+                                     ( zu(k+1) - zu(k-1) ) / ( km(k,j,i) + 1.0E-20_wp )
+          surf_lsm_h(1)%v_0(m) = v(k-1,j,i) - surf_lsm_h(1)%vsws(m) * drho_air_zw(k-1) *           &
+                                     ( zu(k+1) - zu(k-1) ) / (km(k,j,i) + 1.0E-20_wp )
+
+          IF ( ABS( surf_lsm_h(1)%u_0(m) - u(k-1,j,i) ) > ABS( u(k+1,j,i) - u(k-1,j,i) ) )         &
+             surf_lsm_h(1)%u_0(m) = u(k+1,j,i)
+
+          IF ( ABS( surf_lsm_h(1)%v_0(m) - v(k-1,j,i) ) > ABS( v(k+1,j,i) - v(k-1,j,i) ) )         &
+             surf_lsm_h(1)%v_0(m) = v(k+1,j,i)
+
+       ENDDO
+!
+!--    Urban surfaces, upward-facing
+       !$OMP PARALLEL DO PRIVATE(i, j, k, m, km_sfc)
+       !$ACC PARALLEL LOOP PRIVATE(i, j, k, m, km_sfc) &
+       !$ACC PRESENT(surf_usm_h(0), u, v, drho_air_zw, zu)
+       DO  m = 1, surf_usm_h(0)%ns
+
+          i = surf_usm_h(0)%i(m)
+          j = surf_usm_h(0)%j(m)
+          k = surf_usm_h(0)%k(m)
+!
+!--       Note, calculation of u_0 and v_0 is not fully accurate, as u/v and km are not on the same
+!--       grid. Actually, a further interpolation of km onto the u/v-grid is necessary. However, the
+!--       effect of this error is negligible.
+          km_sfc = kappa * surf_usm_h(0)%us(m) * surf_usm_h(0)%z_mo(m) /                                 &
+                   phi_m( surf_usm_h(0)%z_mo(m) / surf_usm_h(0)%ol(m) )
+
+          surf_usm_h(0)%u_0(m) = u(k+1,j,i) + surf_usm_h(0)%usws(m) * drho_air_zw(k-1) *                 &
+                                        ( zu(k+1) - zu(k-1) ) / ( km_sfc  + 1.0E-20_wp )
+          surf_usm_h(0)%v_0(m) = v(k+1,j,i) + surf_usm_h(0)%vsws(m) * drho_air_zw(k-1) *                 &
+                                        ( zu(k+1) - zu(k-1) ) / ( km_sfc  + 1.0E-20_wp )
+
+          IF ( ABS( u(k+1,j,i) - surf_usm_h(0)%u_0(m) ) > ABS( u(k+1,j,i) - u(k-1,j,i) ) )            &
+             surf_usm_h(0)%u_0(m) = u(k-1,j,i)
+
+          IF ( ABS( v(k+1,j,i) - surf_usm_h(0)%v_0(m) ) > ABS( v(k+1,j,i) - v(k-1,j,i) ) )            &
+             surf_usm_h(0)%v_0(m) = v(k-1,j,i)
+
+       ENDDO
+!
+!--    Urban surfaces, downward-facing surfaces
+       !$OMP PARALLEL DO PRIVATE(i, j, k, m)
+       !$ACC PARALLEL LOOP PRIVATE(i, j, k, m) &
+       !$ACC PRESENT(surf_usm_h(1), u, v, drho_air_zw, zu, km)
+       DO  m = 1, surf_usm_h(1)%ns
+
+          i = surf_usm_h(1)%i(m)
+          j = surf_usm_h(1)%j(m)
+          k = surf_usm_h(1)%k(m)
+!
+!--       Note, calculation of u_0 and v_0 is not fully accurate, as u/v and km are not on the same
+!--       grid. Actually, a further interpolation of km onto the u/v-grid is necessary. However, the
+!--       effect of this error is negligible.
+          surf_usm_h(1)%u_0(m) = u(k-1,j,i) - surf_usm_h(1)%usws(m) * drho_air_zw(k-1) *           &
+                                     ( zu(k+1) - zu(k-1) ) / ( km(k,j,i) + 1.0E-20_wp )
+          surf_usm_h(1)%v_0(m) = v(k-1,j,i) - surf_usm_h(1)%vsws(m) * drho_air_zw(k-1) *           &
+                                     ( zu(k+1) - zu(k-1) ) / (km(k,j,i) + 1.0E-20_wp )
+
+          IF ( ABS( surf_usm_h(1)%u_0(m) - u(k-1,j,i) ) > ABS( u(k+1,j,i) - u(k-1,j,i) ) )         &
+             surf_usm_h(1)%u_0(m) = u(k+1,j,i)
+
+          IF ( ABS( surf_usm_h(1)%v_0(m) - v(k-1,j,i) ) > ABS( v(k+1,j,i) - v(k-1,j,i) ) )         &
+             surf_usm_h(1)%v_0(m) = v(k+1,j,i)
+
        ENDDO
 
     ENDIF
@@ -2205,8 +2403,7 @@
  SUBROUTINE tcm_prognostic_equations
 
     USE control_parameters,                                                                        &
-        ONLY:  advanced_div_correction,                                                            &
-               scalar_advec,                                                                       &
+        ONLY:  scalar_advec,                                                                       &
                tsc
 
     IMPLICIT NONE
@@ -2250,19 +2447,10 @@
              !$ACC END KERNELS
              IF ( timestep_scheme(1:5) == 'runge' )  THEN
                 IF ( ws_scheme_sca )  THEN
-                   IF ( .NOT. advanced_div_correction )  THEN
-                      CALL advec_s_ws( advc_flags_s, e, 'e', bc_dirichlet_l  .OR.  bc_radiation_l, &
-                                                             bc_dirichlet_n  .OR.  bc_radiation_n, &
-                                                             bc_dirichlet_r  .OR.  bc_radiation_r, &
-                                                             bc_dirichlet_s  .OR.  bc_radiation_s )
-                   ELSE
-                      CALL advec_s_ws( advc_flags_s, e, 'e',                                       &
-                                       bc_dirichlet_l  .OR.  bc_radiation_l,                       &
-                                       bc_dirichlet_n  .OR.  bc_radiation_n,                       &
-                                       bc_dirichlet_r  .OR.  bc_radiation_r,                       &
-                                       bc_dirichlet_s  .OR.  bc_radiation_s,                       &
-                                       advanced_div_correction )
-                   ENDIF
+                   CALL advec_s_ws( advc_flags_s, e, 'e', bc_dirichlet_l  .OR.  bc_radiation_l,    &
+                                                          bc_dirichlet_n  .OR.  bc_radiation_n,    &
+                                                          bc_dirichlet_r  .OR.  bc_radiation_r,    &
+                                                          bc_dirichlet_s  .OR.  bc_radiation_s )
                 ELSE
                    CALL advec_s_pw( e )
                 ENDIF
@@ -2296,7 +2484,7 @@
 !--    Eliminate negative TKE values, which can occur due to numerical reasons in the course of the
 !--    integration. In such cases the old TKE value is reduced by 90%.
        !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i, j, k) &
-       !$ACC PRESENT(e, tend, te_m, topo_flags) &
+       !$ACC PRESENT(e, tend, te_m, wall_flags_total_0) &
        !$ACC PRESENT(tsc(3:3)) &
        !$ACC PRESENT(e_p)
        DO  i = nxl, nxr
@@ -2305,7 +2493,7 @@
              !DIR$ IVDEP
              DO  k = nzb+1, nzt
                 e_p(k,j,i) = e(k,j,i) + ( dt_3d * ( sbt * tend(k,j,i) + tsc(3) * te_m(k,j,i) ) )   &
-                             * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                             * MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
                 IF ( e_p(k,j,i) < 0.0_wp )  e_p(k,j,i) = 0.1_wp * e(k,j,i)
              ENDDO
           ENDDO
@@ -2406,7 +2594,7 @@
              DO  k = nzb+1, nzt
                 diss_p(k,j,i) = diss(k,j,i) + ( dt_3d * ( sbt * tend(k,j,i) + tsc(3)               &
                                                           * tdiss_m(k,j,i) ) )                     &
-                                * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                                * MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
                 IF ( diss_p(k,j,i) < 0.0_wp )  diss_p(k,j,i) = 0.1_wp * diss(k,j,i)
              ENDDO
           ENDDO
@@ -2472,6 +2660,7 @@
 !
 !-- If required, compute prognostic equation for turbulent kinetic energy (TKE)
     IF ( .NOT. constant_diffusion )  THEN
+
 !
 !--    Tendency-terms for TKE
        tend(:,j,i) = 0.0_wp
@@ -2514,7 +2703,7 @@
 !--    integration. In such cases the old TKE value is reduced by 90%.
        DO  k = nzb+1, nzt
           e_p(k,j,i) = e(k,j,i) + ( dt_3d * ( tsc(2) * tend(k,j,i) + tsc(3) * te_m(k,j,i) ) )      &
-                       * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                       * MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
           IF ( e_p(k,j,i) <= 0.0_wp )  e_p(k,j,i) = 0.1_wp * e(k,j,i)
        ENDDO
 
@@ -2573,7 +2762,7 @@
        DO  k = nzb+1, nzt
           diss_p(k,j,i) = diss(k,j,i) + ( dt_3d * ( tsc(2) * tend(k,j,i) + tsc(3)                  &
                           * tdiss_m(k,j,i) ) )                                                     &
-                          * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                          * MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
        ENDDO
 
 !
@@ -2626,7 +2815,9 @@
 
     USE grid_variables,                                                                            &
         ONLY:  ddx,                                                                                &
-               ddy
+               dx,                                                                                 &
+               ddy,                                                                                &
+               dy
 
     USE bulk_cloud_model_mod,                                                                      &
         ONLY:  bulk_cloud_model
@@ -2639,7 +2830,7 @@
     INTEGER(iwp) ::  i        !< running index x-direction
     INTEGER(iwp) ::  j        !< running index y-direction
     INTEGER(iwp) ::  k        !< running index z-direction
-    INTEGER(iwp) ::  kref     !< reference grid index in z-direction used to calculate vertical gradients
+    INTEGER(iwp) ::  l        !< running index for different surface type orientation
     INTEGER(iwp) ::  m        !< running index surface elements
     INTEGER(iwp) ::  surf_e   !< end index of surface elements at given i-j position
     INTEGER(iwp) ::  surf_s   !< start index of surface elements at given i-j position
@@ -2649,6 +2840,7 @@
     REAL(wp)     ::  k1          !< temporary factor
     REAL(wp)     ::  k2          !< temporary factor
     REAL(wp)     ::  km_neutral  !< diffusion coefficient assuming neutral conditions - used to compute shear production at surfaces
+    REAL(wp)     ::  sign_dir    !< sign of wall-tke flux, depending on wall orientation
     REAL(wp)     ::  theta       !< virtual potential temperature
     REAL(wp)     ::  temp        !< theta * Exner-function
     REAL(wp)     ::  usvs        !< momentum flux u"v"
@@ -2672,39 +2864,39 @@
 !
 !-- Calculate TKE production by shear. Calculate gradients at all grid points first, gradients at
 !-- surface-bounded grid points will be overwritten further below.
-    !$ACC PARALLEL LOOP COLLAPSE(2) PRIVATE(i, j) &
+    !$ACC PARALLEL LOOP COLLAPSE(2) PRIVATE(i, j, l) &
     !$ACC PRIVATE(surf_s, surf_e) &
     !$ACC PRIVATE(dudx(:), dudy(:), dudz(:), dvdx(:), dvdy(:), dvdz(:), dwdx(:), dwdy(:), dwdz(:)) &
-    !$ACC PRESENT(e, u, v, w, diss, dd2zu, ddzw, km, topo_flags) &
+    !$ACC PRESENT(e, u, v, w, diss, dd2zu, ddzw, km, wall_flags_total_0) &
     !$ACC PRESENT(tend) &
-    !$ACC PRESENT(surf_def) &
-    !$ACC PRESENT(surf_lsm) &
-    !$ACC PRESENT(surf_top) &
-    !$ACC PRESENT(surf_usm)
+    !$ACC PRESENT(surf_def_h(0:1), surf_def_v(0:3)) &
+    !$ACC PRESENT(surf_lsm_h(0:1), surf_lsm_v(0:3)) &
+    !$ACC PRESENT(surf_usm_h(0:1), surf_usm_v(0:3))
     DO  i = nxl, nxr
        DO  j = nys, nyn
           !$ACC LOOP PRIVATE(k)
           DO  k = nzb+1, nzt
 
-             dudx(k) =           ( u(k,j,i+1) - u(k,j,i)                                 ) * ddx
+             dudx(k) =           ( u(k,j,i+1) - u(k,j,i)     ) * ddx
              dudy(k) = 0.25_wp * ( u(k,j+1,i) + u(k,j+1,i+1) - u(k,j-1,i) - u(k,j-1,i+1) ) * ddy
              dudz(k) = 0.5_wp  * ( u(k+1,j,i) + u(k+1,j,i+1) - u(k-1,j,i) - u(k-1,j,i+1) ) * dd2zu(k)
 
              dvdx(k) = 0.25_wp * ( v(k,j,i+1) + v(k,j+1,i+1) - v(k,j,i-1) - v(k,j+1,i-1) ) * ddx
-             dvdy(k) =           ( v(k,j+1,i) - v(k,j,i)                                 ) * ddy
+             dvdy(k) =           ( v(k,j+1,i) - v(k,j,i)     ) * ddy
              dvdz(k) = 0.5_wp  * ( v(k+1,j,i) + v(k+1,j+1,i) - v(k-1,j,i) - v(k-1,j+1,i) ) * dd2zu(k)
 
              dwdx(k) = 0.25_wp * ( w(k,j,i+1) + w(k-1,j,i+1) - w(k,j,i-1) - w(k-1,j,i-1) ) * ddx
              dwdy(k) = 0.25_wp * ( w(k,j+1,i) + w(k-1,j+1,i) - w(k,j-1,i) - w(k-1,j-1,i) ) * ddy
-             dwdz(k) =           ( w(k,j,i)   - w(k-1,j,i)                               ) * ddzw(k)
+             dwdz(k) =           ( w(k,j,i)   - w(k-1,j,i)   ) * ddzw(k)
 
           ENDDO
 
 
-          flag_nr = 29  ! MS: ???
+          flag_nr = 29
 
 
           IF ( constant_flux_layer )  THEN
+!
 
              flag_nr = 0
 
@@ -2712,178 +2904,203 @@
 !--          (2) - Will allways be executed.
 !--          'bottom and wall: use u_0,v_0 and wall functions'
 !
-!--          Compute gradients at north/south-facing, east/west-facing, as well as up/down
-!--          facing surfaces. First, for default surfaces.
-             surf_s = surf_def%start_index(j,i)
-             surf_e = surf_def%end_index(j,i)
-             !$ACC LOOP PRIVATE(m, k, kref, usvs, wsvs, vsus, wsus, km_neutral)
-             DO  m = surf_s, surf_e
-                k    = surf_def%k(m)
-                kref = MERGE( k+1, k-1, surf_def%upward(m) )
-!
-!--             Fluxes used for north/south-facing surfaces (offset index in y is non-zero)
-                usvs = MERGE( surf_def%mom_flux_tke(0,m), 0.0_wp, surf_def%northward(m)  .OR.      &
-                                                                  surf_def%southward(m) )
-                wsvs = MERGE( surf_def%mom_flux_tke(1,m), 0.0_wp, surf_def%northward(m)  .OR.      &
-                                                                  surf_def%southward(m) )
-!
-!--             Fluxes used for east/west-facing surfaces (offset index in x is non-zero)
-                vsus = MERGE( surf_def%mom_flux_tke(0,m), 0.0_wp, surf_def%eastward(m)  .OR.       &
-                                                                  surf_def%westward(m) )
-                wsus = MERGE( surf_def%mom_flux_tke(1,m), 0.0_wp, surf_def%eastward(m)  .OR.       &
-                                                                  surf_def%westward(m) )
+!--          Compute gradients at north- and south-facing surfaces. First, for default surfaces,
+!--          then for urban surfaces. Note, so far no natural vertical surfaces implemented
+             DO  l = 0, 1
+                surf_s = surf_def_v(l)%start_index(j,i)
+                surf_e = surf_def_v(l)%end_index(j,i)
+                !$ACC LOOP PRIVATE(m, k, usvs, wsvs, km_neutral, sign_dir)
+                DO  m = surf_s, surf_e
+                   k           = surf_def_v(l)%k(m)
+                   usvs        = surf_def_v(l)%mom_flux_tke(0,m)
+                   wsvs        = surf_def_v(l)%mom_flux_tke(1,m)
 
-                km_neutral = kappa * ( usvs**2 + wsvs**2 + vsus**2 + wsus**2 )**0.25_wp            &
-                             * surf_def%z_mo(m)
+                   km_neutral = kappa * ( usvs**2 + wsvs**2 )**0.25_wp * 0.5_wp * dy
 !
-!--             -1.0 for north-facing wall, 1.0 for south-facing wall (achieved by multiplication
-!--             with -1 times effective normal vector component, i.e. the component into which
-!--             direction the grid cell is bounded by an obstacle. Note, the MERGE is used here
-!--             to maintain the already calculated gradient if it is not a north/south facing
-!--             surface but a different one.
-                dudy(k) = MERGE( -surf_def%n_eff(m) * usvs / ( km_neutral + 1E-10_wp ),            &
-                                 dudy(k), surf_def%northward(m)  .OR. surf_def%southward(m) )
-                dwdy(k) = MERGE( -surf_def%n_eff(m) * wsvs / ( km_neutral + 1E-10_wp ),            &
-                                 dwdy(k), surf_def%northward(m)  .OR. surf_def%southward(m) )
+!--                -1.0 for right-facing wall, 1.0 for left-facing wall
+                   sign_dir = MERGE( 1.0_wp, -1.0_wp, BTEST( wall_flags_total_0(k,j-1,i), flag_nr ) )
+                   dudy(k) = sign_dir * usvs / ( km_neutral + 1E-10_wp )
+                   dwdy(k) = sign_dir * wsvs / ( km_neutral + 1E-10_wp )
+                ENDDO
 !
-!--             -1.0 for east-facing wall, 1.0 for west-facing wall
-                dvdx(k) = MERGE( -surf_def%n_eff(m) * vsus / ( km_neutral + 1E-10_wp ),            &
-                                 dvdx(k), surf_def%eastward(m)  .OR. surf_def%westward(m) )
-                dwdx(k) = MERGE( -surf_def%n_eff(m) * wsus / ( km_neutral + 1E-10_wp ),            &
-                                 dwdx(k), surf_def%eastward(m)  .OR. surf_def%westward(m) )
+!--             Natural surfaces
+                surf_s = surf_lsm_v(l)%start_index(j,i)
+                surf_e = surf_lsm_v(l)%end_index(j,i)
+                !$ACC LOOP PRIVATE(m, k, usvs, wsvs, km_neutral, sign_dir)
+                DO  m = surf_s, surf_e
+                   k           = surf_lsm_v(l)%k(m)
+                   usvs        = surf_lsm_v(l)%mom_flux_tke(0,m)
+                   wsvs        = surf_lsm_v(l)%mom_flux_tke(1,m)
+
+                   km_neutral = kappa * ( usvs**2 + wsvs**2 )**0.25_wp * 0.5_wp * dy
 !
-!--             Now compute vertical gradients using virtual surface velocity (for further
-!--             explanation please see comments in production_e_init).
-!--             upward: u(k+1) - u_0 (normal vector component is 1),
-!--             downward: u_0 - u(k-1) (normal vector component is -1).
+!--                -1.0 for right-facing wall, 1.0 for left-facing wall
+                   sign_dir = MERGE( 1.0_wp, -1.0_wp, BTEST( wall_flags_total_0(k,j-1,i), flag_nr ) )
+                   dudy(k) = sign_dir * usvs / ( km_neutral + 1E-10_wp )
+                   dwdy(k) = sign_dir * wsvs / ( km_neutral + 1E-10_wp )
+                ENDDO
+!
+!--             Urban surfaces
+                surf_s = surf_usm_v(l)%start_index(j,i)
+                surf_e = surf_usm_v(l)%end_index(j,i)
+                !$ACC LOOP PRIVATE(m, k, usvs, wsvs, km_neutral, sign_dir)
+                DO  m = surf_s, surf_e
+                   k           = surf_usm_v(l)%k(m)
+                   usvs        = surf_usm_v(l)%mom_flux_tke(0,m)
+                   wsvs        = surf_usm_v(l)%mom_flux_tke(1,m)
+
+                   km_neutral = kappa * ( usvs**2 + wsvs**2 )**0.25_wp * 0.5_wp * dy
+!
+!--                -1.0 for right-facing wall, 1.0 for left-facing wall
+                   sign_dir = MERGE( 1.0_wp, -1.0_wp, BTEST( wall_flags_total_0(k,j-1,i), flag_nr ) )
+                   dudy(k) = sign_dir * usvs / ( km_neutral + 1E-10_wp )
+                   dwdy(k) = sign_dir * wsvs / ( km_neutral + 1E-10_wp )
+                ENDDO
+             ENDDO
+!
+!--          Compute gradients at east- and west-facing walls
+             DO  l = 2, 3
+                surf_s = surf_def_v(l)%start_index(j,i)
+                surf_e = surf_def_v(l)%end_index(j,i)
+                !$ACC LOOP PRIVATE(m, k, vsus, wsus, km_neutral, sign_dir)
+                DO  m = surf_s, surf_e
+                   k     = surf_def_v(l)%k(m)
+                   vsus  = surf_def_v(l)%mom_flux_tke(0,m)
+                   wsus  = surf_def_v(l)%mom_flux_tke(1,m)
+
+                   km_neutral = kappa * ( vsus**2 + wsus**2 )**0.25_wp * 0.5_wp * dx
+!
+!--                -1.0 for right-facing wall, 1.0 for left-facing wall
+                   sign_dir = MERGE( 1.0_wp, -1.0_wp, BTEST( wall_flags_total_0(k,j,i-1), flag_nr ) )
+                   dvdx(k) = sign_dir * vsus / ( km_neutral + 1E-10_wp )
+                   dwdx(k) = sign_dir * wsus / ( km_neutral + 1E-10_wp )
+                ENDDO
+!
+!--             Natural surfaces
+                surf_s = surf_lsm_v(l)%start_index(j,i)
+                surf_e = surf_lsm_v(l)%end_index(j,i)
+                !$ACC LOOP PRIVATE(m, k, vsus, wsus, km_neutral, sign_dir)
+                DO  m = surf_s, surf_e
+                   k     = surf_lsm_v(l)%k(m)
+                   vsus  = surf_lsm_v(l)%mom_flux_tke(0,m)
+                   wsus  = surf_lsm_v(l)%mom_flux_tke(1,m)
+
+                   km_neutral = kappa * ( vsus**2 + wsus**2 )**0.25_wp * 0.5_wp * dx
+!
+!--                -1.0 for right-facing wall, 1.0 for left-facing wall
+                   sign_dir = MERGE( 1.0_wp, -1.0_wp, BTEST( wall_flags_total_0(k,j,i-1), flag_nr ) )
+                   dvdx(k) = sign_dir * vsus / ( km_neutral + 1E-10_wp )
+                   dwdx(k) = sign_dir * wsus / ( km_neutral + 1E-10_wp )
+                ENDDO
+!
+!--             Urban surfaces
+                surf_s = surf_usm_v(l)%start_index(j,i)
+                surf_e = surf_usm_v(l)%end_index(j,i)
+                !$ACC LOOP PRIVATE(m, k, vsus, wsus, km_neutral, sign_dir)
+                DO  m = surf_s, surf_e
+                   k     = surf_usm_v(l)%k(m)
+                   vsus  = surf_usm_v(l)%mom_flux_tke(0,m)
+                   wsus  = surf_usm_v(l)%mom_flux_tke(1,m)
+
+                   km_neutral = kappa * ( vsus**2 + wsus**2 )**0.25_wp * 0.5_wp * dx
+!
+!--                -1.0 for right-facing wall, 1.0 for left-facing wall
+                   sign_dir = MERGE( 1.0_wp, -1.0_wp, BTEST( wall_flags_total_0(k,j,i-1), flag_nr ) )
+                   dvdx(k) = sign_dir * vsus / ( km_neutral + 1E-10_wp )
+                   dwdx(k) = sign_dir * wsus / ( km_neutral + 1E-10_wp )
+                ENDDO
+             ENDDO
+!
+!--          Compute gradients at upward-facing surfaces
+             surf_s = surf_def_h(0)%start_index(j,i)
+             surf_e = surf_def_h(0)%end_index(j,i)
+             !$ACC LOOP PRIVATE(m, k)
+             DO  m = surf_s, surf_e
+                k = surf_def_h(0)%k(m)
+!
 !--             Please note, actually, an interpolation of u_0 and v_0 onto the grid center would be
 !--             required. However, this would require several data transfers between 2D-grid and
 !--             wall type. The effect of this missing interpolation is negligible.
-                dudz(k) = MERGE( surf_def%n_eff(m) * ( u(kref,j,i) - surf_def%u_0(m) ) * dd2zu(k), &
-                                 dudz(k),                                                          &
-                                 surf_def%upward(m)  .OR.  surf_def%downward(m) )
-                dvdz(k) = MERGE( surf_def%n_eff(m) * ( v(kref,j,i) - surf_def%v_0(m) ) * dd2zu(k), &
-                                 dvdz(k),                                                          &
-                                 surf_def%upward(m)  .OR.  surf_def%downward(m) )
+!--            (See also production_e_init).
+                dudz(k) = ( u(k+1,j,i) - surf_def_h(0)%u_0(m) ) * dd2zu(k)
+                dvdz(k) = ( v(k+1,j,i) - surf_def_h(0)%v_0(m) ) * dd2zu(k)
+
              ENDDO
 !
 !--          Natural surfaces
-             surf_s = surf_lsm%start_index(j,i)
-             surf_e = surf_lsm%end_index(j,i)
-             !$ACC LOOP PRIVATE(m, k, kref, usvs, wsvs, vsus, wsus, km_neutral)
+             surf_s = surf_lsm_h(0)%start_index(j,i)
+             surf_e = surf_lsm_h(0)%end_index(j,i)
+             !$ACC LOOP PRIVATE(m, k)
              DO  m = surf_s, surf_e
-                k    = surf_lsm%k(m)
-                kref = MERGE( k+1, k-1, surf_lsm%upward(m)  )
-!
-!--             Fluxes used for north/south-facing surfaces (offset index in y is non-zero)
-                usvs = MERGE( surf_lsm%mom_flux_tke(0,m), 0.0_wp, surf_lsm%northward(m)  .OR.      &
-                                                                  surf_lsm%southward(m) )
-                wsvs = MERGE( surf_lsm%mom_flux_tke(1,m), 0.0_wp, surf_lsm%northward(m)  .OR.      &
-                                                                  surf_lsm%southward(m) )
-!
-!--             Fluxes used for east/west-facing surfaces (offset index in x is non-zero)
-                vsus = MERGE( surf_lsm%mom_flux_tke(0,m), 0.0_wp, surf_lsm%eastward(m)  .OR.       &
-                                                                  surf_lsm%westward(m) )
-                wsus = MERGE( surf_lsm%mom_flux_tke(1,m), 0.0_wp, surf_lsm%eastward(m)  .OR.       &
-                                                                  surf_lsm%westward(m) )
+                k = surf_lsm_h(0)%k(m)
 
-                km_neutral = kappa * ( usvs**2 + wsvs**2 + vsus**2 + wsus**2 )**0.25_wp            &
-                             * surf_lsm%z_mo(m)
-!
-!--             -1.0 for north-facing wall, 1.0 for south-facing wall (achieved by multiplication
-!--             with -1 times effective normal vector component, i.e. the component into which
-!--             direction the grid cell is bounded by an obstacle. Note, the MERGE is used here
-!--             to maintain the already calculated gradient if it is not a north/south facing
-!--             surface but a different one.
-                dudy(k) = MERGE( -surf_lsm%n_eff(m) * usvs / ( km_neutral + 1E-10_wp ),            &
-                                 dudy(k), surf_lsm%northward(m)  .OR.  surf_lsm%southward(m) )
-                dwdy(k) = MERGE( -surf_lsm%n_eff(m) * wsvs / ( km_neutral + 1E-10_wp ),            &
-                                 dwdy(k), surf_lsm%northward(m)  .OR.  surf_lsm%southward(m) )
-!
-!--             -1.0 for east-facing wall, 1.0 for west-facing wall
-                dvdx(k) = MERGE( -surf_lsm%n_eff(m) * vsus / ( km_neutral + 1E-10_wp ),            &
-                                 dvdx(k), surf_lsm%eastward(m)  .OR.  surf_lsm%westward(m) )
-                dwdx(k) = MERGE( -surf_lsm%n_eff(m) * wsus / ( km_neutral + 1E-10_wp ),            &
-                                 dwdx(k), surf_lsm%eastward(m)  .OR.  surf_lsm%westward(m) )
-!
-!--             Now compute vertical gradients using virtual surface velocity (for further
-!--             explanation please see comments in production_e_init).
-!--             upward: u(k+1) - u_0 (normal vector component is 1),
-!--             downward: u_0 - u(k-1) (normal vector component is -1).
-!--             Please note, actually, an interpolation of u_0 and v_0 onto the grid center would be
-!--             required. However, this would require several data transfers between 2D-grid and
-!--             wall type. The effect of this missing interpolation is negligible.
-                dudz(k) = MERGE( surf_lsm%n_eff(m) * ( u(kref,j,i) - surf_lsm%u_0(m) ) * dd2zu(k), &
-                                 dudz(k), surf_lsm%upward(m)  .OR.  surf_lsm%downward(m) )
-                dvdz(k) = MERGE( surf_lsm%n_eff(m) * ( v(kref,j,i) - surf_lsm%v_0(m) ) * dd2zu(k), &
-                                 dvdz(k), surf_lsm%upward(m)  .OR.  surf_lsm%downward(m) )
+                dudz(k) = ( u(k+1,j,i) - surf_lsm_h(0)%u_0(m) ) * dd2zu(k)
+                dvdz(k) = ( v(k+1,j,i) - surf_lsm_h(0)%v_0(m) ) * dd2zu(k)
+
              ENDDO
 !
 !--          Urban surfaces
-             surf_s = surf_usm%start_index(j,i)
-             surf_e = surf_usm%end_index(j,i)
-             !$ACC LOOP PRIVATE(m, k, kref, usvs, wsvs, vsus, wsus, km_neutral)
+             surf_s = surf_usm_h(0)%start_index(j,i)
+             surf_e = surf_usm_h(0)%end_index(j,i)
+             !$ACC LOOP PRIVATE(m, k)
              DO  m = surf_s, surf_e
-                k    = surf_usm%k(m)
-                kref = MERGE( k+1, k-1, surf_usm%upward(m) )
-!
-!--             Fluxes used for north/south-facing surfaces (offset index in y is non-zero)
-                usvs = MERGE( surf_usm%mom_flux_tke(0,m), 0.0_wp, surf_usm%northward(m)  .OR.      &
-                                                                  surf_usm%southward(m) )
-                wsvs = MERGE( surf_usm%mom_flux_tke(1,m), 0.0_wp, surf_usm%northward(m)  .OR.      &
-                                                                  surf_usm%southward(m) )
-!
-!--             Fluxes used for east/west-facing surfaces (offset index in x is non-zero)
-                vsus = MERGE( surf_usm%mom_flux_tke(0,m), 0.0_wp, surf_usm%eastward(m)  .OR.       &
-                                                                  surf_usm%westward(m) )
-                wsus = MERGE( surf_usm%mom_flux_tke(1,m), 0.0_wp, surf_usm%eastward(m)  .OR.       &
-                                                                  surf_usm%westward(m) )
+                k = surf_usm_h(0)%k(m)
 
-                km_neutral = kappa * ( usvs**2 + wsvs**2 + vsus**2 + wsus**2 )**0.25_wp            &
-                             * surf_usm%z_mo(m)
+                dudz(k) = ( u(k+1,j,i) - surf_usm_h(0)%u_0(m) ) * dd2zu(k)
+                dvdz(k) = ( v(k+1,j,i) - surf_usm_h(0)%v_0(m) ) * dd2zu(k)
+
+             ENDDO
 !
-!--             -1.0 for north-facing wall, 1.0 for south-facing wall (achieved by multiplication
-!--             with -1 times effective normal vector component, i.e. the component into which
-!--             direction the grid cell is bounded by an obstacle. Note, the MERGE is used here
-!--             to maintain the already calculated gradient if it is not a north/south facing
-!--             surface but a different one.
-                dudy(k) = MERGE( -surf_usm%n_eff(m) * usvs / ( km_neutral + 1E-10_wp ),            &
-                                 dudy(k), surf_usm%northward(m)  .OR.  surf_usm%southward(m) )
-                dwdy(k) = MERGE( -surf_usm%n_eff(m) * wsvs / ( km_neutral + 1E-10_wp ),            &
-                                 dwdy(k), surf_usm%northward(m)  .OR.  surf_usm%southward(m) )
+!--          Compute gradients at downward-facing surfaces, default surfaces
+             surf_s = surf_def_h(1)%start_index(j,i)
+             surf_e = surf_def_h(1)%end_index(j,i)
+             !$ACC LOOP PRIVATE(m, k)
+             DO  m = surf_s, surf_e
+                k = surf_def_h(1)%k(m)
+
+                dudz(k) = ( surf_def_h(1)%u_0(m) - u(k-1,j,i) ) * dd2zu(k)
+                dvdz(k) = ( surf_def_h(1)%v_0(m) - v(k-1,j,i) ) * dd2zu(k)
+
+             ENDDO
 !
-!--             -1.0 for east-facing wall, 1.0 for west-facing wall
-                dvdx(k) = MERGE( -surf_usm%n_eff(m) * vsus / ( km_neutral + 1E-10_wp ),            &
-                                 dvdx(k), surf_usm%eastward(m)  .OR.  surf_usm%westward(m) )
-                dwdx(k) = MERGE( -surf_usm%n_eff(m) * wsus / ( km_neutral + 1E-10_wp ),            &
-                                 dwdx(k), surf_usm%eastward(m)  .OR.  surf_usm%westward(m) )
+!--          Compute gradients at downward-facing surfaces, natural surfaces
+             surf_s = surf_lsm_h(1)%start_index(j,i)
+             surf_e = surf_lsm_h(1)%end_index(j,i)
+             !$ACC LOOP PRIVATE(m, k)
+             DO  m = surf_s, surf_e
+                k = surf_lsm_h(1)%k(m)
+
+                dudz(k) = ( surf_lsm_h(1)%u_0(m) - u(k-1,j,i) ) * dd2zu(k)
+                dvdz(k) = ( surf_lsm_h(1)%v_0(m) - v(k-1,j,i) ) * dd2zu(k)
+
+             ENDDO
 !
-!--             Now compute vertical gradients using virtual surface velocity (for further
-!--             explanation please see comments in production_e_init).
-!--             upward: u(k+1) - u_0 (normal vector component is 1),
-!--             downward: u_0 - u(k-1) (normal vector component is -1).
-!--             Please note, actually, an interpolation of u_0 and v_0 onto the grid center would be
-!--             required. However, this would require several data transfers between 2D-grid and
-!--             wall type. The effect of this missing interpolation is negligible.
-                dudz(k) = MERGE( surf_usm%n_eff(m) * ( u(kref,j,i) - surf_usm%u_0(m) ) * dd2zu(k), &
-                                 dudz(k), surf_usm%upward(m)  .OR.  surf_usm%downward(m) )
-                dvdz(k) = MERGE( surf_usm%n_eff(m) * ( v(kref,j,i) - surf_usm%v_0(m) ) * dd2zu(k), &
-                                 dvdz(k), surf_usm%upward(m)  .OR.  surf_usm%downward(m) )
+!--          Compute gradients at downward-facing surfaces, urban surfaces
+             surf_s = surf_usm_h(1)%start_index(j,i)
+             surf_e = surf_usm_h(1)%end_index(j,i)
+             !$ACC LOOP PRIVATE(m, k)
+             DO  m = surf_s, surf_e
+                k = surf_usm_h(1)%k(m)
+
+                dudz(k) = ( surf_usm_h(1)%u_0(m) - u(k-1,j,i) ) * dd2zu(k)
+                dvdz(k) = ( surf_usm_h(1)%v_0(m) - v(k-1,j,i) ) * dd2zu(k)
+
              ENDDO
 
+
           ENDIF
+
 
           !$ACC LOOP PRIVATE(k, def, flag)
           DO  k = nzb+1, nzt
 
-             def = 2.0_wp * ( dudx(k)**2 + dvdy(k)**2 + dwdz(k)**2 ) +                             &
-                              dudy(k)**2 + dvdx(k)**2 + dwdx(k)**2 +                               &
-                              dwdy(k)**2 + dudz(k)**2 + dvdz(k)**2 +                               &
-                  2.0_wp * ( dvdx(k)*dudy(k) + dwdx(k)*dudz(k) + dwdy(k)*dvdz(k) )
+             def = 2.0_wp * ( dudx(k)**2 + dvdy(k)**2 + dwdz(k)**2 ) + dudy(k)**2 + dvdx(k)**2 +   &
+                   dwdx(k)**2 + dwdy(k)**2 + dudz(k)**2 + dvdz(k)**2 +                             &
+                   2.0_wp * ( dvdx(k)*dudy(k) + dwdx(k)*dudz(k) + dwdy(k)*dvdz(k) )
 
              IF ( def < 0.0_wp )  def = 0.0_wp
 
-             flag = MERGE( 1.0_wp, 0.0_wp, BTEST(topo_flags(k,j,i),flag_nr) )
+             flag = MERGE( 1.0_wp, 0.0_wp, BTEST(wall_flags_total_0(k,j,i),flag_nr) )
 
              IF ( .NOT. diss_production )  THEN
 
@@ -2923,24 +3140,22 @@
 !
 !--                Treatment of near-surface grid points, at up- and down-ward facing surfaces
                    IF ( use_surface_fluxes )  THEN
-                      surf_s = surf_def%start_index(j,i)
-                      surf_e = surf_def%end_index(j,i)
-                      DO  m = surf_s, surf_e
-                         k    = surf_def%k(m)
-                         kref = MERGE( k-1, k, surf_def%upward(m) )
-!
-!--                      Overwrite vertical flux only at horizontal surfaces.
-                         tmp_flux(k) = MERGE( drho_air_zw(kref) * surf_def%shf(m), tmp_flux(k),    &
-                                              surf_def%upward(m)  .OR.  surf_def%downward(m) )
+                      DO  l = 0, 1
+                         surf_s = surf_def_h(l)%start_index(j,i)
+                         surf_e = surf_def_h(l)%end_index(j,i)
+                         DO  m = surf_s, surf_e
+                            k = surf_def_h(l)%k(m)
+                            tmp_flux(k) = drho_air_zw(k-1) * surf_def_h(l)%shf(m)
+                         ENDDO
                       ENDDO
                    ENDIF
 
                    IF ( use_top_fluxes )  THEN
-                      surf_s = surf_top%start_index(j,i)
-                      surf_e = surf_top%end_index(j,i)
+                      surf_s = surf_def_h(2)%start_index(j,i)
+                      surf_e = surf_def_h(2)%end_index(j,i)
                       DO  m = surf_s, surf_e
-                         k = surf_top%k(m)
-                         tmp_flux(k) = drho_air_zw(k) * surf_top%shf(m)
+                         k = surf_def_h(2)%k(m)
+                         tmp_flux(k) = drho_air_zw(k) * surf_def_h(2)%shf(m)
                       ENDDO
                    ENDIF
 
@@ -2948,7 +3163,7 @@
 
 !--                   Compute tendency for TKE-production from shear
                       DO  k = nzb+1, nzt
-                         flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                         flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
                          tend(k,j,i) = tend(k,j,i) + flag * tmp_flux(k) * ( g /                    &
                                        MERGE( rho_reference, prho(k,j,i),                          &
                                               use_single_reference_value ) )
@@ -2958,7 +3173,7 @@
 
 !--                   RANS mode: Compute tendency for dissipation-rate-production from shear
                       DO  k = nzb+1, nzt
-                         flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                         flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
                          tend(k,j,i) = tend(k,j,i) + flag * tmp_flux(k) * ( g /                    &
                                        MERGE( rho_reference, prho(k,j,i),                          &
                                               use_single_reference_value ) ) *                     &
@@ -2975,12 +3190,11 @@
              !$ACC PARALLEL LOOP COLLAPSE(2) PRIVATE(i, j) &
              !$ACC PRIVATE(surf_s, surf_e) &
              !$ACC PRIVATE(tmp_flux(nzb+1:nzt)) &
-             !$ACC PRESENT(e, diss, kh, pt, dd2zu, drho_air_zw, topo_flags) &
+             !$ACC PRESENT(e, diss, kh, pt, dd2zu, drho_air_zw, wall_flags_total_0) &
              !$ACC PRESENT(tend) &
-             !$ACC PRESENT(surf_def) &
-             !$ACC PRESENT(surf_lsm) &
-             !$ACC PRESENT(surf_top) &
-             !$ACC PRESENT(surf_usm)
+             !$ACC PRESENT(surf_def_h(0:2)) &
+             !$ACC PRESENT(surf_lsm_h(0:1)) &
+             !$ACC PRESENT(surf_usm_h(0:1))
              DO  i = nxl, nxr
                 DO  j = nys, nyn
 
@@ -2991,53 +3205,43 @@
 
                    IF ( use_surface_fluxes )  THEN
 !
-!--                   Default surfaces, replace flux only at up- and downward-facing surfaces
-                      surf_s = surf_def%start_index(j,i)
-                      surf_e = surf_def%end_index(j,i)
-                      !$ACC LOOP PRIVATE(m, k, kref)
-                      DO  m = surf_s, surf_e
-                         k    = surf_def%k(m)
-                         kref = MERGE( k-1, k, surf_def%upward(m) )
+!--                   Default surfaces, up- and downward-facing
+                      DO  l = 0, 1
+                         surf_s = surf_def_h(l)%start_index(j,i)
+                         surf_e = surf_def_h(l)%end_index(j,i)
+                         !$ACC LOOP PRIVATE(m, k)
+                         DO  m = surf_s, surf_e
+                            k = surf_def_h(l)%k(m)
+                            tmp_flux(k) = drho_air_zw(k-1) * surf_def_h(l)%shf(m)
+                         ENDDO
 !
-!--                      Overwrite vertical flux only at horizontal surfaces.
-                         tmp_flux(k) = MERGE( drho_air_zw(kref) * surf_def%shf(m), tmp_flux(k),    &
-                                              surf_def%upward(m)  .OR.  surf_def%downward(m) )
-                      ENDDO
+!--                      Natural surfaces
+                         surf_s = surf_lsm_h(l)%start_index(j,i)
+                         surf_e = surf_lsm_h(l)%end_index(j,i)
+                         !$ACC LOOP PRIVATE(m, k)
+                         DO  m = surf_s, surf_e
+                            k = surf_lsm_h(l)%k(m)
+                            tmp_flux(k) = drho_air_zw(k-1) * surf_lsm_h(l)%shf(m)
+                         ENDDO
 !
-!--                   Natural surfaces
-                      surf_s = surf_lsm%start_index(j,i)
-                      surf_e = surf_lsm%end_index(j,i)
-                      !$ACC LOOP PRIVATE(m, k, kref)
-                      DO  m = surf_s, surf_e
-                         k    = surf_lsm%k(m)
-                         kref = MERGE( k-1, k, surf_lsm%upward(m) )
-!
-!--                      Overwrite vertical flux only at horizontal surfaces.
-                         tmp_flux(k) = MERGE( drho_air_zw(kref) * surf_lsm%shf(m), tmp_flux(k),    &
-                                              surf_lsm%upward(m)  .OR.  surf_lsm%downward(m) )
-                      ENDDO
-!
-!--                   Urban surfaces
-                      surf_s = surf_usm%start_index(j,i)
-                      surf_e = surf_usm%end_index(j,i)
-                      !$ACC LOOP PRIVATE(m, k, kref)
-                      DO  m = surf_s, surf_e
-                         k    = surf_usm%k(m)
-                         kref = MERGE( k-1, k, surf_usm%upward(m) )
-!
-!--                      Overwrite vertical flux only at horizontal surfaces.
-                         tmp_flux(k) = MERGE( drho_air_zw(kref) * surf_usm%shf(m), tmp_flux(k),    &
-                                              surf_usm%upward(m)  .OR.  surf_usm%downward(m) )
+!--                      Urban surfaces
+                         surf_s = surf_usm_h(l)%start_index(j,i)
+                         surf_e = surf_usm_h(l)%end_index(j,i)
+                         !$ACC LOOP PRIVATE(m, k)
+                         DO  m = surf_s, surf_e
+                            k = surf_usm_h(l)%k(m)
+                            tmp_flux(k) = drho_air_zw(k-1) * surf_usm_h(l)%shf(m)
+                         ENDDO
                       ENDDO
                    ENDIF
 
                    IF ( use_top_fluxes )  THEN
-                      surf_s = surf_top%start_index(j,i)
-                      surf_e = surf_top%end_index(j,i)
+                      surf_s = surf_def_h(2)%start_index(j,i)
+                      surf_e = surf_def_h(2)%end_index(j,i)
                       !$ACC LOOP PRIVATE(m, k)
                       DO  m = surf_s, surf_e
-                         k = surf_top%k(m)
-                         tmp_flux(k) = drho_air_zw(k) * surf_top%shf(m)
+                         k = surf_def_h(2)%k(m)
+                         tmp_flux(k) = drho_air_zw(k) * surf_def_h(2)%shf(m)
                       ENDDO
                    ENDIF
 
@@ -3046,7 +3250,7 @@
 !--                   Compute tendency for TKE-production from shear
                      !$ACC LOOP PRIVATE(k, flag)
                       DO  k = nzb+1, nzt
-                         flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                         flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
                          tend(k,j,i) = tend(k,j,i) + flag * tmp_flux(k) * ( g /                    &
                                        MERGE( pt_reference, pt(k,j,i),                             &
                                               use_single_reference_value ) )
@@ -3056,7 +3260,7 @@
 
 !--                   RANS mode: Compute tendency for dissipation-rate-production from shear
                       DO  k = nzb+1, nzt
-                         flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                         flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
                          tend(k,j,i) = tend(k,j,i) + flag * tmp_flux(k) * ( g /                    &
                                        MERGE( pt_reference, pt(k,j,i),                             &
                                               use_single_reference_value ) ) *                     &
@@ -3083,7 +3287,7 @@
                       tmp_flux(k) = -1.0_wp * kh(k,j,i) * ( k1 * ( pt(k+1,j,i) - pt(k-1,j,i) ) +   &
                                                             k2 * ( q(k+1,j,i)  - q(k-1,j,i) ) )    &
                                     * dd2zu(k)
-                   ELSEIF ( bulk_cloud_model )  THEN
+                   ELSE IF ( bulk_cloud_model )  THEN
                       IF ( ql(k,j,i) == 0.0_wp )  THEN
                          k1 = 1.0_wp + 0.61_wp * q(k,j,i)
                          k2 = 0.61_wp * pt(k,j,i)
@@ -3099,7 +3303,7 @@
                       tmp_flux(k) = -1.0_wp * kh(k,j,i) * ( k1 * ( pt(k+1,j,i) - pt(k-1,j,i) ) +   &
                                                             k2 * ( q(k+1,j,i)  - q(k-1,j,i) ) )    &
                                     * dd2zu(k)
-                   ELSEIF ( cloud_droplets )  THEN
+                   ELSE IF ( cloud_droplets )  THEN
                       k1 = 1.0_wp + 0.61_wp * q(k,j,i) - ql(k,j,i)
                       k2 = 0.61_wp * pt(k,j,i)
                       tmp_flux(k) = -1.0_wp * kh(k,j,i) * ( k1 * ( pt(k+1,j,i) - pt(k-1,j,i) ) +   &
@@ -3113,123 +3317,117 @@
                 IF ( use_surface_fluxes )  THEN
 !
 !--                Treat horizontal default surfaces
-                   surf_s = surf_def%start_index(j,i)
-                   surf_e = surf_def%end_index(j,i)
-                   DO  m = surf_s, surf_e
-                      k    = surf_def%k(m)
-                      kref = MERGE( k-1, k, surf_def%upward(m) )
+                   DO  l = 0, 1
+                      surf_s = surf_def_h(l)%start_index(j,i)
+                      surf_e = surf_def_h(l)%end_index(j,i)
+                      DO  m = surf_s, surf_e
+                         k = surf_def_h(l)%k(m)
 
-                      IF (  .NOT.  bulk_cloud_model  .AND.  .NOT.  cloud_droplets )  THEN
-                         k1 = 1.0_wp + 0.61_wp * q(k,j,i)
-                         k2 = 0.61_wp * pt(k,j,i)
-                      ELSEIF ( bulk_cloud_model )  THEN
-                         IF ( ql(k,j,i) == 0.0_wp )  THEN
+                         IF (  .NOT.  bulk_cloud_model  .AND.  .NOT.  cloud_droplets )  THEN
                             k1 = 1.0_wp + 0.61_wp * q(k,j,i)
                             k2 = 0.61_wp * pt(k,j,i)
-                         ELSE
-                            theta = pt(k,j,i) + d_exner(k) * lv_d_cp * ql(k,j,i)
-                            temp  = theta * exner(k)
-                            k1 = ( 1.0_wp - q(k,j,i) + 1.61_wp * ( q(k,j,i) - ql(k,j,i) ) *        &
-                                 ( 1.0_wp + rd_d_rv * lv_d_rd / temp ) ) /                         &
-                                 ( 1.0_wp + rd_d_rv * lv_d_rd * lv_d_cp *                          &
-                                 ( q(k,j,i) - ql(k,j,i) ) / ( temp * temp ) )
-                            k2 = theta * ( lv_d_cp / temp * k1 - 1.0_wp )
+                         ELSE IF ( bulk_cloud_model )  THEN
+                            IF ( ql(k,j,i) == 0.0_wp )  THEN
+                               k1 = 1.0_wp + 0.61_wp * q(k,j,i)
+                               k2 = 0.61_wp * pt(k,j,i)
+                            ELSE
+                               theta = pt(k,j,i) + d_exner(k) * lv_d_cp * ql(k,j,i)
+                               temp  = theta * exner(k)
+                               k1 = ( 1.0_wp - q(k,j,i) + 1.61_wp * ( q(k,j,i) - ql(k,j,i) ) *     &
+                                    ( 1.0_wp + rd_d_rv * lv_d_rd / temp ) ) /                      &
+                                    ( 1.0_wp + rd_d_rv * lv_d_rd * lv_d_cp *                       &
+                                    ( q(k,j,i) - ql(k,j,i) ) / ( temp * temp ) )
+                               k2 = theta * ( lv_d_cp / temp * k1 - 1.0_wp )
+                            ENDIF
+                         ELSE IF ( cloud_droplets )  THEN
+                            k1 = 1.0_wp + 0.61_wp * q(k,j,i) - ql(k,j,i)
+                            k2 = 0.61_wp * pt(k,j,i)
                          ENDIF
-                      ELSEIF ( cloud_droplets )  THEN
-                         k1 = 1.0_wp + 0.61_wp * q(k,j,i) - ql(k,j,i)
-                         k2 = 0.61_wp * pt(k,j,i)
-                      ENDIF
-!
-!--                   Overwrite vertical flux only at horizontal surfaces.
-                      tmp_flux(k) = MERGE( ( k1 * surf_def%shf(m) + k2 * surf_def%qsws(m) )        &
-                                           * drho_air_zw(kref),                                    &
-                                           tmp_flux(k),                                            &
-                                           surf_def%upward(m)  .OR.  surf_def%downward(m) )
+
+                         tmp_flux(k) = ( k1 * surf_def_h(l)%shf(m) + k2 * surf_def_h(l)%qsws(m) )  &
+                                         * drho_air_zw(k-1)
+                      ENDDO
                    ENDDO
 !
 !--                Treat horizontal natural surfaces
-                   surf_s = surf_lsm%start_index(j,i)
-                   surf_e = surf_lsm%end_index(j,i)
-                   DO  m = surf_s, surf_e
-                      k    = surf_lsm%k(m)
-                      kref = MERGE( k-1, k, surf_lsm%upward(m) )
+                   DO  l = 0, 1
+                      surf_s = surf_lsm_h(l)%start_index(j,i)
+                      surf_e = surf_lsm_h(l)%end_index(j,i)
+                      DO  m = surf_s, surf_e
+                         k = surf_lsm_h(l)%k(m)
 
-                      IF (  .NOT.  bulk_cloud_model  .AND.  .NOT.  cloud_droplets )  THEN
-                         k1 = 1.0_wp + 0.61_wp * q(k,j,i)
-                         k2 = 0.61_wp * pt(k,j,i)
-                      ELSEIF ( bulk_cloud_model )  THEN
-                         IF ( ql(k,j,i) == 0.0_wp )  THEN
+                         IF (  .NOT.  bulk_cloud_model  .AND.  .NOT.  cloud_droplets )  THEN
                             k1 = 1.0_wp + 0.61_wp * q(k,j,i)
                             k2 = 0.61_wp * pt(k,j,i)
-                         ELSE
-                            theta = pt(k,j,i) + d_exner(k) * lv_d_cp * ql(k,j,i)
-                            temp  = theta * exner(k)
-                            k1 = ( 1.0_wp - q(k,j,i) + 1.61_wp * ( q(k,j,i) - ql(k,j,i) ) *        &
-                                 ( 1.0_wp + rd_d_rv * lv_d_rd / temp ) ) /                         &
-                                 ( 1.0_wp + rd_d_rv * lv_d_rd * lv_d_cp *                          &
-                                 ( q(k,j,i) - ql(k,j,i) ) / ( temp * temp ) )
-                            k2 = theta * ( lv_d_cp / temp * k1 - 1.0_wp )
+                         ELSE IF ( bulk_cloud_model )  THEN
+                            IF ( ql(k,j,i) == 0.0_wp )  THEN
+                               k1 = 1.0_wp + 0.61_wp * q(k,j,i)
+                               k2 = 0.61_wp * pt(k,j,i)
+                            ELSE
+                               theta = pt(k,j,i) + d_exner(k) * lv_d_cp * ql(k,j,i)
+                               temp  = theta * exner(k)
+                               k1 = ( 1.0_wp - q(k,j,i) + 1.61_wp * ( q(k,j,i) - ql(k,j,i) ) *        &
+                                    ( 1.0_wp + rd_d_rv * lv_d_rd / temp ) ) /                         &
+                                    ( 1.0_wp + rd_d_rv * lv_d_rd * lv_d_cp *                          &
+                                    ( q(k,j,i) - ql(k,j,i) ) / ( temp * temp ) )
+                               k2 = theta * ( lv_d_cp / temp * k1 - 1.0_wp )
+                            ENDIF
+                         ELSE IF ( cloud_droplets )  THEN
+                            k1 = 1.0_wp + 0.61_wp * q(k,j,i) - ql(k,j,i)
+                            k2 = 0.61_wp * pt(k,j,i)
                          ENDIF
-                      ELSEIF ( cloud_droplets )  THEN
-                         k1 = 1.0_wp + 0.61_wp * q(k,j,i) - ql(k,j,i)
-                         k2 = 0.61_wp * pt(k,j,i)
-                      ENDIF
-!
-!--                   Overwrite vertical flux only at horizontal surfaces.
-                      tmp_flux(k) = MERGE( ( k1 * surf_lsm%shf(m) + k2 * surf_lsm%qsws(m) )        &
-                                           * drho_air_zw(kref),                                    &
-                                           tmp_flux(k),                                            &
-                                           surf_lsm%upward(m)  .OR.  surf_lsm%downward(m) )
-                   ENDDO
 
+                         tmp_flux(k) = ( k1 * surf_lsm_h(l)%shf(m) + k2 * surf_lsm_h(l)%qsws(m) )     &
+                                       * drho_air_zw(k-1)
+                      ENDDO
+                   ENDDO
 !
 !--                Treat horizontal urban surfaces
-                   surf_s = surf_usm%start_index(j,i)
-                   surf_e = surf_usm%end_index(j,i)
-                   DO  m = surf_s, surf_e
-                      k    = surf_usm%k(m)
-                      kref = MERGE( k-1, k, surf_usm%upward(m) )
+                   DO  l = 0, 1
+                      surf_s = surf_usm_h(l)%start_index(j,i)
+                      surf_e = surf_usm_h(l)%end_index(j,i)
+                      DO  m = surf_s, surf_e
+                         k = surf_usm_h(l)%k(m)
 
-                      IF ( .NOT. bulk_cloud_model  .AND.  .NOT. cloud_droplets )  THEN
-                         k1 = 1.0_wp + 0.61_wp * q(k,j,i)
-                         k2 = 0.61_wp * pt(k,j,i)
-                      ELSEIF ( bulk_cloud_model )  THEN
-                         IF ( ql(k,j,i) == 0.0_wp )  THEN
+                         IF ( .NOT. bulk_cloud_model  .AND.  .NOT. cloud_droplets )  THEN
                             k1 = 1.0_wp + 0.61_wp * q(k,j,i)
                             k2 = 0.61_wp * pt(k,j,i)
-                         ELSE
-                            theta = pt(k,j,i) + d_exner(k) * lv_d_cp * ql(k,j,i)
-                            temp  = theta * exner(k)
-                            k1 = ( 1.0_wp - q(k,j,i) + 1.61_wp * ( q(k,j,i) - ql(k,j,i) ) *        &
-                                 ( 1.0_wp + rd_d_rv * lv_d_rd / temp ) ) /                         &
-                                 ( 1.0_wp + rd_d_rv * lv_d_rd * lv_d_cp *                          &
-                                 ( q(k,j,i) - ql(k,j,i) ) / ( temp * temp ) )
-                            k2 = theta * ( lv_d_cp / temp * k1 - 1.0_wp )
+                         ELSE IF ( bulk_cloud_model )  THEN
+                            IF ( ql(k,j,i) == 0.0_wp )  THEN
+                               k1 = 1.0_wp + 0.61_wp * q(k,j,i)
+                               k2 = 0.61_wp * pt(k,j,i)
+                            ELSE
+                               theta = pt(k,j,i) + d_exner(k) * lv_d_cp * ql(k,j,i)
+                               temp  = theta * exner(k)
+                               k1 = ( 1.0_wp - q(k,j,i) + 1.61_wp * ( q(k,j,i) - ql(k,j,i) ) *        &
+                                    ( 1.0_wp + rd_d_rv * lv_d_rd / temp ) ) /                         &
+                                    ( 1.0_wp + rd_d_rv * lv_d_rd * lv_d_cp *                          &
+                                    ( q(k,j,i) - ql(k,j,i) ) / ( temp * temp ) )
+                               k2 = theta * ( lv_d_cp / temp * k1 - 1.0_wp )
+                            ENDIF
+                         ELSE IF ( cloud_droplets )  THEN
+                            k1 = 1.0_wp + 0.61_wp * q(k,j,i) - ql(k,j,i)
+                            k2 = 0.61_wp * pt(k,j,i)
                          ENDIF
-                      ELSEIF ( cloud_droplets )  THEN
-                         k1 = 1.0_wp + 0.61_wp * q(k,j,i) - ql(k,j,i)
-                         k2 = 0.61_wp * pt(k,j,i)
-                      ENDIF
-!
-!--                   Overwrite vertical flux only at horizontal surfaces.
-                      tmp_flux(k) = MERGE( ( k1 * surf_usm%shf(m) + k2 * surf_usm%qsws(m) )        &
-                                           * drho_air_zw(kref), tmp_flux(k),                       &
-                                           surf_usm%upward(m)  .OR.  surf_usm%downward(m) )
+
+                         tmp_flux(k) = ( k1 * surf_usm_h(l)%shf(m) + k2 * surf_usm_h(l)%qsws(m) )     &
+                                       * drho_air_zw(k-1)
+                      ENDDO
                    ENDDO
 
                 ENDIF ! From IF ( use_surface_fluxes )  THEN
 
                 IF ( use_top_fluxes )  THEN
 
-                   surf_s = surf_top%start_index(j,i)
-                   surf_e = surf_top%end_index(j,i)
+                   surf_s = surf_def_h(2)%start_index(j,i)
+                   surf_e = surf_def_h(2)%end_index(j,i)
                    DO  m = surf_s, surf_e
-                      k = surf_top%k(m)
+                      k = surf_def_h(2)%k(m)
 
                       IF ( .NOT. bulk_cloud_model  .AND.  .NOT. cloud_droplets )  THEN
                          k1 = 1.0_wp + 0.61_wp * q(k,j,i)
                          k2 = 0.61_wp * pt(k,j,i)
-                      ELSEIF ( bulk_cloud_model )  THEN
+                      ELSE IF ( bulk_cloud_model )  THEN
                          IF ( ql(k,j,i) == 0.0_wp )  THEN
                             k1 = 1.0_wp + 0.61_wp * q(k,j,i)
                             k2 = 0.61_wp * pt(k,j,i)
@@ -3242,31 +3440,32 @@
                               ( q(k,j,i) - ql(k,j,i) ) / ( temp * temp ) )
                             k2 = theta * ( lv_d_cp / temp * k1 - 1.0_wp )
                          ENDIF
-                      ELSEIF ( cloud_droplets )  THEN
+                      ELSE IF ( cloud_droplets )  THEN
                          k1 = 1.0_wp + 0.61_wp * q(k,j,i) - ql(k,j,i)
                          k2 = 0.61_wp * pt(k,j,i)
                       ENDIF
 
-                      tmp_flux(k) = ( k1 * surf_top%shf(m) + k2 * surf_top%qsws(m) ) * drho_air_zw(k)
+                      tmp_flux(k) = ( k1 * surf_def_h(2)%shf(m) + k2 * surf_def_h(2)%qsws(m) )     &
+                                    * drho_air_zw(k)
 
                    ENDDO
 
                 ENDIF ! From IF ( use_top_fluxes )  THEN
 
                 IF ( .NOT. diss_production )  THEN
-!
+
 !--                Compute tendency for TKE-production from shear
                    DO  k = nzb+1, nzt
-                      flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                      flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
                       tend(k,j,i) = tend(k,j,i) + flag * tmp_flux(k) * ( g /                       &
                                     MERGE( vpt_reference, vpt(k,j,i), use_single_reference_value ) )
                    ENDDO
 
                 ELSE
-!
+
 !--                RANS mode: Compute tendency for dissipation-rate-production from shear
                    DO  k = nzb+1, nzt
-                      flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                      flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
                       tend(k,j,i) = tend(k,j,i) + flag * tmp_flux(k) *                             &
                                     ( g / MERGE( vpt_reference, vpt(k,j,i),                        &
                                                   use_single_reference_value ) )                   &
@@ -3303,6 +3502,8 @@
                q,                                                                                  &
                ql
 
+
+
     USE control_parameters,                                                                        &
         ONLY:  cloud_droplets,                                                                     &
                constant_flux_layer,                                                                &
@@ -3314,7 +3515,9 @@
 
     USE grid_variables,                                                                            &
         ONLY:  ddx,                                                                                &
-               ddy
+               dx,                                                                                 &
+               ddy,                                                                                &
+               dy
 
     USE bulk_cloud_model_mod,                                                                      &
         ONLY:  bulk_cloud_model
@@ -3327,7 +3530,7 @@
     INTEGER(iwp) ::  i        !< running index x-direction
     INTEGER(iwp) ::  j        !< running index y-direction
     INTEGER(iwp) ::  k        !< running index z-direction
-    INTEGER(iwp) ::  kref     !< reference grid index in z-direction used to calculate vertical gradients
+    INTEGER(iwp) ::  l        !< running index for different surface type orientation
     INTEGER(iwp) ::  m        !< running index surface elements
     INTEGER(iwp) ::  surf_e   !< end index of surface elements at given i-j position
     INTEGER(iwp) ::  surf_s   !< start index of surface elements at given i-j position
@@ -3337,6 +3540,7 @@
     REAL(wp)     ::  k1          !< temporary factor
     REAL(wp)     ::  k2          !< temporary factor
     REAL(wp)     ::  km_neutral  !< diffusion coefficient assuming neutral conditions - used to compute shear production at surfaces
+    REAL(wp)     ::  sign_dir    !< sign of wall-tke flux, depending on wall orientation
     REAL(wp)     ::  theta       !< virtual potential temperature
     REAL(wp)     ::  temp        !< theta * Exner-function
     REAL(wp)     ::  usvs        !< momentum flux u"v"
@@ -3355,26 +3559,28 @@
     REAL(wp), DIMENSION(nzb+1:nzt) ::  dwdz      !< Gradient of w-component in z-direction
     REAL(wp), DIMENSION(nzb+1:nzt) ::  tmp_flux  !< temporary flux-array in z-direction
 
+
+
 !
 !-- Calculate TKE production by shear. Calculate gradients at all grid points first, gradients at
 !-- surface-bounded grid points will be overwritten further below.
     DO  k = nzb+1, nzt
 
-       dudx(k) =           ( u(k,j,i+1) - u(k,j,i)                                 ) * ddx
+       dudx(k) =           ( u(k,j,i+1) - u(k,j,i)     ) * ddx
        dudy(k) = 0.25_wp * ( u(k,j+1,i) + u(k,j+1,i+1) - u(k,j-1,i) - u(k,j-1,i+1) ) * ddy
        dudz(k) = 0.5_wp  * ( u(k+1,j,i) + u(k+1,j,i+1) - u(k-1,j,i) - u(k-1,j,i+1) ) * dd2zu(k)
 
        dvdx(k) = 0.25_wp * ( v(k,j,i+1) + v(k,j+1,i+1) - v(k,j,i-1) - v(k,j+1,i-1) ) * ddx
-       dvdy(k) =           ( v(k,j+1,i) - v(k,j,i)                                 ) * ddy
+       dvdy(k) =           ( v(k,j+1,i) - v(k,j,i)     ) * ddy
        dvdz(k) = 0.5_wp  * ( v(k+1,j,i) + v(k+1,j+1,i) - v(k-1,j,i) - v(k-1,j+1,i) ) * dd2zu(k)
 
        dwdx(k) = 0.25_wp * ( w(k,j,i+1) + w(k-1,j,i+1) - w(k,j,i-1) - w(k-1,j,i-1) ) * ddx
        dwdy(k) = 0.25_wp * ( w(k,j+1,i) + w(k-1,j+1,i) - w(k,j-1,i) - w(k-1,j-1,i) ) * ddy
-       dwdz(k) =           ( w(k,j,i)   - w(k-1,j,i)                               ) * ddzw(k)
+       dwdz(k) =           ( w(k,j,i)   - w(k-1,j,i)   ) * ddzw(k)
 
     ENDDO
 
-    flag_nr = 29  !MS: ???
+    flag_nr = 29
 
     IF ( constant_flux_layer )  THEN
 
@@ -3382,160 +3588,170 @@
 
 !--    Position beneath wall
 !--    (2) - Will allways be executed.
-!--    'bottom and wall: use u_0, v_0 and wall functions'
+!--    'bottom and wall: use u_0,v_0 and wall functions'
 !
-!--    Compute gradients at north/south-facing as well as at east/west-facing surfaces. First,
-!--    for default surfaces.
-       surf_s = surf_def%start_index(j,i)
-       surf_e = surf_def%end_index(j,i)
-       DO  m = surf_s, surf_e
-          k    = surf_def%k(m)
-          kref = MERGE( k+1, k-1, surf_def%upward(m) )
-!
-!--       Fluxes used for north/south-facing surfaces (offset index in y is non-zero)
-          usvs = MERGE( surf_def%mom_flux_tke(0,m), 0.0_wp, surf_def%northward(m)  .OR.            &
-                                                            surf_def%southward(m) )
-          wsvs = MERGE( surf_def%mom_flux_tke(1,m), 0.0_wp, surf_def%northward(m)  .OR.            &
-                                                            surf_def%southward(m) )
-!
-!--       Fluxes used for east/west-facing surfaces (offset index in x is non-zero)
-          vsus = MERGE( surf_def%mom_flux_tke(0,m), 0.0_wp, surf_def%eastward(m)  .OR.             &
-                                                            surf_def%westward(m) )
-          wsus = MERGE( surf_def%mom_flux_tke(1,m), 0.0_wp, surf_def%eastward(m)  .OR.             &
-                                                            surf_def%westward(m) )
+!--    Compute gradients at north- and south-facing surfaces. First, for default surfaces, then for
+!--    urban surfaces. Note, so far no natural vertical surfaces implemented
+       DO  l = 0, 1
+          surf_s = surf_def_v(l)%start_index(j,i)
+          surf_e = surf_def_v(l)%end_index(j,i)
+          DO  m = surf_s, surf_e
+             k           = surf_def_v(l)%k(m)
+             usvs        = surf_def_v(l)%mom_flux_tke(0,m)
+             wsvs        = surf_def_v(l)%mom_flux_tke(1,m)
 
-          km_neutral = kappa * ( usvs**2 + wsvs**2 + vsus**2 + wsus**2 )**0.25_wp                  &
-                       * surf_def%z_mo(m)
+             km_neutral = kappa * ( usvs**2 + wsvs**2 )**0.25_wp * 0.5_wp * dy
 !
-!--       x -1.0 for north-facing wall, x 1.0 for south-facing wall (achieved by multiplication
-!--       with effective normal vector component, i.e. the component into which
-!--       direction the grid cell is bounded by an obstacle). Note, the MERGE is used here
-!--       to maintain the already calculated gradient if it is not a north/south facing
-!--       surface but a different one.
-          dudy(k) = MERGE( -surf_def%n_eff(m) * usvs / ( km_neutral + 1E-10_wp ),                  &
-                           dudy(k), surf_def%northward(m)  .OR.  surf_def%southward(m) )
-          dwdy(k) = MERGE( -surf_def%n_eff(m) * wsvs / ( km_neutral + 1E-10_wp ),                  &
-                           dwdy(k), surf_def%northward(m)  .OR.  surf_def%southward(m) )
+!--          -1.0 for right-facing wall, 1.0 for left-facing wall
+             sign_dir = MERGE( 1.0_wp, -1.0_wp, BTEST( wall_flags_total_0(k,j-1,i), flag_nr ) )
+             dudy(k) = sign_dir * usvs / ( km_neutral + 1E-10_wp )
+             dwdy(k) = sign_dir * wsvs / ( km_neutral + 1E-10_wp )
+          ENDDO
 !
-!--       x -1.0 for east-facing wall, x 1.0 for west-facing wall
-          dvdx(k) = MERGE( -surf_def%n_eff(m) * vsus / ( km_neutral + 1E-10_wp ),                  &
-                           dvdx(k), surf_def%eastward(m)  .OR.  surf_def%westward(m) )
-          dwdx(k) = MERGE( -surf_def%n_eff(m) * wsus / ( km_neutral + 1E-10_wp ),                  &
-                           dwdx(k), surf_def%eastward(m)  .OR.  surf_def%westward(m) )
+!--       Natural surfaces
+          surf_s = surf_lsm_v(l)%start_index(j,i)
+          surf_e = surf_lsm_v(l)%end_index(j,i)
+          DO  m = surf_s, surf_e
+             k           = surf_lsm_v(l)%k(m)
+             usvs        = surf_lsm_v(l)%mom_flux_tke(0,m)
+             wsvs        = surf_lsm_v(l)%mom_flux_tke(1,m)
+
+             km_neutral = kappa * ( usvs**2 + wsvs**2 )**0.25_wp * 0.5_wp * dy
 !
-!--       Now compute vertical gradients using virtual surface velocity (for further
-!--       explanation please see comments in production_e_init).
-!--       upward: u(k+1) - u_0 (normal vector component is 1),
-!--       downward: u_0 - u(k-1) (normal vector component is -1).
+!--          -1.0 for right-facing wall, 1.0 for left-facing wall
+             sign_dir = MERGE( 1.0_wp, -1.0_wp, BTEST( wall_flags_total_0(k,j-1,i), flag_nr ) )
+             dudy(k) = sign_dir * usvs / ( km_neutral + 1E-10_wp )
+             dwdy(k) = sign_dir * wsvs / ( km_neutral + 1E-10_wp )
+          ENDDO
+!
+!--       Urban surfaces
+          surf_s = surf_usm_v(l)%start_index(j,i)
+          surf_e = surf_usm_v(l)%end_index(j,i)
+          DO  m = surf_s, surf_e
+             k           = surf_usm_v(l)%k(m)
+             usvs        = surf_usm_v(l)%mom_flux_tke(0,m)
+             wsvs        = surf_usm_v(l)%mom_flux_tke(1,m)
+
+             km_neutral = kappa * ( usvs**2 + wsvs**2 )**0.25_wp * 0.5_wp * dy
+!
+!--          -1.0 for right-facing wall, 1.0 for left-facing wall
+             sign_dir = MERGE( 1.0_wp, -1.0_wp, BTEST( wall_flags_total_0(k,j-1,i), flag_nr ) )
+             dudy(k) = sign_dir * usvs / ( km_neutral + 1E-10_wp )
+             dwdy(k) = sign_dir * wsvs / ( km_neutral + 1E-10_wp )
+          ENDDO
+       ENDDO
+!
+!--    Compute gradients at east- and west-facing walls
+       DO  l = 2, 3
+          surf_s = surf_def_v(l)%start_index(j,i)
+          surf_e = surf_def_v(l)%end_index(j,i)
+          DO  m = surf_s, surf_e
+             k     = surf_def_v(l)%k(m)
+             vsus  = surf_def_v(l)%mom_flux_tke(0,m)
+             wsus  = surf_def_v(l)%mom_flux_tke(1,m)
+
+             km_neutral = kappa * ( vsus**2 + wsus**2 )**0.25_wp * 0.5_wp * dx
+!
+!--          -1.0 for right-facing wall, 1.0 for left-facing wall
+             sign_dir = MERGE( 1.0_wp, -1.0_wp, BTEST( wall_flags_total_0(k,j,i-1), flag_nr ) )
+             dvdx(k) = sign_dir * vsus / ( km_neutral + 1E-10_wp )
+             dwdx(k) = sign_dir * wsus / ( km_neutral + 1E-10_wp )
+          ENDDO
+!
+!--       Natural surfaces
+          surf_s = surf_lsm_v(l)%start_index(j,i)
+          surf_e = surf_lsm_v(l)%end_index(j,i)
+          DO  m = surf_s, surf_e
+             k     = surf_lsm_v(l)%k(m)
+             vsus  = surf_lsm_v(l)%mom_flux_tke(0,m)
+             wsus  = surf_lsm_v(l)%mom_flux_tke(1,m)
+
+             km_neutral = kappa * ( vsus**2 + wsus**2 )**0.25_wp * 0.5_wp * dx
+!
+!--          -1.0 for right-facing wall, 1.0 for left-facing wall
+             sign_dir = MERGE( 1.0_wp, -1.0_wp, BTEST( wall_flags_total_0(k,j,i-1), flag_nr ) )
+             dvdx(k) = sign_dir * vsus / ( km_neutral + 1E-10_wp )
+             dwdx(k) = sign_dir * wsus / ( km_neutral + 1E-10_wp )
+          ENDDO
+!
+!--       Urban surfaces
+          surf_s = surf_usm_v(l)%start_index(j,i)
+          surf_e = surf_usm_v(l)%end_index(j,i)
+          DO  m = surf_s, surf_e
+             k     = surf_usm_v(l)%k(m)
+             vsus  = surf_usm_v(l)%mom_flux_tke(0,m)
+             wsus  = surf_usm_v(l)%mom_flux_tke(1,m)
+
+             km_neutral = kappa * ( vsus**2 + wsus**2 )**0.25_wp * 0.5_wp * dx
+!
+!--          -1.0 for right-facing wall, 1.0 for left-facing wall
+             sign_dir = MERGE( 1.0_wp, -1.0_wp, BTEST( wall_flags_total_0(k,j,i-1), flag_nr ) )
+             dvdx(k) = sign_dir * vsus / ( km_neutral + 1E-10_wp )
+             dwdx(k) = sign_dir * wsus / ( km_neutral + 1E-10_wp )
+          ENDDO
+       ENDDO
+!
+!--    Compute gradients at upward-facing surfaces
+       surf_s = surf_def_h(0)%start_index(j,i)
+       surf_e = surf_def_h(0)%end_index(j,i)
+       DO  m = surf_s, surf_e
+          k = surf_def_h(0)%k(m)
+!
 !--       Please note, actually, an interpolation of u_0 and v_0 onto the grid center would be
-!--       required. However, this would require several data transfers between 2D-grid and
-!--       wall type. The effect of this missing interpolation is negligible.
-          dudz(k) = MERGE( surf_def%n_eff(m) * ( u(kref,j,i) - surf_def%u_0(m) ) * dd2zu(k),       &
-                           dudz(k), surf_def%upward(m)  .OR.  surf_def%downward(m) )
-          dvdz(k) = MERGE( surf_def%n_eff(m) * ( v(kref,j,i) - surf_def%v_0(m) ) * dd2zu(k),       &
-                           dvdz(k), surf_def%upward(m)  .OR.  surf_def%downward(m) )
+!--       required. However, this would require several data transfers between 2D-grid and wall
+!--       type. The effect of this missing interpolation is negligible. (See also production_e_init).
+          dudz(k) = ( u(k+1,j,i) - surf_def_h(0)%u_0(m) ) * dd2zu(k)
+          dvdz(k) = ( v(k+1,j,i) - surf_def_h(0)%v_0(m) ) * dd2zu(k)
+
        ENDDO
 !
 !--    Natural surfaces
-       surf_s = surf_lsm%start_index(j,i)
-       surf_e = surf_lsm%end_index(j,i)
+       surf_s = surf_lsm_h(0)%start_index(j,i)
+       surf_e = surf_lsm_h(0)%end_index(j,i)
        DO  m = surf_s, surf_e
-          k    = surf_lsm%k(m)
-          kref = MERGE( k+1, k-1, surf_lsm%upward(m) )
-!
-!--       Fluxes used for north/south-facing surfaces (offset index in y is non-zero)
-          usvs = MERGE( surf_lsm%mom_flux_tke(0,m), 0.0_wp, surf_lsm%northward(m)  .OR.            &
-                                                            surf_lsm%southward(m) )
-          wsvs = MERGE( surf_lsm%mom_flux_tke(1,m), 0.0_wp, surf_lsm%northward(m)  .OR.            &
-                                                            surf_lsm%southward(m) )
-!
-!--       Fluxes used for east/west-facing surfaces (offset index in x is non-zero)
-          vsus = MERGE( surf_lsm%mom_flux_tke(0,m), 0.0_wp, surf_lsm%eastward(m)  .OR.             &
-                                                            surf_lsm%westward(m) )
-          wsus = MERGE( surf_lsm%mom_flux_tke(1,m), 0.0_wp, surf_lsm%eastward(m)  .OR.             &
-                                                            surf_lsm%westward(m) )
+          k = surf_lsm_h(0)%k(m)
 
-          km_neutral = kappa * ( usvs**2 + wsvs**2 + vsus**2 + wsus**2 )**0.25_wp                  &
-                       * surf_lsm%z_mo(m)
-!
-!--       x -1.0 for north-facing wall, x 1.0 for south-facing wall (achieved by multiplication
-!--       with effective normal vector component, i.e. the component into which
-!--       direction the grid cell is bounded by an obstacle). Note, the MERGE is used here
-!--       to maintain the already calculated gradient if it is not a north/south facing
-!--       surface but a different one.
-          dudy(k) = MERGE( -surf_lsm%n_eff(m) * usvs / ( km_neutral + 1E-10_wp ),                  &
-                           dudy(k), surf_lsm%northward(m)  .OR.  surf_lsm%southward(m) )
-          dwdy(k) = MERGE( -surf_lsm%n_eff(m) * wsvs / ( km_neutral + 1E-10_wp ),                  &
-                           dwdy(k), surf_lsm%northward(m)  .OR.  surf_lsm%southward(m) )
-!
-!--       x -1.0 for east-facing wall, x 1.0 for west-facing wall
-          dvdx(k) = MERGE( -surf_lsm%n_eff(m) * vsus / ( km_neutral + 1E-10_wp ),                  &
-                           dvdx(k), surf_lsm%eastward(m)  .OR.  surf_lsm%westward(m) )
-          dwdx(k) = MERGE( -surf_lsm%n_eff(m) * wsus / ( km_neutral + 1E-10_wp ),                  &
-                           dwdx(k), surf_lsm%eastward(m)  .OR.  surf_lsm%westward(m) )
-!
-!--       Now compute vertical gradients using virtual surface velocity (for further
-!--       explanation please see comments in production_e_init).
-!--       upward: u(k+1) - u_0 (normal vector component is 1),
-!--       downward: u_0 - u(k-1) (normal vector component is -1).
-!--       Please note, actually, an interpolation of u_0 and v_0 onto the grid center would be
-!--       required. However, this would require several data transfers between 2D-grid and
-!--       wall type. The effect of this missing interpolation is negligible.
-          dudz(k) = MERGE( surf_lsm%n_eff(m) * ( u(kref,j,i) - surf_lsm%u_0(m) ) * dd2zu(k),       &
-                           dudz(k), surf_lsm%upward(m)  .OR.  surf_lsm%downward(m) )
-          dvdz(k) = MERGE( surf_lsm%n_eff(m) * ( v(kref,j,i) - surf_lsm%v_0(m) ) * dd2zu(k),       &
-                           dvdz(k), surf_lsm%upward(m)  .OR.  surf_lsm%downward(m) )
+          dudz(k) = ( u(k+1,j,i) - surf_lsm_h(0)%u_0(m) ) * dd2zu(k)
+          dvdz(k) = ( v(k+1,j,i) - surf_lsm_h(0)%v_0(m) ) * dd2zu(k)
+
        ENDDO
 !
 !--    Urban surfaces
-       surf_s = surf_usm%start_index(j,i)
-       surf_e = surf_usm%end_index(j,i)
+       surf_s = surf_usm_h(0)%start_index(j,i)
+       surf_e = surf_usm_h(0)%end_index(j,i)
        DO  m = surf_s, surf_e
-          k    = surf_usm%k(m)
-          kref = MERGE( k+1, k-1, surf_usm%upward(m) )
-!
-!--       Fluxes used for north/south-facing surfaces (offset index in y is non-zero)
-          usvs = MERGE( surf_usm%mom_flux_tke(0,m), 0.0_wp, surf_usm%northward(m)  .OR.            &
-                                                            surf_usm%southward(m) )
-          wsvs = MERGE( surf_usm%mom_flux_tke(1,m), 0.0_wp, surf_usm%northward(m)  .OR.            &
-                                                            surf_usm%southward(m) )
-!
-!--       Fluxes used for east/west-facing surfaces (offset index in x is non-zero)
-          vsus = MERGE( surf_usm%mom_flux_tke(0,m), 0.0_wp, surf_usm%eastward(m)  .OR.             &
-                                                            surf_usm%westward(m) )
-          wsus = MERGE( surf_usm%mom_flux_tke(1,m), 0.0_wp, surf_usm%eastward(m)  .OR.             &
-                                                            surf_usm%westward(m) )
+          k = surf_usm_h(0)%k(m)
 
-          km_neutral = kappa * ( usvs**2 + wsvs**2 + vsus**2 + wsus**2 )**0.25_wp                  &
-                       * surf_usm%z_mo(m)
+          dudz(k) = ( u(k+1,j,i) - surf_usm_h(0)%u_0(m) ) * dd2zu(k)
+          dvdz(k) = ( v(k+1,j,i) - surf_usm_h(0)%v_0(m) ) * dd2zu(k)
+
+       ENDDO
 !
-!--       x -1.0 for north-facing wall, x 1.0 for south-facing wall (achieved by multiplication
-!--       with effective normal vector component, i.e. the component into which
-!--       direction the grid cell is bounded by an obstacle). Note, the MERGE is used here
-!--       to maintain the already calculated gradient if it is not a north/south facing
-!--       surface but a different one.
-          dudy(k) = MERGE( -surf_usm%n_eff(m) * usvs / ( km_neutral + 1E-10_wp ),                  &
-                           dudy(k), surf_usm%northward(m)  .OR.  surf_usm%southward(m) )
-          dwdy(k) = MERGE( -surf_usm%n_eff(m) * wsvs / ( km_neutral + 1E-10_wp ),                  &
-                           dwdy(k), surf_usm%northward(m)  .OR.  surf_usm%southward(m) )
+!--    Compute gradients at downward-facing surfaces, default surfaces
+       surf_s = surf_def_h(1)%start_index(j,i)
+       surf_e = surf_def_h(1)%end_index(j,i)
+       DO  m = surf_s, surf_e
+          k = surf_def_h(1)%k(m)
+          dudz(k) = ( surf_def_h(1)%u_0(m) - u(k-1,j,i) ) * dd2zu(k)
+          dvdz(k) = ( surf_def_h(1)%v_0(m) - v(k-1,j,i) ) * dd2zu(k)
+       ENDDO
 !
-!--       x -1.0 for east-facing wall, x 1.0 for west-facing wall
-          dvdx(k) = MERGE( -surf_usm%n_eff(m) * vsus / ( km_neutral + 1E-10_wp ),                  &
-                           dvdx(k), surf_usm%eastward(m)  .OR.  surf_usm%westward(m) )
-          dwdx(k) = MERGE( -surf_usm%n_eff(m) * wsus / ( km_neutral + 1E-10_wp ),                  &
-                           dwdx(k), surf_usm%eastward(m)  .OR.  surf_usm%westward(m) )
+!--    Compute gradients at downward-facing surfaces, natural surfaces
+       surf_s = surf_lsm_h(1)%start_index(j,i)
+       surf_e = surf_lsm_h(1)%end_index(j,i)
+       DO  m = surf_s, surf_e
+          k = surf_lsm_h(1)%k(m)
+          dudz(k) = ( surf_lsm_h(1)%u_0(m) - u(k-1,j,i) ) * dd2zu(k)
+          dvdz(k) = ( surf_lsm_h(1)%v_0(m) - v(k-1,j,i) ) * dd2zu(k)
+       ENDDO
 !
-!--       Now compute vertical gradients using virtual surface velocity (for further
-!--       explanation please see comments in production_e_init).
-!--       upward: u(k+1) - u_0 (normal vector component is 1),
-!--       downward: u_0 - u(k-1) (normal vector component is -1).
-!--       Please note, actually, an interpolation of u_0 and v_0 onto the grid center would be
-!--       required. However, this would require several data transfers between 2D-grid and
-!--       wall type. The effect of this missing interpolation is negligible.
-          dudz(k) = MERGE( surf_usm%n_eff(m) * ( u(kref,j,i) - surf_usm%u_0(m) ) * dd2zu(k),       &
-                           dudz(k), surf_usm%upward(m)  .OR.  surf_usm%downward(m) )
-          dvdz(k) = MERGE( surf_usm%n_eff(m) * ( v(kref,j,i) - surf_usm%v_0(m) ) * dd2zu(k),       &
-                           dvdz(k), surf_usm%upward(m)  .OR.  surf_usm%downward(m) )
+!--    Compute gradients at downward-facing surfaces, urban surfaces
+       surf_s = surf_usm_h(1)%start_index(j,i)
+       surf_e = surf_usm_h(1)%end_index(j,i)
+       DO  m = surf_s, surf_e
+          k = surf_usm_h(1)%k(m)
+          dudz(k) = ( surf_usm_h(1)%u_0(m) - u(k-1,j,i) ) * dd2zu(k)
+          dvdz(k) = ( surf_usm_h(1)%v_0(m) - v(k-1,j,i) ) * dd2zu(k)
        ENDDO
 
     ENDIF
@@ -3549,15 +3765,15 @@
 
        IF ( def < 0.0_wp )  def = 0.0_wp
 
-       flag = MERGE( 1.0_wp, 0.0_wp, BTEST(topo_flags(k,j,i),flag_nr) )
+       flag = MERGE( 1.0_wp, 0.0_wp, BTEST(wall_flags_total_0(k,j,i),flag_nr) )
 
        IF ( .NOT. diss_production )  THEN
-!
+
 !--       Compute tendency for TKE-production from shear
           tend(k,j,i) = tend(k,j,i) + km(k,j,i) * def * flag
 
        ELSE
-!
+
 !--       RANS mode: Compute tendency for dissipation-rate-production from shear
           tend(k,j,i) = tend(k,j,i) + km(k,j,i) * def * flag *                                     &
                         diss(k,j,i) / ( e(k,j,i) + 1.0E-20_wp ) * c_1
@@ -3582,24 +3798,22 @@
 !
 !--          Treatment of near-surface grid points, at up- and down- ward facing surfaces
              IF ( use_surface_fluxes )  THEN
-                surf_s = surf_def%start_index(j,i)
-                surf_e = surf_def%end_index(j,i)
-                DO  m = surf_s, surf_e
-                   k    = surf_def%k(m)
-                   kref = MERGE( k-1, k, surf_def%upward(m) )
-!
-!--                Overwrite vertical flux only at horizontal surfaces.
-                   tmp_flux(k) = MERGE( drho_air_zw(kref) * surf_def%shf(m), tmp_flux(k),          &
-                                        surf_def%upward(m)  .OR.  surf_def%downward(m) )
+                DO  l = 0, 1
+                   surf_s = surf_def_h(l)%start_index(j,i)
+                   surf_e = surf_def_h(l)%end_index(j,i)
+                   DO  m = surf_s, surf_e
+                      k = surf_def_h(l)%k(m)
+                      tmp_flux(k) = drho_air_zw(k-1) * surf_def_h(l)%shf(m)
+                   ENDDO
                 ENDDO
              ENDIF
 
              IF ( use_top_fluxes )  THEN
-                surf_s = surf_top%start_index(j,i)
-                surf_e = surf_top%end_index(j,i)
+                surf_s = surf_def_h(2)%start_index(j,i)
+                surf_e = surf_def_h(2)%end_index(j,i)
                 DO  m = surf_s, surf_e
-                   k = surf_top%k(m)
-                   tmp_flux(k) = drho_air_zw(k) * surf_top%shf(m)
+                   k = surf_def_h(2)%k(m)
+                   tmp_flux(k) = drho_air_zw(k) * surf_def_h(2)%shf(m)
                 ENDDO
              ENDIF
 
@@ -3607,7 +3821,7 @@
 
 !--             Compute tendency for TKE-production from shear
                 DO  k = nzb+1, nzt
-                   flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                   flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
                    tend(k,j,i) = tend(k,j,i) + flag * tmp_flux(k) * ( g /                          &
                                  MERGE( rho_reference, prho(k,j,i), use_single_reference_value ) )
                 ENDDO
@@ -3616,11 +3830,11 @@
 
 !--             RANS mode: Compute tendency for dissipation-rate-production from shear
                 DO  k = nzb+1, nzt
-                   flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                   flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
                    tend(k,j,i) = tend(k,j,i) + flag * tmp_flux(k) * ( g /                          &
                                  MERGE( rho_reference, prho(k,j,i),                                &
-                                        use_single_reference_value ) ) *                           &
-                                 diss(k,j,i) / ( e(k,j,i) + 1.0E-20_wp ) * c_3
+                                 use_single_reference_value ) ) *                                  &
+                                 diss(k,j,i)/( e(k,j,i) + 1.0E-20_wp ) * c_3
                 ENDDO
 
              ENDIF
@@ -3633,48 +3847,40 @@
              ENDDO
 
              IF ( use_surface_fluxes )  THEN
-                surf_s = surf_def%start_index(j,i)
-                surf_e = surf_def%end_index(j,i)
-                DO  m = surf_s, surf_e
-                   k    = surf_def%k(m)
-                   kref = MERGE( k-1, k, surf_def%upward(m) )
 !
-!--                Overwrite vertical flux only at horizontal surfaces (offset index in z is /= 0).
-                   tmp_flux(k) = MERGE( drho_air_zw(kref) * surf_def%shf(m), tmp_flux(k),          &
-                                        surf_def%upward(m)  .OR.  surf_def%downward(m) )
-                ENDDO
+!--             Default surfaces, up- and downward-facing
+                DO  l = 0, 1
+                   surf_s = surf_def_h(l)%start_index(j,i)
+                   surf_e = surf_def_h(l)%end_index(j,i)
+                   DO  m = surf_s, surf_e
+                      k = surf_def_h(l)%k(m)
+                      tmp_flux(k) = drho_air_zw(k-1) * surf_def_h(l)%shf(m)
+                   ENDDO
 !
-!--             Natural surfaces
-                surf_s = surf_lsm%start_index(j,i)
-                surf_e = surf_lsm%end_index(j,i)
-                DO  m = surf_s, surf_e
-                   k    = surf_lsm%k(m)
-                   kref = MERGE( k-1, k, surf_lsm%upward(m) )
+!--                Natural surfaces
+                   surf_s = surf_lsm_h(l)%start_index(j,i)
+                   surf_e = surf_lsm_h(l)%end_index(j,i)
+                   DO  m = surf_s, surf_e
+                      k = surf_lsm_h(l)%k(m)
+                      tmp_flux(k) = drho_air_zw(k-1) * surf_lsm_h(l)%shf(m)
+                   ENDDO
 !
-!--                Overwrite vertical flux only at horizontal surfaces (offset index in z is /= 0).
-                   tmp_flux(k) = MERGE( drho_air_zw(kref) * surf_lsm%shf(m), tmp_flux(k),          &
-                                        surf_lsm%upward(m)  .OR.  surf_lsm%downward(m) )
-                ENDDO
-!
-!--             Urban surfaces
-                surf_s = surf_usm%start_index(j,i)
-                surf_e = surf_usm%end_index(j,i)
-                DO  m = surf_s, surf_e
-                   k    = surf_usm%k(m)
-                   kref = MERGE( k-1, k, surf_usm%upward(m) )
-!
-!--                Overwrite vertical flux only at horizontal surfaces (offset index in z is /= 0).
-                   tmp_flux(k) = MERGE( drho_air_zw(kref) * surf_usm%shf(m), tmp_flux(k),          &
-                                        surf_usm%upward(m)  .OR.  surf_usm%downward(m) )
+!--                Urban surfaces
+                   surf_s = surf_usm_h(l)%start_index(j,i)
+                   surf_e = surf_usm_h(l)%end_index(j,i)
+                   DO  m = surf_s, surf_e
+                      k = surf_usm_h(l)%k(m)
+                      tmp_flux(k) = drho_air_zw(k-1) * surf_usm_h(l)%shf(m)
+                   ENDDO
                 ENDDO
              ENDIF
 
              IF ( use_top_fluxes )  THEN
-                surf_s = surf_top%start_index(j,i)
-                surf_e = surf_top%end_index(j,i)
+                surf_s = surf_def_h(2)%start_index(j,i)
+                surf_e = surf_def_h(2)%end_index(j,i)
                 DO  m = surf_s, surf_e
-                   k = surf_top%k(m)
-                   tmp_flux(k) = drho_air_zw(k) * surf_top%shf(m)
+                   k = surf_def_h(2)%k(m)
+                   tmp_flux(k) = drho_air_zw(k) * surf_def_h(2)%shf(m)
                 ENDDO
              ENDIF
 
@@ -3682,7 +3888,7 @@
 
 !--             Compute tendency for TKE-production from shear
                 DO  k = nzb+1, nzt
-                   flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                   flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
                    tend(k,j,i) = tend(k,j,i) + flag * tmp_flux(k) * ( g /                          &
                                  MERGE( pt_reference, pt(k,j,i), use_single_reference_value ) )
                 ENDDO
@@ -3691,7 +3897,7 @@
 
 !--             RANS mode: Compute tendency for dissipation-rate-production from shear
                 DO  k = nzb+1, nzt
-                   flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                   flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
                    tend(k,j,i) = tend(k,j,i) + flag * tmp_flux(k) * ( g /                          &
                                  MERGE( pt_reference, pt(k,j,i),                                   &
                                         use_single_reference_value ) ) *                           &
@@ -3711,7 +3917,7 @@
                 k2 = 0.61_wp * pt(k,j,i)
                 tmp_flux(k) = -1.0_wp * kh(k,j,i) * ( k1 * ( pt(k+1,j,i) - pt(k-1,j,i) ) +         &
                                                       k2 * ( q(k+1,j,i)  - q(k-1,j,i) ) ) * dd2zu(k)
-             ELSEIF ( bulk_cloud_model )  THEN
+             ELSE IF ( bulk_cloud_model )  THEN
                 IF ( ql(k,j,i) == 0.0_wp )  THEN
                    k1 = 1.0_wp + 0.61_wp * q(k,j,i)
                    k2 = 0.61_wp * pt(k,j,i)
@@ -3726,7 +3932,7 @@
                 ENDIF
                 tmp_flux(k) = -1.0_wp * kh(k,j,i) * ( k1 * ( pt(k+1,j,i) - pt(k-1,j,i) ) +         &
                                                       k2 * ( q(k+1,j,i)  - q(k-1,j,i) ) ) * dd2zu(k)
-             ELSEIF ( cloud_droplets )  THEN
+             ELSE IF ( cloud_droplets )  THEN
                 k1 = 1.0_wp + 0.61_wp * q(k,j,i) - ql(k,j,i)
                 k2 = 0.61_wp * pt(k,j,i)
                 tmp_flux(k) = -1.0_wp * kh(k,j,i) * ( k1 * ( pt(k+1,j,i) - pt(k-1,j,i) ) +         &
@@ -3740,124 +3946,114 @@
           IF ( use_surface_fluxes )  THEN
 !
 !--          Treat horizontal surfaces
-!--          Default surfaces
-             surf_s = surf_def%start_index(j,i)
-             surf_e = surf_def%end_index(j,i)
-             DO  m = surf_s, surf_e
-                k    = surf_def%k(m)
-                kref = MERGE( k-1, k, surf_def%upward(m) )
+             DO  l = 0, 1
+!--             Default surfaces
+                surf_s = surf_def_h(l)%start_index(j,i)
+                surf_e = surf_def_h(l)%end_index(j,i)
+                DO  m = surf_s, surf_e
+                   k = surf_def_h(l)%k(m)
 
-                IF ( .NOT. bulk_cloud_model  .AND.  .NOT. cloud_droplets )  THEN
-                   k1 = 1.0_wp + 0.61_wp * q(k,j,i)
-                   k2 = 0.61_wp * pt(k,j,i)
-                ELSEIF ( bulk_cloud_model )  THEN
-                   IF ( ql(k,j,i) == 0.0_wp )  THEN
+                   IF ( .NOT. bulk_cloud_model  .AND.  .NOT. cloud_droplets )  THEN
                       k1 = 1.0_wp + 0.61_wp * q(k,j,i)
                       k2 = 0.61_wp * pt(k,j,i)
-                   ELSE
-                      theta = pt(k,j,i) + d_exner(k) * lv_d_cp * ql(k,j,i)
-                      temp  = theta * exner(k)
-                      k1 = ( 1.0_wp - q(k,j,i) + 1.61_wp * ( q(k,j,i) - ql(k,j,i) ) *              &
-                           ( 1.0_wp + rd_d_rv * lv_d_rd / temp ) ) /                               &
-                           ( 1.0_wp + rd_d_rv * lv_d_rd * lv_d_cp *                                &
-                           ( q(k,j,i) - ql(k,j,i) ) / ( temp * temp ) )
-                      k2 = theta * ( lv_d_cp / temp * k1 - 1.0_wp )
+                   ELSE IF ( bulk_cloud_model )  THEN
+                      IF ( ql(k,j,i) == 0.0_wp )  THEN
+                         k1 = 1.0_wp + 0.61_wp * q(k,j,i)
+                         k2 = 0.61_wp * pt(k,j,i)
+                      ELSE
+                         theta = pt(k,j,i) + d_exner(k) * lv_d_cp * ql(k,j,i)
+                         temp  = theta * exner(k)
+                         k1 = ( 1.0_wp - q(k,j,i) + 1.61_wp * ( q(k,j,i) - ql(k,j,i) ) *           &
+                              ( 1.0_wp + rd_d_rv * lv_d_rd / temp ) ) /                            &
+                              ( 1.0_wp + rd_d_rv * lv_d_rd * lv_d_cp *                             &
+                              ( q(k,j,i) - ql(k,j,i) ) / ( temp * temp ) )
+                         k2 = theta * ( lv_d_cp / temp * k1 - 1.0_wp )
+                      ENDIF
+                   ELSE IF ( cloud_droplets )  THEN
+                      k1 = 1.0_wp + 0.61_wp * q(k,j,i) - ql(k,j,i)
+                      k2 = 0.61_wp * pt(k,j,i)
                    ENDIF
-                ELSEIF ( cloud_droplets )  THEN
-                   k1 = 1.0_wp + 0.61_wp * q(k,j,i) - ql(k,j,i)
-                   k2 = 0.61_wp * pt(k,j,i)
-                ENDIF
-!
-!--             Overwrite vertical flux only at horizontal surfaces.
-                tmp_flux(k) = MERGE( ( k1 * surf_def%shf(m) + k2 * surf_def%qsws(m) )              &
-                                     * drho_air_zw(kref),                                          &
-                                     tmp_flux(k),                                                  &
-                                     surf_def%upward(m)  .OR.  surf_def%downward(m) )
-             ENDDO
-!
-!--          natural surfaces
-             surf_s = surf_lsm%start_index(j,i)
-             surf_e = surf_lsm%end_index(j,i)
-             DO  m = surf_s, surf_e
-                k    = surf_lsm%k(m)
-                kref = MERGE( k-1, k, surf_lsm%upward(m) )
 
-                IF ( .NOT. bulk_cloud_model  .AND.  .NOT. cloud_droplets )  THEN
-                   k1 = 1.0_wp + 0.61_wp * q(k,j,i)
-                   k2 = 0.61_wp * pt(k,j,i)
-                ELSEIF ( bulk_cloud_model )  THEN
-                   IF ( ql(k,j,i) == 0.0_wp )  THEN
+                   tmp_flux(k) = ( k1 * surf_def_h(l)%shf(m) + k2 * surf_def_h(l)%qsws(m) ) *      &
+                                 drho_air_zw(k-1)
+                ENDDO
+!
+!--             natural surfaces
+                surf_s = surf_lsm_h(l)%start_index(j,i)
+                surf_e = surf_lsm_h(l)%end_index(j,i)
+                DO  m = surf_s, surf_e
+                   k = surf_lsm_h(l)%k(m)
+
+                   IF ( .NOT. bulk_cloud_model  .AND.  .NOT. cloud_droplets )  THEN
                       k1 = 1.0_wp + 0.61_wp * q(k,j,i)
                       k2 = 0.61_wp * pt(k,j,i)
-                   ELSE
-                      theta = pt(k,j,i) + d_exner(k) * lv_d_cp * ql(k,j,i)
-                      temp  = theta * exner(k)
-                      k1 = ( 1.0_wp - q(k,j,i) + 1.61_wp * ( q(k,j,i) - ql(k,j,i) ) *              &
-                           ( 1.0_wp + rd_d_rv * lv_d_rd / temp ) ) /                               &
-                           ( 1.0_wp + rd_d_rv * lv_d_rd * lv_d_cp *                                &
-                           ( q(k,j,i) - ql(k,j,i) ) / ( temp * temp ) )
-                      k2 = theta * ( lv_d_cp / temp * k1 - 1.0_wp )
+                   ELSE IF ( bulk_cloud_model )  THEN
+                      IF ( ql(k,j,i) == 0.0_wp )  THEN
+                         k1 = 1.0_wp + 0.61_wp * q(k,j,i)
+                         k2 = 0.61_wp * pt(k,j,i)
+                      ELSE
+                         theta = pt(k,j,i) + d_exner(k) * lv_d_cp * ql(k,j,i)
+                         temp  = theta * exner(k)
+                         k1 = ( 1.0_wp - q(k,j,i) + 1.61_wp * ( q(k,j,i) - ql(k,j,i) ) *              &
+                              ( 1.0_wp + rd_d_rv * lv_d_rd / temp ) ) /                               &
+                              ( 1.0_wp + rd_d_rv * lv_d_rd * lv_d_cp *                                &
+                              ( q(k,j,i) - ql(k,j,i) ) / ( temp * temp ) )
+                         k2 = theta * ( lv_d_cp / temp * k1 - 1.0_wp )
+                      ENDIF
+                   ELSE IF ( cloud_droplets )  THEN
+                      k1 = 1.0_wp + 0.61_wp * q(k,j,i) - ql(k,j,i)
+                      k2 = 0.61_wp * pt(k,j,i)
                    ENDIF
-                ELSEIF ( cloud_droplets )  THEN
-                   k1 = 1.0_wp + 0.61_wp * q(k,j,i) - ql(k,j,i)
-                   k2 = 0.61_wp * pt(k,j,i)
-                ENDIF
-!
-!--             Overwrite vertical flux only at horizontal surfaces.
-                tmp_flux(k) = MERGE( ( k1 * surf_lsm%shf(m) + k2 * surf_lsm%qsws(m) )              &
-                                     * drho_air_zw(kref),                                          &
-                                     tmp_flux(k),                                                  &
-                                     surf_lsm%upward(m)  .OR.  surf_lsm%downward(m) )
-             ENDDO
-!
-!--          urban surfaces
-             surf_s = surf_usm%start_index(j,i)
-             surf_e = surf_usm%end_index(j,i)
-             DO  m = surf_s, surf_e
-                k    = surf_usm%k(m)
-                kref = MERGE( k-1, k, surf_usm%upward(m) )
 
-                IF ( .NOT. bulk_cloud_model  .AND.  .NOT. cloud_droplets )  THEN
-                   k1 = 1.0_wp + 0.61_wp * q(k,j,i)
-                   k2 = 0.61_wp * pt(k,j,i)
-                ELSEIF ( bulk_cloud_model )  THEN
-                   IF ( ql(k,j,i) == 0.0_wp )  THEN
+                   tmp_flux(k) = ( k1 * surf_lsm_h(l)%shf(m) + k2 * surf_lsm_h(l)%qsws(m) ) *         &
+                                 drho_air_zw(k-1)
+                ENDDO
+!
+!--             urban surfaces
+                surf_s = surf_usm_h(l)%start_index(j,i)
+                surf_e = surf_usm_h(l)%end_index(j,i)
+                DO  m = surf_s, surf_e
+                   k = surf_usm_h(l)%k(m)
+
+                   IF ( .NOT. bulk_cloud_model  .AND.  .NOT. cloud_droplets )  THEN
                       k1 = 1.0_wp + 0.61_wp * q(k,j,i)
                       k2 = 0.61_wp * pt(k,j,i)
-                   ELSE
-                      theta = pt(k,j,i) + d_exner(k) * lv_d_cp * ql(k,j,i)
-                      temp  = theta * exner(k)
-                      k1 = ( 1.0_wp - q(k,j,i) + 1.61_wp * ( q(k,j,i) - ql(k,j,i) ) *              &
-                           ( 1.0_wp + rd_d_rv * lv_d_rd / temp ) ) /                               &
-                           ( 1.0_wp + rd_d_rv * lv_d_rd * lv_d_cp *                                &
-                           ( q(k,j,i) - ql(k,j,i) ) / ( temp * temp ) )
-                      k2 = theta * ( lv_d_cp / temp * k1 - 1.0_wp )
+                   ELSE IF ( bulk_cloud_model )  THEN
+                      IF ( ql(k,j,i) == 0.0_wp )  THEN
+                         k1 = 1.0_wp + 0.61_wp * q(k,j,i)
+                         k2 = 0.61_wp * pt(k,j,i)
+                      ELSE
+                         theta = pt(k,j,i) + d_exner(k) * lv_d_cp * ql(k,j,i)
+                         temp  = theta * exner(k)
+                         k1 = ( 1.0_wp - q(k,j,i) + 1.61_wp * ( q(k,j,i) - ql(k,j,i) ) *              &
+                              ( 1.0_wp + rd_d_rv * lv_d_rd / temp ) ) /                               &
+                              ( 1.0_wp + rd_d_rv * lv_d_rd * lv_d_cp *                                &
+                              ( q(k,j,i) - ql(k,j,i) ) / ( temp * temp ) )
+                         k2 = theta * ( lv_d_cp / temp * k1 - 1.0_wp )
+                      ENDIF
+                   ELSE IF ( cloud_droplets )  THEN
+                      k1 = 1.0_wp + 0.61_wp * q(k,j,i) - ql(k,j,i)
+                      k2 = 0.61_wp * pt(k,j,i)
                    ENDIF
-                ELSEIF ( cloud_droplets )  THEN
-                   k1 = 1.0_wp + 0.61_wp * q(k,j,i) - ql(k,j,i)
-                   k2 = 0.61_wp * pt(k,j,i)
-                ENDIF
-!
-!--             Overwrite vertical flux only at horizontal surfaces.
-                tmp_flux(k) = MERGE( ( k1 * surf_usm%shf(m) + k2 * surf_usm%qsws(m) )              &
-                                     * drho_air_zw(kref),                                          &
-                                     tmp_flux(k),                                                  &
-                                     surf_usm%upward(m)  .OR.  surf_usm%downward(m) )
+
+                   tmp_flux(k) = ( k1 * surf_usm_h(l)%shf(m) + k2 * surf_usm_h(l)%qsws(m) ) *         &
+                                 drho_air_zw(k-1)
+                ENDDO
              ENDDO
 
           ENDIF ! From IF ( use_surface_fluxes )  THEN
 
           IF ( use_top_fluxes )  THEN
 
-             surf_s = surf_top%start_index(j,i)
-             surf_e = surf_top%end_index(j,i)
+             surf_s = surf_def_h(2)%start_index(j,i)
+             surf_e = surf_def_h(2)%end_index(j,i)
              DO  m = surf_s, surf_e
-                k = surf_top%k(m)
+                k = surf_def_h(2)%k(m)
 
                 IF ( .NOT. bulk_cloud_model  .AND.  .NOT. cloud_droplets )  THEN
                    k1 = 1.0_wp + 0.61_wp * q(k,j,i)
                    k2 = 0.61_wp * pt(k,j,i)
-                ELSEIF ( bulk_cloud_model )  THEN
+                ELSE IF ( bulk_cloud_model )  THEN
                    IF ( ql(k,j,i) == 0.0_wp )  THEN
                       k1 = 1.0_wp + 0.61_wp * q(k,j,i)
                       k2 = 0.61_wp * pt(k,j,i)
@@ -3870,12 +4066,13 @@
                         ( q(k,j,i) - ql(k,j,i) ) / ( temp * temp ) )
                       k2 = theta * ( lv_d_cp / temp * k1 - 1.0_wp )
                    ENDIF
-                ELSEIF ( cloud_droplets )  THEN
+                ELSE IF ( cloud_droplets )  THEN
                    k1 = 1.0_wp + 0.61_wp * q(k,j,i) - ql(k,j,i)
                    k2 = 0.61_wp * pt(k,j,i)
                 ENDIF
 
-                tmp_flux(k) = ( k1 * surf_top%shf(m) + k2 * surf_top%qsws(m) ) * drho_air_zw(k)
+                tmp_flux(k) = ( k1 * surf_def_h(2)%shf(m) + k2 * surf_def_h(2)%qsws(m) ) *         &
+                              drho_air_zw(k)
 
              ENDDO
 
@@ -3885,7 +4082,7 @@
 
 !--          Compute tendency for TKE-production from shear
              DO  k = nzb+1, nzt
-                flag = MERGE( 1.0_wp, 0.0_wp, BTEST(topo_flags(k,j,i),0) )
+                flag = MERGE( 1.0_wp, 0.0_wp, BTEST(wall_flags_total_0(k,j,i),0) )
                 tend(k,j,i) = tend(k,j,i) + flag * tmp_flux(k) * ( g /                             &
                               MERGE( vpt_reference, vpt(k,j,i), use_single_reference_value ) )
              ENDDO
@@ -3894,7 +4091,7 @@
 
 !--          RANS mode: Compute tendency for dissipation-rate-production from shear
              DO  k = nzb+1, nzt
-                flag = MERGE( 1.0_wp, 0.0_wp, BTEST(topo_flags(k,j,i),0) )
+                flag = MERGE( 1.0_wp, 0.0_wp, BTEST(wall_flags_total_0(k,j,i),0) )
                 tend(k,j,i) = tend(k,j,i) + flag * tmp_flux(k) * ( g /                             &
                               MERGE( vpt_reference, vpt(k,j,i),                                    &
                                      use_single_reference_value ) ) *                              &
@@ -3938,28 +4135,21 @@
     USE bulk_cloud_model_mod,                                                                      &
         ONLY:  collision_turbulence
 
+    USE particle_attributes,                                                                       &
+        ONLY:  use_sgs_for_particles,                                                              &
+               wang_kernel
+
     IMPLICIT NONE
 
     INTEGER(iwp) ::  i  !< running index x direction
     INTEGER(iwp) ::  j  !< running index y direction
     INTEGER(iwp) ::  k  !< running index z direction
+    INTEGER(iwp) ::  m  !< running index surface elements
 
-    REAL(wp) ::  duv2_dz2       !< squared vertical gradient of wind vector
-    REAL(wp) ::  dvar_dz        !< vertical gradient of var
-    REAL(wp) ::  km_bottom      !< interpolated km below scalar grid point
-    REAL(wp) ::  km_left        !< interpolated km left to scalar grid left
-    REAL(wp) ::  km_north       !< interpolated km north to scalar grid point
-    REAL(wp) ::  km_right       !< interpolated km right to scalar grid point
-    REAL(wp) ::  km_south       !< interpolated km south to scalar grid point
-    REAL(wp) ::  km_top         !< interpolated km above scalar grid point
-    REAL(wp) ::  mask_bottom    !< flag to mask SGS-TKE fluxes at walls below
-    REAL(wp) ::  mask_left      !< flag to mask SGS-TKE fluxes at walls to the left
-    REAL(wp) ::  mask_north     !< flag to mask SGS-TKE fluxes at walls to the north
-    REAL(wp) ::  mask_right     !< flag to mask SGS-TKE fluxes at walls to the right
-    REAL(wp) ::  mask_south     !< flag to mask SGS-TKE fluxes at walls to the south
-    REAL(wp) ::  mask_top       !< flag to mask SGS-TKE fluxes at walls above
-    REAL(wp) ::  ml             !< mixing length
-    REAL(wp) ::  var_reference  !< reference temperature
+    REAL(wp)     ::  duv2_dz2       !< squared vertical gradient of wind vector
+    REAL(wp)     ::  dvar_dz        !< vertical gradient of var
+    REAL(wp)     ::  ml             !< mixing length
+    REAL(wp)     ::  var_reference  !< reference temperature
 
     REAL(wp), DIMENSION(nzb+1:nzt) ::  ml_stratification  !< mixing length according to stratification
     REAL(wp), DIMENSION(nzb+1:nzt) ::  richardson_number  !< gradient Richardson number
@@ -3972,7 +4162,7 @@
 
        !$ACC PARALLEL LOOP COLLAPSE(2) PRIVATE(i, j) &
        !$ACC PRIVATE(ml, ml_stratification, dvar_dz) &
-       !$ACC PRESENT(diss, e, var) &
+       !$ACC PRESENT(diss, e, var, wall_flags_total_0) &
        !$ACC PRESENT(dd2zu, delta)
        DO  i = nxl, nxr
           DO  j = nys, nyn
@@ -4006,7 +4196,7 @@
 
                 diss(k,j,i) = ( 0.19_wp + 0.74_wp * ml / delta(k,j,i) ) * e(k,j,i)                 &
                               * SQRT( e(k,j,i) ) / ml                                              &
-                              * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                              * MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
 
              ENDDO
 
@@ -4017,7 +4207,7 @@
 
        !$ACC PARALLEL LOOP COLLAPSE(2) PRIVATE(i, j) &
        !$ACC PRIVATE(ml, ml_stratification, dvar_dz) &
-       !$ACC PRESENT(diss, e, var, topo_flags) &
+       !$ACC PRESENT(diss, e, var, wall_flags_total_0) &
        !$ACC PRESENT(dd2zu, delta)
        DO  i = nxl, nxr
           DO  j = nys, nyn
@@ -4054,7 +4244,7 @@
                 ml          = ml_stratification(k)
                 diss(k,j,i) = ( 0.19_wp + 0.74_wp * ml / delta(k,j,i) )                            &
                               * e(k,j,i) * SQRT( e(k,j,i) ) / ml                                   &
-                              * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                              * MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
 
              ENDDO
 
@@ -4064,7 +4254,7 @@
 
       !$ACC PARALLEL LOOP COLLAPSE(2) PRIVATE(i, j) &
       !$ACC PRIVATE(ml_stratification, duv2_dz2, richardson_number, dvar_dz) &
-      !$ACC PRESENT(diss, e, u, v, var, topo_flags) &
+      !$ACC PRESENT(diss, e, u, v, var, wall_flags_total_0) &
       !$ACC PRESENT(dd2zu, ml_blackadar, delta)
        DO  i = nxl, nxr
           DO  j = nys, nyn
@@ -4121,7 +4311,7 @@
 
                 diss(k,j,i) = c_0**3 * e(k,j,i) * SQRT( e(k,j,i) )                                 &
                             / MIN( ml_stratification(k), delta(k,j,i) )                            &
-                            * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                            * MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
 
              ENDDO
 
@@ -4131,59 +4321,56 @@
 !-- Note, in case of rans_tke_e, the dissipation is already calculated in prognostic_equations
     ENDIF
 
-    !$ACC PARALLEL LOOP COLLAPSE(3) &
-    !$ACC PRIVATE(i, j, k, mask_bottom, mask_left, mask_north, mask_right, mask_south, mask_top) &
-    !$ACC PRESENT(diss, e, km, tend, topo_flags) &
+    !$ACC PARALLEL LOOP COLLAPSE(3) PRIVATE(i, j, k) &
+    !$ACC PRESENT(diss, e, km, tend, wall_flags_total_0) &
     !$ACC PRESENT(ddzu, ddzw, rho_air_zw, drho_air)
     DO  i = nxl, nxr
        DO  j = nys, nyn
           DO  k = nzb+1, nzt
-!
-!--          Determine flags to mask SGS-fluxes at walls. This is necessary to set a pure Neumann
-!--          boundary condition for SGS-TKE. Just by setting the boundary value would lead to an
-!--          overdetermination at corner grid points and thus would being not fully correct.
-!--          Note, in RANS-mode this masking must not be performed since explicit Dirichlet
-!--          conditions are set at walls.
-             mask_right  = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i+1), 0 )  .AND.           &
-                                                  .NOT. rans_mode )
-             mask_left   = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i-1), 0 )  .AND.           &
-                                                  .NOT. rans_mode )
-             mask_north  = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j+1,i), 0 )  .AND.           &
-                                                  .NOT. rans_mode )
-             mask_south  = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j-1,i), 0 )  .AND.           &
-                                                  .NOT. rans_mode )
-             mask_top    = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k+1,j,i), 0 )  .AND.           &
-                                                  .NOT. rans_mode )
-             mask_bottom = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k-1,j,i), 0 )  .AND.           &
-                                                  .NOT. rans_mode )
-!
-!--          Limit eddy diffusivities to positive values. Negative values, which can appear if the
-!--          dynamic SGS model is used, may lead to an exponentially growing SGS-TKE.
-             km_right  = MAX( km(k,j,i) + km(k,j,i+1), 0.0_wp )
-             km_left   = MAX( km(k,j,i) + km(k,j,i-1), 0.0_wp )
-             km_north  = MAX( km(k,j,i) + km(k,j+1,i), 0.0_wp )
-             km_south  = MAX( km(k,j,i) + km(k,j-1,i), 0.0_wp )
-             km_top    = MAX( km(k,j,i) + km(k+1,j,i), 0.0_wp )
-             km_bottom = MAX( km(k,j,i) + km(k-1,j,i), 0.0_wp )
 
-             tend(k,j,i) = tend(k,j,i) + (                                                         &
-                                           ( mask_right  * km_right  * ( e(k,j,i+1) - e(k,j,i)   ) &
-                                           - mask_left   * km_left   * ( e(k,j,i)   - e(k,j,i-1) ) &
+             tend(k,j,i) = tend(k,j,i) + ( ( ( km(k,j,i)+km(k,j,i+1) ) * ( e(k,j,i+1)-e(k,j,i) )   &
+                                           - ( km(k,j,i)+km(k,j,i-1) ) * ( e(k,j,i)-e(k,j,i-1) )   &
                                            ) * ddx2                                                &
-                                         + ( mask_north  * km_north  * ( e(k,j+1,i) - e(k,j,i)   ) &
-                                           - mask_south  * km_south  * ( e(k,j,i)   - e(k,j-1,i) ) &
+                                         + ( ( km(k,j,i)+km(k,j+1,i) ) * ( e(k,j+1,i)-e(k,j,i) )   &
+                                           - ( km(k,j,i)+km(k,j-1,i) ) * ( e(k,j,i)-e(k,j-1,i) )   &
                                            ) * ddy2                                                &
-                                         + ( mask_top    * km_top    * ( e(k+1,j,i) - e(k,j,i)   ) &
-                                             * ddzu(k+1) * rho_air_zw(k)                           &
-                                           - mask_bottom * km_bottom * ( e(k,j,i)   - e(k-1,j,i) ) &
+                                         + ( ( km(k,j,i)+km(k+1,j,i) ) * ( e(k+1,j,i)-e(k,j,i) )   &
+                                               * ddzu(k+1) * rho_air_zw(k)                         &
+                                         - ( km(k,j,i)+km(k-1,j,i) ) * ( e(k,j,i)-e(k-1,j,i) )     &
                                              * ddzu(k) * rho_air_zw(k-1)                           &
                                            ) * ddzw(k) * drho_air(k)                               &
                                          ) * dsig_e * MERGE( 1.0_wp, 0.0_wp,                       &
-                                                             BTEST( topo_flags(k,j,i), 0 ) )       &
-                                       - diss(k,j,i)
+                                                      BTEST( wall_flags_total_0(k,j,i), 0 ) )      &
+                          - diss(k,j,i)
+
           ENDDO
        ENDDO
     ENDDO
+
+!
+!-- Neumann boundary condition for dissipation diss(nzb,:,:) = diss(nzb+1,:,:).
+!-- Note, bc cannot be set in tcm_boundary conditions as the dissipation in LES mode is only a
+!-- diagnostic quantity.
+    IF ( .NOT. rans_tke_e  .AND.                                                                   &
+         ( use_sgs_for_particles  .OR.  wang_kernel  .OR.  collision_turbulence  ) )  THEN
+!
+!--    Upward facing surfaces
+       DO  m = 1, bc_h(0)%ns
+          i = bc_h(0)%i(m)
+          j = bc_h(0)%j(m)
+          k = bc_h(0)%k(m)
+          diss(k-1,j,i) = diss(k,j,i)
+       ENDDO
+!
+!--    Downward facing surfaces
+       DO  m = 1, bc_h(1)%ns
+          i = bc_h(1)%i(m)
+          j = bc_h(1)%j(m)
+          k = bc_h(1)%k(m)
+          diss(k+1,j,i) = diss(k,j,i)
+       ENDDO
+
+    ENDIF
 
  END SUBROUTINE diffusion_e
 
@@ -4216,28 +4403,23 @@
     USE bulk_cloud_model_mod,                                                                      &
         ONLY:  collision_turbulence
 
+    USE particle_attributes,                                                                       &
+        ONLY:  use_sgs_for_particles,                                                              &
+               wang_kernel
+
     IMPLICIT NONE
 
     INTEGER(iwp) ::  i       !< running index x direction
     INTEGER(iwp) ::  j       !< running index y direction
     INTEGER(iwp) ::  k       !< running index z direction
+    INTEGER(iwp) ::  m       !< running index surface elements
+    INTEGER(iwp) ::  surf_e  !< End index of surface elements at (j,i)-gridpoint
+    INTEGER(iwp) ::  surf_s  !< Start index of surface elements at (j,i)-gridpoint
 
-    REAL(wp) ::  duv2_dz2       !< squared vertical gradient of wind vector
-    REAL(wp) ::  dvar_dz        !< vertical gradient of var
-    REAL(wp) ::  km_bottom      !< interpolated km below scalar grid point
-    REAL(wp) ::  km_left        !< interpolated km left to scalar grid left
-    REAL(wp) ::  km_north       !< interpolated km north to scalar grid point
-    REAL(wp) ::  km_right       !< interpolated km right to scalar grid point
-    REAL(wp) ::  km_south       !< interpolated km south to scalar grid point
-    REAL(wp) ::  km_top         !< interpolated km above scalar grid point
-    REAL(wp) ::  mask_bottom    !< flag to mask SGS-TKE fluxes at walls below
-    REAL(wp) ::  mask_left      !< flag to mask SGS-TKE fluxes at walls to the left
-    REAL(wp) ::  mask_north     !< flag to mask SGS-TKE fluxes at walls to the north
-    REAL(wp) ::  mask_right     !< flag to mask SGS-TKE fluxes at walls to the right
-    REAL(wp) ::  mask_south     !< flag to mask SGS-TKE fluxes at walls to the south
-    REAL(wp) ::  mask_top       !< flag to mask SGS-TKE fluxes at walls above
-    REAL(wp) ::  ml             !< mixing length
-    REAL(wp) ::  var_reference  !< reference temperature
+    REAL(wp)     ::  duv2_dz2       !< squared vertical gradient of wind vector
+    REAL(wp)     ::  dvar_dz        !< vertical gradient of var
+    REAL(wp)     ::  ml             !< mixing length
+    REAL(wp)     ::  var_reference  !< reference temperature
 
     REAL(wp), DIMENSION(nzb+1:nzt) ::  ml_stratification  !< mixing length according to stratification
     REAL(wp), DIMENSION(nzb+1:nzt) ::  richardson_number  !< gradient Richardson number
@@ -4270,7 +4452,7 @@
 
           diss(k,j,i) = ( 0.19_wp + 0.74_wp * ml / delta(k,j,i) )                                  &
                         * e(k,j,i) * SQRT( e(k,j,i) ) / ml                                         &
-                        * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                        * MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
        ENDDO
 
     ELSEIF ( les_dai )  THEN
@@ -4303,7 +4485,7 @@
 
           diss(k,j,i) = ( 0.19_wp + 0.74_wp * ml / delta(k,j,i) )                                  &
                         * e(k,j,i) * SQRT( e(k,j,i) ) / ml                                         &
-                        * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                        * MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
        ENDDO
 
 
@@ -4352,9 +4534,9 @@
        DO  k = nzb+1, nzt
           diss(k,j,i) = c_0**3 * e(k,j,i) * SQRT( e(k,j,i) )                                       &
                       / MIN( ml_stratification(k), delta(k,j,i) )                                  &
-                      * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                      * MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
        ENDDO
-!
+
 !-- Note, in case of rans_tke_e, the dissipation is already calculated in prognostic_equations
     ENDIF
 
@@ -4362,44 +4544,47 @@
 !-- Calculate the tendency term
     !DIR$ IVDEP
     DO  k = nzb+1, nzt
-!
-!--    Determine flags to mask SGS-fluxes at walls. This is necessary to set a pure Neumann boundary
-!--    condition for SGS-TKE. Just by setting the boundary value would lead to an overdetermination
-!--    at corner grid points and thus would being not fully correct. Note. in RANS-mode this
-!--    masking must not be performed since exlicit Dirichlet conditions are set at walls.
-       mask_right = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i+1), 0 )  .AND.  .NOT. rans_mode )
-       mask_left  = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i-1), 0 )  .AND.  .NOT. rans_mode )
-       mask_south = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j-1,i), 0 )  .AND.  .NOT. rans_mode )
-       mask_north = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j+1,i), 0 )  .AND.  .NOT. rans_mode )
-       mask_top   = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k+1,j,i), 0 )  .AND.  .NOT. rans_mode )
-       mask_bottom= MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k-1,j,i), 0 )  .AND.  .NOT. rans_mode )
-!
-!--    Limit eddy diffusivities to positive values. Negative values, which can appear if the
-!--    dynamic SGS model is used, may lead to an exponentially growing SGS-TKE.
-       km_right  = MAX( km(k,j,i) + km(k,j,i+1), 0.0_wp )
-       km_left   = MAX( km(k,j,i) + km(k,j,i-1), 0.0_wp )
-       km_north  = MAX( km(k,j,i) + km(k,j+1,i), 0.0_wp )
-       km_south  = MAX( km(k,j,i) + km(k,j-1,i), 0.0_wp )
-       km_top    = MAX( km(k,j,i) + km(k+1,j,i), 0.0_wp )
-       km_bottom = MAX( km(k,j,i) + km(k-1,j,i), 0.0_wp )
 
-
-       tend(k,j,i) = tend(k,j,i) + (                                                               &
-                                     ( mask_right  * km_right  * ( e(k,j,i+1) - e(k,j,i) )         &
-                                     - mask_left   * km_left   * ( e(k,j,i)   - e(k,j,i-1) )       &
+       tend(k,j,i) = tend(k,j,i) + ( ( ( km(k,j,i)+km(k,j,i+1) ) * ( e(k,j,i+1)-e(k,j,i) )         &
+                                     - ( km(k,j,i)+km(k,j,i-1) ) * ( e(k,j,i)-e(k,j,i-1) )         &
                                      ) * ddx2                                                      &
-                                   + ( mask_north  * km_north  * ( e(k,j+1,i) - e(k,j,i) )         &
-                                     - mask_south  * km_south  * ( e(k,j,i)   - e(k,j-1,i) )       &
+                                   + ( ( km(k,j,i)+km(k,j+1,i) ) * ( e(k,j+1,i)-e(k,j,i) )         &
+                                     - ( km(k,j,i)+km(k,j-1,i) ) * ( e(k,j,i)-e(k,j-1,i) )         &
                                      ) * ddy2                                                      &
-                                   + ( mask_top    * km_top    * ( e(k+1,j,i) - e(k,j,i) )         &
-                                       * ddzu(k+1) * rho_air_zw(k)                                 &
-                                     - mask_bottom * km_bottom * ( e(k,j,i)   - e(k-1,j,i) )       &
-                                       * ddzu(k) * rho_air_zw(k-1)                                 &
-                                     ) * ddzw(k) * drho_air(k)                                     &
+                                   + ( ( km(k,j,i)+km(k+1,j,i) ) * ( e(k+1,j,i)-e(k,j,i) )         &
+                                         * ddzu(k+1) * rho_air_zw(k)                               &
+                                     - ( km(k,j,i)+km(k-1,j,i) ) * ( e(k,j,i)-e(k-1,j,i) )         &
+                                         * ddzu(k) * rho_air_zw(k-1) ) * ddzw(k) * drho_air(k)     &
                                    ) * dsig_e * MERGE( 1.0_wp, 0.0_wp,                             &
-                                                       BTEST( topo_flags(k,j,i), 0 ) )             &
-                                 - diss(k,j,i)
+                                                BTEST( wall_flags_total_0(k,j,i), 0 ) )            &
+                     - diss(k,j,i)
+
     ENDDO
+
+!
+!-- Set boundary conditions of dissipation if needed for calculating the sgs particle velocities.
+!-- Neumann boundary condition for dissipation diss(nzb,:,:) = diss(nzb+1,:,:)
+!-- For each surface type determine start and end index (in case of elevated topography several
+!-- up/downward facing surfaces may exist.
+!-- Note, bc cannot be set in tcm_boundary conditions as the dissipation in LES mode is only a
+!-- diagnostic quantity.
+    IF ( .NOT. rans_tke_e  .AND.                                                                   &
+         ( use_sgs_for_particles  .OR.  wang_kernel  .OR.  collision_turbulence ) )  THEN
+       surf_s = bc_h(0)%start_index(j,i)
+       surf_e = bc_h(0)%end_index(j,i)
+       DO  m = surf_s, surf_e
+          k             = bc_h(0)%k(m)
+          diss(k-1,j,i) = diss(k,j,i)
+       ENDDO
+!
+!--    Downward facing surfaces
+       surf_s = bc_h(1)%start_index(j,i)
+       surf_e = bc_h(1)%end_index(j,i)
+       DO  m = surf_s, surf_e
+          k             = bc_h(1)%k(m)
+          diss(k+1,j,i) = diss(k,j,i)
+       ENDDO
+    ENDIF
 
  END SUBROUTINE diffusion_e_ij
 
@@ -4427,13 +4612,7 @@
     INTEGER(iwp) ::  j  !< running index y direction
     INTEGER(iwp) ::  k  !< running index z direction
 
-    REAL(wp)     ::  flag           !< flag to mask topography
-    REAL(wp)     ::  mask_down      !< flag to mask diss fluxes at downward facing walls
-    REAL(wp)     ::  mask_east      !< flag to mask diss fluxes at eastward facing walls
-    REAL(wp)     ::  mask_north     !< flag to mask diss fluxes at northward facing walls
-    REAL(wp)     ::  mask_south     !< flag to mask diss fluxes at southward facing walls
-    REAL(wp)     ::  mask_west      !< flag to mask diss fluxes at westward facing walls
-    REAL(wp)     ::  mask_up        !< flag to mask diss fluxes at upward facing walls
+    REAL(wp)     ::  flag  !< flag to mask topography
 
 !
 !-- Calculate the tendency terms
@@ -4443,41 +4622,19 @@
 
 !
 !--          Predetermine flag to mask topography
-             flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
-!
-!--          Determine flags to mask diss-fluxes at walls. This is necessary to set a pure Neumann
-!--          boundary condition for diss. Just by setting the boundary value would lead to an
-!--          overdetermination at corner grid points and thus would being not fully correct.
-!--          Note, with rans_tke_e this masking must not be performed since exlicit Dirichlet
-!--          conditions are set at walls.
-             mask_down  = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k+1,j,i), 0 )  .AND.            &
-                                                 .NOT. rans_tke_e )
-             mask_east  = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i-1), 0 )  .AND.            &
-                                                 .NOT. rans_tke_e )
-             mask_north = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j-1,i), 0 )  .AND.            &
-                                                 .NOT. rans_tke_e )
-             mask_south = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j+1,i), 0 )  .AND.            &
-                                                 .NOT. rans_tke_e )
-             mask_west  = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i+1), 0 )  .AND.            &
-                                                 .NOT. rans_tke_e )
-             mask_up    = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k-1,j,i), 0 )  .AND.            &
-                                                 .NOT. rans_tke_e )
+             flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
 
-             tend(k,j,i) = tend(k,j,i) + (                                                         &
-                    ( mask_west  * ( km(k,j,i)+km(k,j,i+1) ) * ( diss(k,j,i+1) - diss(k,j,i) )     &
-                    - mask_east  * ( km(k,j,i)+km(k,j,i-1) ) * ( diss(k,j,i)   - diss(k,j,i-1) )   &
-                    ) * ddx2                                                                       &
-                  + ( mask_south * ( km(k,j,i)+km(k,j+1,i) ) * ( diss(k,j+1,i) - diss(k,j,i) )     &
-                    - mask_north * ( km(k,j,i)+km(k,j-1,i) ) * ( diss(k,j,i)   - diss(k,j-1,i) )   &
-                    ) * ddy2                                                                       &
-                  + ( mask_down  * ( km(k,j,i)+km(k+1,j,i) ) * ( diss(k+1,j,i) - diss(k,j,i) )     &
-                                                             * ddzu(k+1) * rho_air_zw(k)           &
-                    - mask_up    * ( km(k,j,i)+km(k-1,j,i) ) * ( diss(k,j,i)   - diss(k-1,j,i) )   &
-                                                             * ddzu(k) * rho_air_zw(k-1)           &
-                    ) * ddzw(k) * drho_air(k)                                                      &
-                                         ) * flag * dsig_diss - c_2 * diss(k,j,i)**2               &
-                                           / ( e(k,j,i) + 1.0E-20_wp ) * flag
-
+             tend(k,j,i) = tend(k,j,i) +                                                           &
+                           ( ( ( km(k,j,i)+km(k,j,i+1) ) * ( diss(k,j,i+1)-diss(k,j,i) )           &
+                             - ( km(k,j,i)+km(k,j,i-1) ) * ( diss(k,j,i)-diss(k,j,i-1) ) ) * ddx2  &
+                           + ( ( km(k,j,i)+km(k,j+1,i) ) * ( diss(k,j+1,i)-diss(k,j,i) )           &
+                             - ( km(k,j,i)+km(k,j-1,i) ) * ( diss(k,j,i)-diss(k,j-1,i) ) ) * ddy2  &
+                           + ( ( km(k,j,i)+km(k+1,j,i) ) * ( diss(k+1,j,i)-diss(k,j,i) )           &
+                               * ddzu(k+1) * rho_air_zw(k)                                         &
+                             - ( km(k,j,i)+km(k-1,j,i) ) * ( diss(k,j,i)-diss(k-1,j,i) ) * ddzu(k) &
+                               * rho_air_zw(k-1) ) * ddzw(k) * drho_air(k)                         &
+                           )  * flag * dsig_diss - c_2 * diss(k,j,i)**2                            &
+                              / ( e(k,j,i) + 1.0E-20_wp ) * flag
 
           ENDDO
        ENDDO
@@ -4510,13 +4667,7 @@
     INTEGER(iwp) ::  j  !< running index y direction
     INTEGER(iwp) ::  k  !< running index z direction
 
-    REAL(wp)     ::  flag           !< flag to mask topography
-    REAL(wp)     ::  mask_down      !< flag to mask diss fluxes at downward facing walls
-    REAL(wp)     ::  mask_east      !< flag to mask diss fluxes at eastward facing walls
-    REAL(wp)     ::  mask_north     !< flag to mask diss fluxes at northward facing walls
-    REAL(wp)     ::  mask_south     !< flag to mask diss fluxes at southward facing walls
-    REAL(wp)     ::  mask_west      !< flag to mask diss fluxes at westward facing walls
-    REAL(wp)     ::  mask_up        !< flag to mask diss fluxes at upward facing walls
+    REAL(wp)     ::  flag  !< flag to mask topography
 
 !
 !-- Calculate the mixing length (for dissipation)
@@ -4524,34 +4675,21 @@
 
 !
 !--    Predetermine flag to mask topography
-       flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
-!
-!--    Determine flags to mask diss-fluxes at walls. This is necessary to set a pure Neumann
-!--    boundary condition for diss. Just by setting the boundary value would lead to an
-!--    overdetermination at corner grid points and thus would being not fully correct.
-!--    Note, with rans_tke_e this masking must not be performed since explicit Dirichlet conditions
-!--    are set at walls.
-       mask_down  = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k+1,j,i), 0 )  .AND. .NOT. rans_tke_e )
-       mask_east  = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i-1), 0 )  .AND. .NOT. rans_tke_e )
-       mask_north = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j-1,i), 0 )  .AND. .NOT. rans_tke_e )
-       mask_south = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j+1,i), 0 )  .AND. .NOT. rans_tke_e )
-       mask_west  = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i+1), 0 )  .AND. .NOT. rans_tke_e )
-       mask_up    = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k-1,j,i), 0 )  .AND. .NOT. rans_tke_e )
+       flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
 
-       tend(k,j,i) = tend(k,j,i) + (                                                               &
-                     ( mask_west  * ( km(k,j,i)+km(k,j,i+1) ) * ( diss(k,j,i+1) - diss(k,j,i) )    &
-                     - mask_east  * ( km(k,j,i)+km(k,j,i-1) ) * ( diss(k,j,i)   - diss(k,j,i-1) )  &
-                     ) * ddx2                                                                      &
-                   + ( mask_south * ( km(k,j,i)+km(k,j+1,i) ) * ( diss(k,j+1,i) - diss(k,j,i) )    &
-                     - mask_north * ( km(k,j,i)+km(k,j-1,i) ) * ( diss(k,j,i)   - diss(k,j-1,i) )  &
-                     ) * ddy2                                                                      &
-                   + ( mask_down  * ( km(k,j,i)+km(k+1,j,i) ) * ( diss(k+1,j,i) - diss(k,j,i) )    &
-                                                              * ddzu(k+1) * rho_air_zw(k)          &
-                     - mask_up    * ( km(k,j,i)+km(k-1,j,i) ) * ( diss(k,j,i)   - diss(k-1,j,i) )  &
-                                                              * ddzu(k) * rho_air_zw(k-1)          &
-                     ) * ddzw(k) * drho_air(k)                                                     &
-                                   ) * flag * dsig_diss - c_2 * diss(k,j,i)**2                     &
-                                     / ( e(k,j,i) + 1.0E-20_wp ) * flag
+!
+!--    Calculate the tendency term
+       tend(k,j,i) =  tend(k,j,i) +                                                                &
+                      ( ( ( km(k,j,i)+km(k,j,i+1) ) * ( diss(k,j,i+1)-diss(k,j,i) )                &
+                        - ( km(k,j,i)+km(k,j,i-1) ) * ( diss(k,j,i)-diss(k,j,i-1) ) ) * ddx2       &
+                      + ( ( km(k,j,i)+km(k,j+1,i) ) * ( diss(k,j+1,i)-diss(k,j,i) )                &
+                        - ( km(k,j,i)+km(k,j-1,i) ) * ( diss(k,j,i)-diss(k,j-1,i) ) ) * ddy2       &
+                      + ( ( km(k,j,i)+km(k+1,j,i) ) * ( diss(k+1,j,i)-diss(k,j,i) )                &
+                          * ddzu(k+1) * rho_air_zw(k)                                              &
+                        - ( km(k,j,i)+km(k-1,j,i) ) * ( diss(k,j,i)-diss(k-1,j,i) )                &
+                          * ddzu(k) * rho_air_zw(k-1) ) * ddzw(k) * drho_air(k)                    &
+                      )  * flag * dsig_diss - c_2 * diss(k,j,i)**2 / ( e(k,j,i) + 1.0E-20_wp )     &
+                         * flag
 
     ENDDO
 
@@ -4582,9 +4720,9 @@
     INTEGER(iwp) ::  i  !< loop index
     INTEGER(iwp) ::  j  !< loop index
     INTEGER(iwp) ::  k  !< loop index
+    INTEGER(iwp) ::  l  !< loop index
     INTEGER(iwp) ::  m  !< loop index
 
-    REAL(wp) ::  consider_phi_m !< dummy variable for stability correction (only employed at horizontal walls)
     REAL(wp) ::  var_reference  !< reference temperature
 
     REAL(wp), DIMENSION(nzb:nzt+1,nysg:nyng,nxlg:nxrg), INTENT(IN) ::  var  !< temperature
@@ -4598,7 +4736,7 @@
           DO  j = nysg, nyng
              DO  k = nzb+1, nzt
                 e(k,j,i) = MAX( e(k,j,i), e_min ) *                                                &
-                           MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                        MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
              ENDDO
           ENDDO
        ENDDO
@@ -4619,97 +4757,132 @@
 !
 !--    Upward facing surfaces
 !--    Default surfaces
-       !$OMP PARALLEL DO PRIVATE(i,j,k,m,consider_phi_m)
-       DO  m = 1, surf_def%ns
-          i = surf_def%i(m)
-          j = surf_def%j(m)
-          k = surf_def%k(m)
-          consider_phi_m = MERGE( phi_m( surf_def%z_mo(m) / surf_def%ol(m) ), 1.0_wp,              &
-                                  surf_def%upward(m) )
-          km(k,j,i) = kappa * surf_def%us(m) * surf_def%z_mo(m) / consider_phi_m
-          kh(k,j,i) = 1.35_wp * km(k,j,i)
+       DO l = 0, 1
+          !$OMP PARALLEL DO PRIVATE(i,j,k,m)
+          DO  m = 1, surf_def_h(l)%ns
+             i = surf_def_h(l)%i(m)
+             j = surf_def_h(l)%j(m)
+             k = surf_def_h(l)%k(m)
+             km(k,j,i) = kappa * surf_def_h(l)%us(m) * surf_def_h(l)%z_mo(m) /                        &
+                         phi_m( surf_def_h(l)%z_mo(m) / surf_def_h(l)%ol(m) )
+             kh(k,j,i) = 1.35_wp * km(k,j,i)
+          ENDDO
+!
+!--       Natural surfaces
+          !$OMP PARALLEL DO PRIVATE(i,j,k,m)
+          DO  m = 1, surf_lsm_h(l)%ns
+             i = surf_lsm_h(l)%i(m)
+             j = surf_lsm_h(l)%j(m)
+             k = surf_lsm_h(l)%k(m)
+             km(k,j,i) = kappa * surf_lsm_h(l)%us(m) * surf_lsm_h(l)%z_mo(m) /                              &
+                         phi_m( surf_lsm_h(l)%z_mo(m) / surf_lsm_h(l)%ol(m) )
+             kh(k,j,i) = 1.35_wp * km(k,j,i)
+          ENDDO
+!
+!--       Urban surfaces
+          !$OMP PARALLEL DO PRIVATE(i,j,k,m)
+          DO  m = 1, surf_usm_h(l)%ns
+             i = surf_usm_h(l)%i(m)
+             j = surf_usm_h(l)%j(m)
+             k = surf_usm_h(l)%k(m)
+             km(k,j,i) = kappa * surf_usm_h(l)%us(m) * surf_usm_h(l)%z_mo(m) /                              &
+                         phi_m( surf_usm_h(l)%z_mo(m) / surf_usm_h(l)%ol(m) )
+             kh(k,j,i) = 1.35_wp * km(k,j,i)
+          ENDDO
        ENDDO
 !
-!--    Natural surfaces
-       !$OMP PARALLEL DO PRIVATE(i,j,k,m,consider_phi_m)
-       DO  m = 1, surf_lsm%ns
-          i = surf_lsm%i(m)
-          j = surf_lsm%j(m)
-          k = surf_lsm%k(m)
-          consider_phi_m = MERGE( phi_m( surf_lsm%z_mo(m) / surf_lsm%ol(m) ), 1.0_wp,              &
-                                  surf_lsm%upward(m) )
-          km(k,j,i) = kappa * surf_lsm%us(m) * surf_lsm%z_mo(m) / consider_phi_m
-          kh(k,j,i) = 1.35_wp * km(k,j,i)
-       ENDDO
+!--    North-, south-, west and eastward facing surfaces
+!--    Do not consider stratification at these surfaces.
+       DO  l = 0, 3
 !
-!--    Urban surfaces
-       !$OMP PARALLEL DO PRIVATE(i,j,k,m,consider_phi_m)
-       DO  m = 1, surf_usm%ns
-          i = surf_usm%i(m)
-          j = surf_usm%j(m)
-          k = surf_usm%k(m)
+!--       Default surfaces
+          !$OMP PARALLEL DO PRIVATE(i,j,k,m)
+          DO  m = 1, surf_def_v(l)%ns
+             i = surf_def_v(l)%i(m)
+             j = surf_def_v(l)%j(m)
+             k = surf_def_v(l)%k(m)
+             km(k,j,i) = kappa * surf_def_v(l)%us(m) * surf_def_v(l)%z_mo(m)
+             kh(k,j,i) = 1.35_wp * km(k,j,i)
+          ENDDO
 !
-!--       Consider stability correction only for horizontally upward facing surfaces.
-          consider_phi_m = MERGE( phi_m( surf_usm%z_mo(m) / surf_usm%ol(m) ), 1.0_wp,              &
-                                  surf_usm%upward(m) )
-          km(k,j,i) = kappa * surf_usm%us(m) * surf_usm%z_mo(m) / consider_phi_m
-          kh(k,j,i) = 1.35_wp * km(k,j,i)
+!--       Natural surfaces
+          !$OMP PARALLEL DO PRIVATE(i,j,k,m)
+          DO  m = 1, surf_lsm_v(l)%ns
+             i = surf_lsm_v(l)%i(m)
+             j = surf_lsm_v(l)%j(m)
+             k = surf_lsm_v(l)%k(m)
+             km(k,j,i) = kappa * surf_lsm_v(l)%us(m) * surf_lsm_v(l)%z_mo(m)
+             kh(k,j,i) = 1.35_wp * km(k,j,i)
+          ENDDO
+!
+!--       Urban surfaces
+          !$OMP PARALLEL DO PRIVATE(i,j,k,m)
+          DO  m = 1, surf_usm_v(l)%ns
+             i = surf_usm_v(l)%i(m)
+             j = surf_usm_v(l)%j(m)
+             k = surf_usm_v(l)%k(m)
+             km(k,j,i) = kappa * surf_usm_v(l)%us(m) * surf_usm_v(l)%z_mo(m)
+             kh(k,j,i) = 1.35_wp * km(k,j,i)
+          ENDDO
        ENDDO
 
-    ELSE
-!
-!--    Set boundary values (Neumann conditions) at surfaces.
-!--    Note, at corners the boundary condition for km is overdetermined and the boundary value
-!--    depends on the order how surfaces are accessed.
-       !$OMP PARALLEL DO PRIVATE(i,j,k)
-       !$ACC PARALLEL LOOP PRIVATE(i,j,k) &
-       !$ACC PRESENT(bc_hv, kh, km)
-       DO  m = 1, bc_hv%ns
-          i = bc_hv%i(m)
-          j = bc_hv%j(m)
-          k = bc_hv%k(m)
-!
-!--       At corners km and kh are overdetermined and an accurate Neumann condition
-!--       cannot be maintained.
-          km(k+bc_hv%koff(m),j+bc_hv%joff(m),i+bc_hv%ioff(m)) = km(k,j,i)
-          kh(k+bc_hv%koff(m),j+bc_hv%joff(m),i+bc_hv%ioff(m)) = kh(k,j,i)
-       ENDDO
+       CALL exchange_horiz( km, nbgp )
+       CALL exchange_horiz( kh, nbgp )
 
     ENDIF
+!
+!-- Set boundary values (Neumann conditions)
+!-- Downward facing surfaces
+    !$OMP PARALLEL DO PRIVATE(i,j,k)
+    !$ACC PARALLEL LOOP PRIVATE(i,j,k) &
+    !$ACC PRESENT(bc_h(1), kh, km)
+    DO  m = 1, bc_h(1)%ns
+       i = bc_h(1)%i(m)
+       j = bc_h(1)%j(m)
+       k = bc_h(1)%k(m)
+       km(k+1,j,i) = km(k,j,i)
+       kh(k+1,j,i) = kh(k,j,i)
+    ENDDO
+!
+!-- Downward facing surfaces
+    !$OMP PARALLEL DO PRIVATE(i,j,k)
+    !$ACC PARALLEL LOOP PRIVATE(i,j,k) &
+    !$ACC PRESENT(bc_h(0), kh, km)
+    DO  m = 1, bc_h(0)%ns
+       i = bc_h(0)%i(m)
+       j = bc_h(0)%j(m)
+       k = bc_h(0)%k(m)
+       km(k-1,j,i) = km(k,j,i)
+       kh(k-1,j,i) = kh(k,j,i)
+    ENDDO
 !
 !-- Model top
     !$OMP PARALLEL DO
     !$ACC PARALLEL LOOP COLLAPSE(2) &
-    !$ACC PRIVATE(i,j) &
     !$ACC PRESENT(kh, km)
-    DO  i = nxl, nxr
-       DO  j = nys, nyn
+    DO  i = nxlg, nxrg
+       DO  j = nysg, nyng
           km(nzt+1,j,i) = km(nzt,j,i)
           kh(nzt+1,j,i) = kh(nzt,j,i)
        ENDDO
     ENDDO
 
 !
-!-- Set values at ghost layers
-    CALL exchange_horiz( km, nbgp )
-    CALL exchange_horiz( kh, nbgp )
-
-!
 !-- Set Neumann boundary conditions at the outflow boundaries in case of non-cyclic lateral
 !-- boundaries
-    IF ( bc_dirichlet_l  .OR.  bc_radiation_l )  THEN
+    IF ( bc_radiation_l )  THEN
        km(:,:,nxl-1) = km(:,:,nxl)
        kh(:,:,nxl-1) = kh(:,:,nxl)
     ENDIF
-    IF ( bc_dirichlet_r  .OR.  bc_radiation_r )  THEN
+    IF ( bc_radiation_r )  THEN
        km(:,:,nxr+1) = km(:,:,nxr)
        kh(:,:,nxr+1) = kh(:,:,nxr)
     ENDIF
-    IF ( bc_dirichlet_s  .OR.  bc_radiation_s )  THEN
+    IF ( bc_radiation_s )  THEN
        km(:,nys-1,:) = km(:,nys,:)
        kh(:,nys-1,:) = kh(:,nys,:)
     ENDIF
-    IF ( bc_dirichlet_n  .OR.  bc_radiation_n )  THEN
+    IF ( bc_radiation_n )  THEN
        km(:,nyn+1,:) = km(:,nyn,:)
        kh(:,nyn+1,:) = kh(:,nyn,:)
     ENDIF
@@ -4733,8 +4906,8 @@
                use_single_reference_value
 
     USE statistics,                                                                                &
-        ONLY:  rmask,                                                                              &
-               sums_l_l
+        ONLY :  rmask,                                                                             &
+                sums_l_l
 
     IMPLICIT NONE
 
@@ -4769,18 +4942,17 @@
 
 !
 !-- Compute the turbulent diffusion coefficient for momentum
-    !$OMP PARALLEL PRIVATE (dvar_dz,duv2_dz2,i,j,k,ml,ml_local_profile,ml_stratification,          &
-    !$OMP                   richardson_number,sr,tn)
+    !$OMP PARALLEL PRIVATE (i,j,k,ml,sr,tn)
 !$  tn = omp_get_thread_num()
 
     IF ( les_default  .OR.  les_dynamic )  THEN
        !$OMP DO
        !$ACC PARALLEL LOOP COLLAPSE(2) PRIVATE(i, j) &
        !$ACC PRIVATE(dvar_dz, ml, ml_stratification, ml_local_profile) &
-       !$ACC PRESENT(topo_flags, var, dd2zu, e, delta) &
+       !$ACC PRESENT(wall_flags_total_0, var, dd2zu, e, delta) &
        !$ACC PRESENT(kh, km, sums_l_l, rmask)
-       DO  i = nxl, nxr
-          DO  j = nys, nyn
+       DO  i = nxlg, nxrg
+          DO  j = nysg, nyng
              !$ACC LOOP PRIVATE(k)
              DO  k = nzb+1, nzt
 !
@@ -4818,11 +4990,16 @@
              DO  k = nzb+1, nzt
 
                 ml = MIN( delta(k,j,i), ml_stratification(k) )                                     &
-                   * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                   * MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
                 ml_local_profile(k) = ml
 !
 !--             Compute diffusion coefficients for momentum and heat
-                km(k,j,i) = c_0 * ml * SQRT( e(k,j,i) )
+!
+!--             COVID-19 specific code: Viscosity of air added by Mikko.
+                ! km(k,j,i) = c_0 * ml * SQRT( e(k,j,i) )
+                km(k,j,i) = c_0 * ml * SQRT( e(k,j,i) ) + 1.4086E-5_wp
+!
+!--             COVID-19 specific code ends
                 kh(k,j,i) = ( 1.0_wp + 2.0_wp * ml / delta(k,j,i) ) * km(k,j,i)
 
              ENDDO
@@ -4842,10 +5019,10 @@
        !$OMP DO
        !$ACC PARALLEL LOOP COLLAPSE(2) PRIVATE(i, j) &
        !$ACC PRIVATE(dvar_dz, ml, ml_stratification, ml_local_profile) &
-       !$ACC PRESENT(topo_flags, var, dd2zu, e, delta) &
+       !$ACC PRESENT(wall_flags_total_0, var, dd2zu, e, delta) &
        !$ACC PRESENT(kh, km, sums_l_l, rmask)
-       DO  i = nxl, nxr
-          DO  j = nys, nyn
+       DO  i = nxlg, nxrg
+          DO  j = nysg, nyng
              !$ACC LOOP PRIVATE(k)
              DO  k = nzb+1, nzt
 
@@ -4886,7 +5063,7 @@
              DO  k = nzb+1, nzt
 
                 ml_local_profile(k) = ml_stratification(k) *                                       &
-                                      MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                                      MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
                 ml  = ml_local_profile(k)
 !
 !--             Compute diffusion coefficients for momentum and heat
@@ -4917,10 +5094,10 @@
        !$OMP DO
        !$ACC PARALLEL LOOP COLLAPSE(2) PRIVATE(i, j) &
        !$ACC PRIVATE(dvar_dz, duv2_dz2, ml_stratification, ml_local_profile, richardson_number) &
-       !$ACC PRESENT(topo_flags, var, dd2zu, e, u, v, delta, ml_blackadar) &
+       !$ACC PRESENT(wall_flags_total_0, var, dd2zu, e, u, v, delta, ml_blackadar) &
        !$ACC PRESENT(kh, km, sums_l_l, rmask)
-       DO  i = nxl, nxr
-          DO  j = nys, nyn
+       DO  i = nxlg, nxrg
+          DO  j = nysg, nyng
 !
 !--          Calculate Richardson number
              IF ( use_single_reference_value )  THEN
@@ -4969,7 +5146,7 @@
              !DIR$ IVDEP
              DO  k = nzb+1, nzt
                 ml_local_profile(k) = MIN( ml_stratification(k), delta(k,j,i) )                    &
-                                    * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                                    * MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
                 km(k,j,i) = c_0 * ml_local_profile(k) * SQRT( e(k,j,i) )
                 kh(k,j,i) = km(k,j,i) / prandtl_number
              ENDDO
@@ -4990,10 +5167,10 @@
        !$OMP DO
        !$ACC PARALLEL LOOP COLLAPSE(2) PRIVATE(i, j) &
        !$ACC PRIVATE(ml_local_profile) &
-       !$ACC PRESENT(topo_flags, e, diss, rmask) &
+       !$ACC PRESENT(wall_flags_total_0, e, diss, rmask) &
        !$ACC PRESENT(kh, km, sums_l_l)
-       DO  i = nxl, nxr
-          DO  j = nys, nyn
+       DO  i = nxlg, nxrg
+          DO  j = nysg, nyng
 !
 !--          Compute diffusion coefficients for momentum and heat
              !$ACC LOOP PRIVATE(k)
@@ -5002,7 +5179,7 @@
 
                 ml_local_profile(k) = c_0**3 * e(k,j,i) * SQRT(e(k,j,i))                           &
                                     / ( diss(k,j,i) + 1.0E-30_wp )                                 &
-                                    * MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+                                    * MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
 
                 km(k,j,i) = c_0 * SQRT( e(k,j,i) ) * ml_local_profile(k)
                 kh(k,j,i) = km(k,j,i) / prandtl_number
@@ -5056,7 +5233,7 @@
                w
 
     USE grid_variables,                                                                            &
-        ONLY:  ddx,                                                                                &
+        ONLY : ddx,                                                                                &
                ddy,                                                                                &
                dx,                                                                                 &
                dy
@@ -5145,7 +5322,7 @@
        DO  j = nys, nyn
           DO  k = nzb+1, nzt
 
-             flag = MERGE( 1.0_wp, 0.0_wp, BTEST( topo_flags(k,j,i), 0 ) )
+             flag = MERGE( 1.0_wp, 0.0_wp, BTEST( wall_flags_total_0(k,j,i), 0 ) )
 
 !
 !--          Compute the deviatoric shear tensor s_ij on grid centers:

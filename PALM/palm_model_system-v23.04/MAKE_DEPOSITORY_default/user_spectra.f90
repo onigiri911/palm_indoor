@@ -13,9 +13,30 @@
 ! You should have received a copy of the GNU General Public License along with PALM. If not, see
 ! <http://www.gnu.org/licenses/>.
 !
-! Copyright 1997-2021 Leibniz Universitaet Hannover
+! Copyright 1997-2020 Leibniz Universitaet Hannover
 !--------------------------------------------------------------------------------------------------!
 !
+!
+! Current revisions:
+! -----------------
+! 
+! 
+! Former revisions:
+! -----------------
+! $Id: user_spectra.f90 4497 2020-04-15 10:20:51Z raasch $
+! file re-formatted to follow the PALM coding standard
+!
+! 4360 2020-01-07 11:25:50Z suehring
+! Corrected "Former revisions" section
+!
+! 3768 2019-02-27 14:35:58Z raasch
+! variables removed + statement added to avoid compiler warnings about unused variables
+!
+! 3655 2019-01-07 16:51:22Z knoop
+! Renamed output variables
+!
+! 211 2008-11-11 04:46:24Z raasch
+! Former file user_interface.f90 split into one file per subroutine
 !
 ! Description:
 ! ------------
@@ -23,6 +44,7 @@
 !> See section 3.5.4 on how to define, calculate, and output user defined quantities.
 !--------------------------------------------------------------------------------------------------!
  SUBROUTINE user_spectra( mode, m, pr )
+
 
     USE arrays_3d
 
@@ -67,9 +89,8 @@
 !             d(nzb+1:nzt,nys:nyn,nxl:nxr) = ustvst(nzb+1:nzt,nys:nyn,nxl:nxr)
 
           CASE DEFAULT
-             message_string = 'spectra of "' // TRIM( data_output_sp(m) ) //                       &
-                              '" can not be calculated'
-             CALL message( 'user_spectra', 'USR0006', 0, 1, 0, 6, 0 )
+             message_string = 'Spectra of ' // TRIM( data_output_sp(m) ) // ' can not be calculated'
+             CALL message( 'user_spectra', 'UI0010', 0, 1, 0, 6, 0 )
 
        END SELECT
 
@@ -84,8 +105,8 @@
 !             pr = 6
 
           CASE DEFAULT
-             message_string = 'spectra of "' // TRIM( data_output_sp(m) ) // '" are not defined'
-             CALL message( 'user_spectra', 'USR0007', 0, 0, 0, 6, 0 )
+             message_string = 'Spectra of ' // TRIM( data_output_sp(m) ) // ' are not defined'
+             CALL message( 'user_spectra', 'UI0011', 0, 0, 0, 6, 0 )
 
           END SELECT
 
