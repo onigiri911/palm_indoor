@@ -1,0 +1,708 @@
+############################################################################################################################################################################
+This is the PALM tester  (version: 1.0.1)
+############################################################################################################################################################################
+Object:      Name:                                       Action:  Status:
+############################################################################################################################################################################
+Build        gfortran_openmp_mpi                         approved [32m[configuration ok][0m
+Build        nvidia_mpi_openacc_cudaawarempi             rejected [31m[palmtest.yml environment "NVIDIA" not found][0m
+Build        cray_default                                rejected [31m[palmtest.yml environment "Cray" not found][0m
+Build        gfortran_tenstream                          rejected [31m[palmtest.yml environment "GNU" has no "include.tenstream"][0m
+Build        nvidia_mpi_openacc                          rejected [31m[palmtest.yml environment "NVIDIA" not found][0m
+Build        intel_default                               rejected [31m[palmtest.yml environment "Intel" not found][0m
+Build        nvidia_mpi_openacc_cufft                    rejected [31m[palmtest.yml environment "NVIDIA" not found][0m
+Build        gfortran_serial                             approved [32m[configuration ok][0m
+Build        gfortran_default                            approved [32m[configuration ok][0m
+Build        nvidia_mpi_only                             rejected [31m[palmtest.yml environment "NVIDIA" not found][0m
+Build        nvidia_mpi_openacc_cufft_cudaawarempi       rejected [31m[palmtest.yml environment "NVIDIA" not found][0m
+Case (dep)   urban_environment                           approved [32m[configuration ok][0m
+Case         urban_environment_restart                   approved [32m[configuration ok][0m
+############################################################################################################################################################################
+Test ID:     2023-11-03_16:23:55.509748
+Builds:      gfortran_default
+             gfortran_openmp_mpi
+             gfortran_serial
+Cases:       urban_environment
+             urban_environment_restart
+Cores:       4
+############################################################################################################################################################################
+Task:        Case:                          Build:                                      Cores:  Status:
+############################################################################################################################################################################
+############################################################################################################################################################################
+############################################################################################################################################################################
+############################################################################################################################################################################
+Building:                                   gfortran_default                                    [started]
+############################################################################################################################################################################
+CMD: /home/aggiri/PALM/palm_model_system-v23.04/packages/palm/model/bin/palmbuild -c "gfortran_default" -v
+############################################################################################################################################################################
+
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c mod_kinds.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c array_utilities.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c local_system.f90
+/usr/bin/gfortran -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c combine_plot_fields.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c modules.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c basic_constants_and_equations_mod.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c time_to_string.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c posix_interface_mod.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c chem_emis_biogenic_data_mod.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c data_output_binary_module.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c data_output_netcdf4_module.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c pmc_general_mod.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c random_function_mod.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c singleton_mod.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c wrd_write_string.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c cpulog_mod.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c advec_s_pw.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c advec_s_up.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c advec_u_pw.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c advec_u_up.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c advec_v_pw.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c advec_v_up.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c advec_w_pw.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c advec_w_up.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c boundary_settings_mod.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c chem_modules.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c palm_date_time_mod.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c chem_gasphase_mod.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c general_utilities.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c mod_particle_attributes.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c shared_memory_io_mod.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c calc_mean_profile.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c gust_mod.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c random_generator_parallel_mod.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c init_vertical_profiles.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c cuda_fft_interfaces.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c temperton_fft_mod.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c subsidence_mod.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c data_log.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c global_min_max.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c init_advec.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c init_grid.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c progress_bar_mod.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c timestep_scheme_steering.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c pmc_handle_communicator_mod.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c model_1d_mod.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c buoyancy.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c coriolis.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c init_slope.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c chem_emis_pollen_data_mod.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c chem_isorropia_interface_mod.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c pmc_mpi_wrapper_mod.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c advec_s_bc.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c exchange_horiz_mod.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c transpose_mod.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c local_tremain.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c local_tremain_ini.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c outflow_turbulence.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c print_1d.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c run_control.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c random_gauss.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c chem_emis_vsrc_mod.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c pmc_child_mod.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c pmc_parent_mod.f90
+/usr/bin/gfortran -o combine_plot_fields.x combine_plot_fields.o /usr/lib/x86_64-linux-gnu/libnetcdff.so /usr/lib/x86_64-linux-gnu/libfftw3.so /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/lib/librrtmg.so
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c data_output_module.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c advec_ws.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c netcdf_data_input_mod.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c restart_data_mpi_io_mod.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c fastv8_coupler_mod.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c poismg_noopt_mod.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c disturb_field.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c init_pt_anomaly.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c init_rankine.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c poismg_mod.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c sor.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c sm_poisfft_mod.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c tridia_solver_mod.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c surface_mod.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c chem_emis_generic_mod.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c turbulent_inflow_mod.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c chem_emis_domestic_mod.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c chem_emis_pt_source_mod.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c chem_emis_traffic_mod.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c chem_isorropia_mod.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c fft_xy_mod.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c wind_turbine_model_mod.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c diffusion_s.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c chem_emissions_mod.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c data_output_topo_and_surface_setup_mod.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c surface_coupler_mod.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c large_scale_forcing_nudging_mod.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c user_module.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c diffusion_u.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c diffusion_v.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c diffusion_w.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c disturb_heatflux.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c user_flight.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c user_data_output_mask.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c user_init_3d_model.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c user_init_grid.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c user_lpm_advec.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c user_lpm_init.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c spectra_mod.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c poisfft_mod.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c user_spectra.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c bulk_cloud_model_mod.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c plant_canopy_model_mod.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c chem_wet_deposition_mod.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c compute_vpt.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c radiation_model_mod.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c salsa_mod.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c user_init_plant_canopy.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c nesting_offl_mod.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c biometeorology_mod.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c chem_emis_biogenic_mod.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c chem_emis_pollen_mod.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c chem_photolysis_mod.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c dcep_mod.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c urban_surface_mod.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c user_init_radiation.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c chemistry_model_mod.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c user_init_urban_surface.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c pmc_interface_mod.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c dynamics_mod.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c pmc_particle_interface.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c ocean_mod.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c synthetic_turbulence_generator_mod.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c vdi_internal_controls.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c check_for_restart.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c local_stop.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c message.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c topography_mod.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c data_output_particle_mod.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c init_pegrid.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c poisfft_sm_mod.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c lagrangian_particle_model_mod.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c land_surface_model_mod.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c surface_layer_fluxes_mod.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c virtual_measurement_mod.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c user_init_land_surface.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c diagnostic_output_quantities_mod.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c indoor_model_mod.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c turbulence_closure_mod.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c pres.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c netcdf_interface_mod.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c multi_agent_system_mod.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c user_init_flight_mod.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c check_open.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c close_file.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c data_output_mask.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c data_output_profiles.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c data_output_spectra.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c data_output_tseries.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c virtual_flight_mod.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c data_output_flight.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c module_interface.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c average_3d_data.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c surface_data_output_mod.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c data_output_2d.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c data_output_3d.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c flow_statistics.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c header.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c init_masks.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c prognostic_equations.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c sum_up_3d_data.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c timestep.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c check_parameters.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c read_restart_data_mod.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c write_restart_data_mod.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c time_integration.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c time_integration_spinup.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c palm.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c init_3d_model.f90
+/usr/bin/mpif90 -cpp -Wall -Werror -Wextra -pedantic -Wno-maybe-uninitialized -Wno-conversion -Wno-compare-reals -Wno-do-subscript -Wno-surprising -Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/include -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=MPI_2DOUBLE_PRECISION -D__parallel -D__netcdf -D__netcdf4 -D__netcdf4_parallel -D__fftw -D__rrtmg -D__gfortran -c parin.f90
+/usr/bin/mpif90 -o palm advec_s_bc.o advec_s_pw.o advec_s_up.o advec_u_pw.o advec_u_up.o advec_v_pw.o advec_v_up.o advec_w_pw.o advec_ws.o advec_w_up.o array_utilities.o average_3d_data.o basic_constants_and_equations_mod.o boundary_settings_mod.o biometeorology_mod.o buoyancy.o calc_mean_profile.o check_for_restart.o check_open.o check_parameters.o chemistry_model_mod.o chem_emis_biogenic_mod.o chem_emis_biogenic_data_mod.o chem_emis_domestic_mod.o chem_emis_generic_mod.o chem_emis_pollen_mod.o chem_emis_pollen_data_mod.o chem_emis_pt_source_mod.o chem_emis_traffic_mod.o chem_emis_vsrc_mod.o chem_emissions_mod.o chem_gasphase_mod.o chem_isorropia_interface_mod.o chem_isorropia_mod.o chem_modules.o chem_photolysis_mod.o chem_wet_deposition_mod.o close_file.o compute_vpt.o coriolis.o cpulog_mod.o cuda_fft_interfaces.o data_log.o data_output_binary_module.o data_output_module.o data_output_netcdf4_module.o data_output_2d.o data_output_3d.o data_output_flight.o data_output_mask.o data_output_particle_mod.o data_output_profiles.o data_output_spectra.o data_output_topo_and_surface_setup_mod.o data_output_tseries.o dcep_mod.o diagnostic_output_quantities_mod.o diffusion_s.o diffusion_u.o diffusion_v.o diffusion_w.o disturb_field.o disturb_heatflux.o dynamics_mod.o exchange_horiz_mod.o fastv8_coupler_mod.o fft_xy_mod.o flow_statistics.o general_utilities.o global_min_max.o gust_mod.o header.o indoor_model_mod.o init_3d_model.o init_advec.o init_grid.o init_masks.o init_pegrid.o init_pt_anomaly.o init_rankine.o init_slope.o init_vertical_profiles.o lagrangian_particle_model_mod.o land_surface_model_mod.o large_scale_forcing_nudging_mod.o local_stop.o local_system.o local_tremain.o local_tremain_ini.o message.o bulk_cloud_model_mod.o model_1d_mod.o module_interface.o mod_kinds.o mod_particle_attributes.o modules.o multi_agent_system_mod.o netcdf_data_input_mod.o netcdf_interface_mod.o nesting_offl_mod.o ocean_mod.o outflow_turbulence.o palm.o palm_date_time_mod.o parin.o plant_canopy_model_mod.o pmc_child_mod.o pmc_general_mod.o pmc_handle_communicator_mod.o pmc_interface_mod.o pmc_mpi_wrapper_mod.o pmc_parent_mod.o pmc_particle_interface.o poisfft_mod.o poisfft_sm_mod.o poismg_mod.o poismg_noopt_mod.o posix_interface_mod.o pres.o print_1d.o prognostic_equations.o progress_bar_mod.o radiation_model_mod.o random_function_mod.o random_gauss.o random_generator_parallel_mod.o read_restart_data_mod.o restart_data_mpi_io_mod.o run_control.o salsa_mod.o sm_poisfft_mod.o shared_memory_io_mod.o singleton_mod.o sor.o spectra_mod.o subsidence_mod.o sum_up_3d_data.o surface_coupler_mod.o surface_layer_fluxes_mod.o surface_mod.o surface_data_output_mod.o synthetic_turbulence_generator_mod.o temperton_fft_mod.o time_integration.o time_integration_spinup.o timestep.o timestep_scheme_steering.o time_to_string.o topography_mod.o transpose_mod.o tridia_solver_mod.o turbulence_closure_mod.o turbulent_inflow_mod.o urban_surface_mod.o user_data_output_mask.o user_flight.o user_init_3d_model.o user_init_flight_mod.o user_init_grid.o user_init_land_surface.o user_init_plant_canopy.o user_init_radiation.o user_init_urban_surface.o user_lpm_advec.o user_lpm_init.o user_module.o user_spectra.o vdi_internal_controls.o virtual_flight_mod.o virtual_measurement_mod.o wind_turbine_model_mod.o wrd_write_string.o write_restart_data_mod.o /usr/lib/x86_64-linux-gnu/libnetcdff.so /usr/lib/x86_64-linux-gnu/libfftw3.so /home/aggiri/PALM/palm_model_system-v23.04/rrtmg/lib/librrtmg.so
+############################################################################################################################################################################
+Building:                                   gfortran_default                                    [32m[build ok][0m 
+Testing:     urban_environment              gfortran_default                                  4 [started]
+############################################################################################################################################################################
+CMD: /home/aggiri/PALM/palm_model_system-v23.04/packages/palm/model/bin/palmrun -c "gfortran_default" -r urban_environment__gfortran_default__4 -a "d3# restart" -X 4 -B -v -z
+############################################################################################################################################################################
+
+*** palmrun 
+    will be executed.     Please wait ...
+
+  *** INFORMATIVE: additional source code directory
+      "/home/aggiri/PALM/palm_model_system-v23.04/packages/palm/model/build/tests/2023-11-03_16:23:55.509748/JOBS/urban_environment__gfortran_default__4/USER_CODE" 
+      does not exist or is not a directory.
+      No source code will be used from this directory!
+
+
+  *** directory:
+           /home/aggiri/PALM/palm_model_system-v23.04/packages/palm/model/build/tests/2023-11-03_16:23:55.509748/JOBS/urban_environment__gfortran_default__4/RESTART
+      was created
+
+
+  *** directory:
+           /home/aggiri/PALM/palm_model_system-v23.04/packages/palm/model/build/tests/2023-11-03_16:23:55.509748/JOBS/urban_environment__gfortran_default__4/MONITORING
+      was created
+
+
+  *** directory:
+           /home/aggiri/PALM/palm_model_system-v23.04/packages/palm/model/build/tests/2023-11-03_16:23:55.509748/JOBS/urban_environment__gfortran_default__4/OUTPUT
+      was created
+
+#------------------------------------------------------------------------# 
+| palmrun                                    vr  3 nov 2023 16:25:38 CET | 
+| Version: PALM 23.04                                                    | 
+|                                                                        | 
+| called on:               foote.bk.tudelft.nl                           | 
+| config. identifier:      gfortran_default (execute on IP: 127.0.0.1)   | 
+| running in:              interactive run mode                          | 
+| number of cores:         4                                             | 
+| tasks per node:          4 (number of nodes: 1)                        | 
+|                                                                        | 
+| cpp directives:          -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=M | 
+|                          PI_2DOUBLE_PRECISION -D__parallel -D__netcdf  | 
+|                          -D__netcdf4 -D__netcdf4_parallel -D__fftw -D_ | 
+|                          _rrtmg -D__gfortran                           | 
+| compiler options:        -cpp -Wall -Werror -Wextra -pedantic -Wno-may | 
+|                          be-uninitialized -Wno-conversion -Wno-compare | 
+|                          -reals -Wno-do-subscript -Wno-surprising -Ofa | 
+|                          st -ffree-line-length-none -I /usr/include -I | 
+|                           /usr/include -I /home/aggiri/PALM/palm_model | 
+|                          _system-v23.04/rrtmg/include                  | 
+| linker options:          /usr/lib/x86_64-linux-gnu/libnetcdff.so /usr/ | 
+|                          lib/x86_64-linux-gnu/libfftw3.so /home/aggiri | 
+|                          /PALM/palm_model_system-v23.04/rrtmg/lib/libr | 
+|                          rtmg.so                                       | 
+|                                                                        | 
+| run identifier:          urban_environment__gfortran_default__4        | 
+| activation string list:  d3# restart                                   | 
+#------------------------------------------------------------------------#
+
+  *** creating executable and other sources for the local host
+
+make: Nothing to be done for 'all'.
+  *** executable and other sources created
+
+  *** changed to temporary directory: /home/aggiri/PALM/palm_model_system-v23.04/packages/palm/model/build/tests/2023-11-03_16:23:55.509748/tmp/urban_environment__gfortran_default__4.7337
+
+  *** providing INPUT-files:
+  ----------------------------------------------------------------------------
+  >>> INPUT: /home/aggiri/PALM/palm_model_system-v23.04/packages/palm/model/build/tests/2023-11-03_16:23:55.509748/JOBS/urban_environment__gfortran_default__4/INPUT/urban_environment__gfortran_default__4_p3d  to  PARIN
+  >>> INPUT: /home/aggiri/PALM/palm_model_system-v23.04/packages/palm/model/build/tests/2023-11-03_16:23:55.509748/JOBS/urban_environment__gfortran_default__4/INPUT/urban_environment__gfortran_default__4_static  to  PIDS_STATIC
+  >>> INPUT: /home/aggiri/PALM/palm_model_system-v23.04/packages/palm/model/build/tests/2023-11-03_16:23:55.509748/JOBS/urban_environment__gfortran_default__4/INPUT/urban_environment__gfortran_default__4_dynamic  to  PIDS_DYNAMIC
+  >>> INPUT: /home/aggiri/PALM/palm_model_system-v23.04/packages/palm/model/build/tests/2023-11-03_16:23:55.509748/JOBS/urban_environment__gfortran_default__4/INPUT/urban_environment__gfortran_default__4_rlw  to  RRTMG_LW
+  >>> INPUT: /home/aggiri/PALM/palm_model_system-v23.04/packages/palm/model/build/tests/2023-11-03_16:23:55.509748/JOBS/urban_environment__gfortran_default__4/INPUT/urban_environment__gfortran_default__4_rsw  to  RRTMG_SW
+  *** INFORMATIVE: some optional INPUT-files are not present
+  ----------------------------------------------------------------------------
+  *** all INPUT-files provided 
+
+
+  *** execution of INPUT-commands:
+  ----------------------------------------------------------------------------
+  >>> ulimit -s unlimited
+  ----------------------------------------------------------------------------
+
+
+  *** execution starts in directory
+      "/home/aggiri/PALM/palm_model_system-v23.04/packages/palm/model/build/tests/2023-11-03_16:23:55.509748/tmp/urban_environment__gfortran_default__4.7337"
+  ----------------------------------------------------------------------------
+
+  *** execute command:
+      "mpirun -n 4 ./palm" 
+
+   16:25:39   -start----   reading environment parameters from ENVPAR
+   16:25:39   -finished-   reading environment parameters from ENVPAR
+   16:25:39   -start----   reading NAMELIST parameters from PARIN
+                --- informative message ---
+                    ID: CHM0016  generated by routine "chem_parin":
+                    
+                    New emission read mode currently unavailable for LODs 0 and 1.
+                    Reverting to legacy emission read mode.
+                    
+                    Further information can be found at
+                    <temporary no link available>/errmsg#CHM0016
+                    
+   16:25:39   -finished-   reading NAMELIST parameters from PARIN
+   16:25:39   -start----   creating virtual PE grids + MPI derived data types
+   16:25:39   -finished-   creating virtual PE grids + MPI derived data types
+   16:25:39   -start----   Setup topography
+   16:25:39   -finished-   Setup topography
+   16:25:39   -start----   checking parameters
+   16:25:39   -finished-   checking parameters
+   16:25:39   -start----   model initialization
+                +++ warning message ---
+                    ID: RAD0031  generated by routine "radiation_init":
+                    
+                    The current raytracing algorithm in the Radiative Transfer Model does
+                    NOT support explicitly cyclic boundary conditions. Surface radiation
+                    fluxes near the boundaries should be evaluated in this view point.
+                    
+                    Further information can be found at
+                    <temporary no link available>/errmsg#RAD0031
+                    
+   16:25:40   -start----   calculating view factors for radiation interaction
+   16:25:40   -finished-   calculating view factors for radiation interaction
+   16:25:40   -start----   initializing surface layer
+   16:25:40   -finished-   initializing surface layer
+   16:25:40   -finished-   model initialization
+   16:25:40   -start----   wall/soil spinup time-stepping
+   16:25:40   -finished-   wall/soil spinup time-stepping
+   16:25:40   -start----   netcdf_define_header 3d
+   16:25:40   -finished-   netcdf_define_header 3d
+   16:25:40   -start----   time-stepping
+                +++ warning message ---
+                    ID: PAC0191  generated by routine "do_topo_and_surface_actions":
+                    
+                    issue while writing output: "DOM ERROR: open_output_file: error while opening file "DATA_TOPO_SURF": netcdf4_open_file: netCDF error while opening file "DATA_TOPO_SURF": NetCDF: Parallel operation on file opened for non-parallel access                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  "
+                    
+                    Further information can be found at
+                    <temporary no link available>/errmsg#PAC0191
+                    
+   16:25:41   -start----   netcdf_define_header 3d
+   16:25:41   -finished-   netcdf_define_header 3d
+   16:25:42   -finished-   time-stepping
+   16:25:42   -start----   writing restart data
+   16:25:42   -finished-   writing restart data
+   16:25:42   -start----   calculating cpu statistics
+   16:25:42   -finished-   calculating cpu statistics
+
+  ----------------------------------------------------------------------------
+  *** execution finished 
+
+
+
+ *** post-processing: now executing "mpirun -n 1 ./combine_plot_fields.x" ... 
+ 
+ *** combine_plot_fields ***
+     uncoupled run
+ 
+ 
+     NetCDF output enabled
+     XY-section:             4  file(s) found
+                  36 array(s) processed
+                   4 array(s) are time-averaged
+     Required cpu-time:     0.000 sec
+ 
+     no XZ-section data available
+ 
+     no YZ-section data available
+  
+     NetCDF output enabled
+     3D-data:                4  file(s) found
+                  44 array(s) processed
+                  14 array(s) are time-averaged
+     Required cpu-time:     0.000 sec
+
+
+  *** execution of OUTPUT-commands:
+  ----------------------------------------------------------------------------
+  >>> [[ -f LIST_PROFIL_1D ]] && cat LIST_PROFIL_1D >> LIST_PROFILE
+  >>> [[ -f LIST_PROFIL ]] && cat LIST_PROFIL >> LIST_PROFILE
+  >>> [[ -f PARTICLE_INFOS/_0000 ]] && cat PARTICLE_INFOS/* >> PARTICLE_INFO
+  ----------------------------------------------------------------------------
+
+
+  *** saving OUTPUT-files:     local time: 16:25:42
+  ----------------------------------------------------------------------------
+  >>> OUTPUT: BINOUT  to
+              /home/aggiri/PALM/palm_model_system-v23.04/packages/palm/model/build/tests/2023-11-03_16:23:55.509748/JOBS/urban_environment__gfortran_default__4/RESTART/urban_environment__gfortran_default__4_d3d.000
+      file will be linked
+
+  >>> OUTPUT: PARIN  to
+              /home/aggiri/PALM/palm_model_system-v23.04/packages/palm/model/build/tests/2023-11-03_16:23:55.509748/JOBS/urban_environment__gfortran_default__4/MONITORING/urban_environment__gfortran_default__4_parin.000
+
+  >>> OUTPUT: STDOUT  to
+              /home/aggiri/PALM/palm_model_system-v23.04/packages/palm/model/build/tests/2023-11-03_16:23:55.509748/JOBS/urban_environment__gfortran_default__4/MONITORING/urban_environment__gfortran_default__4_stdout.000
+
+  >>> OUTPUT: RUN_CONTROL  to
+              /home/aggiri/PALM/palm_model_system-v23.04/packages/palm/model/build/tests/2023-11-03_16:23:55.509748/JOBS/urban_environment__gfortran_default__4/MONITORING/urban_environment__gfortran_default__4_rc.000
+
+  >>> OUTPUT: HEADER  to
+              /home/aggiri/PALM/palm_model_system-v23.04/packages/palm/model/build/tests/2023-11-03_16:23:55.509748/JOBS/urban_environment__gfortran_default__4/MONITORING/urban_environment__gfortran_default__4_header.000
+
+  >>> OUTPUT: CPU_MEASURES  to
+              /home/aggiri/PALM/palm_model_system-v23.04/packages/palm/model/build/tests/2023-11-03_16:23:55.509748/JOBS/urban_environment__gfortran_default__4/MONITORING/urban_environment__gfortran_default__4_cpu.000
+
+  >>> OUTPUT: DATA_1D_PR_NETCDF  to
+              /home/aggiri/PALM/palm_model_system-v23.04/packages/palm/model/build/tests/2023-11-03_16:23:55.509748/JOBS/urban_environment__gfortran_default__4/OUTPUT/urban_environment__gfortran_default__4_pr.000.nc
+
+  >>> OUTPUT: DATA_1D_TS_NETCDF  to
+              /home/aggiri/PALM/palm_model_system-v23.04/packages/palm/model/build/tests/2023-11-03_16:23:55.509748/JOBS/urban_environment__gfortran_default__4/OUTPUT/urban_environment__gfortran_default__4_ts.000.nc
+
+  >>> OUTPUT: DATA_2D_XY_AV_NETCDF  to
+              /home/aggiri/PALM/palm_model_system-v23.04/packages/palm/model/build/tests/2023-11-03_16:23:55.509748/JOBS/urban_environment__gfortran_default__4/OUTPUT/urban_environment__gfortran_default__4_av_xy.000.nc
+
+  >>> OUTPUT: DATA_2D_XY_NETCDF  to
+              /home/aggiri/PALM/palm_model_system-v23.04/packages/palm/model/build/tests/2023-11-03_16:23:55.509748/JOBS/urban_environment__gfortran_default__4/OUTPUT/urban_environment__gfortran_default__4_xy.000.nc
+
+  >>> OUTPUT: DATA_3D_AV_NETCDF  to
+              /home/aggiri/PALM/palm_model_system-v23.04/packages/palm/model/build/tests/2023-11-03_16:23:55.509748/JOBS/urban_environment__gfortran_default__4/OUTPUT/urban_environment__gfortran_default__4_av_3d.000.nc
+
+  >>> OUTPUT: DATA_3D_NETCDF  to
+              /home/aggiri/PALM/palm_model_system-v23.04/packages/palm/model/build/tests/2023-11-03_16:23:55.509748/JOBS/urban_environment__gfortran_default__4/OUTPUT/urban_environment__gfortran_default__4_3d.000.nc
+
+  ----------------------------------------------------------------------------
+  *** all OUTPUT-files saved       local time: 16:25:42 
+
+ --> palmrun finished
+
+############################################################################################################################################################################
+Testing:     urban_environment              gfortran_default                                  4 [32m[execution ok][0m 
+Checking output files:
+Checking:    urban_environment_rc.000                    [32m[file ok][0m
+Checking:    urban_environment_ts.000.nc                 [32m[file ok][0m
+Checking:    urban_environment_pr.000.nc                 [32m[file ok][0m
+Testing:     urban_environment              gfortran_default                                  4 [32m[checks ok][0m 
+############################################################################################################################################################################
+
+
+
+
+
+
+
+
+
+
+############################################################################################################################################################################
+############################################################################################################################################################################
+############################################################################################################################################################################
+Testing:     urban_environment_restart      gfortran_default                                  4 [started]
+Testing:     urban_environment_restart      gfortran_default                                  4 [32m[linked restart data file from: /home/aggiri/PALM/palm_model_system-v23.04/packages/palm/model/build/tests/2023-11-03_16:23:55.509748/JOBS/urban_environment__gfortran_default__4/RESTART/urban_environment__gfortran_default__4_d3d.000][0m 
+############################################################################################################################################################################
+CMD: /home/aggiri/PALM/palm_model_system-v23.04/packages/palm/model/bin/palmrun -c "gfortran_default" -r urban_environment_restart__gfortran_default__4 -a "d3r restart" -X 4 -B -v -z
+############################################################################################################################################################################
+
+*** palmrun 
+    will be executed.     Please wait ...
+
+  *** INFORMATIVE: additional source code directory
+      "/home/aggiri/PALM/palm_model_system-v23.04/packages/palm/model/build/tests/2023-11-03_16:23:55.509748/JOBS/urban_environment_restart__gfortran_default__4/USER_CODE" 
+      does not exist or is not a directory.
+      No source code will be used from this directory!
+
+
+  *** directory:
+           /home/aggiri/PALM/palm_model_system-v23.04/packages/palm/model/build/tests/2023-11-03_16:23:55.509748/JOBS/urban_environment_restart__gfortran_default__4/MONITORING
+      was created
+
+
+  *** directory:
+           /home/aggiri/PALM/palm_model_system-v23.04/packages/palm/model/build/tests/2023-11-03_16:23:55.509748/JOBS/urban_environment_restart__gfortran_default__4/OUTPUT
+      was created
+
+#------------------------------------------------------------------------# 
+| palmrun                                    vr  3 nov 2023 16:25:46 CET | 
+| Version: PALM 23.04                                                    | 
+|                                                                        | 
+| called on:               foote.bk.tudelft.nl                           | 
+| config. identifier:      gfortran_default (execute on IP: 127.0.0.1)   | 
+| running in:              interactive run mode                          | 
+| number of cores:         4                                             | 
+| tasks per node:          4 (number of nodes: 1)                        | 
+|                                                                        | 
+| cpp directives:          -DMPI_REAL=MPI_DOUBLE_PRECISION -DMPI_2REAL=M | 
+|                          PI_2DOUBLE_PRECISION -D__parallel -D__netcdf  | 
+|                          -D__netcdf4 -D__netcdf4_parallel -D__fftw -D_ | 
+|                          _rrtmg -D__gfortran                           | 
+| compiler options:        -cpp -Wall -Werror -Wextra -pedantic -Wno-may | 
+|                          be-uninitialized -Wno-conversion -Wno-compare | 
+|                          -reals -Wno-do-subscript -Wno-surprising -Ofa | 
+|                          st -ffree-line-length-none -I /usr/include -I | 
+|                           /usr/include -I /home/aggiri/PALM/palm_model | 
+|                          _system-v23.04/rrtmg/include                  | 
+| linker options:          /usr/lib/x86_64-linux-gnu/libnetcdff.so /usr/ | 
+|                          lib/x86_64-linux-gnu/libfftw3.so /home/aggiri | 
+|                          /PALM/palm_model_system-v23.04/rrtmg/lib/libr | 
+|                          rtmg.so                                       | 
+|                                                                        | 
+| run identifier:          urban_environment_restart__gfortran_default__4 | 
+| activation string list:  d3r restart                                   | 
+#------------------------------------------------------------------------#
+
+  *** creating executable and other sources for the local host
+
+make: Nothing to be done for 'all'.
+  *** executable and other sources created
+
+  *** changed to temporary directory: /home/aggiri/PALM/palm_model_system-v23.04/packages/palm/model/build/tests/2023-11-03_16:23:55.509748/tmp/urban_environment_restart__gfortran_default__4.2472
+
+  *** providing INPUT-files:
+  ----------------------------------------------------------------------------
+  >>> INPUT: /home/aggiri/PALM/palm_model_system-v23.04/packages/palm/model/build/tests/2023-11-03_16:23:55.509748/JOBS/urban_environment_restart__gfortran_default__4/INPUT/urban_environment_restart__gfortran_default__4_p3dr  to  PARIN
+  >>> INPUT: /home/aggiri/PALM/palm_model_system-v23.04/packages/palm/model/build/tests/2023-11-03_16:23:55.509748/JOBS/urban_environment_restart__gfortran_default__4/INPUT/urban_environment_restart__gfortran_default__4_static  to  PIDS_STATIC
+  >>> INPUT: /home/aggiri/PALM/palm_model_system-v23.04/packages/palm/model/build/tests/2023-11-03_16:23:55.509748/JOBS/urban_environment_restart__gfortran_default__4/INPUT/urban_environment_restart__gfortran_default__4_dynamic  to  PIDS_DYNAMIC
+  >>> INPUT: /home/aggiri/PALM/palm_model_system-v23.04/packages/palm/model/build/tests/2023-11-03_16:23:55.509748/JOBS/urban_environment_restart__gfortran_default__4/INPUT/urban_environment_restart__gfortran_default__4_rlw  to  RRTMG_LW
+  >>> INPUT: /home/aggiri/PALM/palm_model_system-v23.04/packages/palm/model/build/tests/2023-11-03_16:23:55.509748/JOBS/urban_environment_restart__gfortran_default__4/INPUT/urban_environment_restart__gfortran_default__4_rsw  to  RRTMG_SW
+  >>> INPUT: /home/aggiri/PALM/palm_model_system-v23.04/packages/palm/model/build/tests/2023-11-03_16:23:55.509748/JOBS/urban_environment_restart__gfortran_default__4/RESTART/urban_environment_restart__gfortran_default__4_d3d  to  BININ
+      file will be linked
+  *** INFORMATIVE: some optional INPUT-files are not present
+  ----------------------------------------------------------------------------
+  *** all INPUT-files provided 
+
+
+  *** execution of INPUT-commands:
+  ----------------------------------------------------------------------------
+  >>> ulimit -s unlimited
+  ----------------------------------------------------------------------------
+
+
+  *** execution starts in directory
+      "/home/aggiri/PALM/palm_model_system-v23.04/packages/palm/model/build/tests/2023-11-03_16:23:55.509748/tmp/urban_environment_restart__gfortran_default__4.2472"
+  ----------------------------------------------------------------------------
+
+  *** execute command:
+      "mpirun -n 4 ./palm" 
+
+   16:25:48   -start----   reading environment parameters from ENVPAR
+   16:25:48   -finished-   reading environment parameters from ENVPAR
+   16:25:48   -start----   reading NAMELIST parameters from PARIN
+                --- informative message ---
+                    ID: CHM0016  generated by routine "chem_parin":
+                    
+                    New emission read mode currently unavailable for LODs 0 and 1.
+                    Reverting to legacy emission read mode.
+                    
+                    Further information can be found at
+                    <temporary no link available>/errmsg#CHM0016
+                    
+   16:25:48   -start----   read global restart data
+   16:25:48   -finished-   read global restart data
+   16:25:48   -finished-   reading NAMELIST parameters from PARIN
+   16:25:48   -start----   creating virtual PE grids + MPI derived data types
+   16:25:48   -finished-   creating virtual PE grids + MPI derived data types
+   16:25:48   -start----   Setup topography
+   16:25:48   -finished-   Setup topography
+   16:25:48   -start----   checking parameters
+   16:25:48   -finished-   checking parameters
+   16:25:48   -start----   model initialization
+   16:25:48   -start----   reading local restart data
+   16:25:48   -finished-   reading local restart data
+                +++ warning message ---
+                    ID: RAD0031  generated by routine "radiation_init":
+                    
+                    The current raytracing algorithm in the Radiative Transfer Model does
+                    NOT support explicitly cyclic boundary conditions. Surface radiation
+                    fluxes near the boundaries should be evaluated in this view point.
+                    
+                    Further information can be found at
+                    <temporary no link available>/errmsg#RAD0031
+                    
+   16:25:48   -start----   calculating view factors for radiation interaction
+   16:25:48   -finished-   calculating view factors for radiation interaction
+   16:25:48   -start----   initializing surface layer
+   16:25:48   -finished-   initializing surface layer
+   16:25:48   -finished-   model initialization
+   16:25:48   -start----   netcdf_define_header 3d
+   16:25:48   -finished-   netcdf_define_header 3d
+   16:25:48   -start----   time-stepping
+                +++ warning message ---
+                    ID: PAC0191  generated by routine "do_topo_and_surface_actions":
+                    
+                    issue while writing output: "DOM ERROR: open_output_file: error while opening file "DATA_TOPO_SURF": netcdf4_open_file: netCDF error while opening file "DATA_TOPO_SURF": NetCDF: Parallel operation on file opened for non-parallel access                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  "
+                    
+                    Further information can be found at
+                    <temporary no link available>/errmsg#PAC0191
+                    
+   16:25:49   -start----   netcdf_define_header 3d
+   16:25:49   -finished-   netcdf_define_header 3d
+   16:25:50   -finished-   time-stepping
+   16:25:50   -start----   writing restart data
+   16:25:50   -finished-   writing restart data
+   16:25:50   -start----   calculating cpu statistics
+   16:25:50   -finished-   calculating cpu statistics
+
+  ----------------------------------------------------------------------------
+  *** execution finished 
+
+
+
+ *** post-processing: now executing "mpirun -n 1 ./combine_plot_fields.x" ... 
+ 
+ *** combine_plot_fields ***
+     uncoupled run
+ 
+ 
+     NetCDF output enabled
+     XY-section:             4  file(s) found
+                  36 array(s) processed
+                   4 array(s) are time-averaged
+     Required cpu-time:     0.000 sec
+ 
+     no XZ-section data available
+ 
+     no YZ-section data available
+  
+     NetCDF output enabled
+     3D-data:                4  file(s) found
+                  44 array(s) processed
+                  14 array(s) are time-averaged
+     Required cpu-time:     0.000 sec
+
+
+  *** execution of OUTPUT-commands:
+  ----------------------------------------------------------------------------
+  >>> [[ -f LIST_PROFIL_1D ]] && cat LIST_PROFIL_1D >> LIST_PROFILE
+  >>> [[ -f LIST_PROFIL ]] && cat LIST_PROFIL >> LIST_PROFILE
+  >>> [[ -f PARTICLE_INFOS/_0000 ]] && cat PARTICLE_INFOS/* >> PARTICLE_INFO
+  ----------------------------------------------------------------------------
+
+
+  *** saving OUTPUT-files:     local time: 16:25:50
+  *** PALM generated run_number = 1 will be used as unified cycle number for all output files
+  ----------------------------------------------------------------------------
+  >>> OUTPUT: BINOUT  to
+              /home/aggiri/PALM/palm_model_system-v23.04/packages/palm/model/build/tests/2023-11-03_16:23:55.509748/JOBS/urban_environment_restart__gfortran_default__4/RESTART/urban_environment_restart__gfortran_default__4_d3d.001
+      file will be linked
+
+  >>> OUTPUT: PARIN  to
+              /home/aggiri/PALM/palm_model_system-v23.04/packages/palm/model/build/tests/2023-11-03_16:23:55.509748/JOBS/urban_environment_restart__gfortran_default__4/MONITORING/urban_environment_restart__gfortran_default__4_parin.001
+
+  >>> OUTPUT: STDOUT  to
+              /home/aggiri/PALM/palm_model_system-v23.04/packages/palm/model/build/tests/2023-11-03_16:23:55.509748/JOBS/urban_environment_restart__gfortran_default__4/MONITORING/urban_environment_restart__gfortran_default__4_stdout.001
+
+  >>> OUTPUT: RUN_CONTROL  to
+              /home/aggiri/PALM/palm_model_system-v23.04/packages/palm/model/build/tests/2023-11-03_16:23:55.509748/JOBS/urban_environment_restart__gfortran_default__4/MONITORING/urban_environment_restart__gfortran_default__4_rc.001
+
+  >>> OUTPUT: HEADER  to
+              /home/aggiri/PALM/palm_model_system-v23.04/packages/palm/model/build/tests/2023-11-03_16:23:55.509748/JOBS/urban_environment_restart__gfortran_default__4/MONITORING/urban_environment_restart__gfortran_default__4_header.001
+
+  >>> OUTPUT: CPU_MEASURES  to
+              /home/aggiri/PALM/palm_model_system-v23.04/packages/palm/model/build/tests/2023-11-03_16:23:55.509748/JOBS/urban_environment_restart__gfortran_default__4/MONITORING/urban_environment_restart__gfortran_default__4_cpu.001
+
+  >>> OUTPUT: DATA_1D_PR_NETCDF  to
+              /home/aggiri/PALM/palm_model_system-v23.04/packages/palm/model/build/tests/2023-11-03_16:23:55.509748/JOBS/urban_environment_restart__gfortran_default__4/OUTPUT/urban_environment_restart__gfortran_default__4_pr.001.nc
+
+  >>> OUTPUT: DATA_1D_TS_NETCDF  to
+              /home/aggiri/PALM/palm_model_system-v23.04/packages/palm/model/build/tests/2023-11-03_16:23:55.509748/JOBS/urban_environment_restart__gfortran_default__4/OUTPUT/urban_environment_restart__gfortran_default__4_ts.001.nc
+
+  >>> OUTPUT: DATA_2D_XY_AV_NETCDF  to
+              /home/aggiri/PALM/palm_model_system-v23.04/packages/palm/model/build/tests/2023-11-03_16:23:55.509748/JOBS/urban_environment_restart__gfortran_default__4/OUTPUT/urban_environment_restart__gfortran_default__4_av_xy.001.nc
+
+  >>> OUTPUT: DATA_2D_XY_NETCDF  to
+              /home/aggiri/PALM/palm_model_system-v23.04/packages/palm/model/build/tests/2023-11-03_16:23:55.509748/JOBS/urban_environment_restart__gfortran_default__4/OUTPUT/urban_environment_restart__gfortran_default__4_xy.001.nc
+
+  >>> OUTPUT: DATA_3D_AV_NETCDF  to
+              /home/aggiri/PALM/palm_model_system-v23.04/packages/palm/model/build/tests/2023-11-03_16:23:55.509748/JOBS/urban_environment_restart__gfortran_default__4/OUTPUT/urban_environment_restart__gfortran_default__4_av_3d.001.nc
+
+  >>> OUTPUT: DATA_3D_NETCDF  to
+              /home/aggiri/PALM/palm_model_system-v23.04/packages/palm/model/build/tests/2023-11-03_16:23:55.509748/JOBS/urban_environment_restart__gfortran_default__4/OUTPUT/urban_environment_restart__gfortran_default__4_3d.001.nc
+
+  ----------------------------------------------------------------------------
+  *** all OUTPUT-files saved       local time: 16:25:51 
+
+ --> palmrun finished
+
+############################################################################################################################################################################
+Testing:     urban_environment_restart      gfortran_default                                  4 [32m[execution ok][0m 
+Checking output files:
+Checking:    urban_environment_restart_rc.001            [32m[file ok][0m
+Checking:    urban_environment_restart_ts.001.nc         [32m[file ok][0m
+Checking:    urban_environment_restart_pr.001.nc         [32m[file ok][0m
+Testing:     urban_environment_restart      gfortran_default                                  4 [32m[checks ok][0m 
+############################################################################################################################################################################
+
+
+
+
+
+
+
+
+
+
+############################################################################################################################################################################
+Builds:       total: 3      ok: [32m1  [0m    debugged: [33m0  [0m    failed: [31m0  [0m
+Tests:        total: 2      ok: [32m2  [0m    debugged: [33m0  [0m    failed: [31m0  [0m

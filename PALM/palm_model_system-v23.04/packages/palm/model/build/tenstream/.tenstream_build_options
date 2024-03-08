@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+TENSTREAM_FORTRAN_COMPILER="/usr/bin/mpif90"
+TENSTREAM_COMPILER_OPTIONS="-Ofast -ffree-line-length-none -I /usr/include -I /usr/include -I /mnt/scratch/agiri/PALM/palm_model_system-v23.04/rrtmg/include"
+TENSTREAM_LINKER_OPTIONS="-Ofast -ffree-line-length-none /usr/lib/x86_64-linux-gnu/libnetcdff.so /usr/lib/x86_64-linux-gnu/libfftw3.so /mnt/scratch/agiri/PALM/palm_model_system-v23.04/rrtmg/lib/librrtmg.so"

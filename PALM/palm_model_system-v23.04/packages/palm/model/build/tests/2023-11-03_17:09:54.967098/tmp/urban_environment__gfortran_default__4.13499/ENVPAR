@@ -1,0 +1,8 @@
+ &envpar  run_identifier = 'urban_environment__gfortran_default__4', host = 'gfortran_default',
+          write_svf = .false., write_binary = .true., write_spinup_data = .false.,
+          read_svf = .false., tasks_per_node = 4,
+          maximum_parallel_io_streams = 4,
+          maximum_cpu_time_allowed = 10000000.,
+          version_string = 'PALM 23.04',
+          progress_bar_disabled = .true., /
+

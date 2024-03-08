@@ -1,0 +1,18 @@
+   16:43:09   -start----   reading environment parameters from ENVPAR
+   16:43:09   -finished-   reading environment parameters from ENVPAR
+   16:43:09   -start----   reading NAMELIST parameters from PARIN
+   16:43:09   -finished-   reading NAMELIST parameters from PARIN
+   16:43:09   -start----   creating virtual PE grids + MPI derived data types
+   16:43:09   -finished-   creating virtual PE grids + MPI derived data types
+   16:43:09   -start----   Setup topography
+   16:43:09   -finished-   Setup topography
+   16:43:09   -start----   checking parameters
+   16:43:09   -finished-   checking parameters
+   16:43:09   -start----   model initialization
+   16:43:09   -start----   initializing surface layer
+   16:43:09   -finished-   initializing surface layer
+   16:43:09   -finished-   model initialization
+   16:43:09   -start----   time-stepping
+   16:43:12   -finished-   time-stepping
+   16:43:12   -start----   calculating cpu statistics
+   16:43:12   -finished-   calculating cpu statistics

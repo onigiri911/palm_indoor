@@ -1,0 +1,5 @@
+[run]
+source = palm_csd
+
+[html]
+directory = coverage

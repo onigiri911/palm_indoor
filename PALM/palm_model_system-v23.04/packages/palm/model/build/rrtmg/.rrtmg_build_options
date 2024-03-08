@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+RRTMG_FORTRAN_COMPILER="/usr/bin/gfortran"
+RRTMG_COMPILER_OPTIONS="-Ofast -ffree-line-length-none -I /usr/include"
+RRTMG_LINKER_OPTIONS="-Ofast -ffree-line-length-none /usr/lib/x86_64-linux-gnu/libnetcdff.so"

@@ -1,0 +1,70 @@
+PALM 23.04  run: urban_environment_restart__gfortran_default__4.01  host: gfortran_default  2023-11-03 16:25:48
+-----------
+
+CPU measures for     4 PEs (    2(x) *     2(y) tasks *    1 threads):
+
+gridpoints (x/y/z):                        20 *    20 *    60
+nr of timesteps:                           93
+cpu time per grid point and timestep:       0.93076 * 10**-6 s
+----------------------------------------------------------------------
+
+place:                             mean       counts      min       max      rms
+                                sec.    %                sec.      sec.     sec.
+--------------------------------------------------------------------------------
+total                          2.505 100.00       1      2.51      2.51     0.00
+all progn.equations            1.233  49.22     279      1.20      1.30     0.04
+initialisation                 0.329  13.14       1      0.33      0.33     0.00
+exchange-horiz-progn           0.281  11.20     279      0.21      0.31     0.04
+pres                           0.242   9.68     279      0.24      0.25     0.00
+flow_statistics                0.092   3.68      94      0.09      0.10     0.01
+diffusivities                  0.090   3.57     279      0.06      0.11     0.02
+surface_layer_fluxes           0.070   2.81     279      0.06      0.09     0.01
+calculate_timestep             0.027   1.10      94      0.01      0.04     0.01
+urban_surface                  0.025   0.98     279      0.02      0.03     0.00
+land_surface                   0.025   0.98     279      0.02      0.04     0.01
+write-restart-data             0.024   0.96       1      0.02      0.02     0.00
+sum_up_3d_data                 0.012   0.50      93      0.01      0.02     0.00
+data_output_3d                 0.007   0.28       3      0.01      0.01     0.00
+radiation                      0.005   0.21       1      0.01      0.01     0.00
+data_output_2d                 0.002   0.09       3      0.00      0.00     0.00
+run_control                    0.001   0.03      94      0.00      0.00     0.00
+swap_timelevel                 0.001   0.02     279      0.00      0.00     0.00
+data_output_tseries            0.000   0.01       7      0.00      0.00     0.00
+average_3d_data                0.000   0.01       1      0.00      0.00     0.00
+data_output_profiles           0.000   0.01       1      0.00      0.00     0.00
+last actions                   0.000   0.00       1      0.00      0.00     0.00
+
+special measures:
+--------------------------------------------------------------------------------
+timesteps                      2.147  85.69      93      2.15      2.15     0.00
+exchange_horiz                 0.537  21.45    5913      0.43      0.58     0.06
+radiation_init                 0.264  10.53       1      0.26      0.26     0.00
+rtm_raytrace_surfaces          0.203   8.09       1      0.18      0.22     0.01
+poisfft                        0.108   4.31     279      0.10      0.11     0.00
+chem.exch-horiz                0.087   3.48     279      0.08      0.09     0.00
+mpi_alltoall                   0.056   2.23    1674      0.04      0.06     0.01
+transpo invers                 0.041   1.62     279      0.03      0.04     0.01
+transpo forward                0.037   1.49     279      0.03      0.04     0.00
+read-restart-data-local        0.024   0.95       1      0.02      0.02     0.00
+fft_x                          0.013   0.53     279      0.01      0.01     0.00
+fft_y                          0.012   0.48     279      0.01      0.01     0.00
+divergence                     0.008   0.31     372      0.01      0.01     0.00
+NetCDF/ASCII input topo        0.005   0.20       1      0.00      0.01     0.00
+tridia                         0.004   0.16     279      0.00      0.01     0.00
+NetCDF input                   0.003   0.11       1      0.00      0.00     0.00
+exchange_horiz_2d              0.002   0.07      27      0.00      0.00     0.00
+radiation_interaction          0.001   0.05       1      0.00      0.00     0.00
+pmci_init                      0.000   0.01       1      0.00      0.00     0.00
+usm_init                       0.000   0.01       1      0.00      0.00     0.00
+output_3d open                 0.000   0.01       2      0.00      0.00     0.00
+rtm_raytrace_mrt               0.000   0.00       1      0.00      0.00     0.00
+
+No barriers are set in front of collective operations
+
+Exchange of ghostpoints via MPI_ISEND/MPI_IRECV
+
+Restart file size:           10.2 MByte
+I/O transfer speed:         425.1 MByte / sec
+
+
+
