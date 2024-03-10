@@ -1,1 +1,1 @@
-This repository contains different versions of the PALM src, an LES model designed for meteorological applications, adapted for the indoor environment
+The first attempt at implementing the indoor version of the code by directly merging the revised model package from Auvinen et al. into the actual source code
