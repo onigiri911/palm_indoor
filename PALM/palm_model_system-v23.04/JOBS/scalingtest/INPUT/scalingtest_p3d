@@ -31,7 +31,6 @@
     pt_vertical_gradient_level =    0.0,
                                   800.0, ! height level of temp gradients
 
-
 !
 !-- boundary conditions
 !-------------------------------------------------------------------------------
@@ -52,7 +51,7 @@
 !
 !-- run steering
 !-------------------------------------------------------------------------------
-    end_time                   = 1800.0, ! simulation time of the 3D model
+    end_time                   = 3600.0, ! simulation time of the 3D model
 
     create_disturbances        = .TRUE., ! randomly perturbate horiz. velocity
     dt_disturb                 = 150.0,  ! interval for random perturbations
