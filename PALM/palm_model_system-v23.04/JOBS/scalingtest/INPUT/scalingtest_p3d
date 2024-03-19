@@ -34,13 +34,26 @@
 !
 !-- boundary conditions
 !-------------------------------------------------------------------------------
-    surface_heatflux           = 0.1, ! sensible heat flux at the bottom surface
-    bc_pt_b                    = 'neumann', ! required with surface_heatflux
+    surface_heatflux           = 0.1
+    bc_lr                      = 'dirichlet', ! along x direction
+    bc_ns                      = 'dirichlet', ! along y direction
+    bc_uv_t                    = 'dirichlet', ! Top boundary condition of the horizontal velocity
+    bc_uv_b                    = 'dirichlet', ! Bottom boundary "
+    complex_terrain            = '.TRUE.',    ! enable complex geometry
+    topography                 = 'read_from_file', ! custom input
 !
 !-- numerics
 !-------------------------------------------------------------------------------
     fft_method                 = 'temperton-algorithm',   ! build-in fft method
-
+    psolver                    = 'multigrid'
+    masking_method             = '.TRUE.'
+                              
+!
+!--mode
+!-------------------------------------------------------------------------------
+    humidity                   = '.TRUE.',    ! enables water vapor mixing ratio
+                              
+                              
 / ! end of initialization parameter namelist
 
 !-------------------------------------------------------------------------------
@@ -66,9 +79,9 @@
     restart_data_format        = 'mpi', ! use MPI-I/O
 
     dt_run_control             = 0.0,    ! output interval for run control
-    dt_data_output             = 900.0,  ! output interval for general data
-    dt_data_output_av          = 1800.0, ! output interval for averaged data
-    dt_dopr                    = 900.0,  ! output interval for profile data
+    dt_data_output             = 3600.0,  ! output interval for general data
+    dt_data_output_av          = 3600.0, ! output interval for averaged data
+    dt_dopr                    = 3600.0,  ! output interval for profile data
 
     data_output                = 'w_xy',
                                  'w_xz',
