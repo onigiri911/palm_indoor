@@ -2,7 +2,7 @@
 
 `palm_csd` is a Python 3 tool to generate the static driver for PALM from rasterized input data. It was developed in the course of the MOSAIK project with a focus on the demo cities Berlin, Hamburg, and Stuttgart. It was later successfully applied for data from many other cities (e.g. Leipzig and Karlsruhe).
 
-
+:
 ## Execution
 
 In order to create a static driver, follow the installation process described in the `README.md` and prepare a `palm_csd` configuration file (see below for details, an exemplary file can be found in `share/csd_default.yml`). After that, execute `palm_csd` as follows:
