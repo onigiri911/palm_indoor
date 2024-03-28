@@ -21,16 +21,11 @@
 !-------------------------------------------------------------------------------
     initializing_actions       = 'set_constant_profiles', ! initial conditions
 
-    ug_surface                 = 0.0, ! u-comp of geostrophic wind at surface
+    ug_surface                 = 1.0, ! u-comp of geostrophic wind at surface
     vg_surface                 = 0.0, ! v-comp of geostrophic wind at surface
 
-    pt_surface                 = 300.0, ! initial surface potential temp
-
-    pt_vertical_gradient       =    0.0,
-                                    1.0, ! piecewise temp gradients
-    pt_vertical_gradient_level =    0.0,
-                                  800.0, ! height level of temp gradients
-
+    roughness_length = 0.1,               ! applies to all surfaces locally
+    neutral = .T.,                        ! strictly neutral flow
 !
 !-- boundary conditions
 !-------------------------------------------------------------------------------
@@ -39,19 +34,24 @@
     bc_ns                      = 'dirichlet', ! along y direction
     bc_uv_t                    = 'dirichlet', ! Top boundary condition of the horizontal velocity
     bc_uv_b                    = 'dirichlet', ! Bottom boundary "
-    complex_terrain            = '.TRUE.',    ! enable complex geometry
+    omega = 0.0,                          ! no Coriolis force
+    conserve_volume_flow = .T.,           ! maintain constant bulk velocity  
+    bc_uv_t = 'dirichlet_0',              ! channel flow boundary condition
+    complex_terrain            = .T.,    ! enable complex geometry
     topography                 = 'read_from_file', ! custom input
+    topography_grid_convention = 'cell_center',  / ! default
 !
 !-- numerics
 !-------------------------------------------------------------------------------
     fft_method                 = 'temperton-algorithm',   ! build-in fft method
     psolver                    = 'multigrid'
     masking_method             = '.TRUE.'
-                              
+    momentum_advec = 'ws-scheme',         ! default advection scheme
+    scalar_advec   = 'ws-scheme',                              
 !
 !--mode
 !-------------------------------------------------------------------------------
-    humidity                   = '.TRUE.',    ! enables water vapor mixing ratio
+    humidity                   = .T.,    ! enables water vapor mixing ratio
                               
                               
 / ! end of initialization parameter namelist
